@@ -70,7 +70,7 @@ public class OverlayRpcModule(
         try
         {
             ContractCreationTracer creation = new(address);
-            if (!TryTrace(new Block(block.Header.Clone(), block.Body), null, creation, token, out ResultWrapper<OverlayCreationCode?>? failure)) return failure;
+            if (!TryTrace(block, null, creation, token, out ResultWrapper<OverlayCreationCode?>? failure)) return failure;
             if (creation.TxIndex < 0) return ResultWrapper<OverlayCreationCode?>.Fail("contract construction txn not found", ErrorCodes.ResourceNotFound);
 
             ulong gasLimit = jsonRpcConfig.GasCap ?? block.Header.GasLimit;
@@ -111,7 +111,7 @@ public class OverlayRpcModule(
                 transactions[^1] = call;
             }
 
-            Block replay = new(block.Header.Clone(), new BlockBody(transactions, block.Uncles, block.Withdrawals));
+            Block replay = new(block.Header, block.Body.WithChangedTransactions(transactions));
             ConstructorOutputTracer output = new(address, creation.TxIndex);
             if (!TryTrace(replay, stateOverride, output, token, out failure)) return failure;
             if (output.Error is not null) return ResultWrapper<OverlayCreationCode?>.Fail(output.Error, ErrorCodes.ExecutionError);
@@ -172,7 +172,7 @@ public class OverlayRpcModule(
                 if (block is null) return ResultWrapper<IEnumerable<FilterLog>>.Fail($"block {number} not found", ErrorCodes.ResourceNotFound);
                 if (block.Transactions.Length == 0) continue;
 
-                if (!TryTrace(new Block(block.Header.Clone(), block.Body), stateOverride, tracer, token, out ResultWrapper<IEnumerable<FilterLog>>? failure)) return failure;
+                if (!TryTrace(block, stateOverride, tracer, token, out ResultWrapper<IEnumerable<FilterLog>>? failure)) return failure;
                 if (maxLogs > 0 && logs.Count > maxLogs)
                     return ResultWrapper<IEnumerable<FilterLog>>.Fail($"too many logs, max {maxLogs} per response", ErrorCodes.LimitExceeded);
             }
@@ -190,7 +190,9 @@ public class OverlayRpcModule(
         }
     }
 
-    /// <summary>Re-executes <paramref name="block"/> on its parent state with <paramref name="stateOverride"/> applied.</summary>
+    /// <summary>Re-executes a copy of <paramref name="block"/> on its parent state with <paramref name="stateOverride"/> applied.</summary>
+    /// <remarks>The replay loads each transaction nonce from the overridden state,
+    /// so it runs on copies to keep the cached canonical block unchanged.</remarks>
     private bool TryTrace<T>(Block block, Dictionary<Address, AccountOverride>? stateOverride, IBlockTracer tracer, CancellationToken token, [NotNullWhen(false)] out ResultWrapper<T>? failure)
     {
         if (!tracerEnv.TryBuildAndOverrideAtTarget(block.Header, stateOverride, null, out Scope<ITracer>? scope))
@@ -199,9 +201,16 @@ public class OverlayRpcModule(
             return false;
         }
 
+        Transaction[] transactions = new Transaction[block.Transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = new Transaction();
+            block.Transactions[i].CopyTo(transactions[i], copyHash: true);
+        }
+
         using (scope)
         {
-            scope.Component.Trace(block, tracer.WithCancellation(token));
+            scope.Component.Trace(new Block(block.Header.Clone(), block.Body.WithChangedTransactions(transactions)), tracer.WithCancellation(token));
         }
 
         failure = null;

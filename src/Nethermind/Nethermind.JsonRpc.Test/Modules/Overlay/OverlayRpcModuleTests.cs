@@ -19,6 +19,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -260,6 +261,28 @@ public class OverlayRpcModuleTests
                 Assert.That(b.GetProperty("blockHash").GetString(), Is.EqualTo(a.GetProperty("blockHash").GetString()));
                 Assert.That(LogIndex(b), Is.EqualTo(LogIndex(a) + 1));
             }
+        }
+    }
+
+    [Test]
+    public async Task GetLogs_with_a_nonce_override_keeps_the_canonical_transactions()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        Block block = chain.BlockFinder.FindBlock(deployment.Last)!;
+        ulong[] nonces = [.. block.Transactions.Select(static tx => tx.Nonce)];
+        byte[][] encoded = [.. block.Transactions.Select(static tx => Rlp.Encode(tx).Bytes)];
+
+        using JsonDocument response = await Request(chain, "overlay_getLogs",
+            new { fromBlock = deployment.Last.ToHexString(true), toBlock = deployment.Last.ToHexString(true) },
+            new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = 1000UL.ToHexString(true) } });
+
+        Block reloaded = chain.BlockFinder.FindBlock(deployment.Last)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(2));
+            Assert.That(reloaded.Transactions.Select(static tx => tx.Nonce), Is.EqualTo(nonces));
+            Assert.That(reloaded.Transactions.Select(static tx => Rlp.Encode(tx).Bytes), Is.EqualTo(encoded));
         }
     }
 
