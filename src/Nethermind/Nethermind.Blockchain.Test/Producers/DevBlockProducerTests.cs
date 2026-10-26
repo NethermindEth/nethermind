@@ -15,6 +15,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -25,6 +26,7 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -146,8 +148,21 @@ public class DevBlockProducerTests
             NethDevTestBlockchain chain = new(minGasPrice);
             await chain.Build(builder => builder
                 .AddModule(new NethDevPlugin(new ChainSpec()).Module)
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(London.Instance))
-                .AddSingleton<IGenesisPostProcessor>(new FunctionalGenesisPostProcessor(genesis => genesis.Header.BaseFeePerGas = genesisBaseFee)));
+                // The default test override returns a new spec instance per head, which the pool treats as a fork:
+                // the revalidation it queues runs after TxPoolHeadChanged and drops a gapped tx submitted meanwhile.
+                // One stable instance keeps the pool from revalidating. EIP-3607 is off so AddressA, which has code, can send.
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(London.Instance) { IsEip3607Enabled = false }) { AllowTestChainOverride = false })
+                .AddSingleton<IGenesisPostProcessor>(new FunctionalGenesisPostProcessor(genesis => genesis.Header.BaseFeePerGas = genesisBaseFee))
+                .ConfigureTestConfiguration(conf => conf.SuggestGenesisOnStart = false));
+
+            // The pool processes heads asynchronously and drops a gapped tx on each, genesis included,
+            // so tests must not submit before the pool has seen genesis.
+            Task genesisPoolHead = Wait.ForEventCondition<Block>(chain.CancellationToken,
+                h => chain.TxPool.TxPoolHeadChanged += h,
+                h => chain.TxPool.TxPoolHeadChanged -= h,
+                b => b.IsGenesis);
+            chain.MainProcessingContext.GenesisLoader.Load();
+            await genesisPoolHead;
             return chain;
         }
 

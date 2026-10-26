@@ -368,8 +368,8 @@ public partial class VmState<TGasPolicy> : IDisposable
     }
 
     /// <inheritdoc cref="InitializeStacks(ReadOnlySpan{byte}, out EvmStack)"/>
-    /// <param name="txTracer">The tracer the stack reports to.</param>
-    public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    /// <param name="txTracer">The tracer the stack reports pushes to, or <c>null</c> when no tracer observes them.</param>
+    public void InitializeStacks(ITxTracer? txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         byte[]? dataStack = DataStack;
@@ -384,7 +384,7 @@ public partial class VmState<TGasPolicy> : IDisposable
 
     /// <summary>Rebuilds a resumed frame's EVM stack over <paramref name="codeSpan"/>.</summary>
     /// <inheritdoc cref="InitializeStacks(ITxTracer, ReadOnlySpan{byte}, out EvmStack)" path="/param"/>
-    internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
+    internal void RestoreStack<TTracingInst>(ITxTracer? txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         Debug.Assert(IsContinuation && !_isDisposed && DataStack is not null,
