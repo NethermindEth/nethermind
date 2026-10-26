@@ -13,7 +13,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +25,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -125,7 +128,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """[{"blockNumber":{}},false]""",
-            "unknown block parameter type",
+            "invalid argument 0: unknown block parameter type",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Malformed typed argument");
         yield return new TestCaseData(
@@ -149,7 +152,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """["0x1",false,"extra"]""",
-            "Invalid params",
+            "too many arguments, want at most 2",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument");
         yield return new TestCaseData(
@@ -161,49 +164,49 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBlockByNumber),
             """["",false,"extra"]""",
-            "Invalid params",
+            "too many arguments, want at most 2",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>())))
             .SetName("Extra argument alongside a missing marker");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
-            "hex string without 0x prefix",
+            "invalid argument 0: hex string without 0x prefix",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Address without 0x prefix");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00"]""",
-            "hex number with leading zero digits",
+            "invalid argument 1: hex number with leading zero digits",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Block number boundary leading zero");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x01"]""",
-            "hex number with leading zero digits",
+            "invalid argument 1: hex number with leading zero digits",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Block number single digit leading zero one");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x0f"]""",
-            "hex number with leading zero digits",
+            "invalid argument 1: hex number with leading zero digits",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Block number single digit leading zero f");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x00001036640"]""",
-            "hex number with leading zero digits",
+            "invalid argument 1: hex number with leading zero digits",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Block number with leading zeros");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0x0000000000000000000000000000000000000000","0x"]""",
-            "hex string \"0x\"",
+            "invalid argument 1: hex string \"0x\"",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Empty hex block quantity");
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6",{"blockNumber":"0x1036640","blockHash":"0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e9f"}]""",
-            "cannot specify both BlockHash and BlockNumber, choose one or the other",
+            "invalid argument 1: cannot specify both BlockHash and BlockNumber, choose one or the other",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("EIP-1898 mutually exclusive block fields");
     }
@@ -496,6 +499,52 @@ public class JsonRpcServiceTests
         pool.Received().ReturnModule(rpcModule);
     }
 
+    [TestCase("eth_getLogs", "0x1")]
+    [TestCase("eth_newFilter", "0x1")]
+    [TestCase("eth_getBalance", "0xzz", "latest")]
+    [TestCase("eth_getBalance")]
+    [TestCase("eth_chainId", "0x1")]
+    public void Returns_module_to_pool_once_on_invalid_params(string method, params object[] parameters)
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, parameters), ErrorCodes.InvalidParams);
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Returns_module_to_pool_once_and_internal_error_when_preparing_params_throws([Values("eth_getLogs", "eth_newFilter")] string method)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        logger.IsError.Returns(true);
+        logger.When(static l => l.Trace(Arg.Is<string>(static text => text.StartsWith("Executing JSON RPC call"))))
+            .Do(static _ => throw new ArgumentException("log failed"));
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, "{}"), ErrorCodes.InternalError);
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+            logger.Received(1).Error(Arg.Any<string>(), Arg.Any<ArgumentException>());
+        }
+    }
+
     // A streamed trace executes while the response is written, on the module's own overridable env; the module must
     // therefore stay rented until the response is disposed, or the next rental races it on that env.
     [Test]
@@ -533,14 +582,20 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public async Task Streamed_serialization_failure_is_an_internal_error([Values] bool wrapped)
+    public async Task Streamed_serialization_failure_preserves_typed_mapping(
+        [Values("json", "format", "duration")] string kind, [Values] bool wrapped)
     {
         IRpcModulePool<ITraceRpcModule> pool = Substitute.For<IRpcModulePool<ITraceRpcModule>>();
         ITraceRpcModule rpcModule = Substitute.For<ITraceRpcModule>();
         pool.GetModule(false).Returns(rpcModule);
         using CancellationTokenSource timeout = new();
-        Exception failure = new JsonException("Cannot serialize trace");
-        if (wrapped) failure = new TargetInvocationException(failure);
+        Exception cause = kind switch
+        {
+            "json" => new JsonException("Cannot serialize trace"),
+            "format" => new FormatException("Cannot serialize trace"),
+            _ => new TraceDurationFormatException("bad duration")
+        };
+        Exception failure = wrapped ? new TargetInvocationException(cause) : cause;
         rpcModule.trace_replayTransaction(Arg.Any<Hash256>(), Arg.Any<string[]>(), Arg.Any<bool>())
             .Returns(ResultWrapper<ParityTxTraceFromReplay?>.Success(new ParityTxTraceFromReplayStreamingResult(
                 (_, _, _) => throw failure, timeout, LimboLogs.Instance.GetClassLogger<JsonRpcServiceTests>())));
@@ -549,8 +604,22 @@ public class JsonRpcServiceTests
         PipeWriter writer = PipeWriter.Create(stream);
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         await writer.CompleteAsync();
-        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
-        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+        bool durationError = kind == "duration" && !wrapped;
+        string expected = durationError
+            ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"bad duration"},"id":67}"""
+            : JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                error = new { code = ErrorCodes.InternalError, message = "Internal error", data = $"{cause.GetType()}: {cause.Message}" },
+                id = 67
+            });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected));
+            pool.DidNotReceive().ReturnModule(rpcModule);
+        }
+        response.Dispose();
+        pool.Received(1).ReturnModule(rpcModule);
     }
 
     [Test]
@@ -994,8 +1063,9 @@ public class JsonRpcServiceTests
     [TestCase("eth_getBlockByNumber", new object?[] { "", false }, "missing value for required argument 0", TestName = "FirstArgMarkedMissingBeforeAnother")]
     [TestCase("eth_getProof", new object?[] { "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842", "", "latest" }, "missing value for required argument 1", TestName = "LaterArgMarkedMissingBeforeAnother")]
     [TestCase("eth_feeHistory", new object?[] { "", "latest" }, "missing value for required argument 0", TestName = "MarkedMissingArgIsNamedAheadOfOmittedTrailingOnes")]
-    [TestCase("eth_getBlockByNumber", new object?[] { "", false, "" }, "Invalid params", TestName = "ExtraArgumentWinsOverAMarkedMissingOne")]
-    [TestCase("eth_getBlockByNumber", new object?[] { "0x1", false, "" }, "Invalid params", TestName = "ExtraTrailingMarkerIsAnExtraArgument")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "", false, "" }, "too many arguments, want at most 2", TestName = "ExtraArgumentWinsOverAMarkedMissingOne")]
+    [TestCase("eth_getBlockByNumber", new object?[] { "0x1", false, "" }, "too many arguments, want at most 2", TestName = "ExtraTrailingMarkerIsAnExtraArgument")]
+    [TestCase("eth_blockNumber", new object?[] { "0x1" }, "too many arguments, want at most 0", TestName = "ArgumentToAMethodThatTakesNone")]
     public void MissingRequiredArgument_ReturnsGethStyleError(string method, object?[] parameters, string expectedMessage)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -1020,7 +1090,7 @@ public class JsonRpcServiceTests
 
         JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"mode\":{mode}}}]");
 
-        AssertInvalidParamsWithoutData(response, "invalid trace filter mode, expected \"intersection\" or \"union\"");
+        AssertInvalidParamsWithoutData(response, "invalid argument 0: invalid trace filter mode, expected \"intersection\" or \"union\"");
         traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
@@ -1124,6 +1194,7 @@ public class JsonRpcServiceTests
         JsonRpcRequest firstRequest = RpcTest.BuildJsonRequest("net_version");
         firstRequest.Id = 1;
         ResultWrapper<string> firstResponse = AssertWrapperResponse<string>(SendRequestWithPool(pool, firstRequest));
+        firstResponse.ObserveStreamedResult(new JsonRpcResponseWriterStreamingIdTests.RecordingObserver(), NullLogger.Instance);
 
         JsonRpcRequest secondRequest = RpcTest.BuildJsonRequest("net_version");
         secondRequest.Id = 2;
@@ -1133,6 +1204,7 @@ public class JsonRpcServiceTests
         Assert.That(secondResponse, Is.Not.SameAs(cached));
         Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
         Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
+        Assert.That(secondResponse.StreamedResultObservation, Is.Null);
     }
 
     [Test]
@@ -1373,7 +1445,8 @@ public class JsonRpcServiceTests
     public void Module_rental_overload_does_not_log_or_return_exception_data(
         Exception exception,
         int expectedCode,
-        string expectedMessage)
+        string expectedMessage,
+        string filter)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsError.Returns(true);
@@ -1383,25 +1456,34 @@ public class JsonRpcServiceTests
         pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(exception));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(
-            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            TestRequestWithPool(pool, "eth_getLogs", filter),
             expectedCode,
             expectedMessage);
 
-        Assert.That(response.Error!.SuppressWarning, Is.True);
-        Assert.That(response.Error.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.SuppressWarning, Is.True);
+            Assert.That(response.Error.Data, Is.Null);
+        }
         logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
     }
 
     private static IEnumerable<TestCaseData> ModuleRentalOverloadExceptions()
     {
-        yield return new TestCaseData(
-            new LimitExceededException("limit"),
-            ErrorCodes.LimitExceeded,
-            "Too many requests");
-        yield return new TestCaseData(
-            new ModuleRentalTimeoutException("timeout"),
-            ErrorCodes.ModuleTimeout,
-            "Timeout");
+        // An undecodable filter still gets the overload error: params are not decoded until a module is rented.
+        foreach (string filter in new[] { "{}", "0x1" })
+        {
+            yield return new TestCaseData(
+                new LimitExceededException("limit"),
+                ErrorCodes.LimitExceeded,
+                "Too many requests",
+                filter);
+            yield return new TestCaseData(
+                new ModuleRentalTimeoutException("timeout"),
+                ErrorCodes.ModuleTimeout,
+                "Timeout",
+                filter);
+        }
     }
 
     [Test]
@@ -1479,6 +1561,42 @@ public class JsonRpcServiceTests
         public int DisposeCount { get; private set; }
 
         public void Dispose() => DisposeCount++;
+    }
+
+    [Test]
+    public async Task Service_registered_by_the_node_can_be_decorated()
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IJsonRpcService, RecordingJsonRpcService>()
+            .Build();
+
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_chainId"), new JsonRpcContext(RpcEndpoint.Http));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service, Is.InstanceOf<RecordingJsonRpcService>());
+            Assert.That(((RecordingJsonRpcService)service).Methods, Is.EqualTo(new[] { "eth_chainId" }));
+            RpcTest.AssertSuccess<ulong>(response);
+        }
+    }
+
+    private sealed class RecordingJsonRpcService(IJsonRpcService inner) : IJsonRpcService
+    {
+        public List<string> Methods { get; } = [];
+
+        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context)
+        {
+            Methods.Add(request.Method);
+            return inner.SendRequestAsync(request, context);
+        }
+
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null) =>
+            inner.GetErrorResponse(errorCode, errorMessage, in id, methodName);
+
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, string? methodName = null) =>
+            inner.GetErrorResponse(errorCode, errorMessage, methodName);
     }
 
     public class PolymorphicBasePayload

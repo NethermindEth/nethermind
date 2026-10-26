@@ -92,11 +92,11 @@ public class JsonRpcIpcRunnerTests
     }
 
     [Test]
-    public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response()
+    public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response([Values] bool clientClosesBeforeResponse)
     {
         TestLogger testLogger = new();
 
-        await HandleSingleRequest(new JsonRpcConfig(), testLogger);
+        await HandleSingleRequest(new JsonRpcConfig(), testLogger, clientClosesBeforeResponse);
 
         using (Assert.EnterMultipleScope())
         {
@@ -124,11 +124,12 @@ public class JsonRpcIpcRunnerTests
 
     /// <summary>
     /// Sends one request over a Unix domain socket and returns the context the processor received.
-    /// The processor then fails as if the client dropped mid-response, which ends the connection.
+    /// The processor then fails as if the client dropped mid-response, or writes its response after the client has closed.
     /// </summary>
-    private static async Task<JsonRpcContext?> HandleSingleRequest(IJsonRpcConfig config, TestLogger testLogger)
+    private static async Task<JsonRpcContext?> HandleSingleRequest(IJsonRpcConfig config, TestLogger testLogger, bool clientClosesBeforeResponse = false)
     {
         JsonRpcContext? context = null;
+        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         processor
             .ProcessAsync(
@@ -140,7 +141,11 @@ public class JsonRpcIpcRunnerTests
             .Returns(callInfo =>
             {
                 context = callInfo.ArgAt<JsonRpcContext>(1);
-                return ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName));
+                if (!clientClosesBeforeResponse)
+                    return ValueTask.FromException(new ObjectDisposedException(typeof(IpcSocketMessageStream).FullName));
+
+                client.Dispose();
+                return callInfo.Arg<IJsonRpcResponseSink>().WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), callInfo.Arg<CancellationToken>());
             });
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
@@ -160,7 +165,6 @@ public class JsonRpcIpcRunnerTests
         listener.Bind(endPoint);
         listener.Listen(1);
 
-        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await client.ConnectAsync(endPoint);
         using Socket server = await listener.AcceptAsync();
 
@@ -241,6 +245,19 @@ public class JsonRpcIpcRunnerTests
         await recorder.SlowAnswered.WaitAsync(cts.Token);
     }
 
+    [Test]
+    public async Task HandleIpcConnection_closes_the_connection_after_answering_a_half_closed_client()
+    {
+        PipelinedRequestRecorder recorder = new(slowGate: Task.CompletedTask);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+
+        await using IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, [ModuleType.Eth], cts.Token);
+        await connection.SendAsync("fast"u8.ToArray(), cts.Token);
+        string received = await connection.CloseSendAndReadToEndAsync(cts.Token);
+
+        Assert.That(received, Does.Contain("\"result\""), "a half-closed client must get its response and then the end of the stream");
+    }
+
     private sealed class IpcConnection : IAsyncDisposable
     {
         private readonly TempPath _path;
@@ -249,6 +266,7 @@ public class JsonRpcIpcRunnerTests
         private readonly IpcSocketMessageStream _sendStream;
         private readonly JsonRpcIpcRunner _runner;
         private readonly Task _serving;
+        private bool _sendClosed;
 
         private IpcConnection(TempPath path, Socket listener, Socket client, JsonRpcIpcRunner runner, Task serving)
         {
@@ -298,14 +316,31 @@ public class JsonRpcIpcRunnerTests
         public async Task SendAsync(byte[] message, CancellationToken token)
         {
             await _sendStream.WriteAsync(message, token);
-            await _sendStream.WriteEndOfMessageAsync();
+            await _sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
+        }
+
+        public async Task<string> CloseSendAndReadToEndAsync(CancellationToken token)
+        {
+            _client.Shutdown(SocketShutdown.Send);
+            _sendClosed = true;
+            await _serving.WaitAsync(token);
+
+            byte[] buffer = new byte[1024];
+            StringBuilder received = new();
+            int read;
+            while ((read = await _client.ReceiveAsync(buffer, SocketFlags.None, token)) > 0)
+            {
+                received.Append(Encoding.UTF8.GetString(buffer, 0, read));
+            }
+
+            return received.ToString();
         }
 
         public async ValueTask DisposeAsync()
         {
             try
             {
-                _client.Shutdown(SocketShutdown.Send);
+                if (!_sendClosed) _client.Shutdown(SocketShutdown.Send);
                 await _serving;
             }
             finally

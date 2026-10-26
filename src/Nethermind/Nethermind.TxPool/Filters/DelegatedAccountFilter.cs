@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Filters
             if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.AuthorizationList))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
-            if ((!state.SenderAccount.HasCode || !worldState.IsDelegatedCode(state.SenderAccount.CodeHash))
+            if (!state.SenderHasDelegatedCode(worldState)
                 && !pendingDelegations.HasPending(tx.SenderAddress!, state.SenderAccount.Nonce))
                 return AcceptTxResult.Accepted;
             // Every fresh EIP-8250 key is current at sequence 0, so the count bound the account-nonce gate gave

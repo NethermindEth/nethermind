@@ -366,11 +366,6 @@
   },
   {
     "pname": "Microsoft.Extensions.Configuration.Abstractions",
-    "version": "3.1.0",
-    "hash": "sha256-GMxvf0iAiWUWo0awlDczzcxNo8+MITBLp0/SqqYo8Lg="
-  },
-  {
-    "pname": "Microsoft.Extensions.Configuration.Abstractions",
     "version": "8.0.0",
     "hash": "sha256-4eBpDkf7MJozTZnOwQvwcfgRKQGcNXe0K/kF+h5Rl8o="
   },
@@ -596,6 +591,11 @@
   },
   {
     "pname": "Microsoft.Extensions.Primitives",
+    "version": "3.1.0",
+    "hash": "sha256-K/cDq+LMfK4cBCvKWkmWAC+IB6pEWolR1J5zL60QPvA="
+  },
+  {
+    "pname": "Microsoft.Extensions.Primitives",
     "version": "5.0.0",
     "hash": "sha256-pj1BdHlmYm5HZifp/yB3lwDkdw0/jcIF0vYg6O1kmGs="
   },
@@ -806,8 +806,8 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.11.0",
-    "hash": "sha256-gGjIx/rXNkWtwF7oJzLOZMhiDIo9qyddbIi23ONy9HM="
+    "version": "1.12.0",
+    "hash": "sha256-1YlkcuOsuaEbQWCNhMTbK8jUWaCfvnjsyn9xpglqfrk="
   },
   {
     "pname": "Nethermind.RocksDbBindings",

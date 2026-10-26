@@ -134,6 +134,14 @@ namespace Nethermind.Trie
         /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
         partial void ThrowIfCommitUnsupported();
 
+        /// <summary>Reads the value at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value);
+
+        /// <summary>Writes <paramref name="value"/> at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TrySetByRawKey(ReadOnlySpan<byte> rawKey, CappedArray<byte> value);
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -343,6 +351,8 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
+            if (TryGetByRawKey(rawKey, rootHash, out ReadOnlySpan<byte> value)) return value;
+
             byte[]? array = null;
             try
             {
@@ -490,6 +500,26 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit++;
 
+            try
+            {
+                if (!TrySetByRawKey(rawKey, value)) SetByNibbles(rawKey, value);
+            }
+            finally
+            {
+                Volatile.Write(ref _isWriteInProgress, 0);
+            }
+
+            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+        }
+
+        /// <remarks>Apart from <see cref="Set(ReadOnlySpan{byte}, CappedArray{byte})"/>, so a write by raw key skips this
+        /// frame's nibble buffer.</remarks>
+        [SkipLocalsInit]
+        private void SetByNibbles(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+        {
             byte[]? array = null;
             try
             {
@@ -510,14 +540,8 @@ namespace Nethermind.Trie
             }
             finally
             {
-                Volatile.Write(ref _isWriteInProgress, 0);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
-
-            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
         }
 
         [DebuggerStepThrough]
@@ -661,6 +685,15 @@ namespace Nethermind.Trie
                 consumed++;
             }
 
+            return ClimbToRoot(traverseStack, node, ref path, originalPathLength, originalNode);
+        }
+
+        /// <summary>Applies <paramref name="node"/>, what a write walk left at its deepest level, to each level on
+        /// <paramref name="traverseStack"/> up to the walk's start.</summary>
+        /// <returns>The node at the walk's start, or <paramref name="originalNode"/> where nothing above changes.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private TrieNode? ClimbToRoot(TraverseStack traverseStack, TrieNode? node, ref TreePath path, int originalPathLength, TrieNode? originalNode)
+        {
             while (traverseStack.TryPop(out TraverseStackFrame cStack))
             {
                 TrieNode? child = node;
@@ -745,6 +778,7 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
+        [SkipLocalsInit]
         internal TrieNode? MaybeCombineNode(ref TreePath path, TrieNode node, TrieNode? originalNode)
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");

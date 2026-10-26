@@ -62,6 +62,7 @@ public class PersistenceManager(
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
     private StateId? _lastWarnedStall;
     private bool _warnedHeldPastBackstop;
+    private const int InitialShutdownTailCapacity = 256;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -562,6 +563,52 @@ public class PersistenceManager(
         }
 
         return currentPersistedState;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Requires stopped block processing and persistence workers. Keeps the tail reorgable in the
+    /// persisted-snapshot tier without advancing RocksDB; blocks become durable oldest first.
+    /// Without long finality there is no persisted tier. Restarted snapshots remain uncompacted until finality.
+    /// </remarks>
+    public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
+    {
+        if (!_enableLongFinality || cancellationToken.IsCancellationRequested) return 0;
+
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        if (snapshotRepository.GetLastCommittedStateId() is not { } head) return 0;
+
+        StateId currentPersistedState = GetCurrentPersistedStateId();
+        using ArrayPoolList<Snapshot> tail = new(InitialShutdownTailCapacity);
+        try
+        {
+            StateId cursor = head;
+            while (!IsOnDisk(cursor, currentPersistedState))
+            {
+                if (cancellationToken.IsCancellationRequested) return 0;
+                // A gap means the head's state cannot be reached from disk, so converting part of it would not help.
+                if (!snapshotRepository.TryLeaseInMemoryState(cursor, SnapshotTier.InMemoryBase, out Snapshot? snapshot)) return 0;
+                tail.Add(snapshot);
+                cursor = snapshot.From;
+            }
+
+            if (tail.Count == 0 || cancellationToken.IsCancellationRequested) return 0;
+
+            persistenceBarrier.FlushDeferred();
+
+            int converted = 0;
+            for (int i = tail.Count - 1; i >= 0 && !cancellationToken.IsCancellationRequested; i--)
+            {
+                loader.ConvertAndRegister(tail[i]);
+                converted++;
+            }
+
+            return converted;
+        }
+        finally
+        {
+            foreach (Snapshot snapshot in tail.AsSpan()) snapshot.Dispose();
+        }
     }
 
     public void ResetPersistedStateId()

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.Persistence;
 using NSubstitute;

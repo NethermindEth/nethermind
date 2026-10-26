@@ -13,8 +13,10 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -47,6 +49,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBlockProcessingQueue _processingQueue;
+        private readonly BlockAccessListServingWindow _balServingWindow;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -63,6 +66,9 @@ namespace Nethermind.Synchronization.Blocks
         // On the off chance that something goes wrong somewhere, request completely hang for example. Retry
         // the request.
         private static readonly TimeSpan RequestHardTimeout = TimeSpan.FromSeconds(30);
+
+        private const long UnservedAccessListWarningIntervalMs = 60_000;
+        private long _nextUnservedAccessListWarningMs;
 
         // The forward lookup size determine the buffer size of concurrent download. Estimated from the _maxTxInBuffer
         // and _estimateTxPerBlock. It is capped because of memory limit and to reduce workload by `_forwardHeaderProvider`.
@@ -85,6 +91,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptsRecovery receiptsRecovery,
             IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
+            BlockAccessListServingWindow balServingWindow,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -102,6 +109,7 @@ namespace Nethermind.Synchronization.Blocks
             _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
             _receiptsRecovery = receiptsRecovery;
             _processingQueue = processingQueue;
+            _balServingWindow = balServingWindow;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -153,7 +161,6 @@ namespace Nethermind.Synchronization.Blocks
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            ulong bestProcessedBlock = 0;
             ulong? previousStartingHeaderNumber = null;
 
             while (true)
@@ -199,7 +206,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     previousStartingHeaderNumber = headersSpan[0].Number;
 
-                    (shouldProcess, downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headersSpan[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
+                    (shouldProcess, downloadReceipts) = ReceiptEdgeCase(headersSpan[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
                 }
 
                 using ArrayPoolList<BlockEntry> satisfiedEntry = AssembleSatisfiedEntries(headers!, shouldProcess, downloadReceipts);
@@ -224,7 +231,7 @@ namespace Nethermind.Synchronization.Blocks
                     BlockEntry entry = satisfiedEntry[blockIndex];
                     Block currentBlock = entry.Block!;
 
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
+                    if (!IsValidDownloadedBlock(currentBlock, entry.ParentHeader, out string? errorMessage))
                     {
                         PeerInfo peer = entry.PeerInfo;
                         if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
@@ -241,11 +248,6 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, ShouldDownloadReceipts(entry.Header, shouldProcess, downloadReceipts), entry.Receipts))
                     {
-                        if (shouldProcess)
-                        {
-                            bestProcessedBlock = currentBlock.Number;
-                        }
-
                         blocksSynced++;
                     }
                 }
@@ -272,6 +274,17 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public void PruneDownloadBuffer() => _downloadRequests.Clear();
+
+        private bool IsValidDownloadedBlock(Block block, BlockHeader parent, out string? errorMessage)
+        {
+            if (!HeaderValidator.ValidateHash(block.Header, out Hash256 actualHash))
+            {
+                errorMessage = BlockErrorMessages.InvalidHeaderHash(block.Header.Hash!, actualHash);
+                return false;
+            }
+
+            return _blockValidator.ValidateSuggestedBlock(block, parent, out errorMessage, validateHashes: false);
+        }
 
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
@@ -651,6 +664,20 @@ namespace Nethermind.Synchronization.Blocks
             {
                 entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
+                bool mustServe = _balServingWindow.MustServe(header, peer?.HeadNumber ?? 0);
+                // Outside the serving window (e.g. full sync resuming far behind after downtime) a required list may be
+                // pruned on every peer, so the answer is not proof of withholding.
+                if (mustServe || !entry.CanExecuteMissingData)
+                {
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    WarnUnservedAccessList(header, peer, mustServe);
+                    // The peer that served this block's body or receipts has the block, so it is withholding the list.
+                    // When processing can go ahead without the list, a peer still backfilling lists is not worth dropping.
+                    if (mustServe && !entry.CanExecuteMissingData && peer is not null && ReferenceEquals(entry.PeerInfo, peer))
+                    {
+                        _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"withheld block access list. Block: {header.ToString(BlockHeader.Format.Short)}");
+                    }
+                }
                 return false;
             }
 
@@ -675,6 +702,20 @@ namespace Nethermind.Synchronization.Blocks
             return true;
         }
 
+        /// <summary>Warns, at most once a minute, that a static or trusted peer did not serve a required block access list.</summary>
+        /// <remarks>Only an operator-chosen peer is worth a warning: with it as the sole peer, sync cannot pass the block.</remarks>
+        private void WarnUnservedAccessList(BlockHeader header, PeerInfo? peer, bool insideServingWindow)
+        {
+            if (!_logger.IsWarn || peer?.SyncPeer.Node is not { } node || !(node.IsStatic || node.IsTrusted)) return;
+
+            long now = Environment.TickCount64;
+            long next = Interlocked.Read(ref _nextUnservedAccessListWarningMs);
+            if (now < next || Interlocked.CompareExchange(ref _nextUnservedAccessListWarningMs, now + UnservedAccessListWarningIntervalMs, next) != next) return;
+
+            string reason = insideServingWindow ? "withheld" : "withheld or past the retention window";
+            _logger.Warn($"{(node.IsStatic ? "Static" : "Trusted")} peer {peer} did not serve the block access list of {header.ToString(BlockHeader.Format.Short)} ({reason}); sync cannot pass this block until another peer serves it.");
+        }
+
         private enum BlocksRequestContentType
         {
             Bodies,
@@ -694,7 +735,10 @@ namespace Nethermind.Synchronization.Blocks
         /// <summary>Whether this header requires receipts before suggestion.</summary>
         protected virtual bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) => requested;
 
-        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) => shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) =>
+            shouldProcess
+                ? BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing
+                : BlockTreeSuggestOptions.None;
 
         private bool SuggestBlock(
             PeerInfo bestPeer,
@@ -739,24 +783,21 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
-            ulong bestProcessedBlock,
             ulong firstBlockNumber,
             bool shouldProcess,
             bool shouldDownloadReceipt)
         {
             if (shouldProcess && !shouldDownloadReceipt)
             {
-                // Persisted state can sit ahead of the head: a fast-sync to full-sync transition, or a
-                // crash that left it ahead. Blocks at or below it already have their post-state; processing
-                // them finds no parent state, throws, and deletes the branch. Download receipts instead.
+                // Persisted state can sit ahead of the head after a fast-sync transition or a crash. Blocks at
+                // or below it already have their post-state; processing them finds no parent state, throws, and
+                // deletes the branch. Download receipts instead.
                 ulong headNumber = _blockTree.Head?.Number ?? 0;
-                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                bool isFastSyncTransition = headIsGenesis && firstBlockNumber > (bestProcessedBlock + 1);
                 ulong bestFullState = _fullStateFinder.FindBestFullState();
                 bool persistedStateAheadOfHead = bestFullState > headNumber;
-                if (isFastSyncTransition || persistedStateAheadOfHead)
+                if (persistedStateAheadOfHead)
                 {
-                    shouldProcess = firstBlockNumber > bestFullState && bestFullState != 0;
+                    shouldProcess = firstBlockNumber > bestFullState;
                     if (!shouldProcess)
                     {
                         if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlockNumber}, bestFullState: {bestFullState}, trying to load receipts");

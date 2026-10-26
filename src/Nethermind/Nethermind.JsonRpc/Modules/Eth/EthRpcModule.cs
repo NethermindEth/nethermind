@@ -77,7 +77,7 @@ public partial class EthRpcModule(
     HashesOnlyBlockReader? hashesOnlyBlockReader = null,
     IReceiptFinder? storedReceiptFinder = null) : IEthRpcModule
 {
-    public const int GetProofStorageKeyLimit = 1000;
+    public const int GetProofStorageKeyLimit = 1024;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     private const string UnknownAccount = "unknown account";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -254,17 +254,19 @@ public partial class EthRpcModule(
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
         int bufferOffset = 0;
+        using ArrayPoolSpan<UInt256> storageValues = new(requests.TotalSlots);
 
         Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
         foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
         {
             UInt256[] slotKeys = entry.Value;
+            Span<UInt256> storage = storageValues.Slice(0, slotKeys.Length);
+            _stateReader.GetStorage(header, entry.Key, slotKeys, storage);
             Memory<byte>[] values = new Memory<byte>[slotKeys.Length];
             for (int i = 0; i < slotKeys.Length; i++)
             {
-                _stateReader.GetStorage(header, entry.Key, in slotKeys[i], out UInt256 storage);
                 Memory<byte> slot = buffer.AsMemory(bufferOffset, 32);
-                storage.ToBigEndian(slot.Span);
+                storage[i].ToBigEndian(slot.Span);
                 values[i] = slot;
                 bufferOffset += 32;
             }
@@ -374,24 +376,37 @@ public partial class EthRpcModule(
             ? ResultWrapper<Hash256>.Fail(UnknownAccount, ErrorCodes.InvalidInput)
             : result;
 
-    /// <summary>The fee rule <paramref name="rpcTx"/> breaks as a transaction to send, or null when its fees pass.</summary>
-    /// <remarks>Blob transactions are not sent this way, so they are not checked.</remarks>
-    protected ResultWrapper<Hash256>? CheckSendTransactionFees(SignableTransactionForRpc rpcTx) =>
-        rpcTx is not BlobTransactionForRpc
-        && _blockFinder.Head?.Header is { } head
-        && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError
-            ? ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput)
-            : null;
-
-    private Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
+    /// <summary>
+    /// Checks the fees of <paramref name="rpcTx"/> as a transaction to send and fills the fees and gas it leaves out.
+    /// </summary>
+    /// <returns>The error that stops the send, or null when the check and the fill pass.</returns>
+    /// <remarks>
+    /// A blob transaction is sent without its sidecar and fails anyway, so it is not checked or filled:
+    /// the fill and its KZG work would be lost.
+    /// </remarks>
+    protected async Task<ResultWrapper<Hash256>?> CheckAndFillSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (CheckSendTransactionFees(rpcTx) is { } feeError)
-            return Task.FromResult(feeError);
+        if (rpcTx is BlobTransactionForRpc || _blockFinder.Head?.Header is not { } head)
+            return null;
+
+        IReleaseSpec spec = _specProvider.GetSpec(head);
+        if (FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
+            return ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput);
+
+        return await FillFeesAndGas(rpcTx, head, spec) is { } fillError
+            ? ResultWrapper<Hash256>.Fail(fillError.Error, fillError.ErrorCode)
+            : null;
+    }
+
+    private async Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
+    {
+        if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
+            return sendError;
 
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
-            return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));
+            return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
@@ -399,7 +414,7 @@ public partial class EthRpcModule(
         UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
-        return SendTx(tx, options);
+        return await SendTx(tx, options);
     }
 
     public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -534,51 +549,8 @@ public partial class EthRpcModule(
 
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
-        UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
-            && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
-            ? feePerBlobGas
-            : null;
-
-        TxFillContext fillContext = new()
-        {
-            GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
-            MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
-            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
-            BlobBaseFee = blobBaseFee,
-            Spec = spec,
-        };
-
-        Result fillResult = rpcTx.FillDefaults(fillContext);
-        if (!fillResult)
-            return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
-
-        // A fee cap left in place next to a filled priority fee must still cover it.
-        if (rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: { } filledFeeCap, MaxPriorityFeePerGas: { } filledPriorityFee }
-            && FeeDefaultRules.OrderError(filledFeeCap, filledPriorityFee) is { } orderError)
-        {
-            return ResultWrapper<FillTransactionResult>.Fail(orderError, ErrorCodes.InvalidInput);
-        }
-
-        if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
-        {
-            using RentedTimeout timeout = _rpcConfig.RentTimeout();
-            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
-            if (!frameGasResult)
-                return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
-            frameTx.Frames = frameGasResult.Data;
-        }
-
-        if (rpcTx.Gas is null)
-        {
-            // The transaction is built for a later block, so its estimate is outside the fork rule as well.
-            ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
-                new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
-                rpcTx, BlockParameter.Latest, stateOverride: null);
-            if (gasEstimate.Result.ResultType != ResultType.Success)
-                return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
-
-            rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
-        }
+        if (await FillFeesAndGas(rpcTx, head, spec) is { } fillError)
+            return ResultWrapper<FillTransactionResult>.Fail(fillError.Error, fillError.ErrorCode);
 
         legacyTx.ChainId ??= chainId;
 
@@ -598,6 +570,66 @@ public partial class EthRpcModule(
         {
             Tx = TransactionForRpc.FromTransaction(tx)
         });
+    }
+
+    /// <summary>Fills the fees and gas <paramref name="rpcTx"/> leaves out, as geth does for a transaction to build.</summary>
+    /// <returns>The error that stops the fill, or null when the fill succeeds.</returns>
+    private async Task<(string Error, int ErrorCode)?> FillFeesAndGas(SignableTransactionForRpc rpcTx, BlockHeader head, IReleaseSpec spec)
+    {
+        LegacyTransactionForRpc legacyTx = (LegacyTransactionForRpc)rpcTx;
+
+        UInt256? blobBaseFee = head.ExcessBlobGas is { } excessBlobGas
+            && BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas)
+            ? feePerBlobGas
+            : null;
+
+        // Only the defaults FillDefaults will read are estimated: an estimate can scan recent blocks or call L1.
+        TxFillContext fillContext = new()
+        {
+            GasPrice = rpcTx is not EIP1559TransactionForRpc && legacyTx.GasPrice is null
+                ? await _gasPriceOracle.GetGasPriceEstimate()
+                : default,
+            MaxPriorityFeePerGas = rpcTx is EIP1559TransactionForRpc { GasPrice: null, MaxPriorityFeePerGas: null }
+                ? _gasPriceOracle.GetMaxPriorityGasFeeEstimate()
+                : default,
+            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
+            BlobBaseFee = blobBaseFee,
+            Spec = spec,
+        };
+
+        Result fillResult = rpcTx.FillDefaults(fillContext);
+        if (!fillResult)
+            return (fillResult.Error!, ErrorCodes.InvalidInput);
+
+        // A fee cap left in place next to a filled priority fee must still cover it.
+        if (rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: { } filledFeeCap, MaxPriorityFeePerGas: { } filledPriorityFee }
+            && FeeDefaultRules.OrderError(filledFeeCap, filledPriorityFee) is { } orderError)
+        {
+            return (orderError, ErrorCodes.InvalidInput);
+        }
+
+        if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
+        {
+            using RentedTimeout timeout = _rpcConfig.RentTimeout();
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
+            if (!frameGasResult)
+                return (frameGasResult.Error!, errorCode);
+            frameTx.Frames = frameGasResult.Data;
+        }
+
+        if (rpcTx.Gas is null)
+        {
+            // The transaction is built for a later block, so its estimate is outside the fork rule as well.
+            ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
+                new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
+                rpcTx, BlockParameter.Latest, stateOverride: null);
+            if (gasEstimate.Result.ResultType != ResultType.Success)
+                return (gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
+
+            rpcTx.Gas = (ulong)gasEstimate.Data!.Value;
+        }
+
+        return null;
     }
 
     public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
@@ -999,19 +1031,19 @@ public partial class EthRpcModule(
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             case FilterType.PendingTransactionFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             case FilterType.LogFilter:
                 {
                     return _blockchainBridge.FilterExists(id)
                         ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetLogFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail("Filter not found", ErrorCodes.InvalidInput);
+                        : ResultWrapper<IEnumerable<object>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
                 }
             default:
                 {
@@ -1032,14 +1064,14 @@ public partial class EthRpcModule(
             bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
             }
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException)
+        catch (ResourceNotFoundException e)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetLogsFailure(e);
         }
         finally
         {
@@ -1111,9 +1143,9 @@ public partial class EthRpcModule(
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException)
+        catch (ResourceNotFoundException e)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetLogsFailure(e);
         }
         finally
         {
@@ -1123,6 +1155,11 @@ public partial class EthRpcModule(
             }
         }
     }
+
+    // While receipts sync, the processed head can trail the synced headers, so a missing block is reported as not synced yet.
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogsFailure(ResourceNotFoundException e) => e is BlockNotProcessedException && !_ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet()
+        ? ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound)
+        : ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
 
     // https://github.com/ethereum/EIPs/issues/1186
     public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
@@ -1144,13 +1181,15 @@ public partial class EthRpcModule(
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return GetStateFailureResult<AccountProof>(header);
+            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet() || !WasStatePruned(header)
+                ? GetStateFailureResult<AccountProof>(header)
+                : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
         }
 
         using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
         _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
-        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+        return ResultWrapper<AccountProof>.Success(EchoStorageKeys(accountProofCollector.BuildResult(), storageKeys));
     }
 
     public ResultWrapper<ulong> eth_chainId()
@@ -1310,6 +1349,27 @@ public partial class EthRpcModule(
 
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+
+    /// <summary>Trims each proof key that was not sent full width, so it is echoed as a quantity.</summary>
+    internal static AccountProof EchoStorageKeys(AccountProof proof, StorageKeys storageKeys)
+    {
+        StorageProof[] storageProofs = proof.StorageProofs;
+        for (int i = 0; i < storageProofs.Length; i++)
+        {
+            if (!storageKeys.IsFullWidth(i))
+            {
+                storageProofs[i].Key = storageProofs[i].Key!.WithoutLeadingZeros().ToArray();
+            }
+        }
+
+        return proof;
+    }
+
+    /// <remarks>
+    /// Blocks ahead of the processed head and side-chain blocks may simply never have been processed.
+    /// </remarks>
+    private bool WasStatePruned(BlockHeader header) =>
+        _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());

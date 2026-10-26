@@ -144,6 +144,49 @@ public class HistoricalTraceReExecutionTests
     }
 
     [Test]
+    public async Task HistoricalTraceReExecution_OverTrieLessScope_ReadsEverySlotWrittenBeforeCommitTree()
+    {
+        HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, HistoricalBlock);
+
+        IReleaseSpec spec = MuirGlacier.Instance;
+        Address freshAddr = TestItem.AddressB;
+        StorageCell first = new(freshAddr, 11);
+        StorageCell second = new(freshAddr, 12);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = new(
+            inner,
+            _persistenceManager,
+            _historyReader,
+            _resourcePool,
+            enableDetailedMetrics: false,
+            new HistoryScopeGate(),
+            LimboLogs.Instance);
+        using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        WorldState worldState = new(scopeProvider, LimboLogs.Instance);
+
+        BlockHeader historicalHeader = Build.A.BlockHeader.WithNumber(HistoricalBlock).WithStateRoot(TestItem.KeccakB).TestObject;
+        using IDisposable scope = worldState.BeginScope(historicalHeader);
+
+        worldState.CreateAccount(freshAddr, balance: 7, nonce: 1);
+        worldState.Set(first, 0xAA);
+        worldState.Set(second, 0xBB);
+        worldState.Commit(spec);
+        worldState.RecalculateStateRoot();
+        worldState.CommitTree(HistoricalBlock);
+
+        worldState.Get(first, out UInt256 firstValue);
+        worldState.Get(second, out UInt256 secondValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstValue, Is.EqualTo((UInt256)0xAA));
+            Assert.That(secondValue, Is.EqualTo((UInt256)0xBB));
+        }
+    }
+
+    [Test]
     public async Task MainProcessingAtHistoricalState_HasStateForBlock_ButTryBeginScopeRefuses()
     {
         HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);

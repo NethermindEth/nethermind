@@ -5,8 +5,10 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -923,6 +925,50 @@ public class PersistedSnapshotCompactorTests
         compactor.DoCompactSnapshot(new StateId(4, Keccak.Compute("b4")));
 
         Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no compaction should have run");
+    }
+
+    // A compaction whose snapshot fails to build or to register frees its region, so it must not leave a catalog
+    // row: the next restart would reload that row over the freed region.
+    [Test]
+    public async Task DoCompactSnapshot_Failure_LeavesNoCatalogRow([Values] bool failRegistration)
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 2; i++)
+        {
+            StateId to = new((ulong)i, Keccak.Compute($"p{i}"));
+            INodeRecordBufferPin bufferPin = _buffer.PinHead();
+            SnapshotContent c = new();
+            c.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute($"path{i}"), 4), FlatTestHelpers.LeafRlp(0x80));
+            using (Snapshot snapshot = new(prev, to, c, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
+            prev = to;
+        }
+
+        await using (ILifetimeScope scope = tier.BeginScope(builder =>
+        {
+            builder.AddSingleton<PersistedSnapshotCompactor>();
+            if (failRegistration)
+            {
+                ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+                repository.PersistedSnapshotCount.Returns(_ => tier.Repository.PersistedSnapshotCount);
+                repository.AssemblePersistedSnapshotsForCompaction(Arg.Any<StateId>(), Arg.Any<ulong>())
+                    .Returns(call => tier.Repository.AssemblePersistedSnapshotsForCompaction(call.ArgAt<StateId>(0), call.ArgAt<ulong>(1)));
+                repository.When(r => r.AddPersistedSnapshot(Arg.Any<PersistedSnapshot>(), Arg.Any<SnapshotTier>()))
+                    .Do(_ => throw new InvalidOperationException());
+                builder.AddSingleton(repository);
+            }
+            else
+            {
+                // Without the bases' blob arena, the compacted snapshot fails to lease it.
+                builder.AddSingleton(new BlobArenaManager(Path.Combine(_memArenaDir, "blob"), 4 * 1024 * 1024));
+            }
+        }))
+        {
+            Assert.That(() => scope.Resolve<PersistedSnapshotCompactor>().DoCompactSnapshot(prev), Throws.InvalidOperationException);
+        }
+
+        Assert.That(tier.Resolve<ISnapshotCatalog>().Load().Select(e => e.Tier), Is.All.EqualTo(SnapshotTier.PersistedBase));
     }
 
     [Test]

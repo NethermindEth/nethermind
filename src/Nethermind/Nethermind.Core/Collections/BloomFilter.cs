@@ -17,7 +17,7 @@ namespace Nethermind.Core.Collections;
 /// Based on RocksDB's bloom filter implementation.
 /// </summary>
 /// <remarks><see cref="Add"/> and <see cref="MightContain"/> may run concurrently. Disposal and clearing require exclusive access.</remarks>
-public sealed unsafe class BloomFilter : IDisposable
+public sealed unsafe partial class BloomFilter : IDisposable
 {
     // ---- constants ----
     private const int CacheLineBytes = 64;      // 512 bits
@@ -32,8 +32,8 @@ public sealed unsafe class BloomFilter : IDisposable
     private const int MADV_HUGEPAGE = 14;
     private const nuint HugePageSize = 2 * MemorySizes.MiB;
 
-    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
-    private static extern int Madvise(void* addr, nuint length, int advice);
+    [LibraryImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static partial int Madvise(void* addr, nuint length, int advice);
 
     public long Capacity { get; }
     public double BitsPerKey { get; }

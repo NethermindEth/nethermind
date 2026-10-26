@@ -12,6 +12,8 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 - **Runner labels**: Reproducible benchmarks use `reproducible-benchmarks-arm` for flat-layout runs; it carries the Nethermind snapshot plus per-client snapshot sets at `/data/<client>/<client>-<block>` (e.g. the Reth Fusaka snapshot at `/data/reth/reth-25490000`), while Geth requires amd64. Reference-client runs require prebuilt explicit images; `run-rpc-benchmarks` serves the per-client sets there single-node only, with prebuilt images. Other jobs typically use `ubuntu-latest` unless the workflow doc specifies otherwise.
 - **Temporary files**: Workflows that render or generate config (e.g. benchmark config) must do so to a temp path and must not modify tracked source files.
 
+- For CI scripting language, style, and validation conventions, follow [CI scripts](ci-scripts.md).
+
 ## Actions (composite or custom)
 
 - Custom actions live under `.github/actions/<name>/` with `action.yaml` and scripts (e.g. `create.sh`, `startup-script.sh`).
@@ -20,7 +22,7 @@ Conventions for GitHub Actions, CODEOWNERS, and repo automation under `.github/`
 
 ## Pull request template
 
-- `.github/pull_request_template.md`: Fill in "Changes", tick type-of-change checkboxes, and complete Testing/Documentation sections. Checkboxes drive PR labeling; do not remove required sections.
+- `.github/pull_request_template.md`: Link the resolved issue, if any, and fill in "Changes"; put breaking-change, release-notes, docs or testing details under "Remarks". `pr-labeler.yml` labels PRs from the title and changed paths, not the body.
 
 ## CODEOWNERS
 

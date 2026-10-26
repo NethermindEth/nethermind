@@ -39,14 +39,10 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     // The public key without the SEC1 uncompressed-point prefix, as the address hashes it.
     private const int PublicKeyLength = 64;
 
-    /// <summary>Counts the call for the host's metrics; the guest publishes none.</summary>
-    partial void CountCall();
-
     private readonly byte[] _zero31 = new byte[31];
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        CountCall();
         if (inputData.Length < InputLength)
             return RunInternal(inputData);
 
