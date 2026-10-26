@@ -114,18 +114,18 @@ foreach (var images in new[] { " , , ", "a/x:latest,b/x:latest,a/x:latest" })
 var installers = CiWorkflow.Bodies(workflow, "Install or upgrade expb").Concat(CiWorkflow.Bodies(workflow, "Install or upgrade expb and yq")).ToArray();
 Require(installers.Length == 2, "both EXPB install paths required");
 foreach (var (installer, index) in installers.Select((body, index) => (body, index)))
-    foreach (bool failure in new[] { false, true })
-        foreach (string startupBlock in index == 0 ? new[] { "", "25490000" } : new[] { "" })
+    foreach (var failure in new[] { false, true })
+        foreach (var startupBlock in index == 0 ? new[] { "", "25490000" } : new[] { "" })
             tests.Case($"capability probe installer={index} failure={failure} checkpoint={startupBlock}", () =>
             {
-                string mock = Path.Combine(tests.DirectoryPath, "expb-mock");
-                string observed = Path.Combine(tests.DirectoryPath, "args");
+                var mock = Path.Combine(tests.DirectoryPath, "expb-mock");
+                var observed = Path.Combine(tests.DirectoryPath, "args");
                 CiWorkflow.Executable(mock, "printf '%s\\n' \"$@\" > \"$MOCK_ARGS\"\n[[ $MOCK_FAIL_HELP != true ]] || { echo 'No such option: --no-client-metrics' >&2; exit 2; }");
-                string probe = installer[installer.IndexOf("requested_flags=()", StringComparison.Ordinal)..installer.IndexOf("echo \"$(uv tool dir --bin)\" >> \"${GITHUB_PATH}\"", StringComparison.Ordinal)];
-                (int Code, Dictionary<string, string> Values, string Log) result = Run("expb_bin=\"${MOCK_EXPB}\"\nexpb_source=mock-source\n" + probe, new() { ["PERF"] = "true", ["MEASUREMENT_SOURCE"] = "engine-api", ["STARTUP_BLOCK"] = startupBlock, ["MOCK_EXPB"] = mock, ["MOCK_ARGS"] = observed, ["MOCK_FAIL_HELP"] = failure.ToString().ToLowerInvariant() });
-                string[] expected = startupBlock.Length == 0
-                    ? ["execute-scenarios", "--perf", "--no-client-metrics", "--help"]
-                    : ["execute-scenarios", "--perf", "--no-client-metrics", "--startup-block", startupBlock, "--help"];
+                var probe = installer[installer.IndexOf("requested_flags=()", StringComparison.Ordinal)..installer.IndexOf("echo \"$(uv tool dir --bin)\" >> \"${GITHUB_PATH}\"", StringComparison.Ordinal)];
+                var result = Run("expb_bin=\"${MOCK_EXPB}\"\nexpb_source=mock-source\n" + probe, new() { ["PERF"] = "true", ["MEASUREMENT_SOURCE"] = "engine-api", ["STARTUP_BLOCK"] = startupBlock, ["MOCK_EXPB"] = mock, ["MOCK_ARGS"] = observed, ["MOCK_FAIL_HELP"] = failure.ToString().ToLowerInvariant() });
+                var expected = startupBlock.Length == 0
+                    ? new[] { "execute-scenarios", "--perf", "--no-client-metrics", "--help" }
+                    : new[] { "execute-scenarios", "--perf", "--no-client-metrics", "--startup-block", startupBlock, "--help" };
                 Require((result.Code != 0) == failure && File.ReadAllLines(observed).SequenceEqual(expected), "capability probe arguments/status changed");
                 if (failure) Contains(result.Log, "Installed expb from mock-source does not support requested capability flag(s):", "--no-client-metrics");
             });
@@ -166,7 +166,7 @@ foreach (var (rows, source, amount, feed, expectedCode, expectedMessage) in new[
             ["RUN_OUTCOME"] = "success", ["MEASUREMENT_SOURCE"] = source, ["MEASUREMENT_MODE"] = "standard", ["EXPECTED_AMOUNT"] = amount, ["GITHUB_STEP_SUMMARY"] = Path.Combine(directory.FullName, "summary"), ["LC_ALL"] = "C.UTF-8" });
         Require((result.Code == 0) == (expectedCode == 0), result.Log);
         if (expectedMessage.Length > 0) Contains(result.Log, expectedMessage);
-        string metricPath = Path.Combine(directory.FullName, "expb-metrics.env");
+        var metricPath = Path.Combine(directory.FullName, "expb-metrics.env");
         var metrics = File.Exists(metricPath) ? File.ReadAllText(metricPath) : "";
         if (expectedCode != 0) Require(metrics.Length == 0, "invalid run produced metrics");
         if (feed >= 0)
@@ -215,99 +215,99 @@ else foreach (var (cpu, cpuset, infra, expectedCpuSet, expectedInfra) in new[] {
     });
 (int Code, Dictionary<string, string> Values, string Log, string Metrics) Analyze(string contents, params (string Key, string Value)[] overrides)
 {
-    string directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
-    string logPath = Path.Combine(directory, "run.log");
+    var directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
+    var logPath = Path.Combine(directory, "run.log");
     File.WriteAllText(logPath, contents);
-    Dictionary<string, string> environment = new()
+    var environment = new Dictionary<string, string>()
     {
         ["RAW_RUN_LOG"] = logPath, ["RUNNER_TEMP"] = directory, ["TAG"] = "latest-0", ["RUN"] = "1",
         ["RUN_OUTCOME"] = "success", ["MEASUREMENT_SOURCE"] = "engine-api", ["MEASUREMENT_MODE"] = "standard",
         ["EXPECTED_AMOUNT"] = "3", ["GITHUB_STEP_SUMMARY"] = Path.Combine(directory, "summary"), ["LC_ALL"] = "C.UTF-8"
     };
-    foreach ((string key, string value) in overrides) environment[key] = value;
-    (int code, Dictionary<string, string> values, string log) = Run("set +e\n" + analyzer, environment);
-    string metrics = Path.Combine(directory, "expb-metrics.env");
+    foreach (var (key, value) in overrides) environment[key] = value;
+    var (code, values, log) = Run("set +e\n" + analyzer, environment);
+    var metrics = Path.Combine(directory, "expb-metrics.env");
     return (code, values, log, File.Exists(metrics) ? File.ReadAllText(metrics) : "");
 }
 string Table(int rows) => string.Concat(Enumerable.Range(1, rows).Select(index => $"| {index} | 30000000 | {20 + index}.0 |\n"));
-foreach (string source in new[] { "auto", "engine-api" })
-    foreach ((string rows, bool valid) in new[] { (Table(3), true), (Table(2), false), (Table(2) + Table(1), false) })
+foreach (var source in new[] { "auto", "engine-api" })
+    foreach (var (rows, valid) in new[] { (Table(3), true), (Table(2), false), (Table(2) + Table(1), false) })
         tests.Case($"delivery completeness source={source} rows={rows.Replace('\n', ' ')}", () =>
         {
-            (int code, _, string log, string metrics) = Analyze(rows, ("MEASUREMENT_SOURCE", source));
+            var (code, _, log, metrics) = Analyze(rows, ("MEASUREMENT_SOURCE", source));
             Require((code == 0) == valid, log);
             if (!valid) { Contains(log, "refusing an incomplete benchmark"); Require(metrics.Length == 0, "invalid delivery produced metrics"); }
         });
-foreach ((string outcome, string diagnostic) in new[]
+foreach (var (outcome, diagnostic) in new[]
 {
     ("failure", ""), ("cancelled", ""), ("skipped", ""), ("success", "payload status SYNCING"), ("success", "payload status ACCEPTED"),
     ("success", "payload status INVALID"), ("success", "payload status missing"), ("success", "JSON-RPC error"), ("success", "HTTP status 500")
 })
-    foreach (string kind in new[] { "newPayload", "forkchoiceUpdated" })
+    foreach (var kind in new[] { "newPayload", "forkchoiceUpdated" })
         tests.Case($"invalid run outcome={outcome} kind={kind} diagnostic={diagnostic}", () =>
         {
-            string line = diagnostic.Length == 0 ? "" : $"time=\"2026-10-26\" level=error msg=\"[engine] {kind} idx=1 {diagnostic}\"\n";
-            (int code, _, string log, string metrics) = Analyze(line + Table(3), ("RUN_OUTCOME", outcome));
+            var line = diagnostic.Length == 0 ? "" : $"time=\"2026-10-26\" level=error msg=\"[engine] {kind} idx=1 {diagnostic}\"\n";
+            var (code, _, log, metrics) = Analyze(line + Table(3), ("RUN_OUTCOME", outcome));
             Require(code != 0 && metrics.Length == 0, "invalid run published metrics: " + log);
         });
-foreach (string outcome in new[] { "failure", "success" })
+foreach (var outcome in new[] { "failure", "success" })
     tests.Case("bounded failure diagnostics " + outcome, () =>
     {
-        string lines = string.Concat(Enumerable.Range(1, 41).Select(index => $"System.InvalidOperationException: record {index}\n"))
+        var lines = string.Concat(Enumerable.Range(1, 41).Select(index => $"System.InvalidOperationException: record {index}\n"))
             + string.Concat(Enumerable.Range(1, 41).Select(index => $"Invalid Block {26000000 + index}\n"));
-        (int code, Dictionary<string, string> values, string log, string metrics) = Analyze(lines + "time=\"2026-10-26\" level=error msg=\"[engine] newPayload idx=1 payload status SYNCING\"\n" + Table(3), ("RUN_OUTCOME", outcome));
+        var (code, values, log, metrics) = Analyze(lines + "time=\"2026-10-26\" level=error msg=\"[engine] newPayload idx=1 payload status SYNCING\"\n" + Table(3), ("RUN_OUTCOME", outcome));
         Require(code != 0 && metrics.Length == 0 && !values.ContainsKey("metrics_file"), "failed run produced a metric path");
         Require(values["exception_found"] == "true" && values["invalid_block_found"] == "true", "failure diagnostics missing");
         Require(values["exception_lines_file"].EndsWith("expb-exceptions.log", StringComparison.Ordinal) && values["invalid_block_lines_file"].EndsWith("expb-invalid-blocks.log", StringComparison.Ordinal), "diagnostic paths missing");
         Contains(log, "System.InvalidOperationException: record 40", "Invalid Block 26000040");
         Require(!log.Contains("System.InvalidOperationException: record 41", StringComparison.Ordinal) && !log.Contains("Invalid Block 26000041", StringComparison.Ordinal), "diagnostics exceeded the bound");
     });
-foreach (string benchmarkResult in new[] { "failure", "cancelled", "skipped", "" })
-    foreach (string revision in new[] { new string('a', 40), "", "invalid" })
+foreach (var benchmarkResult in new[] { "failure", "cancelled", "skipped", "" })
+    foreach (var revision in new[] { new string('a', 40), "", "invalid" })
         tests.Case($"failed comparison outcome={benchmarkResult} revision={revision}", () =>
         {
-            string directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
-            string metrics = Directory.CreateDirectory(Path.Combine(directory, "metrics", "expb-single-metrics-fusaka-run1")).FullName;
+            var directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
+            var metrics = Directory.CreateDirectory(Path.Combine(directory, "metrics", "expb-single-metrics-fusaka-run1")).FullName;
             File.WriteAllText(Path.Combine(metrics, "expb-metrics.env"), "SOURCE=k6\nAVG=1.6\nMGAS_S=19000\n");
-            (int code, Dictionary<string, string> values, string log) = Run(Body("Build PR comparison comment"), new()
+            var (code, values, log) = Run(Body("Build PR comparison comment"), new()
             {
                 ["METRICS_DIR"] = Path.Combine(directory, "metrics"), ["MASTER_CACHE_ROOT"] = directory, ["CELLS"] = automated,
                 ["STATE_LAYOUT"] = "flat", ["CLEAN_BRANCH"] = "test", ["IMAGE"] = "", ["IMAGE_REVISION"] = revision,
                 ["RUN_URL"] = "https://example.invalid/run", ["CLIENT"] = "nethermind", ["RUNNER_TEMP"] = directory, ["BENCHMARK_RESULT"] = benchmarkResult
             });
             Require(code == 0, log);
-            string body = values["body"];
+            var body = values["body"];
             Contains(body, "Invalid benchmark run");
             Require(!body.Contains("Tested against commit", StringComparison.Ordinal) && !body.Contains("| Avg |", StringComparison.Ordinal) && !body.Contains("19000", StringComparison.Ordinal), "invalid comparison retained timing data");
         });
-foreach (string benchmarkResult in new[] { "failure", "cancelled", "skipped", "" })
+foreach (var benchmarkResult in new[] { "failure", "cancelled", "skipped", "" })
     tests.Case("failed summary " + benchmarkResult, () =>
     {
-        string directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
-        string summary = Path.Combine(directory, "summary.md");
-        (int code, _, string log) = Run(Body("Build summary"), new()
+        var directory = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, Guid.NewGuid().ToString("N"))).FullName;
+        var summary = Path.Combine(directory, "summary.md");
+        var (code, _, log) = Run(Body("Build summary"), new()
         {
             ["METRICS_DIR"] = directory, ["CELLS"] = automated, ["RUN_COUNT"] = "1", ["STATE_LAYOUT"] = "flat", ["CLEAN_BRANCH"] = "test",
             ["RUN_URL"] = "https://example.invalid/run", ["CLIENT"] = "nethermind", ["RUNNER_TEMP"] = directory, ["GITHUB_STEP_SUMMARY"] = summary, ["BENCHMARK_RESULT"] = benchmarkResult
         });
         Require(code == 0, log);
-        string body = File.ReadAllText(summary);
+        var body = File.ReadAllText(summary);
         Contains(body, "Invalid benchmark run");
         Require(!body.Contains("| Metric |", StringComparison.Ordinal), "invalid summary retained timing data");
     });
 tests.Case("publication and cache require quality gates", () =>
 {
-    int quality = text.IndexOf("      - name: Enforce run quality gates", StringComparison.Ordinal);
-    foreach (string name in new[] { "Upload metrics artifact", "Prepare master metrics cache", "Save master metrics cache" })
+    var quality = text.IndexOf("      - name: Enforce run quality gates", StringComparison.Ordinal);
+    foreach (var name in new[] { "Upload metrics artifact", "Prepare master metrics cache", "Save master metrics cache" })
     {
-        int start = text.IndexOf($"      - name: {name}", StringComparison.Ordinal);
-        int end = text.IndexOf("\n      - name:", start + 1, StringComparison.Ordinal);
+        var start = text.IndexOf($"      - name: {name}", StringComparison.Ordinal);
+        var end = text.IndexOf("\n      - name:", start + 1, StringComparison.Ordinal);
         Require(quality >= 0 && quality < start, "metrics publication precedes quality gates");
         Contains(text[start..end], "steps.quality.outcome == 'success'");
     }
     Require(!text.Contains("expb-master-metrics-v6-", StringComparison.Ordinal), "invalid baseline cache version retained");
 });
-foreach ((string client, string payload, string layout, string source, string? expected) in new (string, string, string, string, string?)[]
+foreach (var (client, payload, layout, source, expected) in new (string, string, string, string, string?)[]
 {
     ("nethermind", "fusaka", "flat", "/mnt/sda/nethermind-flat-25490000", "25490000"),
     ("nethermind", "fusaka", "flat", "/data/nethermind/nethermind-flat-25490000", "25490000"),
@@ -322,13 +322,13 @@ foreach ((string client, string payload, string layout, string source, string? e
 })
     tests.Case($"known snapshot checkpoint {client}/{payload}/{layout}/{source}", () =>
     {
-        string renderer = Body("Render benchmark config");
-        int start = renderer.IndexOf("snapshot_source=\"$(", StringComparison.Ordinal);
-        int end = renderer.IndexOf("echo \"expected_amount=", start, StringComparison.Ordinal);
-        string mock = Path.Combine(tests.DirectoryPath, "checkpoint-yq");
+        var renderer = Body("Render benchmark config");
+        var start = renderer.IndexOf("snapshot_source=\"$(", StringComparison.Ordinal);
+        var end = renderer.IndexOf("echo \"expected_amount=", start, StringComparison.Ordinal);
+        var mock = Path.Combine(tests.DirectoryPath, "checkpoint-yq");
         CiWorkflow.Executable(mock, "printf '%s\\n' \"${MOCK_SOURCE}\"\n");
-        string fixture = source.StartsWith("/data/", StringComparison.Ordinal) || source.StartsWith("/mnt/sda/nethermind-flat-", StringComparison.Ordinal) ? source : "/mnt/sda/nethermind-flat-25490000";
-        (int code, Dictionary<string, string> values, string log) = Run("scenario_key=\"test\"\n" + renderer[start..end], new()
+        var fixture = source.StartsWith("/data/", StringComparison.Ordinal) || source.StartsWith("/mnt/sda/nethermind-flat-", StringComparison.Ordinal) ? source : "/mnt/sda/nethermind-flat-25490000";
+        var (code, values, log) = Run("scenario_key=\"test\"\n" + renderer[start..end], new()
         {
             ["YQ"] = mock, ["RENDERED_CONFIG_FILE"] = "unused.yaml", ["MOCK_SOURCE"] = source, ["CLIENT"] = client,
             ["PAYLOAD_SET"] = payload, ["STATE_LAYOUT"] = layout, ["FLAT_SNAPSHOT_BLOCK_DIR"] = fixture
@@ -339,9 +339,9 @@ foreach ((string client, string payload, string layout, string source, string? e
 tests.Case("checkpoint connects render install and launch", () =>
 {
     Contains(Body("Run expb scenarios"), "startup_flags+=(--startup-block \"${STARTUP_BLOCK}\")", "${startup_flags[@]+\"${startup_flags[@]}\"}");
-    foreach (string name in new[] { "Install or upgrade expb", "Run expb scenarios" })
+    foreach (var name in new[] { "Install or upgrade expb", "Run expb scenarios" })
     {
-        string step = text.Split($"      - name: {name}\n", StringSplitOptions.None)[1].Split("\n      - name:", StringSplitOptions.None)[0];
+        var step = text.Split($"      - name: {name}\n", StringSplitOptions.None)[1].Split("\n      - name:", StringSplitOptions.None)[0];
         Contains(step[..step.IndexOf("run: |", StringComparison.Ordinal)], "STARTUP_BLOCK: ${{ steps.render-config.outputs.startup_block }}");
     }
 });
