@@ -296,6 +296,11 @@ public class DebugRpcModule(
         }
     }
 
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> MissingTraceBlock(string message, ulong? number, bool isTemporary = false) =>
+        number < blockFinder.LowestServedBlock
+            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(message, ErrorCodes.ResourceNotFound, isTemporary);
+
     private static GethTraceOptions? WithOpcodeStepLimit(GethTraceOptions? options) =>
         options is { Limit: > 0 } ? options with { OpcodeStepLimit = options.Limit, Limit = 0 } : options;
 
@@ -565,7 +570,7 @@ public class DebugRpcModule(
             if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
                 && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
                 && blockNumber.Type == BlockParameterType.BlockNumber)
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
+                return MissingTraceBlock($"block #{blockNumber.BlockNumber} not found", blockNumber.BlockNumber, headerError.IsTemporary);
             return headerError;
         }
 
@@ -579,7 +584,7 @@ public class DebugRpcModule(
             && !blockFinder.HasBlock(header.Number, header.Hash!)
             && blockFinder.FindBlock(header.Hash!, header.Number) is null)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
+            return MissingTraceBlock($"block #{blockNumber.BlockNumber} not found", header.Number);
         }
 
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header);
@@ -595,7 +600,7 @@ public class DebugRpcModule(
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
+            return MissingTraceBlock($"block #{blockNumber.BlockNumber} not found", header.Number);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -629,10 +634,15 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError, requireBody: true);
+        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", headerError.ErrorCode, headerError.IsTemporary);
+        }
+
+        if (!blockFinder.HasBlock(header.Number, blockHash) && blockFinder.FindBlock(blockHash, header.Number) is null)
+        {
+            return MissingTraceBlock($"block {blockHash} not found", header.Number);
         }
 
         if (header.Number == 0)

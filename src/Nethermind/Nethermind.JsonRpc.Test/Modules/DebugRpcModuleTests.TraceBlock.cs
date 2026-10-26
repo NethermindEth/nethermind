@@ -94,6 +94,21 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Specified_block_empty_tracer_uses_default_opcode_logger(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        JToken baseline = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode }));
+        Assert.That(baseline["error"], Is.Null, baseline.ToString());
+        Assert.That((JArray)baseline["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+        foreach (JToken entry in baseline["result"]!) Assert.That((JArray)entry["result"]!["structLogs"]!, Is.Not.Empty);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { tracer = "", streamMode });
+        Assert.That(JToken.DeepEquals(JToken.Parse(response), baseline), Is.True, response);
+    }
+
+    [Test]
     public async Task Specified_block_javascript_accepts_go_timeout_range(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
         [Values] bool streamMode,
