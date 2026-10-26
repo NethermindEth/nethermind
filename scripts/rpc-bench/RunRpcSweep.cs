@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include BenchmarkProcess.Helpers.cs
 #:include BenchmarkPaths.Helpers.cs
+#:include RpcJson.Helpers.cs
+#:include TraceStorePreflight.Helpers.cs
 
 using System.Diagnostics;
 using System.Globalization;
@@ -112,6 +114,7 @@ internal sealed partial class SweepConfiguration
         Set("CORPUS_RESOURCE_SAMPLING", "true"); Set("CORPUS_WARMUP_DURATION", "60s"); Set("CORPUS_WARMUP_RPS", "400");
         Set("CORPUS_BASELINE", "none"); Set("CORPUS_BASELINE_DIR", Path.Combine(this["CORPUS_DIR"], "baselines"));
         Set("DB_ISOLATION_ALL"); Set("DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION", "false"); Set("SNAPSHOT_ROOT", "/data/nethermind");
+        Set("TRACE_STORE_MANIFEST");
         foreach (var name in new[] { "ROUNDS", "CORPUS_REQUESTS", "CORPUS_PASSES", "CORPUS_TIMINGS_PASSES", "CORPUS_TIMINGS_CONCURRENCY", "CORPUS_WARMUP_RPS" })
             if (this[name].Length > 0) Integer(name, this[name], true);
         foreach (var name in new[] { "CORPUS_TIMINGS_RPS", "CORPUS_WARMUP_RPS_MAX", "JB_SEED" }) Integer(name, this[name], false);
@@ -162,12 +165,22 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
     private string _baselineLabel = "";
     private bool _usingSaved;
     private string[] _corpora = [];
+    private TraceStorePreflight? _traceStorePreflight;
     private string Get(string name) => configuration[name];
     private string ParityState => Path.Combine(Get("SCRATCH_ROOT"), "parity");
     private const string Rpc = "http://localhost:8545";
 
     internal async Task<int> RunAsync(CancellationToken cancellationToken)
     {
+        if (Get("TRACE_STORE_MANIFEST").Length > 0)
+        {
+            if (configuration.Corpus || configuration.Arms.Length != 2 || configuration.Number("ROUNDS") != 2 ||
+                configuration.Arms.Any(arm => arm.Client != "nethermind" || configuration.Isolation(arm.Client) != "overlay"))
+                throw new ArgumentException("TraceStore control requires two Nethermind arms, two rounds, noncorpus workload, and private overlays.");
+            _traceStorePreflight = new(Get("TRACE_STORE_MANIFEST"));
+            TraceStorePreflight.ValidateExperiment(configuration.Arms, configuration.Rates, Get("JB_DURATION"), Get("ISO_CONFIGS"), Get("JB_BENCHMARK_CONFIG"));
+            Console.WriteLine("TraceStore diagnostic: ON hit logging adds work; these are not normal-logging latency measurements.");
+        }
         var scratch = await BenchmarkPaths.CanonicalAsync(Get("SCRATCH_ROOT"), false, cancellationToken);
         BenchmarkPaths.AssertSane(scratch, "SCRATCH_ROOT");
         foreach (var client in configuration.Arms.Select(arm => arm.Client).Distinct())
@@ -256,6 +269,16 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         _labels.Add(label);
         try
         {
+            if (_traceStorePreflight is not null)
+            {
+                var proof = Path.Combine(Get("OUT_DIR"), "preflight", label);
+                await _traceStorePreflight.ValidateAsync(arm, container, proof, cancellationToken);
+                var warmup = Path.Combine(proof, "warmup");
+                if (await Cell(Get("JB_BENCHMARK_CONFIG"), 3, "60s", warmup, arm.Client, label, "", "", true, cancellationToken) != 0)
+                    throw new IOException("TraceStore discarded warmup failed: " + label);
+                TraceStorePreflight.ValidateLoad(warmup, 171);
+                _traceStorePreflight.ValidateCapture(Path.Combine(warmup, "deep-check-" + label + ".jsonl"));
+            }
             if (configuration.Corpus)
             {
                 foreach (var corpus in _corpora) await RunCorpus(arm, label, container, corpus, cancellationToken);
@@ -272,7 +295,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
                         await MeasuredCell(config, rate, Get("ISO_DURATION"), cell, arm.Client, label, "", "", $"iso|{scenario}|{label}|{rate}", cancellationToken);
                     }
                     var mixed = Path.Combine(Get("OUT_DIR"), "mix", label, rate.ToString(CultureInfo.InvariantCulture));
-                    await MeasuredCell(Get("JB_BENCHMARK_CONFIG"), rate, Get("JB_DURATION"), mixed, arm.Client, label, "", "", $"mix|{label}|{rate}", cancellationToken);
+                    await MeasuredCell(Get("JB_BENCHMARK_CONFIG"), rate, Get("JB_DURATION"), mixed, arm.Client, label, "", _traceStorePreflight is null ? "" : container, $"mix|{label}|{rate}", cancellationToken);
                 }
             }
         }
@@ -289,6 +312,11 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
     private async Task MeasuredCell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, string manifest, CancellationToken cancellationToken)
     {
         if (await Cell(config, rate, duration, cell, client, label, corpus, container, false, cancellationToken) != 0) Fail("load-test cells failed — matrix incomplete");
+        if (_traceStorePreflight is not null)
+        {
+            TraceStorePreflight.ValidateLoad(cell, 342);
+            _traceStorePreflight.ValidateCapture(Path.Combine(cell, "deep-check-" + label + ".jsonl"));
+        }
         var summary = Path.Combine(cell, "jsonbench-summary.md");
         if (File.Exists(summary)) _summaries.Add(manifest + "=" + summary);
         if (corpus.Length > 0) ReportFailureRate(cell, label);
@@ -307,7 +335,8 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             ["JB_ETH_CALL_CORPUS_FILE"] = corpus, ["CORPUS_METHOD"] = Get("CORPUS_METHOD"), ["CORPUS_TRACER"] = Get("CORPUS_TRACER"), ["CORPUS_TRACE_TYPES"] = Get("CORPUS_TRACE_TYPES"),
             ["RESOURCE_SAMPLER_CONTAINER"] = sample ? container : "", ["RESOURCE_SAMPLER_OUT"] = sample ? Path.Combine(cell, "resources.json") : ""
         };
-        if (warmup) environment["JB_MAX_FAIL_RATE_PCT"] = "100";
+        if (warmup) environment["JB_MAX_FAIL_RATE_PCT"] = _traceStorePreflight is null ? "100" : "0";
+        if (_traceStorePreflight is not null) environment["JB_VUS"] = "1";
         return (await Script("RunJsonBench.cs", [], environment, cancellationToken)).Code;
     }
 

@@ -1,0 +1,36 @@
+{
+  "test_name": "Fixed block TraceStore on and off",
+  "clients": [
+    "nethermind"
+  ],
+  "duration": "120s",
+  "rps": 3,
+  "vus": 1,
+  "calls": [
+    {
+      "name": "debug_traceBlockByNumber",
+      "method": "debug_traceBlockByNumber",
+      "params": [
+        "0x184f23d",
+        {
+          "tracer": "callTracer"
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "trace_block",
+      "method": "trace_block",
+      "params": [
+        "0x184f23d"
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    }
+  ]
+}

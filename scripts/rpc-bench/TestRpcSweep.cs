@@ -62,6 +62,147 @@ foreach (var (client, contents, expected) in new[] { ("nethermind", "Nethermind 
         var log = tests.Write("private.log", contents);
         RpcScriptTests.Assert(SweepRunner.ScanNodeLog(log, client, "arm", true) == expected && !File.Exists(log), "health gate or private cleanup changed");
     });
+var traceTransactions = Enumerable.Range(1, 263).Select(index => "0x" + index.ToString("x64")).ToArray();
+var traceBlockHash = "0x" + new string('a', 64);
+var traceManifest = tests.Write("trace-manifest.json", new JsonObject
+{
+    ["snapshot_block"] = 25490000,
+    ["blocks"] = new JsonArray(new JsonObject
+    {
+        ["number"] = 25489981, ["hash"] = traceBlockHash,
+        ["transaction_hashes"] = new JsonArray(traceTransactions.Select(hash => (JsonNode?)JsonValue.Create(hash)).ToArray())
+    })
+}.ToJsonString());
+JsonArray TraceCapture()
+{
+    var native = new JsonArray();
+    var parity = new JsonArray();
+    for (var index = 0; index < traceTransactions.Length; index++)
+    {
+        native.Add(new JsonObject
+        {
+            ["txHash"] = traceTransactions[index],
+            ["result"] = new JsonObject { ["type"] = "CALL", ["calls"] = new JsonArray(new JsonObject { ["type"] = "CALL", ["value"] = "0x0" }) }
+        });
+        JsonObject ParityEntry(JsonArray address, int children) => new()
+        {
+            ["blockHash"] = traceBlockHash, ["blockNumber"] = 25489981,
+            ["transactionPosition"] = index, ["transactionHash"] = traceTransactions[index],
+            ["traceAddress"] = address, ["subtraces"] = children,
+            ["action"] = new JsonObject { ["value"] = "0x0" }, ["result"] = new JsonObject { ["gasUsed"] = "0x1" }
+        };
+        parity.Add(ParityEntry(new JsonArray(), index == 0 ? 1 : 0));
+        if (index == 0) parity.Add(ParityEntry(new JsonArray(0), 0));
+    }
+    JsonObject Row(string method, JsonArray result) => new()
+    {
+        ["method"] = method, ["response"] = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["result"] = result }
+    };
+    return new JsonArray(Row("debug_traceBlockByNumber", native), Row("trace_block", parity));
+}
+string WriteTraceCapture(JsonArray capture) => tests.Write("trace-capture.jsonl", string.Join('\n', capture.Select(row => row!.ToJsonString())) + "\n");
+void RejectTrace(Action action)
+{
+    try { action(); }
+    catch (IOException) { return; }
+    throw new InvalidOperationException("invalid TraceStore evidence accepted");
+}
+tests.Case("TraceStore accepts complete native and parity capture across arms", () =>
+{
+    var gate = new TraceStorePreflight(traceManifest);
+    var capture = WriteTraceCapture(TraceCapture());
+    gate.ValidateCapture(capture);
+    gate.ValidateCapture(capture);
+});
+foreach (var (name, change) in new (string, Action<JsonArray>)[]
+{
+    ("matched RPC errors", rows => { foreach (var row in rows) { row!["response"]!.AsObject().Remove("result"); row["response"]!["error"] = new JsonObject { ["code"] = -32603, ["message"] = "failed" }; } }),
+    ("truncation stub", rows => rows[0]!["response"]!["_truncated"] = true),
+    ("missing native transaction", rows => rows[0]!["response"]!["result"]!.AsArray().RemoveAt(0)),
+    ("wrong native transaction hash", rows => rows[0]!["response"]!["result"]![0]!["txHash"] = traceTransactions[1]),
+    ("wrong parity block hash", rows => rows[1]!["response"]!["result"]![0]!["blockHash"] = traceTransactions[0]),
+    ("missing declared parity child", rows => rows[1]!["response"]!["result"]!.AsArray().RemoveAt(1)),
+    ("one trace method", rows => rows.RemoveAt(1))
+})
+    tests.Case("TraceStore rejects " + name, () =>
+    {
+        var capture = TraceCapture(); change(capture);
+        RejectTrace(() => new TraceStorePreflight(traceManifest).ValidateCapture(WriteTraceCapture(capture)));
+    });
+foreach (var method in new[] { 0, 1 })
+    tests.Case("TraceStore rejects changed nested arm result " + method, () =>
+    {
+        var gate = new TraceStorePreflight(traceManifest);
+        var capture = TraceCapture(); gate.ValidateCapture(WriteTraceCapture(capture));
+        if (method == 0) capture[0]!["response"]!["result"]![0]!["result"]!["calls"]![0]!["value"] = "0x1";
+        else capture[1]!["response"]!["result"]![1]!["action"]!["value"] = "0x1";
+        RejectTrace(() => gate.ValidateCapture(WriteTraceCapture(capture)));
+    });
+const string traceNativeCount = "http_reqs{scenario:nethermind,req_name:debug_traceBlockByNumber}";
+const string traceParityCount = "http_reqs{scenario:nethermind,req_name:trace_block}";
+const string traceNativeDuration = "http_req_duration{scenario:nethermind,req_name:debug_traceBlockByNumber}";
+const string traceParityDuration = "http_req_duration{scenario:nethermind,req_name:trace_block}";
+JsonObject TraceMetrics(bool nested, int count)
+{
+    var metrics = new JsonObject
+    {
+        ["http_reqs"] = new JsonObject { ["count"] = count, ["rate"] = 3 },
+        ["http_req_failed"] = new JsonObject { [nested ? "rate" : "value"] = 0 },
+        ["checks"] = new JsonObject { ["passes"] = count * 2, ["fails"] = 0 },
+        ["dropped_iterations"] = new JsonObject { ["count"] = 0 },
+        [traceNativeCount] = new JsonObject { ["count"] = count / 2, ["rate"] = 1.5 },
+        [traceParityCount] = new JsonObject { ["count"] = count - count / 2, ["rate"] = 1.5 }
+    };
+    foreach (var name in new[] { traceNativeDuration, traceParityDuration })
+        metrics[name] = new JsonObject { ["avg"] = 1, ["med"] = 1, ["p(90)"] = 2, ["p(99)"] = 3, ["max"] = 4 };
+    if (nested)
+        foreach (var name in metrics.Select(pair => pair.Key).ToArray())
+        {
+            var value = metrics[name]; metrics.Remove(name); metrics[name] = new JsonObject { ["values"] = value };
+        }
+    return new JsonObject { ["metrics"] = metrics };
+}
+JsonObject TraceMetric(JsonObject summary, string name) => (summary["metrics"]![name]!["values"] ?? summary["metrics"]![name]!).AsObject();
+void ValidateTraceMetrics(JsonObject summary, long minimumRequests)
+{
+    var directory = Path.Combine(tests.DirectoryPath, "trace-load"); Directory.CreateDirectory(directory);
+    File.WriteAllText(Path.Combine(directory, "summary.json"), summary.ToJsonString());
+    TraceStorePreflight.ValidateLoad(directory, minimumRequests);
+}
+foreach (var nested in new[] { false, true })
+{
+    foreach (var (count, minimum) in new[] { (180, 171), (360, 342) })
+        tests.Case($"TraceStore accepts {(nested ? "nested" : "flat")} metrics with {count} requests", () => ValidateTraceMetrics(TraceMetrics(nested, count), minimum));
+    tests.Case($"TraceStore accepts {(nested ? "nested" : "flat")} metrics without dropped iterations", () =>
+    {
+        var summary = TraceMetrics(nested, 360); summary["metrics"]!.AsObject().Remove("dropped_iterations");
+        ValidateTraceMetrics(summary, 342);
+    });
+    foreach (var minimum in new[] { 171, 342 })
+        tests.Case($"TraceStore rejects {(nested ? "nested" : "flat")} fewer than {minimum} requests", () =>
+            RejectTrace(() => ValidateTraceMetrics(TraceMetrics(nested, minimum - 1), minimum)));
+    foreach (var (name, change) in new (string, Action<JsonObject>)[]
+    {
+        ("failed HTTP request", summary => TraceMetric(summary, "http_req_failed")[nested ? "rate" : "value"] = 0.01),
+        ("failed RPC check", summary => TraceMetric(summary, "checks")["fails"] = 1),
+        ("dropped request", summary => TraceMetric(summary, "dropped_iterations")["count"] = 1),
+        ("missing required metric", summary => summary["metrics"]!.AsObject().Remove("checks")),
+        ("missing failure value", summary => TraceMetric(summary, "http_req_failed").Clear()),
+        ("one method", summary => summary["metrics"]!.AsObject().Remove(traceParityCount)),
+        ("missing method latency", summary => summary["metrics"]!.AsObject().Remove(traceNativeDuration)),
+        ("nonpositive latency", summary => TraceMetric(summary, traceParityDuration)["avg"] = 0),
+        ("non-finite latency", summary => TraceMetric(summary, traceNativeDuration)["p(99)"] = JsonNode.Parse("1e400")),
+        ("invalid request rate", summary => TraceMetric(summary, "http_reqs")["rate"] = 2.8),
+        ("one-request measurement", summary => TraceMetric(summary, "http_reqs")["count"] = 1),
+        ("inconsistent method total", summary => TraceMetric(summary, "http_reqs")["count"] = 361),
+        ("under-delivered method", summary => { TraceMetric(summary, traceNativeCount)["count"] = 1; TraceMetric(summary, traceParityCount)["count"] = 359; })
+    })
+        tests.Case($"TraceStore rejects {(nested ? "nested" : "flat")} {name}", () =>
+        {
+            var summary = TraceMetrics(nested, 360); change(summary);
+            RejectTrace(() => ValidateTraceMetrics(summary, 342));
+        });
+}
 if (!OperatingSystem.IsLinux()) { Console.WriteLine("SKIP Linux sweep process harness"); tests.Complete(); return; }
 
 var scriptRoot = Path.Combine(tests.DirectoryPath, "scripts"); Directory.CreateDirectory(scriptRoot);

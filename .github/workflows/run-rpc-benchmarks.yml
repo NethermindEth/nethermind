@@ -678,7 +678,7 @@ jobs:
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","max_response_bytes",
                       "node_env_vars","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
-                      "timings_rps","vus"]'
+                      "timings_rps","trace_store_manifest","vus"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
             --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
             --arg method "${corpus_method}" --arg tracer "${trace_call_tracer}" --arg types "${trace_call_types}" \
@@ -864,6 +864,13 @@ jobs:
         run: |
           set -euo pipefail
           dotnet run --file scripts/rpc-bench/StartProfilers.cs -- --check-perf
+
+      - name: Validate TraceStore experiment scripts
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep' && fromJSON(needs.resolve.outputs.tool_config).trace_store_manifest
+        run: |
+          dotnet run --file scripts/ci/RunScriptTests.cs -- --check scripts/rpc-bench/RunRpcSweep.cs
+          dotnet run --file scripts/ci/RunScriptTests.cs -- --check scripts/rpc-bench/TestRpcSweep.cs
+          dotnet run --file scripts/rpc-bench/TestRpcSweep.cs
 
       - name: Ensure Docker is installed
         shell: bash
@@ -1394,7 +1401,7 @@ jobs:
                       corpus_baseline:CORPUS_BASELINE \
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS \
-                      max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
+                      max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES trace_store_manifest:TRACE_STORE_MANIFEST; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \
