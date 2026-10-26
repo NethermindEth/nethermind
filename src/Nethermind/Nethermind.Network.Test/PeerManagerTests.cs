@@ -598,8 +598,11 @@ namespace Nethermind.Network.Test
 
             ctx.RlpxPeer.MakeItFail();
             pooled.OutSession!.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
-            Assert.That(() => pooled.OutSession, Is.Null.After(_delayLonger, 10));
-            Assert.That(() => pooled.Node.IsStatic, Is.True.After(300), "the window has not passed yet");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => pooled.OutSession, Is.Null.After(_delayLonger, 10));
+                Assert.That(() => pooled.Node.IsStatic, Is.True.After(300), "the window has not passed yet");
+            }
 
             timeProvider.Advance(PeerPool.UnprovenStaticHostTimeout);
             Assert.That(() => pooled.Node.IsStatic, Is.False.After(_delayLonger, 10));

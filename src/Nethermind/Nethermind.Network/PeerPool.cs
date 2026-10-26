@@ -39,6 +39,7 @@ namespace Nethermind.Network
 
         internal static readonly TimeSpan UnprovenStaticHostTimeout = TimeSpan.FromMinutes(10);
         internal const int MaxUnprovenStaticHosts = 32;
+        private int _unprovenStaticHosts;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
@@ -162,12 +163,7 @@ namespace Nethermind.Network
         {
             if (incoming.IsStatic && !_staticHostFilter.IsPromoted(incoming))
             {
-                _staticHostFilter.Untrack(pooled);
-                if (!pooled.IsStatic)
-                {
-                    pooled.IsStatic = true;
-                    if (_logger.IsDebug) DebugPromoted(pooled, "static");
-                }
+                if (_staticHostFilter.PromotePermanentStatic(pooled) && _logger.IsDebug) DebugPromoted(pooled, "static");
             }
 
             if (incoming.IsTrusted && !pooled.IsTrusted)
@@ -187,28 +183,27 @@ namespace Nethermind.Network
         {
             if (IsStaticHostCandidate(node) && _staticHostFilter.TryPromote(node, matchPort: true))
             {
+                if (_staticHostFilter.IsUnproven(node)) Interlocked.Increment(ref _unprovenStaticHosts);
                 if (_logger.IsDebug) DebugStaticHostMatch(node);
             }
         }
 
         private bool IsStaticHostCandidate(Node node) =>
             !node.IsStatic && _staticHostFilter.IsMatch(node.Address) && !FailedToProveKey(node)
-            && (_staticHostFilter.IsProven(node) || HasRoomForUnprovenStaticHost());
+            && (_staticHostFilter.IsProven(node) || Volatile.Read(ref _unprovenStaticHosts) < MaxUnprovenStaticHosts);
 
         // Discovery records with new keys at a matching host would otherwise grow the pool without a limit before any dial.
         // A node over the cap is still an ordinary candidate and becomes static when its outbound handshake completes.
-        private bool HasRoomForUnprovenStaticHost()
+        // The count only grows between persistence ticks, and each tick recounts it, so proofs, demotions and removals free slots there.
+        private int CountUnprovenStaticHosts()
         {
             int unproven = 0;
             foreach (KeyValuePair<PublicKeyAsKey, Peer> kvp in Peers)
             {
-                if (_staticHostFilter.IsUnproven(kvp.Value.Node) && ++unproven >= MaxUnprovenStaticHosts)
-                {
-                    return false;
-                }
+                if (_staticHostFilter.IsUnproven(kvp.Value.Node)) unproven++;
             }
 
-            return true;
+            return unproven;
         }
 
         // A discovery record can claim any address, so a host match alone does not prove that the node
@@ -236,7 +231,8 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (peer.InSession is not null || peer.OutSession is not null || peer.IsAwaitingConnection)
+                // An outbound session to an alternate address of the node record says nothing about the pooled address.
+                if (peer.InSession is not null || peer.OutSession?.Node.Address.Equals(node.Address) == true || peer.IsAwaitingConnection)
                 {
                     continue;
                 }
@@ -251,6 +247,8 @@ namespace Nethermind.Network
                     _staticHostFilter.Demote(node);
                 }
             }
+
+            Volatile.Write(ref _unprovenStaticHosts, CountUnprovenStaticHosts());
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -452,12 +450,13 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                bool isStaticHost = IsStaticHostCandidate(node);
-
                 // Static and trusted nodes bypass throttling so they are always registered (static to stay
                 // dialable, trusted so inbound connections are recognized and counted even at capacity).
                 bool throttlingLogged = false;
-                while (!node.IsStatic && !isStaticHost && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
+                // The host match is checked on each iteration, because a hostname refresh or a freed unproven slot can make the node match later.
+                while (!node.IsStatic && !node.IsTrusted
+                    && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers)
+                    && !IsStaticHostCandidate(node))
                 {
                     if (!throttlingLogged)
                     {

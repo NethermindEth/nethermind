@@ -28,8 +28,10 @@ public interface IStaticHostFilter
     /// <summary>Clears the static flag set by <see cref="TryPromote"/>. Nodes that are static for other reasons are not changed.</summary>
     void Demote(Node node);
 
-    /// <summary>Stops tracking a node that became static for another reason, so <see cref="Demote"/> does not clear its flag.</summary>
-    void Untrack(Node node);
+    /// <summary>Marks a node as static for a reason other than a host match, so <see cref="Demote"/> does not clear its flag.</summary>
+    /// <returns><c>true</c> when the node was not static before.</returns>
+    /// <remarks>Atomic with <see cref="Demote"/>, so a concurrent demotion cannot clear the flag.</remarks>
+    bool PromotePermanentStatic(Node node);
 
     /// <summary>Returns <c>true</c> when the static flag of the node was set by <see cref="TryPromote"/>.</summary>
     bool IsPromoted(Node node);

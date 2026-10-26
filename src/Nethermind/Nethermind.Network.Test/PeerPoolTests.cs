@@ -414,7 +414,7 @@ public class PeerPoolTests
             timeProvider.Advance(almostTimeout);
 
             ISession session = Substitute.For<ISession>();
-            session.State.Returns(SessionState.Initialized);
+            session.State.Returns(SessionState.HandshakeComplete);
             hostPeer.InSession = session;
             Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200));
             timeProvider.Advance(almostTimeout);
@@ -430,11 +430,68 @@ public class PeerPoolTests
     }
 
     [Test]
+    public async Task StaticHostPeer_WithOutboundSessionAtAlternateAddress_IsDemotedAfterTimeout()
+    {
+        INodeStats stats = Substitute.For<INodeStats>();
+        INodeStatsManager statsManager = Substitute.For<INodeStatsManager>();
+        statsManager.GetOrAdd(Arg.Any<Node>()).Returns(stats);
+        StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        ManualTimestampProvider timeProvider = new();
+        PeerPool pool = new(new TestNodeSource(), statsManager, new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig { PeersPersistenceInterval = 10 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), timeProvider, filter);
+
+        Peer hostPeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+        stats.DidEventHappen(NodeStatsEventType.Connecting).Returns(true);
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "6.6.6.6", 30303));
+        hostPeer.OutSession = session;
+        pool.Start();
+        try
+        {
+            Assert.That(() => hostPeer.Node.IsStatic, Is.True.After(200));
+            timeProvider.Advance(PeerPool.UnprovenStaticHostTimeout);
+            Assert.That(() => hostPeer.Node.IsStatic, Is.False.After(5000, 10), "a session at another address does not pause demotion");
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task DiscoveredNode_WaitingForCapacity_IsAddedWhenItsHostResolves()
+    {
+        TestNodeSource nodeSource = new();
+        TaskCompletionSource<IPAddress[]> resolved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        StaticHostFilter filter = new("node.example:30303", (_, _) => resolved.Task, LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+        PeerPool pool = new(nodeSource, Substitute.For<INodeStatsManager>(), new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig { MaxCandidatePeerCount = 1 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "5.5.5.5", 30303));
+        pool.Start();
+
+        try
+        {
+            nodeSource.AddNode(new Node(TestItem.PublicKeyB, "1.2.3.4", 30303));
+            Assert.That(() => pool.PeerCount, Is.EqualTo(1).After(300), "the pool is full and the host is not resolved yet");
+
+            Task refresh = filter.RefreshAsync(CancellationToken.None);
+            resolved.SetResult([IPAddress.Parse("1.2.3.4")]);
+            await refresh;
+
+            Assert.That(() => pool.TryGet(TestItem.PublicKeyB, out Peer peer) && peer.Node.IsStatic, Is.True.After(5000, 10));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
     public async Task StaticHostPeer_UnprovenPromotions_AreCapped()
     {
         StaticHostFilter filter = new("1.2.3.0/24", static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
         PeerPool pool = new(new TestNodeSource(), Substitute.For<INodeStatsManager>(), new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
-            new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
+            new NetworkConfig { PeersPersistenceInterval = 10 }, LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), filter);
 
         Peer[] peers = new Peer[PeerPool.MaxUnprovenStaticHosts + 1];
         for (int i = 0; i < peers.Length; i++)
@@ -448,6 +505,11 @@ public class PeerPoolTests
 
         filter.MarkProven(extra.Node, extra.Node.Address);
         Assert.That(extra.Node.IsStatic, Is.True, "a proven node is not capped");
+
+        filter.MarkProven(peers[0].Node, peers[0].Node.Address);
+        Node next = new(TestItem.PublicKeys[peers.Length], "1.2.3.4", 30303);
+        pool.Start();
+        Assert.That(() => pool.GetOrAdd(next).Node.IsStatic, Is.True.After(5000, 10), "a proof frees a slot at the next persistence tick");
         await pool.StopAsync();
     }
 

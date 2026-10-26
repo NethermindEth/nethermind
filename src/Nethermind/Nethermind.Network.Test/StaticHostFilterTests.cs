@@ -144,19 +144,34 @@ public class StaticHostFilterTests
     }
 
     [Test]
-    public void Untracked_node_is_not_demoted()
+    public void Permanent_static_node_is_not_demoted()
     {
         StaticHostFilter filter = Create("1.2.3.4");
         Node node = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
         filter.TryPromote(node, matchPort: true);
 
-        filter.Untrack(node);
+        Assert.That(filter.PromotePermanentStatic(node), Is.False, "the node was already static");
         filter.Demote(node);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.IsStatic, Is.True);
             Assert.That(filter.IsPromoted(node), Is.False);
+        }
+    }
+
+    [Test]
+    public void Permanent_static_promotion_is_not_lost_to_a_concurrent_demotion()
+    {
+        StaticHostFilter filter = Create("1.2.3.4");
+        for (int i = 0; i < 10_000; i++)
+        {
+            Node node = new(TestItem.PublicKeyA, "1.2.3.4", 30303);
+            filter.TryPromote(node, matchPort: true);
+
+            Parallel.Invoke(() => filter.Demote(node), () => filter.PromotePermanentStatic(node));
+
+            Assert.That(node.IsStatic, Is.True, $"iteration {i}");
         }
     }
 

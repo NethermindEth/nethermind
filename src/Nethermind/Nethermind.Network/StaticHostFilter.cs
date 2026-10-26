@@ -34,6 +34,7 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly ConditionalWeakTable<Node, Promotion> _promoted = [];
     private readonly ConditionalWeakTable<Node, IPEndPoint> _proven = [];
+    private readonly Lock _promotionLock = new();
     private volatile Rule[] _rules;
     private int _disposed;
 
@@ -80,22 +81,38 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
 
     public bool TryPromote(Node node, bool matchPort)
     {
-        if (node.IsStatic || !(matchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address))) return false;
+        lock (_promotionLock)
+        {
+            if (node.IsStatic || !(matchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address))) return false;
 
-        node.IsStatic = true;
-        _promoted.AddOrUpdate(node, matchPort ? Promotion.EndPoint : Promotion.Address);
-        return true;
+            node.IsStatic = true;
+            _promoted.AddOrUpdate(node, matchPort ? Promotion.EndPoint : Promotion.Address);
+            return true;
+        }
     }
 
     public void Demote(Node node)
     {
-        if (_promoted.Remove(node))
+        lock (_promotionLock)
         {
-            node.IsStatic = false;
+            if (_promoted.Remove(node))
+            {
+                node.IsStatic = false;
+            }
         }
     }
 
-    public void Untrack(Node node) => _promoted.Remove(node);
+    public bool PromotePermanentStatic(Node node)
+    {
+        lock (_promotionLock)
+        {
+            _promoted.Remove(node);
+            if (node.IsStatic) return false;
+
+            node.IsStatic = true;
+            return true;
+        }
+    }
 
     public bool IsPromoted(Node node) => _promoted.TryGetValue(node, out _);
 
