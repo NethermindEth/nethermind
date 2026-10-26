@@ -14,10 +14,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  measure:
+  validate:
     if: github.repository_owner == 'NethermindEth'
-    runs-on: benchmark
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
@@ -37,10 +37,27 @@ jobs:
           "FullyQualifiedName~ParallelBlockTracer|FullyQualifiedName~AccessListSeed_ParallelBlockTrace|FullyQualifiedName~AccessListSeed_WhenTracingBatches|FullyQualifiedName~TransactionTraceBoundary_WhenCancelledInSuppressedPrefix"
 
       - name: Test streamed trace batch failure ownership
+        if: success() || failure()
         run: >-
           dotnet test --project src/Nethermind/Nethermind.JsonRpc.Test/Nethermind.JsonRpc.Test.csproj
           -c Release -- --filter
           "FullyQualifiedName~GethLikeBlockNativeStreamingTracer_WhenBatchOutputFails_DisposesEveryTraceOnce|FullyQualifiedName~Debug_traceBlockByHash_NativeTracer_PreservesIndexedRoutingAndResults"
+
+  measure:
+    if: github.repository_owner == 'NethermindEth'
+    runs-on: benchmark
+    timeout-minutes: 90
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - name: Check out the experiment
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
 
       - name: Prepare benchmark runner inputs
         shell: bash
