@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 DRIVER = ROOT / "scripts" / "expb" / "sequential_driver.py"
@@ -59,8 +60,11 @@ def environment(**values: str):
         "FLAT_SNAPSHOT_DIR",
         "MEASUREMENT_MODE",
         "MEASUREMENT_SOURCE",
+        "PAYLOAD_SET",
         "RUN_COUNT",
+        "RUNNER_TEMP",
         "SNAPSHOT_MOUNT_PATH",
+        "STATE_LAYOUT",
         "TRACE_BLOCKS",
     )
     previous = {name: os.environ.get(name) for name in managed}
@@ -249,6 +253,37 @@ class RenderTests(unittest.TestCase):
     BASE = {"scenarios": {"nethermind": {"image": "placeholder"}}}
     IMAGE = {"id": "image-1-abc", "image": "nethermindeth/nethermind:tag"}
 
+    def test_startup_flags_only_gate_the_known_flat_fusaka_snapshot(self) -> None:
+        fixture = "/mnt/sda/nethermind-flat-25490000"
+        for label, source, values, expected in (
+            ("amd64", fixture, {}, ["--startup-block", "25490000"]),
+            ("arm64", fixture, {"FLAT_SNAPSHOT_BLOCK_DIR": "/data/nethermind/nethermind-flat-25490000"}, ["--startup-block", "25490000"]),
+            ("rotated fixture", fixture, {"FLAT_SNAPSHOT_BLOCK_DIR": "/data/nethermind/nethermind-flat-26000000"}, ["--startup-block", "26000000"]),
+            ("zero checkpoint", fixture, {"FLAT_SNAPSHOT_BLOCK_DIR": "/data/nethermind-flat-0"}, ["--startup-block", "0"]),
+            ("different source", "/unknown/nethermind-flat-25490000", {}, []),
+            ("missing fixture", fixture, {"FLAT_SNAPSHOT_BLOCK_DIR": ""}, []),
+            ("other layout", fixture, {"STATE_LAYOUT": "halfpath"}, []),
+            ("other payloads", fixture, {"PAYLOAD_SET": "realblocks"}, []),
+            ("missing layout", fixture, {"STATE_LAYOUT": ""}, []),
+            ("missing payload set", fixture, {"PAYLOAD_SET": ""}, []),
+            ("nonmatching scenario", fixture, {"CLIENT": driver.CLIENTS[1], "CLIENT_SNAPSHOT_DIR": "/data/reference", "SNAPSHOT_MOUNT_PATH": "/execution-data"}, []),
+        ):
+            base = {"scenarios": {"nethermind": {"snapshot_source": source}}}
+            with self.subTest(case=label), environment(**{
+                "STATE_LAYOUT": "flat", "PAYLOAD_SET": "fusaka", "FLAT_SNAPSHOT_BLOCK_DIR": fixture, **values,
+            }):
+                config, name = driver.render(base, self.IMAGE, 1)
+                self.assertEqual(driver.startup_flags(config["scenarios"][name]), expected)
+                self.assertEqual(base["scenarios"]["nethermind"]["snapshot_source"], source)
+
+    def test_a_known_fixture_requires_a_canonical_numeric_block_suffix(self) -> None:
+        for suffix in ("latest", "-1", "025490000", "25490000/", "other-25490000"):
+            fixture = "/data/nethermind-flat-" + suffix
+            with self.subTest(suffix=suffix), environment(
+                STATE_LAYOUT="flat", PAYLOAD_SET="fusaka", FLAT_SNAPSHOT_BLOCK_DIR=fixture,
+            ), self.assertRaises(ValueError):
+                driver.startup_flags({"snapshot_source": fixture})
+
     def test_compute_warm_supplies_the_gas_cap_the_warmup_needs(self) -> None:
         # The per-block eth_simulateV1 warm-up exhausts the default 100M RPC gas budget on dense
         # blocks and silently leaves them un-warmed, so the mode raises the cap itself.
@@ -367,6 +402,47 @@ class RenderTests(unittest.TestCase):
             driver.render({"scenarios": {}}, self.IMAGE, 1)
 
 
+class SampleCommandTests(unittest.TestCase):
+    def test_sample_commands_pass_the_checkpoint_only_for_the_known_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            commands = []
+            original = driver.subprocess.Popen, driver.verify_clean
+
+            def popen(command, **kwargs):
+                commands.append(command)
+                kwargs["stdout"].write(b"| 1 | 30000000 | 25.0 |\nNethermind is shut down\nCleanup completed\n")
+                return SimpleNamespace(wait=lambda: 0)
+
+            driver.subprocess.Popen = popen
+            driver.verify_clean = lambda _config: None
+            self.addCleanup(setattr, driver.subprocess, "Popen", original[0])
+            self.addCleanup(setattr, driver, "verify_clean", original[1])
+            driver.cancelled = False
+            for run, (label, source, values, expected) in enumerate((
+                ("known fixture", "/mnt/sda/nethermind-flat-25490000", {}, ["--startup-block", "26000000"]),
+                ("unknown fixture", "/other/snapshot", {}, []),
+                ("nonmatching scenario", "/mnt/sda/nethermind-flat-25490000", {"CLIENT": driver.CLIENTS[1], "CLIENT_SNAPSHOT_DIR": "/data/reference", "SNAPSHOT_MOUNT_PATH": "/execution-data"}, []),
+            ), 1):
+                base = {"scenarios": {"nethermind": {"snapshot_source": source}}}
+                with self.subTest(case=label), environment(**{
+                    "AMOUNT": "1", "STATE_LAYOUT": "flat", "PAYLOAD_SET": "fusaka",
+                    "FLAT_SNAPSHOT_BLOCK_DIR": "/data/nethermind/nethermind-flat-26000000",
+                    "EXPB_DATA_DIR": directory, "RUNNER_TEMP": directory, **values,
+                }):
+                    result = driver.run_sample(base, RenderTests.IMAGE, run, root)
+                    self.assertEqual(result["status"], "success", result["failure_reasons"])
+                    command = commands[-1]
+                    self.assertEqual(result["command"], command)
+                    if expected:
+                        index = command.index("--startup-block")
+                        self.assertEqual(command[index:index + 2], expected)
+                    else:
+                        self.assertNotIn("--startup-block", command)
+                    self.assertNotIn("--help", command)
+                    self.assertFalse(Path(command[command.index("--config-file") + 1]).exists())
+
+
 class CampaignScopeTests(unittest.TestCase):
     """How much of a campaign one failed sample discards."""
 
@@ -383,14 +459,30 @@ class CampaignScopeTests(unittest.TestCase):
         # `cancelled` is module state a SIGTERM sets; leaving it true would short-circuit the next case.
         driver.cancelled = False
         driver.verify_clean = lambda _config: None
-        driver.subprocess.check_output = lambda *_args, **_kwargs: json.dumps(
-            {"scenarios": {"nethermind": {}}, "paths": {"work": "work"}}
-        )
+        self.probes = []
+        self.probe_counts_at_sample_start = []
+        self.unsupported_checkpoint = False
+        self.checkpoint_timeout = False
+        self.snapshot_source = "/mnt/sda/nethermind-flat-25490000"
+
+        def check_output(command, **_kwargs):
+            if "--help" in command:
+                self.probes.append(command)
+                self.assertEqual(_kwargs.get("timeout"), 30)
+                if self.checkpoint_timeout:
+                    raise driver.subprocess.TimeoutExpired(command, timeout=30)
+                if self.unsupported_checkpoint:
+                    raise driver.subprocess.CalledProcessError(2, command, output="No such option: --startup-block")
+                return "Usage: expb execute-scenarios"
+            return json.dumps({"scenarios": {"nethermind": {"snapshot_source": self.snapshot_source}}, "paths": {"work": "work"}})
+
+        driver.subprocess.check_output = check_output
 
     def run_campaign(self, failing: set[str], unclean: frozenset[str] = frozenset(), **values: str) -> tuple[int, list[str]]:
         attempted: list[str] = []
 
         def fake_run_sample(_base: dict, image: dict, run: int, root: Path) -> dict:
+            self.probe_counts_at_sample_start.append(len(self.probes))
             sample_id = f"{image['id']}-run{run}"
             attempted.append(sample_id)
             status = "failed" if image["id"] in failing | unclean else "success"
@@ -419,6 +511,48 @@ class CampaignScopeTests(unittest.TestCase):
         code, attempted = self.run_campaign({"image-2"}, RUN_COUNT="2", CAMPAIGN_FAIL_FAST="true")
         self.assertEqual(code, 1)
         self.assertEqual(attempted, ["image-1-run1", "image-1-run2", "image-2-run1"])
+
+    def test_the_checkpoint_capability_is_probed_once_before_the_campaign(self) -> None:
+        code, attempted = self.run_campaign(
+            set(), RUN_COUNT="2", STATE_LAYOUT="flat", PAYLOAD_SET="fusaka",
+            FLAT_SNAPSHOT_BLOCK_DIR="/data/nethermind/nethermind-flat-26000000",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(len(attempted), 6)
+        self.assertEqual(self.probe_counts_at_sample_start, [1] * 6)
+        self.assertEqual(self.probes, [["expb", "execute-scenarios", "--startup-block", "26000000", "--help"]])
+
+    def test_an_unsupported_checkpoint_stops_before_any_sample(self) -> None:
+        for timeout, message in ((False, "No such option: --startup-block"), (True, "timed out after 30 seconds")):
+            with self.subTest(timeout=timeout):
+                self.unsupported_checkpoint = not timeout
+                self.checkpoint_timeout = timeout
+                self.probes.clear()
+                code, attempted = self.run_campaign(
+                    set(), STATE_LAYOUT="flat", PAYLOAD_SET="fusaka",
+                    FLAT_SNAPSHOT_BLOCK_DIR="/data/nethermind/nethermind-flat-25490000",
+                )
+                self.assertEqual((code, attempted), (1, []))
+                self.assertEqual(len(self.probes), 1)
+                campaign = json.loads((self.directory / "campaign" / "campaign.json").read_text(encoding="utf-8"))
+                self.assertEqual(campaign["status"], "failed")
+                self.assertIn(message, campaign["failure_reasons"][0])
+
+    def test_unknown_and_reference_fixtures_do_not_require_the_new_capability(self) -> None:
+        self.unsupported_checkpoint = True
+        for label, source, values in (
+            ("unknown source", "/unknown/snapshot", {}),
+            ("nonmatching scenario", "/mnt/sda/nethermind-flat-25490000", {"CLIENT": driver.CLIENTS[1], "CLIENT_SNAPSHOT_DIR": "/data/reference", "SNAPSHOT_MOUNT_PATH": "/execution-data"}),
+        ):
+            with self.subTest(case=label):
+                self.snapshot_source = source
+                code, attempted = self.run_campaign(set(), **{
+                    "STATE_LAYOUT": "flat", "PAYLOAD_SET": "fusaka",
+                    "FLAT_SNAPSHOT_BLOCK_DIR": "/data/nethermind/nethermind-flat-25490000", **values,
+                })
+                self.assertEqual(code, 0)
+                self.assertEqual(len(attempted), 3)
+                self.assertEqual(self.probes, [])
 
     def test_a_retrospective_sweep_abandons_only_the_failed_image(self) -> None:
         # Bisecting across many master builds: one benign shutdown-time exception on image 2 must not
@@ -471,6 +605,7 @@ class CampaignScopeTests(unittest.TestCase):
         code, attempted = self.run_campaign(set(), RUN_COUNT="1")
         self.assertEqual(code, 0)
         self.assertEqual(attempted, ["image-1-run1", "image-2-run1", "image-3-run1"])
+        self.assertEqual(self.probes, [])
 
     def test_malformed_dispatch_input_fails_before_any_runner_time_is_spent(self) -> None:
         valid_images = '[{"id":"image-1","image":"repo:tag"}]'

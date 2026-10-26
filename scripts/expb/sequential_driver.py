@@ -165,6 +165,17 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     scenario.setdefault("extra_env", {}).update(parse_pairs(get("CLIENT_ENV")))
     if get("TRACE_BLOCKS"): scenario["extra_env"]["NETHERMIND_PROFILE_BLOCKS"] = get("TRACE_BLOCKS")
     return config, name
+
+def startup_flags(scenario: dict) -> list[str]:
+    source = get("FLAT_SNAPSHOT_BLOCK_DIR")
+    if (get("CLIENT", "nethermind") != "nethermind" or get("STATE_LAYOUT") != "flat"
+            or get("PAYLOAD_SET") != "fusaka" or not source or scenario.get("snapshot_source") != source):
+        return []
+    block = re.fullmatch(r"nethermind-flat-(0|[1-9][0-9]*)", source.rsplit("/", 1)[-1])
+    if block is None:
+        raise ValueError(f"snapshot fixture {source!r} has no canonical numeric block suffix")
+    return ["--startup-block", block.group(1)]
+
 def verify_clean(config: dict) -> None:
     root = Path(get("EXPB_DATA_DIR")).resolve()
     docker = get("DOCKER_BIN", "docker")
@@ -326,6 +337,7 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
                 configured = config["scenarios"][scenario].get("amount", 0)
             result["expected_amount"] = int(configured)
             command = [get("EXPB_BIN", "expb"), "execute-scenarios", "--config-file", str(runtime_config_path), "--per-payload-metrics", "--per-payload-metrics-logs", "--print-logs"]
+            command += startup_flags(config["scenarios"][scenario])
             if get("DOTTRACE", "false") == "true": command += ["--dottrace", "--dottrace-mode", get("DOTTRACE_MODE", "sampling"), "--dotnet-trace"]
             if get("PERF", "false") == "true": command.append("--perf")
             # Cross-client runs share the k6 request clock; keep the Nethermind-only SSE feed off.
@@ -450,7 +462,13 @@ def main() -> int:
         run_count = int(get("RUN_COUNT", "1"))
         if run_count < 1: raise ValueError("RUN_COUNT must be positive")
         # Dispatch input is the same for every sample, so a malformed value fails the campaign here rather than as a sample.
-        render(base, images[0], 1)
+        config, scenario = render(base, images[0], 1)
+        flags = startup_flags(config["scenarios"][scenario])
+        if flags:
+            try:
+                subprocess.check_output([get("EXPB_BIN", "expb"), "execute-scenarios", *flags, "--help"], text=True, stderr=subprocess.STDOUT, timeout=30)
+            except subprocess.CalledProcessError as error:
+                raise RuntimeError(f"installed expb does not support the snapshot checkpoint: {error.output}") from error
         parse_pairs(get("EXPB_ENV_PASSTHROUGH"))
         verify_clean(base)
     except Exception as error:

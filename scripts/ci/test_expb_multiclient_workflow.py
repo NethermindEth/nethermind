@@ -213,6 +213,13 @@ class ExpbWorkflowTests(unittest.TestCase):
         block = text[text.index("  workflow_dispatch:\n    inputs:\n"):text.index("\n  pull_request:")]
         self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)
 
+    def test_campaign_passes_checkpoint_selection_inputs_to_the_driver(self):
+        step = WORKFLOW.read_text(encoding="utf-8-sig").split("      - name: Run sequential EXPB campaign\n", 1)[1]
+        settings = step.split("        run: |\n", 1)[0]
+        for name, output in (("STATE_LAYOUT", "state_layout"), ("PAYLOAD_SET", "payload_set"), ("FLAT_SNAPSHOT_BLOCK_DIR", "flat_snapshot_block_dir")):
+            self.assertIn(f"          {name}: ${{{{ needs.resolve.outputs.{output} }}}}", settings)
+        self.assertIn('python3 "${GITHUB_WORKSPACE}/scripts/expb/sequential_driver.py"', extract_step(WORKFLOW, "Run sequential EXPB campaign"))
+
     def test_resolver_splits_the_packed_cpu_overrides(self):
         for label, packed, expected in (
             ("empty", "", ("", "", "")),
