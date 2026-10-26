@@ -20,7 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test.RollupX;
 
-public class RollupXGenesisTests
+public partial class RollupXGenesisTests
 {
     private const ulong ReferenceTimestamp = 1_790_868_300;
     private static readonly Hash256 ReferenceHash = new("0x7871b9260dc27b57cc3d7539dfe08295f2738c20491243823315b9a681ba3648");
