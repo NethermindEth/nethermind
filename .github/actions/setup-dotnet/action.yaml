@@ -111,7 +111,7 @@ runs:
             echo "::error::The CDN fallback does not support the .NET version '$1'." >&2
             return 1
           fi
-          curl -fsSL --retry 5 --retry-all-errors "$FEED/Sdk/$channel/latest.version" | tr -d '\r' | sed '/^$/d' | tail -n1
+          curl -fsSL --retry 5 --retry-connrefused "$FEED/Sdk/$channel/latest.version" | tr -d '\r' | sed '/^$/d' | tail -n1
         }
 
         versions=()
@@ -139,7 +139,7 @@ runs:
           if [[ $RUNNER_OS == macOS ]]; then default_dir="$HOME/.dotnet"; fi
         fi
         install_dir=${DOTNET_INSTALL_DIR:-$default_dir}
-        curl -fsSL --retry 5 --retry-all-errors -o "$script" "$FEED/scripts/v1/$script_name"
+        curl -fsSL --retry 5 --retry-connrefused -o "$script" "$FEED/scripts/v1/$script_name"
 
         run_install() {
           if [[ $RUNNER_OS == Windows ]]; then
