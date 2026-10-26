@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
@@ -36,6 +37,9 @@ namespace Nethermind.JsonRpc
 
         internal JsonRpcService.StreamingContext? Streaming { get; set; }
 
+        /// <summary>The <see cref="ExternalRequest"/> whose method produced this response, entered again while it is written.</summary>
+        internal long RequestId { get; set; }
+
         internal StreamedResultObservation? StreamedResultObservation { get; private set; }
 
         /// <summary>Reports this response's result to <paramref name="observer"/> as it is written, when the result is streamed.</summary>
@@ -61,6 +65,7 @@ namespace Nethermind.JsonRpc
         {
             action = null;
             Streaming = null;
+            RequestId = ExternalRequest.None;
             StreamedResultObservation = null;
         }
 

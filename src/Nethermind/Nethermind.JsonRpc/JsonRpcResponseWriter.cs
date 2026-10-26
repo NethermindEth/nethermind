@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
@@ -39,8 +40,10 @@ public static class JsonRpcResponseWriter
     private const int MaxCachedPayloadBufferSize = 16 * 1024;
 
     /// <summary>Writes <paramref name="response"/> as a JSON-RPC response envelope.</summary>
+    /// <remarks>A lazily enumerated result runs here, as the request that produced it (<see cref="ExternalRequest"/>).</remarks>
     public static void Write(IBufferWriter<byte> writer, JsonRpcResponse response, JsonSerializerOptions options)
     {
+        using ExternalRequest.Scope request = ExternalRequest.Enter(response.RequestId);
         if (!options.WriteIndented && response is IJsonRpcRawResponse rawResponse)
         {
             rawResponse.WriteRaw(writer);
@@ -91,9 +94,11 @@ public static class JsonRpcResponseWriter
     /// <remarks>
     /// Only a deferred execution result is staged for recovery; any other streamable result is written directly into
     /// <paramref name="writer"/>. A replaced failure is reported through <see cref="JsonRpcResponseWriteOutcome.Of"/>.
+    /// A streamed result runs as the request that produced it (<see cref="ExternalRequest"/>) until its first await.
     /// </remarks>
     public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
     {
+        using ExternalRequest.Scope request = ExternalRequest.Enter(response.RequestId);
         if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
             Write(writer, response, options);
