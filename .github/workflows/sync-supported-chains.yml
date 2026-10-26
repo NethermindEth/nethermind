@@ -76,7 +76,7 @@ jobs:
           ref: ${{ github.ref_name || 'master' }}
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v6
+        uses: ./nethermind/.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.402
 
