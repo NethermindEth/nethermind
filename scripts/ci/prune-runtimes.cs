@@ -21,7 +21,7 @@ try
 
     var before = await DiskUsage(root);
     var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
-    var candidates = Directory.GetDirectories(root, "*", options)
+    var candidates = Directory.EnumerateDirectories(root, "*", options)
         .Where(path => Path.GetFileName(Path.GetDirectoryName(path)) == "runtimes")
         .Order(StringComparer.Ordinal).ToArray();
     // Bare-OS folders hold managed assemblies used by the target RID's fallback graph.
