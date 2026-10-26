@@ -90,8 +90,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
-        InstructionMask = instructionMask;
-
         NativePrestateTracerConfig config = NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
         _diffMode = config.DiffMode;
         _includeEmpty = config.IncludeEmpty;
@@ -99,6 +97,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             throw new ArgumentException("cannot use diffMode with includeEmpty");
         _disableCode = config.DisableCode;
         _disableStorage = config.DisableStorage;
+        if (_disableStorage)
+            instructionMask &= ~((UInt256.One << (int)Instruction.SLOAD) | (UInt256.One << (int)Instruction.SSTORE));
+        InstructionMask = instructionMask;
         if (_diffMode)
         {
             _poststate = [];
@@ -368,32 +369,38 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     protected void LookupAccount(Address addr)
     {
-        if (!_prestate.ContainsKey(addr))
+        ref NativePrestateTracerAccount? entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_prestate, addr, out bool exists);
+        if (exists) return;
+
+        NativePrestateTracerAccount snapshot;
+        try
         {
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
-                UInt256 nonce = account.Nonce;
                 ReadOnlyMemory<byte> code = _disableCode ? default : _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
+                snapshot = new NativePrestateTracerAccount(account.Balance, account.Nonce, code)
                 {
                     CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
                         ? account.CodeHash : (ValueHash256?)null
-                });
+                };
             }
             else
             {
-                _prestate.Add(addr, new NativePrestateTracerAccount
-                {
-                    Balance = UInt256.Zero
-                });
+                snapshot = new NativePrestateTracerAccount { Balance = UInt256.Zero };
                 if (_diffMode && !_worldState.AccountExists(addr))
                     (_nonexistentAccounts ??= []).Add(addr);
             }
-            NativePrestateTracerAccount snapshot = _prestate[addr];
-            if (!_includeEmpty && snapshot.Balance.GetValueOrDefault().IsZero
-                && snapshot.Nonce.GetValueOrDefault().IsZero && snapshot.CodeHash is null)
-                (_initiallyEmptyAccounts ??= []).Add(addr);
         }
+        catch
+        {
+            _prestate.Remove(addr);
+            throw;
+        }
+
+        entry = snapshot;
+        if (!_includeEmpty && snapshot.Balance.GetValueOrDefault().IsZero
+            && snapshot.Nonce.GetValueOrDefault().IsZero && snapshot.CodeHash is null)
+            (_initiallyEmptyAccounts ??= []).Add(addr);
     }
 
     protected void LookupStorage(Address addr, UInt256 index)

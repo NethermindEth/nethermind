@@ -108,6 +108,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, transactionHash, cancellationToken, WithBufferedLimit(options));
         }
+        catch (NativeTracerConfigException exception)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
         catch (TraceDurationFormatException ex)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
