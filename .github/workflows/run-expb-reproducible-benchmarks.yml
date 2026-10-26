@@ -1252,7 +1252,12 @@ jobs:
           snapshot_source="$(SK="${scenario_key}" "${YQ}" -r '.scenarios.[strenv(SK)].snapshot_source // ""' "${RENDERED_CONFIG_FILE}")"
           startup_block=""
           if [[ "${CLIENT}" == "nethermind" && "${PAYLOAD_SET}" == "fusaka" && "${STATE_LAYOUT}" == "flat" && -n "${FLAT_SNAPSHOT_BLOCK_DIR}" && "${snapshot_source}" == "${FLAT_SNAPSHOT_BLOCK_DIR}" ]]; then
-            startup_block="25490000"
+            startup_block="${FLAT_SNAPSHOT_BLOCK_DIR##*/}"
+            startup_block="${startup_block#nethermind-flat-}"
+            if ! [[ "${startup_block}" =~ ^(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::Snapshot fixture '${FLAT_SNAPSHOT_BLOCK_DIR}' has no numeric block suffix."
+              exit 1
+            fi
           fi
           echo "startup_block=${startup_block}" >> "${GITHUB_OUTPUT}"
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
@@ -1612,6 +1617,29 @@ jobs:
 
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
 
+          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
+          exception_found="false"
+          if [[ -s "${exception_lines}" ]]; then
+            exception_found="true"
+            echo "Found Exception lines in benchmark output:"
+            head -n 40 "${exception_lines}"
+          fi
+
+          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
+          invalid_block_found="false"
+          if [[ -s "${invalid_block_lines}" ]]; then
+            invalid_block_found="true"
+            echo "Found invalid block lines in benchmark output:"
+            head -n 40 "${invalid_block_lines}"
+          fi
+
+          {
+            echo "exception_found=${exception_found}"
+            echo "exception_lines_file=${exception_lines}"
+            echo "invalid_block_found=${invalid_block_found}"
+            echo "invalid_block_lines_file=${invalid_block_lines}"
+          } >> "${GITHUB_OUTPUT}"
+
           if [[ "${RUN_OUTCOME}" != "success" ]]; then
             echo "::error::EXPB did not finish successfully; its timings are not valid measurements."
             exit 1
@@ -1647,22 +1675,6 @@ jobs:
               warmup_status="missing"
               echo "Missing successful warmup records for measured payload indices: ${missing_warmups}"
             fi
-          fi
-
-          grep -in "Exception" "${clean_log}" > "${exception_lines}" || true
-          exception_found="false"
-          if [[ -s "${exception_lines}" ]]; then
-            exception_found="true"
-            echo "Found Exception lines in benchmark output:"
-            head -n 40 "${exception_lines}"
-          fi
-
-          grep -Ein "invalid[[:space:]_-]*block" "${clean_log}" > "${invalid_block_lines}" || true
-          invalid_block_found="false"
-          if [[ -s "${invalid_block_lines}" ]]; then
-            invalid_block_found="true"
-            echo "Found invalid block lines in benchmark output:"
-            head -n 40 "${invalid_block_lines}"
           fi
 
           # Flag additional severe runtime signals (warn, don't hard-fail)
@@ -1880,10 +1892,6 @@ jobs:
 
           # Populate GITHUB_OUTPUT
           {
-            echo "exception_found=${exception_found}"
-            echo "exception_lines_file=${exception_lines}"
-            echo "invalid_block_found=${invalid_block_found}"
-            echo "invalid_block_lines_file=${invalid_block_lines}"
             echo "warmup_status=${warmup_status}"
             echo "metrics_file=${metrics_file}"
             while IFS= read -r line; do

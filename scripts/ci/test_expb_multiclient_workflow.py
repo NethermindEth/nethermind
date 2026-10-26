@@ -370,6 +370,10 @@ fi
         for client, payload, layout, source, expected in (
             ("nethermind", "fusaka", "flat", fixture, "25490000"),
             ("nethermind", "fusaka", "flat", "/data/nethermind/nethermind-flat-25490000", "25490000"),
+            ("nethermind", "fusaka", "flat", "/mnt/sda/nethermind-flat-26000000", "26000000"),
+            ("nethermind", "fusaka", "flat", "/data/nethermind/nethermind-flat-26000000", "26000000"),
+            ("nethermind", "fusaka", "flat", "/mnt/sda/nethermind-flat-invalid", None),
+            ("nethermind", "fusaka", "flat", "/mnt/sda/nethermind-flat--1", None),
             ("nethermind", "fusaka", "flat", "/snapshots/custom", ""),
             ("nethermind", "fusaka", "halfpath", fixture, ""),
             ("nethermind", "realblocks", "flat", fixture, ""),
@@ -379,14 +383,19 @@ fi
                 mock = Path(directory) / "yq"
                 mock.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "${MOCK_SOURCE}"\n', encoding="utf-8")
                 mock.chmod(0o755)
-                configured_fixture = source if source.startswith("/data/") else fixture
+                configured_fixture = source if source.startswith(("/data/", "/mnt/sda/nethermind-flat-")) else fixture
                 proc, output, _ = self.run_body('scenario_key="test"\n' + renderer[start:end], {
                     "YQ": to_bash(mock), "RENDERED_CONFIG_FILE": "unused.yaml", "MOCK_SOURCE": source,
                     "CLIENT": client, "PAYLOAD_SET": payload, "STATE_LAYOUT": layout,
                     "FLAT_SNAPSHOT_BLOCK_DIR": configured_fixture,
                 })
-                self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
-                self.assertEqual(expected, output["startup_block"])
+                if expected is None:
+                    self.assertNotEqual(0, proc.returncode)
+                    self.assertIn("has no numeric block suffix", proc.stdout)
+                    self.assertNotIn("startup_block", output)
+                else:
+                    self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                    self.assertEqual(expected, output["startup_block"])
 
         launcher = extract_step(WORKFLOW, "Run expb scenarios")
         self.assertIn('startup_flags+=(--startup-block "${STARTUP_BLOCK}")', launcher)
@@ -632,7 +641,7 @@ fi
                 text=True,
             )
             metrics = temp_path / metrics_name
-            return proc, metrics.read_text(encoding="utf-8") if metrics.is_file() else ""
+            return proc, metrics.read_text(encoding="utf-8") if metrics.is_file() else "", parse_output(output)
 
     @staticmethod
     def k6_table(rows):
@@ -645,7 +654,7 @@ fi
                 for rows, valid in ((self.k6_table(3), True), (self.k6_table(2), False),
                                     (self.k6_table(2) + self.k6_table(1), False)):
                     with self.subTest(source=source, rows=rows):
-                        proc, metrics = self.run_analyzer(analyzer, rows, MEASUREMENT_SOURCE=source)
+                        proc, metrics, _ = self.run_analyzer(analyzer, rows, MEASUREMENT_SOURCE=source)
                         self.assertEqual(valid, proc.returncode == 0, proc.stdout + proc.stderr)
                         if not valid:
                             self.assertIn("refusing an incomplete benchmark", proc.stdout)
@@ -662,9 +671,28 @@ fi
             for kind in ("newPayload", "forkchoiceUpdated"):
                 with self.subTest(outcome=outcome, diagnostic=diagnostic, kind=kind):
                     line = f'time="2026-10-26" level=error msg="[engine] {kind} idx=1 {diagnostic}"\n' if diagnostic else ""
-                    proc, metrics = self.run_analyzer(self.analyzers[0], line + self.k6_table(3), RUN_OUTCOME=outcome)
+                    proc, metrics, _ = self.run_analyzer(self.analyzers[0], line + self.k6_table(3), RUN_OUTCOME=outcome)
                     self.assertNotEqual(0, proc.returncode, proc.stdout + proc.stderr)
                     self.assertEqual("", metrics)
+
+    def test_failed_run_diagnostics_are_reported_before_rejecting_metrics(self):
+        for outcome in ("failure", "success"):
+            with self.subTest(outcome=outcome):
+                diagnostics = "".join(f"System.InvalidOperationException: record {index}\n" for index in range(1, 42))
+                diagnostics += "".join(f"Invalid Block {26000000 + index}\n" for index in range(1, 42))
+                engine_error = 'time="2026-10-26" level=error msg="[engine] newPayload idx=1 payload status SYNCING"\n'
+                proc, metrics, output = self.run_analyzer(self.analyzers[0], diagnostics + engine_error + self.k6_table(3), RUN_OUTCOME=outcome)
+                self.assertNotEqual(0, proc.returncode)
+                self.assertEqual("", metrics)
+                self.assertEqual("true", output["exception_found"])
+                self.assertEqual("true", output["invalid_block_found"])
+                self.assertNotIn("metrics_file", output)
+                self.assertTrue(output["exception_lines_file"].endswith("expb-exceptions.log"))
+                self.assertTrue(output["invalid_block_lines_file"].endswith("expb-invalid-blocks.log"))
+                self.assertIn("System.InvalidOperationException: record 40", proc.stdout)
+                self.assertNotIn("System.InvalidOperationException: record 41", proc.stdout)
+                self.assertIn("Invalid Block 26000040", proc.stdout)
+                self.assertNotIn("Invalid Block 26000041", proc.stdout)
 
     def test_invalid_matrix_replaces_comparisons_with_a_failure_notice(self):
         for result, revision in product(("failure", "cancelled", "skipped", ""), ("a" * 40, "", "invalid")):
@@ -723,7 +751,7 @@ fi
                         "[payload-server] client_metric block_number={} processing_ms=20\n".format(100 + index)
                         for index in range(records)
                     )
-                    proc, metrics = self.run_analyzer(
+                    proc, metrics, _ = self.run_analyzer(
                         analyzer, feed + self.k6_table(3), metrics_name="expb-metrics.env", MEASUREMENT_SOURCE="auto",
                         # grep -P, which reads the feed, refuses a non-UTF-8 locale such as a bare Git Bash.
                         LC_ALL="C.UTF-8",
@@ -738,14 +766,14 @@ fi
         for analyzer in self.analyzers:
             for amount in ("", "all"):
                 with self.subTest(copy="single", amount=amount):
-                    proc, _ = self.run_analyzer(analyzer, self.k6_table(2), EXPECTED_AMOUNT=amount)
+                    proc, _, _ = self.run_analyzer(analyzer, self.k6_table(2), EXPECTED_AMOUNT=amount)
                     self.assertNotEqual(0, proc.returncode)
                     self.assertIn("benchmark completeness cannot be checked", proc.stdout)
 
     def test_no_metrics_at_all_still_fails_before_the_completeness_gate(self):
         for analyzer in self.analyzers:
             with self.subTest(copy="single"):
-                proc, metrics = self.run_analyzer(analyzer, "nothing parseable here\n")
+                proc, metrics, _ = self.run_analyzer(analyzer, "nothing parseable here\n")
                 self.assertNotEqual(0, proc.returncode)
                 self.assertIn("Could not extract any processing_ms data", proc.stdout)
                 if metrics:
