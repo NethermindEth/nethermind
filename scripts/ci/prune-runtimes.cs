@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include script-process.helpers.cs
 
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
 try
 {
     if (args.Length is < 1 or > 2 || string.IsNullOrEmpty(args[0]))
@@ -19,7 +21,7 @@ try
         return 1;
     }
 
-    var before = await DiskUsage(root);
+    var before = await DiskUsage(root, cancellation.Token);
     var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
     var candidates = Directory.EnumerateDirectories(root, "*", options)
         .Where(path => Path.GetFileName(Path.GetDirectoryName(path)) == "runtimes")
@@ -34,20 +36,21 @@ try
 
     if (!candidates.Any(path => Path.GetFileName(path) == rid && Directory.Exists(path)))
         Console.WriteLine($"::warning::no runtimes/{rid} folder present after prune for rid={rid}");
-    Console.WriteLine($"prune-runtimes[{rid}]: {before}MB -> {await DiskUsage(root)}MB (removed {foreign.Length} foreign RID dirs)");
+    Console.WriteLine($"prune-runtimes[{rid}]: {before}MB -> {await DiskUsage(root, cancellation.Token)}MB (removed {foreign.Length} foreign RID dirs)");
     return 0;
 }
+catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return 130; }
 catch (Exception exception)
 {
     Console.Error.WriteLine(exception.Message);
     return 1;
 }
 
-static async Task<string> DiskUsage(string root)
+static async Task<string> DiskUsage(string root, CancellationToken cancellationToken)
 {
     try
     {
-        var result = await ScriptProcess.Run("du", ["-sm", root], CancellationToken.None);
+        var result = await ScriptProcess.Run("du", ["-sm", root], cancellationToken);
         return result.Code == 0 ? result.Output.Split('\t')[0].Trim() : "?";
     }
     catch (System.ComponentModel.Win32Exception)
