@@ -425,7 +425,7 @@ public sealed class TrieNodeLogShard : IAsyncDisposable
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(PbtColumns.Metadata);
         // A key with a newer record in a later generation is skipped, but only if that record's batch has reached
         // RocksDB: the index is published before the RocksDB commit, and a crash in between drops the record.
-        ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
+        ulong committedVersion = ReadUInt64(metadata, VersionKey);
         Span<byte> probeBuffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
 
         // A second-level copy keeps each record's version, so readers filter it by their snapshot's version as they
@@ -542,9 +542,9 @@ public sealed class TrieNodeLogShard : IAsyncDisposable
     private void Recover()
     {
         IReadOnlyKeyValueStore metadata = _db.GetColumnDb(PbtColumns.Metadata);
-        ulong committedVersion = ReadUInt64(metadata.Get(VersionKey));
-        ulong flushedGeneration = ReadUInt64(metadata.Get(FlushedGenerationKey));
-        ulong committedGeneration = ReadUInt64(metadata.Get(GenerationKey));
+        ulong committedVersion = ReadUInt64(metadata, VersionKey);
+        ulong flushedGeneration = ReadUInt64(metadata, FlushedGenerationKey);
+        ulong committedGeneration = ReadUInt64(metadata, GenerationKey);
         _version = committedVersion;
         _nextGeneration = flushedGeneration + 1;
 
@@ -627,7 +627,13 @@ public sealed class TrieNodeLogShard : IAsyncDisposable
         return generation;
     }
 
-    public static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
+    public static ulong ReadUInt64(IReadOnlyKeyValueStore metadata, byte[] key)
+    {
+        ulong value = 0;
+        metadata.TryGet(key, static (bytes, value) => value.Value = bytes.Length == sizeof(ulong) ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0,
+            new PbtReadResult<ulong>(ref value));
+        return value;
+    }
 
     /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
     private sealed class Scanner(SafeFileHandle handle, long end) : IDisposable

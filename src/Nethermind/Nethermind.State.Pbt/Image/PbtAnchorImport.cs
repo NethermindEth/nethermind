@@ -77,9 +77,11 @@ public sealed class PbtAnchorImport(
     /// <summary>Whether this anchor was already imported.</summary>
     private bool ImportedEarlier(PbtImageAnchor anchor)
     {
-        if (!target.IsValid || targetDb.GetColumnDb(PbtColumns.Metadata).Get(_provenanceKey) is not { } prepared) return false;
-        if (!prepared.AsSpan().SequenceEqual(Provenance(anchor)))
-            throw new InvalidDataException("The native PBT database was imported from another migration source.");
+        if (!target.IsValid || !targetDb.GetColumnDb(PbtColumns.Metadata).TryGet(_provenanceKey, static (prepared, provenance) =>
+            {
+                if (!prepared.SequenceEqual(provenance))
+                    throw new InvalidDataException("The native PBT database was imported from another migration source.");
+            }, Provenance(anchor))) return false;
         if (_logger.IsInfo) _logger.Info($"PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} was imported earlier; reusing it.");
         return true;
     }
@@ -100,11 +102,12 @@ public sealed class PbtAnchorImport(
     {
         byte[] provenance = Provenance(anchor);
         IDb metadata = targetDb.GetColumnDb(PbtColumns.Metadata);
-        byte[]? prepared = metadata.Get(_provenanceKey);
-        if (prepared is not null)
+        if (metadata.TryGet(_provenanceKey, static (prepared, provenance) =>
+            {
+                if (!prepared.SequenceEqual(provenance))
+                    throw new InvalidDataException("Unpublished native anchor belongs to another bootstrap source.");
+            }, provenance))
         {
-            if (!prepared.AsSpan().SequenceEqual(provenance))
-                throw new InvalidDataException("Unpublished native anchor belongs to another bootstrap source.");
             foreach (PbtColumns column in targetDb.ColumnKeys)
             {
                 token.ThrowIfCancellationRequested();

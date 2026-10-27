@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Db;
 
@@ -45,10 +44,6 @@ public interface ITrieNodeLog
 
         /// <summary>The snapshot's column, with the log consulted first for a column the log covers.</summary>
         IReadOnlyKeyValueStore GetColumn(PbtColumns column);
-
-        /// <summary>Whether the log holds the record for <paramref name="key"/> in <paramref name="column"/>, passing its value to <paramref name="action"/>, which must not keep it.</summary>
-        /// <returns>False when <see cref="Snapshot"/> holds the key instead, as it does every key of a column the log does not cover; a found tombstone sets <paramref name="tombstone"/> and passes nothing.</returns>
-        bool TryLoad<TArg>(PbtColumns column, ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct;
     }
 
     /// <summary>The log side of one persistence write batch.</summary>

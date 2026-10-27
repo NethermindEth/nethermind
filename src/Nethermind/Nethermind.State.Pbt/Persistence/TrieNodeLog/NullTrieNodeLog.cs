@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Db;
 
@@ -28,13 +27,6 @@ public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IWriteBatch
     {
         public IColumnDbSnapshot<PbtColumns> Snapshot => snapshot;
         public IReadOnlyKeyValueStore GetColumn(PbtColumns column) => snapshot.GetColumn(column);
-
-        public bool TryLoad<TArg>(PbtColumns column, ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct
-        {
-            tombstone = false;
-            return false;
-        }
-
         public void Dispose() => snapshot.Dispose();
     }
 }

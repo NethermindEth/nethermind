@@ -311,15 +311,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public IReadOnlyKeyValueStore GetColumn(PbtColumns column) =>
             Covers(column) ? new Column(log, views, column, snapshot.GetColumn(column)) : snapshot.GetColumn(column);
 
-        public bool TryLoad<TArg>(PbtColumns column, ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct
-        {
-            tombstone = false;
-            if (!Covers(column)) return false;
-            int shard = log.ShardIndex(column, key);
-            return views[shard].TryGet(key, action, arg, out tombstone)
-                || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(key, action, arg, out tombstone));
-        }
-
         public void Dispose()
         {
             snapshot.Dispose();
@@ -337,6 +328,16 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             // A miss keeps RocksDB's zero-copy memory.
             public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
                 TryGet(key, out byte[]? value) ? value is null or { Length: 0 } ? null : ArrayMemoryManager.From(value) : inner.GetOwnedMemory(key, flags);
+
+            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
+                where TArg : allows ref struct
+            {
+                int shard = log.ShardIndex(column, key);
+                if (views[shard].TryGet(key, action, arg, out bool tombstone)
+                    || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(key, action, arg, out tombstone)))
+                    return !tombstone;
+                return inner.TryGet(key, action, arg, flags);
+            }
 
             /// <summary>The first level, then its second-level shard, which follows the first-level views.</summary>
             private bool TryGet(ReadOnlySpan<byte> key, out byte[]? value)

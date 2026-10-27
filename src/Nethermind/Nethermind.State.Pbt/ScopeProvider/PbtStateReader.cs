@@ -34,9 +34,9 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
         value = bundle.GetSlot(address, index);
     }
 
-    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
+    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.ReadArray(codeHash.Bytes);
 
-    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == ValueKeccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
+    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == ValueKeccak.OfAnEmptyString ? [] : codeDb.ReadArray(codeHash.Bytes);
 
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
         throw new NotSupportedException("Trie visiting is not supported by the pbt state backend");

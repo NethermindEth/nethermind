@@ -30,8 +30,8 @@ public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNo
     {
         try
         {
-            _version = TrieNodeLogShard.ReadUInt64(metadata.Get(shard.VersionKey));
-            _flushedGeneration = TrieNodeLogShard.ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
+            _version = TrieNodeLogShard.ReadUInt64(metadata, shard.VersionKey);
+            _flushedGeneration = TrieNodeLogShard.ReadUInt64(metadata, shard.FlushedGenerationKey);
             shard.PinNewer(pinned);
 
             while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)

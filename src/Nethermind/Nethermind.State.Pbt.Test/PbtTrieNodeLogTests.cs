@@ -210,27 +210,30 @@ public class PbtTrieNodeLogTests
     }
 
     [Test]
-    public void Span_reads_pass_logged_values_without_allocating_and_leave_unlogged_keys_to_the_snapshot([Values(5, 10_000)] int length)
+    public void Span_reads_pass_logged_values_without_allocating_and_fall_back_to_the_snapshot([Values(5, 10_000)] int length)
     {
         byte[] value = Value(1, length);
         _db.GetColumnDb(PbtColumns.AccountNodeGroups).Set(AccountKey, Value1);
+        _db.GetColumnDb(PbtColumns.TopNodeGroups).Set(ColdKey, Value2);
         Write((TopKey, value), (AccountKey, null));
         using ITrieNodeLog.IView view = _log.OpenView(_db);
+        IReadOnlyKeyValueStore topGroups = view.GetColumn(ColumnOf(TopKey));
 
         byte[] loaded = new byte[length];
-        bool found = view.TryLoad(ColumnOf(TopKey), TopKey, CopyTo, loaded, out bool tombstone);
+        bool found = topGroups.TryGet(TopKey, CopyTo, loaded);
         long allocated = GC.GetAllocatedBytesForCurrentThread();
-        view.TryLoad(ColumnOf(TopKey), TopKey, CopyTo, loaded, out _);
+        topGroups.TryGet(TopKey, CopyTo, loaded);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+        byte[] unlogged = new byte[Value2.Length];
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(found && !tombstone, Is.True);
+            Assert.That(found, Is.True);
             Assert.That(loaded, Is.EqualTo(value));
             Assert.That(allocated, Is.Zero, "a logged value is passed without a copy of its own once the pool is warm");
-            Assert.That(view.TryLoad(ColumnOf(AccountKey), AccountKey, CopyTo, loaded, out tombstone) && tombstone, Is.True, "the tombstone hides the RocksDB value");
-            Assert.That(view.TryLoad(ColumnOf(ColdKey), ColdKey, CopyTo, loaded, out _), Is.False, "a key the log does not hold is the snapshot's");
-            Assert.That(view.TryLoad(PbtColumns.Metadata, PbtRocksDbPersistence.RootNodeGroupKey, CopyTo, loaded, out _), Is.False, "the log does not cover the metadata column");
+            Assert.That(view.GetColumn(ColumnOf(AccountKey)).TryGet(AccountKey, CopyTo, loaded), Is.False, "the tombstone hides the RocksDB value");
+            Assert.That(topGroups.TryGet(ColdKey, CopyTo, unlogged), Is.True, "a key the log does not hold is read from the snapshot");
+            Assert.That(unlogged, Is.EqualTo(Value2));
         }
     }
 

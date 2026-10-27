@@ -38,7 +38,7 @@ public class PbtRocksDbPersistence(
 
     private readonly IColumnsDb<PbtColumns> _db = EnsureSchema(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
 
-    public bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
+    public bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).KeyExists(ValidStateKey);
 
     /// <summary>Whether a metadata key is the schema stamp, so an otherwise empty database still counts as empty.</summary>
     public static bool IsSchemaStamp(ReadOnlySpan<byte> key) => key.SequenceEqual(SchemaEpochKey);
@@ -46,18 +46,16 @@ public class PbtRocksDbPersistence(
     private static IColumnsDb<PbtColumns> EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
-        byte[]? storedEpoch = metadata.Get(SchemaEpochKey);
-        byte[]? storedCurrentState = metadata.Get(CurrentStateKey);
-        byte[]? storedValidity = metadata.Get(ValidStateKey);
+        int epoch = 0;
+        bool hasEpoch = metadata.TryGet(SchemaEpochKey, static (value, epoch) => epoch.Value = value.Length == sizeof(int)
+            ? BinaryPrimitives.ReadInt32BigEndian(value)
+            : throw new InvalidDataException("Malformed PBT schema epoch. Rebuild or re-import into a new pbt database."), new PbtReadResult<int>(ref epoch));
+        bool hasCurrentState = metadata.TryGet(CurrentStateKey, static (value, _) => DecodeCurrentState(value), 0);
+        bool hasValidity = metadata.TryGet(ValidStateKey, static (value, _) => ValidateValidity(value), 0);
 
-        if (storedEpoch is not null && storedEpoch.Length != sizeof(int))
-            throw new InvalidDataException("Malformed PBT schema epoch. Rebuild or re-import into a new pbt database.");
-        ValidateCurrentState(storedCurrentState);
-        ValidateValidity(storedValidity);
-
-        if (storedEpoch is null)
+        if (!hasEpoch)
         {
-            if (storedCurrentState is not null || storedValidity is not null || HasPopulatedDataColumn(db))
+            if (hasCurrentState || hasValidity || HasPopulatedDataColumn(db))
             {
                 throw new InvalidDataException($"The populated pbt database has no schema epoch {SchemaEpoch} stamp. Rebuild or re-import into a new pbt database.");
             }
@@ -68,18 +66,17 @@ public class PbtRocksDbPersistence(
             return db;
         }
 
-        int epoch = BinaryPrimitives.ReadInt32BigEndian(storedEpoch);
         if (epoch != SchemaEpoch)
         {
             throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Rebuild or re-import into a new pbt database.");
         }
 
-        if ((storedCurrentState is null) != (storedValidity is null))
+        if (hasCurrentState != hasValidity)
         {
             throw new InvalidDataException("The PBT validity marker and current-state metadata are inconsistent. Rebuild or re-import into a new pbt database.");
         }
 
-        if (storedValidity is not null) return db;
+        if (hasValidity) return db;
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
@@ -90,7 +87,7 @@ public class PbtRocksDbPersistence(
 
     private static bool HasPopulatedDataColumn(IColumnsDb<PbtColumns> db)
     {
-        if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
+        if (db.GetColumnDb(PbtColumns.Metadata).KeyExists(RootNodeGroupKey)) return true;
 
         foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {
@@ -138,22 +135,22 @@ public class PbtRocksDbPersistence(
 
     private static (StateId State, ValueHash256 Root) ReadCurrentState(IReadOnlyKeyValueStore metadata)
     {
-        byte[]? value = metadata.Get(CurrentStateKey);
-        if (value is null) return (StateId.PreGenesis, default);
-        ValidateCurrentState(value);
-        return (new StateId(BinaryPrimitives.ReadUInt64BigEndian(value), new ValueHash256(value.AsSpan(sizeof(ulong), ValueHash256.MemorySize))),
-            new ValueHash256(value.AsSpan(sizeof(ulong) + ValueHash256.MemorySize)));
+        (StateId State, ValueHash256 Root) current = (StateId.PreGenesis, default);
+        metadata.TryGet(CurrentStateKey, static (value, current) => current.Value = DecodeCurrentState(value), new PbtReadResult<(StateId, ValueHash256)>(ref current));
+        return current;
     }
 
-    private static void ValidateCurrentState(byte[]? value)
+    private static (StateId State, ValueHash256 Root) DecodeCurrentState(ReadOnlySpan<byte> value)
     {
-        if (value is not null && value.Length != CurrentStateLength)
+        if (value.Length != CurrentStateLength)
             throw new InvalidDataException("Malformed PBT current-state metadata. Rebuild or re-import into a new pbt database.");
+        return (new StateId(BinaryPrimitives.ReadUInt64BigEndian(value), new ValueHash256(value.Slice(sizeof(ulong), ValueHash256.MemorySize))),
+            new ValueHash256(value[(sizeof(ulong) + ValueHash256.MemorySize)..]));
     }
 
-    private static void ValidateValidity(byte[]? value)
+    private static void ValidateValidity(ReadOnlySpan<byte> value)
     {
-        if (value is not (null or [ValidState]))
+        if (value is not [ValidState])
             throw new InvalidDataException("Malformed PBT validity metadata. Rebuild or re-import into a new pbt database.");
     }
 
@@ -192,42 +189,24 @@ public class PbtRocksDbPersistence(
 
         public PbtAccount? GetAccount(in ValueHash256 addressHash)
         {
-            ReadOnlySpan<byte> value = _accounts.GetSpan(addressHash.Bytes);
-            try
-            {
-                return value.IsNull() ? null : PbtAccount.Decode(value);
-            }
-            finally
-            {
-                _accounts.DangerousReleaseMemory(value);
-            }
+            PbtAccount? account = null;
+            _accounts.TryGet(addressHash.Bytes, static (value, account) => account.Value = PbtAccount.Decode(value), new PbtReadResult<PbtAccount?>(ref account));
+            return account;
         }
 
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
         {
             Span<byte> persistedKey = stackalloc byte[TKey.Capacity];
-            ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(runKey, persistedKey));
-            try
-            {
-                return value.IsNull() ? SlotRun.Empty : SlotRun.Decode(value);
-            }
-            finally
-            {
-                _storages.DangerousReleaseMemory(value);
-            }
+            PackedSlotRun run = SlotRun.Empty;
+            _storages.TryGet(PbtStorageKeyLayout.Encode(runKey, persistedKey), static (value, run) => run.Value = SlotRun.Decode(value), new PbtReadResult<PackedSlotRun>(ref run));
+            return run;
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash)
         {
-            ReadOnlySpan<byte> value = _codes.GetSpan(codeHash.Bytes);
-            try
-            {
-                return value.IsNull() ? null : new CodeInfo(value.ToArray());
-            }
-            finally
-            {
-                _codes.DangerousReleaseMemory(value);
-            }
+            CodeInfo? code = null;
+            _codes.TryGet(codeHash.Bytes, static (value, code) => code.Value = new CodeInfo(value.ToArray()), new PbtReadResult<CodeInfo?>(ref code));
+            return code;
         }
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -246,23 +225,8 @@ public class PbtRocksDbPersistence(
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
         {
             PbtColumns column = NodeGroupColumn(groupKey);
-            ReadOnlySpan<byte> key = NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]);
-            // A logged group was validated as it was written.
-            if (view.TryLoad(column, key, action, arg, out bool tombstone)) return !tombstone;
-            IReadOnlyKeyValueStore store = view.Snapshot.GetColumn(column);
-            Span<byte> payload = store.GetSpan(key);
-            if (payload.IsEmpty) return false;
-            try
-            {
-                PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload);
-                action(payload, arg);
-            }
-            finally
-            {
-                store.DangerousReleaseMemory(payload);
-            }
-
-            return true;
+            // A group was validated as it was written.
+            return GetNodeGroupColumn(column).TryGet(NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]), action, arg);
         }
 
         private IReadOnlyKeyValueStore GetNodeGroupColumn(PbtColumns column) => column switch
