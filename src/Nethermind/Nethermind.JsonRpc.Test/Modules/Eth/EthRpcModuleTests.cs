@@ -432,6 +432,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_uninstall_filter_returns_false_for_unknown_id([Values] bool uninstalledBefore)
+    {
+        using Context ctx = await Context.Create();
+        if (uninstalledBefore)
+        {
+            _ = await ctx.Test.TestEthRpc("eth_newBlockFilter");
+            _ = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        }
+
+        string serialized = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter_overflow_int()
     {
         using Context ctx = await Context.Create();
