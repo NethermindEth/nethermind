@@ -219,18 +219,25 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         private readonly ValueHash256 _hash = hash;
 
-        internal nint Bucket(nint mask) => (nint)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
+        internal nint Bucket(nint mask) => (nint)ReadWord(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
         public bool Equals(NodeKey other)
         {
             ref byte left = ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash));
             ref byte right = ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in other._hash));
 
-            return Unsafe.ReadUnaligned<ulong>(ref left) == Unsafe.ReadUnaligned<ulong>(ref right)
-                   && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref left, 8)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref right, 8))
-                   && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref left, 16)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref right, 16))
-                   && Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref left, 24)) == Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref right, 24));
+            return ReadWord(ref left) == ReadWord(ref right)
+                   && ReadWord(ref Unsafe.Add(ref left, 8)) == ReadWord(ref Unsafe.Add(ref right, 8))
+                   && ReadWord(ref Unsafe.Add(ref left, 16)) == ReadWord(ref Unsafe.Add(ref right, 16))
+                   && ReadWord(ref Unsafe.Add(ref left, 24)) == ReadWord(ref Unsafe.Add(ref right, 24));
         }
+
+        /// <summary>A 64-bit word of the key.</summary>
+        /// <remarks>A 32-bit process reads it with plain loads, the key being word aligned: an unaligned read there tests the
+        /// alignment of each half.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReadWord(ref byte word) =>
+            IntPtr.Size == sizeof(uint) ? Unsafe.As<byte, ulong>(ref word) : Unsafe.ReadUnaligned<ulong>(ref word);
 
         public override bool Equals(object? obj) => obj is NodeKey other && Equals(other);
 
