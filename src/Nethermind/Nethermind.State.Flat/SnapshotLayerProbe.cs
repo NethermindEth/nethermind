@@ -104,7 +104,7 @@ internal static class SnapshotLayerProbe
         }
     }
 
-    public static void ReportBlock(ILogger logger, int baseSnapshots, int compactedSnapshots, long inMemoryBytes, long mutableEntries)
+    public static void ReportBlock(ILogger logger, int baseSnapshots, int compactedSnapshots, long inMemoryBytes, long mutableEntries, long filterUs)
     {
         if (!logger.IsInfo) return;
 
@@ -137,7 +137,8 @@ internal static class SnapshotLayerProbe
                 .Append(" gc=").Append(gen0 - _lastGen0).Append('/').Append(gen1 - _lastGen1).Append('/').Append(gen2 - _lastGen2)
                 .Append(" pauseUs=").Append((long)(pause - _lastPause).TotalMicroseconds)
                 .Append(" allocKB=").Append((allocated - _lastAllocated) >> 10)
-                .Append(" floorNs=").Append(_timestampFloorNs.ToString("F1"));
+                .Append(" floorNs=").Append(_timestampFloorNs.ToString("F1"))
+                .Append(" filterUs=").Append(filterUs);
 
             _lastGen0 = gen0;
             _lastGen1 = gen1;

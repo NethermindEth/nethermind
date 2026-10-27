@@ -203,6 +203,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         tier.EnsureInMemory();
         if (tier == SnapshotTier.InMemoryBase)
         {
+            long filterStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            snapshot.BuildFilters();
+            long filterUs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(filterStart).TotalMicroseconds;
             if (_snapshots.TryAdd(snapshot.To, snapshot))
             {
                 Interlocked.Increment(ref _snapshotCount);
@@ -213,7 +216,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 Metrics.SnapshotMemory += totalBytes;
                 Metrics.TotalSnapshotMemory += totalBytes;
 
-                ReportLayerProbe();
+                ReportLayerProbe(filterUs);
                 return true;
             }
 
@@ -236,7 +239,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return false;
     }
 
-    private void ReportLayerProbe()
+    private void ReportLayerProbe(long filterUs)
     {
         if (!_logger.IsInfo) return;
 
@@ -248,7 +251,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 mutableEntries += snapshot.AccountsCount + snapshot.StoragesCount + snapshot.StateNodesCount + snapshot.StorageNodesCount;
         }
 
-        SnapshotLayerProbe.ReportBlock(_logger, SnapshotCount, (int)Interlocked.Read(ref _compactedSnapshotCount), InMemoryBytes, mutableEntries);
+        SnapshotLayerProbe.ReportBlock(_logger, SnapshotCount, (int)Interlocked.Read(ref _compactedSnapshotCount), InMemoryBytes, mutableEntries, filterUs);
     }
 
     public ArrayPoolList<StateId> GetStatesAtBlockNumber(ulong blockNumber)
