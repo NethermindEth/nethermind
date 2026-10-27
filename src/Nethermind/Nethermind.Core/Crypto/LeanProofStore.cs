@@ -568,14 +568,6 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     /// a statement can lose some of its transactions to a peer's block while it is being proven.
     /// </remarks>
     public List<RecursiveProofInput> ProvenOverlaps(IReadOnlySet<FrameDependency> within, int limit)
-        => RankOverlaps(within, minShared: 2, limit);
-
-    /// <summary>Lists verified recursive proofs proving at least one dependency in <paramref name="within"/>, most shared first.</summary>
-    /// <remarks>An inclusion list reuses one of them whole, so its proof may cover dependencies outside <paramref name="within"/>.</remarks>
-    public List<RecursiveProofInput> ProvenIntersecting(IReadOnlySet<FrameDependency> within, int limit)
-        => RankOverlaps(within, minShared: 1, limit);
-
-    private List<RecursiveProofInput> RankOverlaps(IReadOnlySet<FrameDependency> within, int minShared, int limit)
     {
         List<(int Shared, ProofRecord Record)> overlaps = [];
         HashSet<ValueHash256> seen = [];
@@ -599,7 +591,36 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             int shared = 0;
             foreach (FrameDependency dependency in record.Dependencies)
                 if (within.Contains(dependency)) shared++;
-            if (shared >= minShared) overlaps.Add((shared, record));
+            if (shared >= 2) overlaps.Add((shared, record));
+        }
+    }
+
+    /// <summary>The smallest verified recursive proof proving every dependency in <paramref name="dependencies"/>, by proof bytes plus
+    /// 96 bytes per proven dependency, or <c>null</c> when none does.</summary>
+    /// <remarks>An inclusion list reuses it whole, so it may prove dependencies outside <paramref name="dependencies"/>. Only records
+    /// proving the first dependency and the bounded generated cache are examined.</remarks>
+    public RecursiveProofInput? SmallestProving(IReadOnlyList<FrameDependency> dependencies)
+    {
+        if (dependencies.Count == 0) return null;
+        ProofRecord? best = null;
+        long bestSize = long.MaxValue;
+        lock (_lock)
+        {
+            if (_holders.TryGetValue(dependencies[0], out List<ProofRecord>? holders))
+                foreach (ProofRecord record in holders) Consider(record);
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+        }
+        return best?.RecursiveInput;
+
+        void Consider(ProofRecord record)
+        {
+            if (record.RecursiveProof is null) return;
+            long size = record.RecursiveProof.Length + (long)record.Dependencies.Length * Eip8288Constants.DependencyTripleLength;
+            if (size >= bestSize) return;
+            foreach (FrameDependency dependency in dependencies)
+                if (Array.IndexOf(record.Dependencies, dependency) < 0) return;
+            best = record;
+            bestSize = size;
         }
     }
 

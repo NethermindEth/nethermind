@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Decoders;
@@ -27,6 +26,10 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     private const int MinTransactionSizeBytes = 32;
     // Senders drawn per list. The byte cap, not this, decides how many of them reach the wire.
     private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
+    // Senders drawn for dependency-bearing candidates, each contributing at most one.
+    internal const int DependencyBearingSenderSample = 64;
+    // Dependency-bearing entries of a drawn sender judged before it is passed over.
+    internal const int MaxDependencyBearingScannedPerSender = 4;
 
     /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
     /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
@@ -96,28 +99,66 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         return appended ? new RecursiveStarkV1 { StarkProof = proof.StarkProof, ProofDeps = proof.ProofDeps } : RecursiveStarkV1.Empty;
     }
 
-    /// <summary>Pending dependency-bearing transactions the next block could append, in random order, with their dependencies.</summary>
-    /// <remarks>Each passes the target fork's static validity, so a covering proof obligates it, pays the next base fee and
-    /// carries its sender's next nonce: the account nonce, or for an EIP-8250 keyed transaction the current sequence of every
-    /// key it selects. Blob-carrying transactions stay out, as from the dependency-free draw.</remarks>
+    /// <summary>Up to <see cref="DependencyBearingSenderSample"/> pending dependency-bearing transactions the next block could
+    /// append, at most one per sender, in random order, with their dependencies.</summary>
+    /// <remarks>Senders holding a dependency-bearing transaction are reservoir-sampled from the pool snapshot before any state
+    /// read, validation or dependency extraction, so the timed call's work is bounded by the sample, not the pool, and no sender
+    /// takes more than one place. A drawn sender contributes its first dependency-bearing entry, among the first
+    /// <see cref="MaxDependencyBearingScannedPerSender"/>, that passes the target fork's static validity, so a covering proof
+    /// obligates it, pays the next base fee and carries its sender's next nonce: the account nonce, or for an EIP-8250 keyed
+    /// transaction the current sequence of every key it selects. Blob-carrying transactions stay out, as from the
+    /// dependency-free draw.</remarks>
     private List<(Transaction Tx, List<FrameDependency> Dependencies)> DependencyBearingCandidates(IReleaseSpec targetSpec, in UInt256 baseFee)
     {
-        List<(Transaction, List<FrameDependency>)> candidates = [];
-        foreach (Transaction tx in txPool.GetPendingTransactions())
+        const int capacity = DependencyBearingSenderSample;
+        Random rnd = Random.Shared;
+        Transaction[][] drawn = new Transaction[capacity][];
+        int count = 0, seen = 0;
+        foreach (Transaction[] bucket in txPool.GetPendingTransactionsBySender().Values)
         {
-            if (!tx.SupportsFrames || tx.CarriesBlobs || tx.SenderAddress is null || !Eip8288Dependencies.IsDependencyBearing(tx)
-                || !tx.CanPayBaseFee(baseFee) || !InclusionListProofValidator.IsStaticallyValid(tx, targetSpec))
-                continue;
-            bool ready = KeyedNonceManager.UsesKeyedNonce(tx)
-                ? KeyedNonceManager.IsNonceSetValid(headState, tx.SenderAddress, tx.NonceKeys!, tx.Nonce)
-                : tx.Nonce == headState.GetNonce(tx.SenderAddress);
-            if (!ready) continue;
-            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue);
-            if (dependencies.Count > 0) candidates.Add((tx, dependencies));
+            if (!HoldsDependencyBearing(bucket)) continue;
+            if (count < capacity) drawn[count++] = bucket;
+            else
+            {
+                int j = rnd.Next(seen + 1);
+                if (j < capacity) drawn[j] = bucket;
+            }
+            seen++;
         }
-        Random.Shared.Shuffle(CollectionsMarshal.AsSpan(candidates));
+        rnd.Shuffle(drawn.AsSpan(0, count));
+
+        List<(Transaction, List<FrameDependency>)> candidates = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            ulong? accountNonce = null;
+            int scanned = 0;
+            foreach (Transaction tx in drawn[i])
+            {
+                if (!IsDependencyBearingCandidate(tx)) continue;
+                if (++scanned > MaxDependencyBearingScannedPerSender) break;
+                if (!tx.CanPayBaseFee(baseFee) || !InclusionListProofValidator.IsStaticallyValid(tx, targetSpec)) continue;
+                bool ready = KeyedNonceManager.UsesKeyedNonce(tx)
+                    ? KeyedNonceManager.IsNonceSetValid(headState, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce)
+                    : tx.Nonce == (accountNonce ??= headState.GetNonce(tx.SenderAddress!));
+                if (!ready) continue;
+                List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue);
+                if (dependencies.Count == 0) continue;
+                candidates.Add((tx, dependencies));
+                break;
+            }
+        }
         return candidates;
+
+        static bool HoldsDependencyBearing(Transaction[] bucket)
+        {
+            foreach (Transaction tx in bucket)
+                if (IsDependencyBearingCandidate(tx)) return true;
+            return false;
+        }
     }
+
+    private static bool IsDependencyBearingCandidate(Transaction tx) =>
+        tx.SupportsFrames && !tx.CarriesBlobs && tx.SenderAddress is not null && Eip8288Dependencies.IsDependencyBearing(tx);
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn

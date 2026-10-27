@@ -495,6 +495,33 @@ public class InclusionListBuilderTests
         }
     }
 
+    // The dependency-bearing draw is bounded like the dependency-free one: a fixed sample of senders, each contributing at most
+    // one entry, judged among its first few, before the pool's size can cost state reads or validation.
+    [Test]
+    public void Dependency_bearing_draw_is_bounded_per_sender_and_overall()
+    {
+        PrivateKey[] senders = [.. Enumerable.Range(1, InclusionListBuilder.DependencyBearingSenderSample + 8).Select(static i => new PrivateKey(new byte[31].Append((byte)i).ToArray()))];
+        List<Transaction> dependencyBearing = [];
+        foreach (PrivateKey sender in senders)
+            for (int copy = 0; copy < 2; copy++)
+                dependencyBearing.Add(DependencyBearingTx($"bounded:{sender.Address}:{copy}", sender: sender.Address));
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        foreach (Transaction tx in dependencyBearing)
+            store.AddCachedRecursive(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), [1]);
+        IReadOnlyStateProvider headState = Substitute.For<IReadOnlyStateProvider>();
+
+        (InclusionListBytes il, _) = BuildProofBuilder(PoolWithPending([], [.. dependencyBearing]),
+            new InclusionListProofService(new HeldProofVerifier(true), store), headState).GetInclusionListWithProof();
+        using InclusionListBytes owned = il;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il, Has.Count.EqualTo(1), "each held proof here covers a single entry");
+            Assert.That(headState.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IReadOnlyStateProvider.GetNonce)),
+                Is.EqualTo(InclusionListBuilder.DependencyBearingSenderSample), "one account read per drawn sender, none for the rest");
+        }
+    }
+
     /// <summary>A legacy transaction whose inclusion-list encoding is exactly <paramref name="encodedBytes"/> long.</summary>
     private static Transaction TxEncodedAs(int encodedBytes, PrivateKey sender)
     {
@@ -507,7 +534,7 @@ public class InclusionListBuilderTests
         throw new InvalidOperationException($"No transaction encodes to {encodedBytes} bytes");
     }
 
-    private static Transaction DependencyBearingTx(string message, ulong nonce = 0)
+    private static Transaction DependencyBearingTx(string message, ulong nonce = 0, Address? sender = null)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(message), default);
         TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas, UInt256.Zero,
@@ -516,7 +543,7 @@ public class InclusionListBuilderTests
         {
             Type = TxType.FrameTx,
             ChainId = BlockchainIds.Mainnet,
-            SenderAddress = TestItem.AddressC,
+            SenderAddress = sender ?? TestItem.AddressC,
             Nonce = nonce,
             NonceKeys = [UInt256.Zero],
             Frames = frames,
@@ -534,18 +561,21 @@ public class InclusionListBuilderTests
     private static ITxPool PoolWithPending(Transaction[] ready, Transaction[] dependencyBearing)
     {
         ITxPool pool = PoolOf(ready);
-        pool.GetPendingTransactions().Returns([.. ready, .. dependencyBearing]);
+        Dictionary<AddressAsKey, Transaction[]> bySender = ready.Concat(dependencyBearing)
+            .GroupBy(tx => new AddressAsKey(tx.SenderAddress!))
+            .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
+        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
         return pool;
     }
 
     /// <summary>A builder whose target fork enables EIP-8288.</summary>
-    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService? proofs)
+    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService? proofs, IReadOnlyStateProvider? headState = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(0).TestObject);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Eip8288Prototype.Instance);
-        return new InclusionListBuilder(pool, blockTree, specProvider, Substitute.For<IReadOnlyStateProvider>(), proofs);
+        return new InclusionListBuilder(pool, blockTree, specProvider, headState ?? Substitute.For<IReadOnlyStateProvider>(), proofs);
     }
 
     private sealed class HeldProofVerifier(bool valid) : ILeanProofVerifier

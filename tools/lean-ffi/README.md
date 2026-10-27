@@ -305,9 +305,11 @@ The local list draws its dependency-free transactions as before, then fills the 
 `MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST` bytes with ready, statically valid
 dependency-bearing pool transactions covered by one held recursive proof: a validated mode-1
 wrapper proof or one from the background aggregation cycle, reused whole with its canonical
-`proof_deps`. The chosen proof is the one covering the most candidates whose container fits
-`MAX_IL_PROOF_BYTES` and that verifies, normally from the verdict cache, under the
-`AGGREGATED_VK` of the fork predicted for the next slot. `engine_getInclusionListV2` never
+`proof_deps`. Candidates come from a bounded uniform sample of senders, at most one each, drawn
+before any state read or validation. Taking them in random order, the proof is the smallest
+held one covering a candidate whose container fits `MAX_IL_PROOF_BYTES` and that verifies,
+normally from the verdict cache, under the `AGGREGATED_VK` of the fork predicted for the next
+slot, so proof size or count cannot steer which transactions are listed. `engine_getInclusionListV2` never
 proves, since its 1 s timeout is below a recursive aggregation, and verifies at most two held
 proofs per call. Without a covering proof, or with no bytes left, the list carries no
 dependency-bearing transaction and an empty proof.

@@ -239,19 +239,28 @@ public class InclusionListProofsTests
         Assert.That(chosen, Is.Null);
     }
 
+    // The choice follows the caller's candidate order, not how much a proof covers, and takes the smallest proof covering the
+    // first candidate that has one, so neither a large proof nor many unrelated held proofs steer which transactions are listed.
     [Test]
-    public void Held_proof_choice_prefers_the_proof_covering_the_most_candidates()
+    public void Held_proof_choice_follows_candidate_order_and_takes_the_smallest_covering_proof()
     {
         FakeLeanProofVerifier verifier = new(true);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency first = Dependency("first"), second = Dependency("second"), third = Dependency("third");
-        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([first]), [1]);
-        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([second, third]), [2]);
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([first, second, third]), [1]);
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([second]), [2, 2]);
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([second, Dependency("flood")]), [3]);
+        for (int i = 0; i < 16; i++) store.AddCachedRecursive([Dependency($"unrelated:{i}")], [4]);
+        InclusionListProofService service = new(verifier, store);
 
-        HeldInclusionListProof? chosen = new InclusionListProofService(verifier, store).ChooseHeldProof([[first], [second], [third]],
-            Eip8288Prototype.Instance);
-
-        Assert.That(chosen?.StarkProof, Is.EqualTo(new byte[] { 2 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.ChooseHeldProof([[second], [first], [third]], Eip8288Prototype.Instance)?.StarkProof,
+                Is.EqualTo(new byte[] { 2, 2 }), "the smallest proof covering the first candidate");
+            Assert.That(service.ChooseHeldProof([[Dependency("unheld")], [first], [second]], Eip8288Prototype.Instance)?.StarkProof,
+                Is.EqualTo(new byte[] { 1 }), "a candidate without a held proof passes to the next");
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
+        }
     }
 
     // EIPs#12475: the serialized InclusionListProof container, two offsets and both fields, must fit MAX_IL_PROOF_BYTES.
@@ -279,11 +288,15 @@ public class InclusionListProofsTests
     {
         FakeLeanProofVerifier verifier = new(false);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        FrameDependency dependency = Dependency("bounded");
+        List<IReadOnlyList<FrameDependency>> candidates = [];
         for (int i = 0; i < InclusionListProofService.MaxHeldProofVerifications + 2; i++)
-            store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([dependency, Dependency($"extra:{i}")]), [(byte)i]);
+        {
+            FrameDependency candidate = Dependency($"bounded:{i}");
+            store.AddCachedRecursive([candidate], [(byte)i]);
+            candidates.Add([candidate]);
+        }
 
-        Assert.That(new InclusionListProofService(verifier, store).ChooseHeldProof([[dependency]], Eip8288Prototype.Instance), Is.Null);
+        Assert.That(new InclusionListProofService(verifier, store).ChooseHeldProof(candidates, Eip8288Prototype.Instance), Is.Null);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(InclusionListProofService.MaxHeldProofVerifications));
     }
 
