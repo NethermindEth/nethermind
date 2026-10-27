@@ -23,7 +23,7 @@ public abstract class BaseEIP1559TxDecoder(TxType txType, Func<Transaction>? tra
         Rlp.LengthOf(transaction.ChainId ?? 0)
         + GetLegacyFieldsLength(transaction)
         + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + AccessListDecoder.Instance.PopulateAndPop(transaction.AccessList, ref lengths);
+        + AccessListDecoder.Instance.PopulateLength(transaction.AccessList, ref lengths);
 
     protected static void EncodeEip1559Fields<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
@@ -51,7 +51,7 @@ public sealed class EIP1559TxDecoder(Func<Transaction>? transactionFactory = nul
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
@@ -63,7 +63,7 @@ public sealed class EIP1559TxDecoder(Func<Transaction>? transactionFactory = nul
         EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
     }
 
-    internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning) =>
+    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning) =>
         PushTypedTransactionLength(
             PopulateEip1559FieldsLength(transaction, ref lengths) + GetTypedSignatureLength(transaction.Signature, forSigning),
             ref lengths, rlpBehaviors);

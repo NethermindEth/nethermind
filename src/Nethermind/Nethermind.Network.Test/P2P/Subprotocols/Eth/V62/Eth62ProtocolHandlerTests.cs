@@ -685,7 +685,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
 
-            public void PopulateLength(TransactionsMessage message, ref LengthStack lengths) => _serializer.PopulateLength(message, ref lengths);
+            public int PopulateLength(TransactionsMessage message, ref LengthStack lengths) => _serializer.PopulateLength(message, ref lengths);
 
             public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message, ref LengthStack lengths) => _serializer.Serialize(byteBuffer, message, ref lengths);
 

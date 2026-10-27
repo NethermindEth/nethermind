@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
                 return FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
             }
 
-            int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
+            int contentLength = LogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), ref lengths);
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
             if (!skipBloom)
                 contentLength += Rlp.LengthOf(GetBloom(item, rlpBehaviors));
@@ -136,12 +136,11 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
+                return Rlp.OfEmptyList.Length;
             }
 
             int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
@@ -149,11 +148,11 @@ namespace Nethermind.Serialization.Rlp
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
             lengths.Push(contentLength);
-            lengths.Push(item.TxType != TxType.Legacy
+            return item.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
                     : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || TransactionPayload)
-                : receiptPayloadLength);
+                : receiptPayloadLength;
         }
 
         public byte[] EncodeNew(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>

@@ -34,9 +34,6 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
         return new ReceiptsMessage70(requestId, inner.TxReceipts, lastBlockIncomplete is 1);
     }
 
-    protected override void PopulateLengthInternal(ReceiptsMessage70 message, ref LengthStack lengths)
-    {
-        _receiptsSerializer.PopulateLength(new ReceiptsInnerMessage69(message.TxReceipts), ref lengths);
-        lengths.Push(Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + lengths.Pop());
-    }
+    protected override int PopulateLengthInternal(ReceiptsMessage70 message, ref LengthStack lengths) =>
+        Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + _receiptsSerializer.PopulateLength(new ReceiptsInnerMessage69(message.TxReceipts), ref lengths);
 }

@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             writer.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
         }
 
-        public override void PopulateLength(GetAccountRangeMessage message, ref LengthStack lengths)
+        public override int PopulateLength(GetAccountRangeMessage message, ref LengthStack lengths)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.AccountRange.RootHash);
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             contentLength += Rlp.LengthOf(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

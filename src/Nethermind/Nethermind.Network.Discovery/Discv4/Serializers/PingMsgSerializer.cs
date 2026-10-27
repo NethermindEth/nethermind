@@ -97,7 +97,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         return msg;
     }
 
-    public void PopulateLength(PingMsg msg, ref LengthStack lengths)
+    public int PopulateLength(PingMsg msg, ref LengthStack lengths)
     {
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress, msg.SourceTcpPort);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress, msg.DestinationTcpPort);
@@ -113,6 +113,6 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         lengths.Push(destinationAddressLength);
         lengths.Push(sourceAddressLength);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

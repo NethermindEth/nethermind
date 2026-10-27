@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Clique
 
         }
 
-        public override void PopulateLength(Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int signersLength = GetSignersContentLength(item.Signers);
             int votesLength = GetVotesContentLength(item.Votes);
@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.Clique
             lengths.Push(votesLength);
             lengths.Push(signersLength);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static SortedList<Address, ulong> DecodeSigners(ref RlpReader decoderContext)

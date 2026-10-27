@@ -190,15 +190,14 @@ public class OptimismCompactReceiptStorageDecoder :
     private static LogEntry[] GetLogs(TxReceipt item)
         => item.Logs ?? throw new RlpException("Receipt logs are null.");
 
-    public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
-        int contentLength = LogEntryDecoder.PopulateSequenceAndPop(GetLogs(item), ref lengths);
+        int contentLength = LogEntryDecoder.PopulateSequenceLength(GetLogs(item), ref lengths);
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
         if (isEip658Receipts)
@@ -224,6 +223,6 @@ public class OptimismCompactReceiptStorageDecoder :
         }
 
         lengths.Push(contentLength);
-        lengths.Push(LengthOfSequence(contentLength));
+        return LengthOfSequence(contentLength);
     }
 }

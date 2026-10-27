@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public void PopulateLength(NewBlockHashesMessage message, ref LengthStack lengths)
+        public int PopulateLength(NewBlockHashesMessage message, ref LengthStack lengths)
         {
             int contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Length; i++)
@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)

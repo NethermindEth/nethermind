@@ -826,7 +826,7 @@ public class BlockAccessListDecoderTests
             return value;
         }
 
-        public override void PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
+        public override int PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
         public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
@@ -856,7 +856,7 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public override void PopulateLength(DisposableElement? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
+        public override int PopulateLength(DisposableElement? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
         public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
@@ -879,7 +879,7 @@ public class BlockAccessListDecoderTests
             return new DisposableElement();
         }
 
-        public override void PopulateLength(object? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
+        public override int PopulateLength(object? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
         public override void Encode<TWriter>(ref TWriter writer, object item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
@@ -893,7 +893,7 @@ public class BlockAccessListDecoderTests
             throw new ArgumentException("semantic argument failure");
         }
 
-        public override void PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
+        public override int PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
 
         public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();

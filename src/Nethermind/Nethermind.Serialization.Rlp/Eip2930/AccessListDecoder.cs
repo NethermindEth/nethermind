@@ -103,12 +103,11 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
         }
 
-        public override void PopulateLength(AccessList? accessList, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(AccessList? accessList, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (accessList is null)
             {
-                lengths.Push(1);
-                return;
+                return 1;
             }
 
             int contentLength = 0;
@@ -119,7 +118,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         /// <summary>

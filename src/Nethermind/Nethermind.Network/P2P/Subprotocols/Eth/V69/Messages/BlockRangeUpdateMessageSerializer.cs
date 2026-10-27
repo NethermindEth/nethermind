@@ -36,7 +36,7 @@ public class BlockRangeUpdateMessageSerializer :
         };
     }
 
-    public void PopulateLength(BlockRangeUpdateMessage message, ref LengthStack lengths)
+    public int PopulateLength(BlockRangeUpdateMessage message, ref LengthStack lengths)
     {
         int contentLength =
             Rlp.LengthOf(message.EarliestBlock) +
@@ -44,6 +44,6 @@ public class BlockRangeUpdateMessageSerializer :
             Rlp.LengthOf(message.LatestBlockHash);
 
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

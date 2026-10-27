@@ -28,6 +28,6 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
         return new() { Vote = vote };
     }
 
-    public void PopulateLength(VoteMsg message, ref LengthStack lengths) =>
+    public int PopulateLength(VoteMsg message, ref LengthStack lengths) =>
         _voteDecoder.PopulateLength(message.Vote, ref lengths);
 }

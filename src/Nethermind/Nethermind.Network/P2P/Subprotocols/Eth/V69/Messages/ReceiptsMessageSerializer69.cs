@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages
         ReceiptsMessageSerializer(new ReceiptsMessageInnerSerializer69(specProvider)),
         IZeroInnerMessageSerializer<ReceiptsMessage69>
     {
-        void IZeroInnerMessageSerializer<ReceiptsMessage69>.PopulateLength(ReceiptsMessage69 message, ref LengthStack lengths) =>
+        int IZeroInnerMessageSerializer<ReceiptsMessage69>.PopulateLength(ReceiptsMessage69 message, ref LengthStack lengths) =>
             base.PopulateLength(message, ref lengths);
 
         void IZeroInnerMessageSerializer<ReceiptsMessage69>.Serialize(IByteBuffer byteBuffer, ReceiptsMessage69 message, ref LengthStack lengths) =>

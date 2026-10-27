@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return message;
         }
 
-        public override void PopulateLength(GetStorageRangeMessage message, ref LengthStack lengths)
+        public override int PopulateLength(GetStorageRangeMessage message, ref LengthStack lengths)
         {
             Hash256 rootHash = message.StorageRange.RootHash
                 ?? throw new InvalidOperationException("A storage range request requires a root hash.");
@@ -62,7 +62,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

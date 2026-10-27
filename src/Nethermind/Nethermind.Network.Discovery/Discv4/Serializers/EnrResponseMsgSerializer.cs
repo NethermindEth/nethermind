@@ -54,11 +54,11 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
         return msg;
     }
 
-    public void PopulateLength(EnrResponseMsg msg, ref LengthStack lengths)
+    public int PopulateLength(EnrResponseMsg msg, ref LengthStack lengths)
     {
         int contentLength = Rlp.LengthOfKeccakRlp;
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

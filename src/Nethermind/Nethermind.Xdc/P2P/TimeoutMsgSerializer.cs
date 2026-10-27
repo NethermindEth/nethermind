@@ -29,6 +29,6 @@ internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
         return new() { Timeout = timeout };
     }
 
-    public void PopulateLength(TimeoutMsg message, ref LengthStack lengths) =>
+    public int PopulateLength(TimeoutMsg message, ref LengthStack lengths) =>
         _timeDecoder.PopulateLength(message.Timeout, ref lengths);
 }

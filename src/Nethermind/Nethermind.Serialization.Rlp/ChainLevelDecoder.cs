@@ -55,12 +55,11 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public override void PopulateLength(ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
+                return Rlp.OfEmptyList.Length;
             }
 
             foreach (BlockInfo? blockInfo in item.BlockInfos)
@@ -72,9 +71,9 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int contentLength = Rlp.LengthOf(item.HasBlockOnMainChain)
-                + BlockInfoDecoder.Instance.PopulateSequenceAndPop(item.BlockInfos, ref lengths);
+                + BlockInfoDecoder.Instance.PopulateSequenceLength(item.BlockInfos, ref lengths);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
 
             [StackTraceHidden, DoesNotReturn]
             static void ThrowHasNull()

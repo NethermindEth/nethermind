@@ -134,19 +134,17 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
     }
 
-    public override void PopulateLength(BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         if (header is not TH h)
         {
             EnsurePlainFallbackAllowed(header);
-            FallbackDecoder.PopulateLength(header, ref lengths, rlpBehaviors);
-            return;
+            return FallbackDecoder.PopulateLength(header, ref lengths, rlpBehaviors);
         }
 
         int contentLength =
@@ -168,7 +166,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
 
         contentLength += GetHeaderSpecificContentLength(h, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     // Only a genuine base BlockHeader may take the plain-shape fallback. Any other BlockHeader subtype

@@ -46,17 +46,16 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         _timeoutCertificateDecoder.Encode(ref writer, item.HighestTimeoutCert, ref lengths, rlpBehaviors);
     }
 
-    public override void PopulateLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private int PopulateContentLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
@@ -64,7 +63,7 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         if (item is null)
             return 0;
 
-        return _timeoutCertificateDecoder.PopulateAndPop(item.HighestTimeoutCert, ref lengths, rlpBehaviors)
-               + _quorumCertificateDecoder.PopulateAndPop(item.HighestQuorumCert, ref lengths, rlpBehaviors);
+        return _timeoutCertificateDecoder.PopulateLength(item.HighestTimeoutCert, ref lengths, rlpBehaviors)
+               + _quorumCertificateDecoder.PopulateLength(item.HighestQuorumCert, ref lengths, rlpBehaviors);
     }
 }

@@ -538,11 +538,11 @@ public class TxTrieCodecTests
         public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
             ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
 
-        public void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        public int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         {
             Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
-            lengths.Push(3);
+            return 3;
         }
 
         public void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,

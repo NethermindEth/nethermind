@@ -107,11 +107,11 @@ namespace Nethermind.Network
             writer.Encode(item.Reputation);
         }
 
-        public override void PopulateLength(NetworkNode item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(NetworkNode item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static void EncodeLegacyFormat<TWriter>(ref TWriter writer, NetworkNode item)

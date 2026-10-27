@@ -16,7 +16,7 @@ public class ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) :
     ReceiptsMessageSerializer(specProvider, new ReceiptMessageDecoder69()),
     IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
 {
-    void IZeroInnerMessageSerializer<ReceiptsInnerMessage69>.PopulateLength(ReceiptsInnerMessage69 message, ref LengthStack lengths) =>
+    int IZeroInnerMessageSerializer<ReceiptsInnerMessage69>.PopulateLength(ReceiptsInnerMessage69 message, ref LengthStack lengths) =>
         PopulateLength(message, ref lengths);
 
     void IZeroInnerMessageSerializer<ReceiptsInnerMessage69>.Serialize(IByteBuffer byteBuffer, ReceiptsInnerMessage69 message, ref LengthStack lengths) =>

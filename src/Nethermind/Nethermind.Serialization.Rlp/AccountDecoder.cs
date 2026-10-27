@@ -206,17 +206,16 @@ namespace Nethermind.Serialization.Rlp
             return position + 1 + length;
         }
 
-        public override void PopulateLength(Account? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(Account? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(1);
-                return;
+                return 1;
             }
 
             int contentLength = GetContentLength(item);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public int GetContentLength(Account? item)

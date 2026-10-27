@@ -47,10 +47,10 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
         return msg;
     }
 
-    public void PopulateLength(EnrRequestMsg message, ref LengthStack lengths)
+    public int PopulateLength(EnrRequestMsg message, ref LengthStack lengths)
     {
         int contentLength = Rlp.LengthOf(message.ExpirationTime);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

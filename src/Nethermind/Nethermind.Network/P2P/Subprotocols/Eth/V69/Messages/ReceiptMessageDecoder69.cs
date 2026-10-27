@@ -97,7 +97,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             return Rlp.LengthOf((byte)item.TxType) + FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
         }
 
-        int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
+        int contentLength = LogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), ref lengths);
         contentLength += Rlp.LengthOf((byte)item.TxType);
         contentLength += Rlp.LengthOf(item.GasUsedTotal);
 
@@ -116,17 +116,16 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     private static LogEntry[] GetLogs(TxReceipt item) =>
         item.Logs ?? throw new RlpException("Receipt logs are null.");
 
-    public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -53,12 +53,11 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         writer.Encode(item.AmountInGwei);
     }
 
-    public override void PopulateLength(Withdrawal? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(Withdrawal? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int contentLength = Rlp.LengthOf(item.Index) +
@@ -66,6 +65,6 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
             Rlp.LengthOfAddressRlp +
             Rlp.LengthOf(item.AmountInGwei);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

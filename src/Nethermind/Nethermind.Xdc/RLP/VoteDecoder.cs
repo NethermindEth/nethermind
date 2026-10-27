@@ -56,20 +56,19 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         writer.Encode(item.GapNumber);
     }
 
-    public override void PopulateLength(Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private int PopulateContentLength(Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors) => ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)
-            + _xdcBlockInfoDecoder.PopulateAndPop(item.ProposedBlockInfo, ref lengths, rlpBehaviors);
+            + _xdcBlockInfoDecoder.PopulateLength(item.ProposedBlockInfo, ref lengths, rlpBehaviors);
 }

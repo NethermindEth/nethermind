@@ -55,18 +55,17 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public override void PopulateLength(ValidatorInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(ValidatorInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(1);
-                return;
+                return 1;
             }
 
             (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
             lengths.Push(validatorLength);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)

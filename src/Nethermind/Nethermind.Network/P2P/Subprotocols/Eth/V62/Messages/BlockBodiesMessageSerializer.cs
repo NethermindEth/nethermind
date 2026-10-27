@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void PopulateLength(BlockBodiesMessage message, ref LengthStack lengths) =>
+        public int PopulateLength(BlockBodiesMessage message, ref LengthStack lengths) =>
             _blockBodyDecoder.PopulateSequenceLength(message.Bodies.Bodies, ref lengths);
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message, ref LengthStack lengths)

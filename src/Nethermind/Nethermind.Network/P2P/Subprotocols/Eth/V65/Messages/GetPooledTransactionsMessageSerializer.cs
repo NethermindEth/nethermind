@@ -27,11 +27,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);
         }
 
-        public void PopulateLength(T message, ref LengthStack lengths)
+        public int PopulateLength(T message, ref LengthStack lengths)
         {
             int contentLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public T Deserialize(IByteBuffer byteBuffer)

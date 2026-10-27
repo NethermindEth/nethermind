@@ -93,7 +93,7 @@ public class ReceiptTrieTests
     private sealed class EmptyReceiptDecoder : RlpDecoder<TxReceipt>
     {
         protected override TxReceipt DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors) => throw new NotSupportedException();
-        public override void PopulateLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors) => lengths.Push(0);
+        public override int PopulateLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors) => 0;
         public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors) { }
     }
 

@@ -29,7 +29,7 @@ public class StatusMessageSerializer69 :
         writer.Encode(message.LatestBlockHash);
     }
 
-    public void PopulateLength(StatusMessage69 message, ref LengthStack lengths)
+    public int PopulateLength(StatusMessage69 message, ref LengthStack lengths)
     {
         int contentLength =
             Rlp.LengthOf(message.ProtocolVersion) +
@@ -41,7 +41,7 @@ public class StatusMessageSerializer69 :
             Rlp.LengthOf(message.LatestBlockHash);
 
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     public StatusMessage69 Deserialize(IByteBuffer byteBuffer) =>

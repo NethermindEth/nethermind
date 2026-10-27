@@ -17,7 +17,7 @@ public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = 
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
@@ -31,11 +31,11 @@ public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = 
         EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
     }
 
-    internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning) =>
+    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning) =>
         PushTypedTransactionLength(
             Rlp.LengthOf(transaction.ChainId ?? 0)
             + GetLegacyFieldsLength(transaction)
-            + AccessListDecoder.Instance.PopulateAndPop(transaction.AccessList, ref lengths)
+            + AccessListDecoder.Instance.PopulateLength(transaction.AccessList, ref lengths)
             + GetTypedSignatureLength(transaction.Signature, forSigning),
             ref lengths, rlpBehaviors);
 

@@ -47,12 +47,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             return eth66Message;
         }
 
-        public void PopulateLength(TEth66Message message, ref LengthStack lengths)
+        public int PopulateLength(TEth66Message message, ref LengthStack lengths)
         {
-            _ethMessageSerializer.PopulateLength(message.EthMessage, ref lengths);
-            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Pop();
+            int contentLength = Rlp.LengthOf(message.RequestId) + _ethMessageSerializer.PopulateLength(message.EthMessage, ref lengths);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         [DoesNotReturn, StackTraceHidden]

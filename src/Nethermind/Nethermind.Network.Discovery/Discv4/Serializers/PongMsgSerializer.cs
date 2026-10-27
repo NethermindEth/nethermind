@@ -80,7 +80,7 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         return msg;
     }
 
-    public void PopulateLength(PongMsg message, ref LengthStack lengths)
+    public int PopulateLength(PongMsg message, ref LengthStack lengths)
     {
         if (message.FarAddress is null)
         {
@@ -100,6 +100,6 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
 
         lengths.Push(farAddressLength);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

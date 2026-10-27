@@ -25,8 +25,7 @@ public static class RlpDecoderArrayPoolExtensions
         LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            decoder.PopulateLength(item, ref lengths, rlpBehaviors);
-            ArrayPoolSpan<byte> buffer = new(lengths.Pop());
+            ArrayPoolSpan<byte> buffer = new(decoder.PopulateLength(item, ref lengths, rlpBehaviors));
             try
             {
                 RlpEncoderExtensions.EncodeTo(decoder, item, ref lengths, buffer, rlpBehaviors);
@@ -52,8 +51,7 @@ public static class RlpDecoderArrayPoolExtensions
         LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            decoder.PopulateSequenceLength(items, ref lengths, behaviors);
-            ArrayPoolSpan<byte> buffer = new(lengths.Pop());
+            ArrayPoolSpan<byte> buffer = new(decoder.PopulateSequenceLength(items, ref lengths, behaviors));
             try
             {
                 RlpEncoderExtensions.EncodeSequenceTo(decoder, items, ref lengths, buffer, behaviors);
@@ -97,8 +95,7 @@ public static class RlpDecoderArrayPoolExtensions
         LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            decoder.PopulateLength(item, ref lengths, rlpBehaviors);
-            int length = lengths.Pop();
+            int length = decoder.PopulateLength(item, ref lengths, rlpBehaviors);
             ArrayPoolList<byte> buffer = new(length, length);
             try
             {

@@ -66,17 +66,16 @@ public sealed class TimeoutDecoder : RlpDecoder<Timeout>
         writer.Encode(item.GapNumber);
     }
 
-    public override void PopulateLength(Timeout item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(Timeout item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int contentLength = GetContentLength(item, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     public int GetContentLength(Timeout? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

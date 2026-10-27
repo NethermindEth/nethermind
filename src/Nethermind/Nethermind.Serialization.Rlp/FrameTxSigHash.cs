@@ -31,7 +31,6 @@ public static class FrameTxSigHash
         try
         {
             FrameTxDecoder.PopulateTransactionLength(transaction, ref lengths, RlpBehaviors.SkipTypedWrapping, forSigning: true);
-            lengths.Pop();
             FrameTxDecoder.EncodeTransaction(transaction, ref writer, ref lengths, RlpBehaviors.SkipTypedWrapping, forSigning: true);
             return writer.GetValueHash();
         }

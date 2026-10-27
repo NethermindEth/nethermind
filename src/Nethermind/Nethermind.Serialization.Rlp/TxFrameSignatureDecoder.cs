@@ -89,11 +89,11 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         }
     }
 
-    public override void PopulateLength(TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item, elideCanonicalSignatureBytes: false);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     /// <summary>Pushes the content length of the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>

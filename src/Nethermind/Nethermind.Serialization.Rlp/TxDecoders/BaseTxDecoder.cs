@@ -80,7 +80,7 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
     public abstract void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    public abstract void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
+    public abstract int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
     /// <summary>Decodes the <c>[nonce, gas_price, gas_limit, to, value, data]</c> fields, with <c>max_fee_per_gas</c>
     /// after the gas price when <paramref name="hasMaxFeePerGas"/> is set.</summary>
@@ -156,11 +156,11 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
     }
 
-    /// <summary>Pushes the content length of a typed transaction's payload sequence and the total encoded length.</summary>
-    protected static void PushTypedTransactionLength(int contentLength, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    /// <summary>Pushes the content length of a typed transaction's payload sequence and returns the total encoded length.</summary>
+    protected static int PushTypedTransactionLength(int contentLength, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
         lengths.Push(contentLength);
-        lengths.Push(GetTypedTransactionLength(Rlp.LengthOfSequence(contentLength), rlpBehaviors));
+        return GetTypedTransactionLength(Rlp.LengthOfSequence(contentLength), rlpBehaviors);
     }
 
     /// <summary>Pops the content length <see cref="PushTypedTransactionLength"/> pushed and writes the EIP-2718 prefix and the payload sequence prefix.</summary>

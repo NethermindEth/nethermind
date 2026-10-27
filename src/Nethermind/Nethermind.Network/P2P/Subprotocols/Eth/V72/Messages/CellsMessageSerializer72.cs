@@ -112,7 +112,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public void PopulateLength(CellsMessage72 message, ref LengthStack lengths)
+    public int PopulateLength(CellsMessage72 message, ref LengthStack lengths)
     {
         byte[][][] cellsByTx = message.Cells;
         int cellsContentLength = 0;
@@ -129,7 +129,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
             + Rlp.LengthOfSequence(cellsContentLength)
             + Rlp.LengthOf(message.CellMask);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static int GetCellGroupContentLength(byte[][] blobMajorCells)

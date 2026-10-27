@@ -43,12 +43,12 @@ public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPri
         return findNodeMsg;
     }
 
-    public void PopulateLength(FindNodeMsg msg, ref LengthStack lengths)
+    public int PopulateLength(FindNodeMsg msg, ref LengthStack lengths)
     {
         int contentLength = Rlp.LengthOf(msg.SearchedNodeId);
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
 
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

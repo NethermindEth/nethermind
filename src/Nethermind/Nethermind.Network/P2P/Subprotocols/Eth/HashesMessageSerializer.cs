@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         public abstract T Deserialize(IByteBuffer byteBuffer);
-        public void PopulateLength(T message, ref LengthStack lengths)
+        public int PopulateLength(T message, ref LengthStack lengths)
         {
             int contentLength = 0;
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

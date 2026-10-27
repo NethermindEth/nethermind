@@ -62,12 +62,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             writer.Encode(item.AreFinalized);
         }
 
-        public override void PopulateLength(PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(1);
-                return;
+                return 1;
             }
 
             int addressesLength = GetAddressesLength(item.Addresses);
@@ -77,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                                 + Rlp.LengthOfSequence(addressesLength);
             lengths.Push(addressesLength);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static int GetAddressesLength(Address[] addresses)

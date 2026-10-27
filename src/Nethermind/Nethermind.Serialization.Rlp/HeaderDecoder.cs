@@ -177,12 +177,11 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
-        public override void PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
+                return Rlp.OfEmptyList.Length;
             }
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
@@ -219,7 +218,7 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)

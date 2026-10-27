@@ -32,12 +32,11 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
     /// </summary>
     public const int CompactEncodingWithTxHashes = 126;
 
-    public override void PopulateLength(TxReceipt[]? items, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(TxReceipt[]? items, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null || items.Length == 0)
         {
-            lengths.Push(1);
-            return;
+            return 1;
         }
 
         bool isCompact = compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0;
@@ -45,18 +44,17 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         int contentLength = 0;
         for (int i = items.Length - 1; i >= 0; i--)
         {
-            contentLength += decoder.PopulateAndPop(items[i], ref lengths, rlpBehaviors);
+            contentLength += decoder.PopulateLength(items[i], ref lengths, rlpBehaviors);
         }
 
         lengths.Push(contentLength);
         if (isCompact)
         {
             int txHashesLength = WritesTxHashes(items) ? Rlp.LengthOfByteString(items.Length * Hash256.Size, byte.MaxValue) : 0;
-            lengths.Push(Rlp.LengthOfSequence(contentLength - 1) + 2 + txHashesLength);
-            return;
+            return Rlp.LengthOfSequence(contentLength - 1) + 2 + txHashesLength;
         }
 
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     protected override TxReceipt[] DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

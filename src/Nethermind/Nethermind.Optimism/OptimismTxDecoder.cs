@@ -30,7 +30,7 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         writer.Encode(transaction.Data);
     }
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PushTypedTransactionLength(
             Rlp.LengthOf(transaction.SourceHash)

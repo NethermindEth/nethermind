@@ -30,14 +30,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             return message;
         }
 
-        public override void PopulateLength(GetBlockAccessListsMessage message, ref LengthStack lengths)
+        public override int PopulateLength(GetBlockAccessListsMessage message, ref LengthStack lengths)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.BlockHashes, true);
             contentLength += Rlp.LengthOf(message.Bytes);
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

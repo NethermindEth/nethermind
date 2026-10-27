@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
             new(byteBuffer.DecodeRlpByteArrayList(RlpLimit));
 
-        public void PopulateLength(NodeDataMessage message, ref LengthStack lengths)
+        public int PopulateLength(NodeDataMessage message, ref LengthStack lengths)
         {
             int contentLength = 0;
             for (int i = 0; i < message.Data.Count; i++)
@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 contentLength += Rlp.LengthOf(message.Data[i]);
             }
 
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

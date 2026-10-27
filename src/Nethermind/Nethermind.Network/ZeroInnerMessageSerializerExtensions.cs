@@ -17,8 +17,7 @@ public static class ZeroInnerMessageSerializerExtensions
             LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
             try
             {
-                serializer.PopulateLength(message, ref lengths);
-                byteBuffer.EnsureWritable(lengths.Pop());
+                byteBuffer.EnsureWritable(serializer.PopulateLength(message, ref lengths));
                 serializer.Serialize(byteBuffer, message, ref lengths);
                 Debug.Assert(lengths.Count == 0, "serializer left lengths on the stack");
             }
@@ -33,8 +32,7 @@ public static class ZeroInnerMessageSerializerExtensions
             LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
             try
             {
-                serializer.PopulateLength(message, ref lengths);
-                return lengths.Pop();
+                return serializer.PopulateLength(message, ref lengths);
             }
             finally
             {

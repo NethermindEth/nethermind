@@ -86,7 +86,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     /// <summary>Populates the receipt and returns its content length.</summary>
     private int PopulateContentLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
-        int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
+        int contentLength = LogEntryDecoder.Instance.PopulateSequenceLength(GetLogs(item), ref lengths);
         contentLength += Rlp.LengthOf(item.GasUsedTotal);
         contentLength += Rlp.LengthOf(item.Bloom);
 
@@ -121,12 +121,11 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.LengthOfSequence(0));
-            return;
+            return Rlp.LengthOfSequence(0);
         }
 
         int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
@@ -134,11 +133,11 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
 
         bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
         lengths.Push(contentLength);
-        lengths.Push(item.TxType != TxType.Legacy
+        return item.TxType != TxType.Legacy
             ? isForTxRoot
                 ? (1 + receiptPayloadLength)
                 : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || TransactionPayload)
-            : receiptPayloadLength);
+            : receiptPayloadLength;
     }
 
     public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -32,11 +32,11 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, forSigning, isEip155Enabled, chainId);
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, forSigning, isEip155Enabled, chainId);
 
-    internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
+    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
         int contentLength = GetLegacyFieldsLength(transaction);
 
@@ -51,7 +51,7 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         }
 
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)

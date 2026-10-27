@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public void PopulateLength(BlockHeadersMessage message, ref LengthStack lengths) =>
+        public int PopulateLength(BlockHeadersMessage message, ref LengthStack lengths) =>
             _headerDecoder.PopulateSequenceLength(message.BlockHeaders.AsSpan(), ref lengths);
 
         public BlockHeadersMessage Deserialize(ref RlpReader ctx)

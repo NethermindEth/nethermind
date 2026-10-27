@@ -53,11 +53,11 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         }
     }
 
-    protected override void PopulateLengthInternal(BlockAccessListsMessage message, ref LengthStack lengths)
+    protected override int PopulateLengthInternal(BlockAccessListsMessage message, ref LengthStack lengths)
     {
         int contentLength = GetBlockAccessListsContentLength(message.BlockAccessLists);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     protected override BlockAccessListsMessage DeserializeInternal(ref RlpReader ctx, long requestId) =>

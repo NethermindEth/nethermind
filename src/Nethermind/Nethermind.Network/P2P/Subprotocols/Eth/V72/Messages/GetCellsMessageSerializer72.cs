@@ -64,13 +64,13 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         return new GetCellsMessage72(requestId, hashes, cellMask, hashCount);
     }
 
-    public void PopulateLength(GetCellsMessage72 message, ref LengthStack lengths)
+    public int PopulateLength(GetCellsMessage72 message, ref LengthStack lengths)
     {
         int contentLength = Rlp.LengthOf(message.RequestId)
             + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes))
             + Rlp.LengthOf(message.CellMask);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static int GetHashesContentLength(ValueHash256[] hashes)

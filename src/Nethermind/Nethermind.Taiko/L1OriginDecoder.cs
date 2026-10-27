@@ -94,12 +94,11 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         }
     }
 
-    public override void PopulateLength(L1Origin? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(L1Origin? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(1);
-            return;
+            return 1;
         }
 
         int buildPayloadLength = 0;
@@ -124,6 +123,6 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             + isForcedInclusionLength
             + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0));
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

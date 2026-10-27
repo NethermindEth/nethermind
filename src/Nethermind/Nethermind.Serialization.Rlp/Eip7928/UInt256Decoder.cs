@@ -9,8 +9,8 @@ public class UInt256Decoder : RlpDecoder<UInt256>
 {
     public static readonly UInt256Decoder Instance = new();
 
-    public override void PopulateLength(UInt256 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => lengths.Push(Rlp.LengthOf(item));
+    public override int PopulateLength(UInt256 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => Rlp.LengthOf(item);
 
     protected override UInt256 DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors) => ctx.DecodeUInt256();
 

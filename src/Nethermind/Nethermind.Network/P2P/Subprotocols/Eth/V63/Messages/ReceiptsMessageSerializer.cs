@@ -91,7 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             return new ReceiptsMessage(data);
         }
 
-        public void PopulateLength(ReceiptsMessage message, ref LengthStack lengths)
+        public int PopulateLength(ReceiptsMessage message, ref LengthStack lengths)
         {
             int contentLength = 0;
 
@@ -111,7 +111,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             }
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private int PopulateInnerLength(TxReceipt[] txReceipts, ref LengthStack lengths)
@@ -136,7 +136,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 }
 
-                contentLength += _decoder.PopulateAndPop(receipt, ref lengths, behaviors);
+                contentLength += _decoder.PopulateLength(receipt, ref lengths, behaviors);
             }
 
             return contentLength;

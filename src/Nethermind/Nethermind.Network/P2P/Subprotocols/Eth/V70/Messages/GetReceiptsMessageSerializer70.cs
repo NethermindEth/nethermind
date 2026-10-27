@@ -42,11 +42,11 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
         return new GetReceiptsMessage70(requestId, firstIndex, hashes);
     }
 
-    protected override void PopulateLengthInternal(GetReceiptsMessage70 message, ref LengthStack lengths)
+    protected override int PopulateLengthInternal(GetReceiptsMessage70 message, ref LengthStack lengths)
     {
         int hashesContentLength = GetHashesContentLength(message.Hashes);
         lengths.Push(hashesContentLength);
-        lengths.Push(Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(hashesContentLength));
+        return Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(hashesContentLength);
     }
 
     private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)

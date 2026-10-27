@@ -105,7 +105,7 @@ public sealed class NeighborsMsgSerializer(
         return msg;
     }
 
-    public void PopulateLength(NeighborsMsg msg, ref LengthStack lengths)
+    public int PopulateLength(NeighborsMsg msg, ref LengthStack lengths)
     {
         int contentLength;
         if (msg.Nodes.Count != 0)
@@ -128,6 +128,6 @@ public sealed class NeighborsMsgSerializer(
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

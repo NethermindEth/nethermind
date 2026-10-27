@@ -12,9 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public abstract void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths);
         protected abstract T Deserialize(ref RlpReader ctx);
 
-        public abstract void PopulateLength(T message, ref LengthStack lengths);
+        public abstract int PopulateLength(T message, ref LengthStack lengths);
 
-        /// <summary>Pops the content length pushed under the total by <see cref="PopulateLength"/> and starts the message sequence.</summary>
+        /// <summary>Pops the content length <see cref="PopulateLength"/> pushed and starts the message sequence.</summary>
         protected static ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, ref LengthStack lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);

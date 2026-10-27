@@ -12,11 +12,11 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     where T : struct, IIndexedChange
 {
-    public override void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     protected override T DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)

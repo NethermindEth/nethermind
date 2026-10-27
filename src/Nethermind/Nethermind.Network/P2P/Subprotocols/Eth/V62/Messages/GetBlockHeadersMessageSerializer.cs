@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public void PopulateLength(GetBlockHeadersMessage message, ref LengthStack lengths)
+        public int PopulateLength(GetBlockHeadersMessage message, ref LengthStack lengths)
         {
             int contentLength = message.StartBlockHash is null
                 ? Rlp.LengthOf(message.StartBlockNumber)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength += Rlp.LengthOf(message.Reverse);
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }

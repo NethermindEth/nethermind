@@ -52,13 +52,13 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return slotChanges;
     }
 
-    public override void PopulateLength(ReadOnlySlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(ReadOnlySlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        PopulateLength(item.Key, item.Changes, ref lengths, rlpBehaviors);
+        return PopulateLength(item.Key, item.Changes, ref lengths, rlpBehaviors);
     }
 
-    public void PopulateLength(GeneratedSlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public int PopulateLength(GeneratedSlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => PopulateLength(item.Key, CollectionsMarshal.AsSpan(item.Changes), ref lengths, rlpBehaviors);
 
     public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -81,11 +81,11 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return len;
     }
 
-    private static void PopulateLength(in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
+    private static int PopulateLength(in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
-        int contentLength = Rlp.LengthOf(key) + StorageChangeDecoder.Instance.PopulateSequenceAndPop(changes, ref lengths, rlpBehaviors);
+        int contentLength = Rlp.LengthOf(key) + StorageChangeDecoder.Instance.PopulateSequenceLength(changes, ref lengths, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static void Encode<TWriter>(ref TWriter writer, in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, RlpBehaviors rlpBehaviors)

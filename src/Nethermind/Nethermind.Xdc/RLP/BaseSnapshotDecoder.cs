@@ -50,17 +50,16 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             XdcRlpHelpers.EncodeAddressSequence(ref writer, item.NextEpochCandidates);
     }
 
-    public override void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int contentLength = GetContentLength(item, rlpBehaviors);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     protected virtual int GetContentLength(T item, RlpBehaviors rlpBehaviors)

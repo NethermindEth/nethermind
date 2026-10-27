@@ -34,11 +34,11 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
         return new GetBlockAccessListsMessage(requestId, hashes);
     }
 
-    protected override void PopulateLengthInternal(GetBlockAccessListsMessage message, ref LengthStack lengths)
+    protected override int PopulateLengthInternal(GetBlockAccessListsMessage message, ref LengthStack lengths)
     {
         int hashesContentLength = GetHashesContentLength(message.Hashes);
         lengths.Push(hashesContentLength);
-        lengths.Push(Rlp.LengthOfSequence(hashesContentLength));
+        return Rlp.LengthOfSequence(hashesContentLength);
     }
 
     private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)

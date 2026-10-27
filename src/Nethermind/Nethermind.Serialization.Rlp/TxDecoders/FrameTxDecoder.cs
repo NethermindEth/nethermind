@@ -145,7 +145,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
@@ -174,7 +174,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         }
     }
 
-    internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
     {
         int payloadContentLength = PopulateContentLength(transaction, ref lengths, forSigning);
 
@@ -185,14 +185,13 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
 
         if (wrapper is null)
         {
-            PushTypedTransactionLength(payloadContentLength, ref lengths, rlpBehaviors);
-            return;
+            return PushTypedTransactionLength(payloadContentLength, ref lengths, rlpBehaviors);
         }
 
         lengths.Push(payloadContentLength);
         int wrapperContentLength = Rlp.LengthOfSequence(payloadContentLength) + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
         lengths.Push(wrapperContentLength);
-        lengths.Push(GetTypedTransactionLength(Rlp.LengthOfSequence(wrapperContentLength), rlpBehaviors));
+        return GetTypedTransactionLength(Rlp.LengthOfSequence(wrapperContentLength), rlpBehaviors);
     }
 
     private static void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
@@ -256,7 +255,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     private static int PopulateContentLength(Transaction transaction, ref LengthStack lengths, bool forSigning)
     {
         int contentLength = TxFrameSignatureDecoder.Instance.PopulateArrayLength(transaction.FrameSignatures, ref lengths, elideCanonicalSignatureBytes: forSigning);
-        contentLength += TxFrameDecoder.Instance.PopulateSequenceAndPop(transaction.Frames, ref lengths);
+        contentLength += TxFrameDecoder.Instance.PopulateSequenceLength(transaction.Frames, ref lengths);
         return contentLength
             + Rlp.LengthOf(transaction.ChainId ?? 0)
             + FrameTxNonceCalldata.Length(transaction)

@@ -53,8 +53,7 @@ namespace Nethermind.Network.Test.P2P
             LengthStack lengths = new(new int[1]);
             try
             {
-                serializer.PopulateLength(message, ref lengths);
-                int totalLength = lengths.Pop();
+                int totalLength = serializer.PopulateLength(message, ref lengths);
                 serializer.Serialize(buffer, message, ref lengths);
 
                 using (Assert.EnterMultipleScope())

@@ -24,7 +24,7 @@ public sealed class SetCodeTxDecoder(Func<Transaction>? transactionFactory = nul
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override int PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
@@ -37,11 +37,11 @@ public sealed class SetCodeTxDecoder(Func<Transaction>? transactionFactory = nul
         EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
     }
 
-    internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static int PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
     {
-        int contentLength = AuthTupleDecoder.PopulateSequenceAndPop(transaction.AuthorizationList, ref lengths);
+        int contentLength = AuthTupleDecoder.PopulateSequenceLength(transaction.AuthorizationList, ref lengths);
         contentLength += PopulateEip1559FieldsLength(transaction, ref lengths);
-        PushTypedTransactionLength(contentLength + GetTypedSignatureLength(transaction.Signature, forSigning), ref lengths, rlpBehaviors);
+        return PushTypedTransactionLength(contentLength + GetTypedSignatureLength(transaction.Signature, forSigning), ref lengths, rlpBehaviors);
     }
 
     private readonly struct Payload : ITxPayloadDecoder

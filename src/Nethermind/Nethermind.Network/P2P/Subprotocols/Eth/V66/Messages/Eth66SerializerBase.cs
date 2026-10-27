@@ -43,19 +43,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
         }
 
-        public void PopulateLength(TMessage message, ref LengthStack lengths)
+        public int PopulateLength(TMessage message, ref LengthStack lengths)
         {
-            PopulateLengthInternal(message, ref lengths);
-            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Pop();
+            int contentLength = Rlp.LengthOf(message.RequestId) + PopulateLengthInternal(message, ref lengths);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
-        /// <summary>Pops the lengths <see cref="PopulateLengthInternal"/> pushed under the payload length, which is already popped, and writes the payload.</summary>
+        /// <summary>Pops the lengths <see cref="PopulateLengthInternal"/> pushed and writes the payload.</summary>
         protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
 
         /// <summary>Pushes the lengths <see cref="SerializeInternal"/> needs, then the length of the payload after the request id.</summary>
-        protected abstract void PopulateLengthInternal(TMessage message, ref LengthStack lengths);
+        protected abstract int PopulateLengthInternal(TMessage message, ref LengthStack lengths);
     }
 }

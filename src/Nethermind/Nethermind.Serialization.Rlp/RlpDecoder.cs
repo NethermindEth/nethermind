@@ -10,7 +10,7 @@ namespace Nethermind.Serialization.Rlp;
 
 public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
-    public abstract void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public abstract int PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     public abstract void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
@@ -28,15 +28,14 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
     /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
     /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/>
-    /// fills exactly the total length <see cref="PopulateLength"/> pushed last.
+    /// fills exactly the total length <see cref="PopulateLength"/> returns.
     /// </remarks>
     public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            PopulateLength(item, ref lengths, rlpBehaviors);
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(lengths.Pop());
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(PopulateLength(item, ref lengths, rlpBehaviors));
             RlpEncoderExtensions.EncodeTo(this, item, ref lengths, bytes, rlpBehaviors);
             return bytes;
         }
@@ -56,8 +55,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            this.PopulateSequenceLength(items, ref lengths, rlpBehaviors);
-            byte[] bytes = new byte[lengths.Pop()];
+            byte[] bytes = new byte[this.PopulateSequenceLength(items, ref lengths, rlpBehaviors)];
             RlpEncoderExtensions.EncodeSequenceTo(this, items, ref lengths, bytes, rlpBehaviors);
             return new Rlp(bytes);
         }
@@ -197,8 +195,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            PopulateLength(item, ref lengths, rlpBehaviors);
-            CappedArray<byte> buffer = bufferPool.SafeRent(lengths.Pop());
+            CappedArray<byte> buffer = bufferPool.SafeRent(PopulateLength(item, ref lengths, rlpBehaviors));
             RlpEncoderExtensions.EncodeTo(this, item, ref lengths, buffer.AsSpan(), rlpBehaviors);
             return buffer;
         }

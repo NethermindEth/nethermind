@@ -8,8 +8,8 @@ namespace Nethermind.Serialization.Rlp;
 
 public sealed class ByteStreamDecoder : RlpDecoder<byte>
 {
-    public override void PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        lengths.Push(Rlp.LengthOf(item));
+    public override int PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Rlp.LengthOf(item);
 
     protected override byte DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeByte();
@@ -20,8 +20,8 @@ public sealed class ByteStreamDecoder : RlpDecoder<byte>
 
 public sealed class ShortStreamDecoder : RlpDecoder<short>
 {
-    public override void PopulateLength(short item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        lengths.Push(Rlp.LengthOf(item));
+    public override int PopulateLength(short item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Rlp.LengthOf(item);
 
     protected override short DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         (short)decoderContext.DecodeLong();
@@ -32,8 +32,8 @@ public sealed class ShortStreamDecoder : RlpDecoder<short>
 
 public sealed class UShortStreamDecoder : RlpDecoder<ushort>
 {
-    public override void PopulateLength(ushort item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        lengths.Push(Rlp.LengthOf((long)item));
+    public override int PopulateLength(ushort item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Rlp.LengthOf((long)item);
 
     protected override ushort DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         (ushort)decoderContext.DecodeLong();
@@ -44,8 +44,8 @@ public sealed class UShortStreamDecoder : RlpDecoder<ushort>
 
 public sealed class IntStreamDecoder : RlpDecoder<int>
 {
-    public override void PopulateLength(int item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        lengths.Push(Rlp.LengthOf(item));
+    public override int PopulateLength(int item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Rlp.LengthOf(item);
 
     protected override int DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeInt();
@@ -56,8 +56,8 @@ public sealed class IntStreamDecoder : RlpDecoder<int>
 
 public sealed class UIntStreamDecoder : RlpDecoder<uint>
 {
-    public override void PopulateLength(uint item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        lengths.Push(Rlp.LengthOf((long)item));
+    public override int PopulateLength(uint item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Rlp.LengthOf((long)item);
 
     protected override uint DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeUInt();
@@ -68,8 +68,8 @@ public sealed class UIntStreamDecoder : RlpDecoder<uint>
 
 public sealed class ULongStreamDecoder : RlpDecoder<ulong>
 {
-    public override void PopulateLength(ulong item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        lengths.Push(Rlp.LengthOf(item));
+    public override int PopulateLength(ulong item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        Rlp.LengthOf(item);
 
     protected override ulong DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         decoderContext.DecodeULong();

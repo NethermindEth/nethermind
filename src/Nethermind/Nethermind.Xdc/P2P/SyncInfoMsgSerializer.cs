@@ -28,6 +28,6 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
         return new() { SyncInfo = syncInfo };
     }
 
-    public void PopulateLength(SyncInfoMsg message, ref LengthStack lengths) =>
+    public int PopulateLength(SyncInfoMsg message, ref LengthStack lengths) =>
         _syncInfoDecoder.PopulateLength(message.SyncInfo, ref lengths);
 }

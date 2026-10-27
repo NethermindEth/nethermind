@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(_deserializeTransactionsMessage);
 
-        public void PopulateLength(TransactionsMessage message, ref LengthStack lengths) =>
+        public int PopulateLength(TransactionsMessage message, ref LengthStack lengths) =>
             TxDecoder.PopulateSequenceLength(message.Transactions.AsSpan(), ref lengths, RlpBehaviors.InMempoolForm);
 
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>

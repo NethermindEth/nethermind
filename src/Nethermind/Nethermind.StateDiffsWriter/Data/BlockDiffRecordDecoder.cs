@@ -53,12 +53,11 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         stream.Encode(item.AccountsAddedDelta);
     }
 
-    public override void PopulateLength(BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
+            return Rlp.OfEmptyList.Length;
         }
 
         int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
@@ -73,7 +72,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         lengths.Push(slotChangesContent);
         lengths.Push(codeChangesContent);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

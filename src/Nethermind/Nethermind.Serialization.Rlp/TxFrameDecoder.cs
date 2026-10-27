@@ -62,11 +62,11 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         writer.Encode(item.Data);
     }
 
-    public override void PopulateLength(TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override int PopulateLength(TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetContentLength(item);
         lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static int GetContentLength(TxFrame item) =>

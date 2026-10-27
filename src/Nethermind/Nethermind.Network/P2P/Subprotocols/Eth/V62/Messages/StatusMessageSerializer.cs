@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public void PopulateLength(StatusMessage message, ref LengthStack lengths)
+        public int PopulateLength(StatusMessage message, ref LengthStack lengths)
         {
             Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
             Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdSequenceLength;
 
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         public StatusMessage Deserialize(IByteBuffer byteBuffer) =>

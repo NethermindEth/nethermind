@@ -18,16 +18,15 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        public override void PopulateLength(Block? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int PopulateLength(Block? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
+                return Rlp.OfEmptyList.Length;
             }
 
-            int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoder.PopulateSequenceAndPop(withdrawals, ref lengths) : 0;
-            contentLength += _headerDecoder.PopulateSequenceAndPop(item.Uncles, ref lengths);
+            int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoder.PopulateSequenceLength(withdrawals, ref lengths) : 0;
+            contentLength += _headerDecoder.PopulateSequenceLength(item.Uncles, ref lengths);
             if (item.EncodedTransactions is { } encodedTxs)
             {
                 int txsLength = GetPreEncodedTxLength(item.Transactions, encodedTxs);
@@ -36,12 +35,12 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                contentLength += TxDecoder.Instance.PopulateSequenceAndPop(item.Transactions, ref lengths);
+                contentLength += TxDecoder.Instance.PopulateSequenceLength(item.Transactions, ref lengths);
             }
 
-            contentLength += _headerDecoder.PopulateAndPop(item.Header, ref lengths, rlpBehaviors);
+            contentLength += _headerDecoder.PopulateLength(item.Header, ref lengths, rlpBehaviors);
             lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
+            return Rlp.LengthOfSequence(contentLength);
         }
 
         private static int GetPreEncodedTxLength(Transaction[] txs, byte[][] encodedTxs)
@@ -79,8 +78,7 @@ namespace Nethermind.Serialization.Rlp
             LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
             try
             {
-                PopulateLength(block, ref lengths, rlpBehaviors);
-                ArrayPoolSpan<byte> buffer = new(lengths.Pop());
+                ArrayPoolSpan<byte> buffer = new(PopulateLength(block, ref lengths, rlpBehaviors));
                 try
                 {
                     RlpEncoderExtensions.EncodeTo(this, block, ref lengths, buffer, rlpBehaviors);
