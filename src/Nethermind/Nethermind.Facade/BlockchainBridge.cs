@@ -608,8 +608,8 @@ namespace Nethermind.Facade
         /// </remarks>
         private sealed class OpcodeAccessListTracer(Address[] excludedAddresses) : TxTracer
         {
-            // Geth orders the list by address and each address's keys ascending.
-            private readonly SortedDictionary<Address, SortedSet<UInt256>> _accessList = new(new AddressComparer());
+            // Geth orders the list by address and each address's keys ascending; the addresses are sorted when it is built.
+            private readonly Dictionary<AddressAsKey, SortedSet<UInt256>> _accessList = [];
             private Instruction _opcode;
             private Address? _executingAccount;
 
@@ -632,9 +632,16 @@ namespace Nethermind.Facade
             /// <returns>The collected list, without the excluded addresses that hold no storage key.</returns>
             public AccessList BuildAccessList()
             {
+                Address[] addresses = new Address[_accessList.Count];
+                int index = 0;
+                foreach (AddressAsKey address in _accessList.Keys)
+                    addresses[index++] = address;
+                addresses.AsSpan().Sort(new AddressComparer());
+
                 AccessList.Builder builder = new();
-                foreach ((Address address, SortedSet<UInt256> storageKeys) in _accessList)
+                foreach (Address address in addresses)
                 {
+                    SortedSet<UInt256> storageKeys = _accessList[address];
                     if (storageKeys.Count == 0 && Array.IndexOf(excludedAddresses, address) >= 0)
                         continue;
 
