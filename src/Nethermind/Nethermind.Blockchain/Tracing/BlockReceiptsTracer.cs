@@ -72,6 +72,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public bool IsTracingCallOutputMemory => _currentTxTracer.IsTracingCallOutputMemory;
     public bool IsTracingCode => _currentTxTracer.IsTracingCode;
     public bool IsTracingStack => _currentTxTracer.IsTracingStack;
+    public bool IsTracingStackPushes => _currentTxTracer.IsTracingStackPushes;
     public bool IsTracingState => _currentTxTracer.IsTracingState;
     public bool IsTracingStorage => _currentTxTracer.IsTracingStorage;
 
