@@ -43,6 +43,9 @@ public static class Utils
     private const int SummaryMaxLines = 400;
     private const int SummaryMaxChars = 64 * 1024;
 
+    /// <summary>Byte budget for log excerpts in the step summary, below GitHub's 1 MiB limit that drops the whole summary.</summary>
+    private const int SummaryExcerptBudgetBytes = 768 * 1024;
+
     /// <summary>Mnemonic shared by the genesis generator and the validator keystore generator.</summary>
     public const string DevnetMnemonic = "sleep moment list remain like wall lake industry canvas wonder ecology elite duck salad naive syrup frame brass utility club odor country obey pudding";
 
@@ -53,6 +56,8 @@ public static class Utils
     private static readonly SemaphoreSlim s_proxyImageBuildLock = new(1, 1);
     private static readonly Lock s_stepSummaryLock = new();
     private static readonly ConcurrentDictionary<string, byte> s_testsWithResponseEnded = new();
+    private static long s_stepSummaryBytes;
+    private static bool s_stepSummaryBudgetExhausted;
     private static IFutureDockerImage s_builtImage;
     private static IFutureDockerImage s_builtProxyImage;
 
@@ -357,7 +362,7 @@ public static class Utils
         AppendToStepSummary($"- `{line}`\n");
     }
 
-    private static void AppendToStepSummary(string markdown)
+    private static void AppendToStepSummary(string markdown, bool isExcerpt = false)
     {
         string stepSummary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
         if (string.IsNullOrEmpty(stepSummary))
@@ -369,7 +374,21 @@ public static class Utils
         {
             lock (s_stepSummaryLock)
             {
+                int bytes = Encoding.UTF8.GetByteCount(markdown);
+                if (isExcerpt && s_stepSummaryBytes + bytes > SummaryExcerptBudgetBytes)
+                {
+                    if (s_stepSummaryBudgetExhausted)
+                    {
+                        return;
+                    }
+
+                    s_stepSummaryBudgetExhausted = true;
+                    markdown = "- E2E log excerpt budget exhausted; later excerpts are omitted.\n";
+                    bytes = Encoding.UTF8.GetByteCount(markdown);
+                }
+
                 File.AppendAllText(stepSummary, markdown);
+                s_stepSummaryBytes += bytes;
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -411,7 +430,7 @@ public static class Utils
             else
             {
                 string title = WebUtility.HtmlEncode($"E2E ResponseEnded: {TestContext.CurrentContext.Test.FullName} {header}");
-                AppendToStepSummary($"<details><summary>{title}</summary>\n\n```text\n{BuildLogExcerpt(stdout, stderr)}\n```\n\n</details>\n\n");
+                AppendToStepSummary($"<details><summary>{title}</summary>\n\n```text\n{BuildLogExcerpt(stdout, stderr)}\n```\n\n</details>\n\n", isExcerpt: true);
             }
         }
         catch (Exception e)
