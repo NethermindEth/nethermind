@@ -424,7 +424,7 @@ public partial class EthRpcModuleTests
             (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
         }
         int gasPrice = blobFeeSurplus ? 5 : 2;
-        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{OneEther}}}"},"{{{request.Frames![1].Target}}}":{"code":"0x3a60{{{gasPrice:x2}}}1415600957005b5f5ffd"}}""")!;
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{OneEther}}}"},"{{{request.Frames![1].Target}}}":{"code":"0x6004b060801c3a60{{{gasPrice:x2}}}141517601057005b5f5ffd"}}""")!;
         object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0","blobBaseFee":"0x1"}""")!;
 
         string response = await ctx.Test.TestEthRpc(method, request, "latest", overrides, blockOverride);

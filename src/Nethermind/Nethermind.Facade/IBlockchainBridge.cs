@@ -60,7 +60,8 @@ namespace Nethermind.Facade
         /// <param name="errorMargin">In basis points: each limit's search stops once its bounds are within this fraction of
         /// the upper bound, which it returns. 0 searches exactly; it must be below 10000.</param>
         /// <param name="maxFeeAt">For a call priced per gas, the <c>max_fee</c> its prices buy over a given <c>max_gas</c>,
-        /// which each run is priced at; <see langword="null"/> keeps <paramref name="tx"/>'s <c>max_fee</c>.</param>
+        /// which each run is priced at over its own <c>max_gas</c>, raised in search runs to fund the search tip;
+        /// <see langword="null"/> keeps <paramref name="tx"/>'s <c>max_fee</c>.</param>
         /// <param name="stateOverride">Account overrides applied before the estimate.</param>
         /// <param name="blockOverride">Block overrides applied to <paramref name="header"/>'s copy.</param>
         /// <param name="cancellationToken">Cancels the estimate between and within runs.</param>
