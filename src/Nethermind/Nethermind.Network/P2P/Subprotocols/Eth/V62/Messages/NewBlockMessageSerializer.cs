@@ -14,14 +14,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void PopulateLength(NewBlockMessage message, ref LengthStack lengths)
         {
-            int contentLength = _blockDecoder.PopulateAndPeek(message.Block, ref lengths) + Rlp.LengthOf(message.TotalDifficulty);
+            int contentLength = _blockDecoder.PopulateAndPop(message.Block, ref lengths) + Rlp.LengthOf(message.TotalDifficulty);
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
             _blockDecoder.Encode(message.Block, ref lengths, ref writer);

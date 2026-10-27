@@ -164,7 +164,6 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         }
         else
         {
-            lengths.Pop();
             int wrapperContentLength = lengths.Pop();
             StartTypedTransaction(ref writer, TxType.FrameTx, Rlp.LengthOfSequence(wrapperContentLength), rlpBehaviors);
             writer.StartSequence(wrapperContentLength);
@@ -257,7 +256,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     private static int PopulateContentLength(Transaction transaction, ref LengthStack lengths, bool forSigning)
     {
         int contentLength = TxFrameSignatureDecoder.Instance.PopulateArrayLength(transaction.FrameSignatures, ref lengths, elideCanonicalSignatureBytes: forSigning);
-        contentLength += TxFrameDecoder.Instance.PopulateSequenceAndPeek(transaction.Frames, ref lengths);
+        contentLength += TxFrameDecoder.Instance.PopulateSequenceAndPop(transaction.Frames, ref lengths);
         return contentLength
             + Rlp.LengthOf(transaction.ChainId ?? 0)
             + FrameTxNonceCalldata.Length(transaction)

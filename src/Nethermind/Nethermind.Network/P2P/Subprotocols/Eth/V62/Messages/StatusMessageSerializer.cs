@@ -27,7 +27,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
             }
 
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
             writer.Encode(message.ProtocolVersion);

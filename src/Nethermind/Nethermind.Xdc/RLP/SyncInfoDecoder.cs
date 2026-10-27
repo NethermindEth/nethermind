@@ -48,7 +48,6 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
 
     public override void Encode<TWriter>(SyncInfo item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
@@ -65,7 +64,7 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         if (item is null)
             return 0;
 
-        return _timeoutCertificateDecoder.PopulateAndPeek(item.HighestTimeoutCert, ref lengths, rlpBehaviors)
-               + _quorumCertificateDecoder.PopulateAndPeek(item.HighestQuorumCert, ref lengths, rlpBehaviors);
+        return _timeoutCertificateDecoder.PopulateAndPop(item.HighestTimeoutCert, ref lengths, rlpBehaviors)
+               + _quorumCertificateDecoder.PopulateAndPop(item.HighestQuorumCert, ref lengths, rlpBehaviors);
     }
 }

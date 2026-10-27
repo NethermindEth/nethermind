@@ -10,8 +10,8 @@ namespace Nethermind.Network
     /// <remarks>
     /// Follows the <see cref="IRlpDecoder{T}"/> encode contract: <see cref="PopulateLength"/> pushes the lengths
     /// <see cref="Serialize(IByteBuffer, T, ref LengthStack)"/> needs in the reverse of the order it pops them, and pushes
-    /// the total serialized length last. <see cref="Serialize(IByteBuffer, T, ref LengthStack)"/> pops that total first,
-    /// then the rest, so every length is measured once.
+    /// the total serialized length last. The caller pops that total, then <see cref="Serialize(IByteBuffer, T, ref LengthStack)"/>
+    /// pops the rest, so every length is measured once.
     /// </remarks>
     public interface IZeroInnerMessageSerializer<T> : IZeroMessageSerializer<T> where T : MessageBase
     {

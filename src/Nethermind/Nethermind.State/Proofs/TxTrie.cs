@@ -98,6 +98,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
                     writer = new(value.Span);
                     // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
                     _txDecoder.PopulateLength(transactions[i], ref lengthStack, RlpBehaviors.SkipTypedWrapping);
+                    lengthStack.Pop();
                     _txDecoder.Encode(transactions[i], ref lengthStack, ref writer, RlpBehaviors.SkipTypedWrapping);
                     Debug.Assert(writer.Position == length);
                 }

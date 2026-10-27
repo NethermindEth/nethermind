@@ -17,7 +17,6 @@ public class GetBlockAccessListsMessageSerializer : Eth66SerializerBase<GetBlock
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetBlockAccessListsMessage message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(lengths.Pop());
 

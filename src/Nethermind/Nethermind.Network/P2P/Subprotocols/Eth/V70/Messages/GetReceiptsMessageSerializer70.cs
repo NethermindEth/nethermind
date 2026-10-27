@@ -17,7 +17,6 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.Encode(message.FirstBlockReceiptIndex);
         writer.StartSequence(lengths.Pop());

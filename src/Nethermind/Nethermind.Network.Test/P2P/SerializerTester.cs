@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test.P2P
             try
             {
                 serializer.PopulateLength(message, ref lengths);
-                int totalLength = lengths.Peek();
+                int totalLength = lengths.Pop();
                 serializer.Serialize(buffer, message, ref lengths);
 
                 using (Assert.EnterMultipleScope())

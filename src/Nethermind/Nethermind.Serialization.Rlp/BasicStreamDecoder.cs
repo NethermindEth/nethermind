@@ -15,10 +15,7 @@ public sealed class ByteStreamDecoder : RlpDecoder<byte>
         decoderContext.DecodeByte();
 
     public override void Encode<TWriter>(byte item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }
 
 public sealed class ShortStreamDecoder : RlpDecoder<short>
@@ -30,10 +27,7 @@ public sealed class ShortStreamDecoder : RlpDecoder<short>
         (short)decoderContext.DecodeLong();
 
     public override void Encode<TWriter>(short item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }
 
 public sealed class UShortStreamDecoder : RlpDecoder<ushort>
@@ -45,10 +39,7 @@ public sealed class UShortStreamDecoder : RlpDecoder<ushort>
         (ushort)decoderContext.DecodeLong();
 
     public override void Encode<TWriter>(ushort item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }
 
 public sealed class IntStreamDecoder : RlpDecoder<int>
@@ -60,10 +51,7 @@ public sealed class IntStreamDecoder : RlpDecoder<int>
         decoderContext.DecodeInt();
 
     public override void Encode<TWriter>(int item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }
 
 public sealed class UIntStreamDecoder : RlpDecoder<uint>
@@ -75,10 +63,7 @@ public sealed class UIntStreamDecoder : RlpDecoder<uint>
         decoderContext.DecodeUInt();
 
     public override void Encode<TWriter>(uint item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }
 
 public sealed class ULongStreamDecoder : RlpDecoder<ulong>
@@ -90,8 +75,5 @@ public sealed class ULongStreamDecoder : RlpDecoder<ulong>
         decoderContext.DecodeULong();
 
     public override void Encode<TWriter>(ulong item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }

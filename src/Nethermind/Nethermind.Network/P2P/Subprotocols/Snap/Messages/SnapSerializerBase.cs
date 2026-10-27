@@ -13,10 +13,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public abstract void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths);
         protected abstract T Deserialize(ref RlpReader ctx);
 
-        /// <summary>Pops the total and the content length pushed last by <see cref="PopulateLength"/> and starts the message sequence.</summary>
+        /// <summary>Pops the content length pushed under the total by <see cref="PopulateLength"/> and starts the message sequence.</summary>
         protected static ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
 

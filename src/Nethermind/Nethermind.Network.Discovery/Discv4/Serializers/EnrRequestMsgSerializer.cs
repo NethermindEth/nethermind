@@ -16,12 +16,13 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
 
     public void Serialize(IByteBuffer byteBuffer, EnrRequestMsg msg, ref LengthStack lengths)
     {
-        int length = lengths.Pop();
+        int contentLength = lengths.Pop();
+        int length = Rlp.LengthOfSequence(contentLength);
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(contentLength);
         writer.Encode(msg.ExpirationTime);
 
         byteBuffer.ResetIndex();

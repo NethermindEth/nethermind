@@ -53,7 +53,6 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
 
     public override void Encode<TWriter>(Vote item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
@@ -72,5 +71,5 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
 
     private int PopulateContentLength(Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors) => ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)
-            + _xdcBlockInfoDecoder.PopulateAndPeek(item.ProposedBlockInfo, ref lengths, rlpBehaviors);
+            + _xdcBlockInfoDecoder.PopulateAndPop(item.ProposedBlockInfo, ref lengths, rlpBehaviors);
 }

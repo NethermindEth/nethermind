@@ -55,7 +55,6 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
 
     public override void Encode<TWriter>(QuorumCertificate item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
@@ -93,7 +92,7 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
             sigLength = Rlp.LengthOfSequence(SignaturesLength(item));
 
-        return _blockInfoDecoder.PopulateAndPeek(item.ProposedBlockInfo, ref lengths, rlpBehaviors)
+        return _blockInfoDecoder.PopulateAndPop(item.ProposedBlockInfo, ref lengths, rlpBehaviors)
             + Rlp.LengthOf(item.GapNumber)
             + sigLength;
     }

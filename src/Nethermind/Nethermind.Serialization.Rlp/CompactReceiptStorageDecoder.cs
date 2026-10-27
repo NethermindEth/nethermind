@@ -155,7 +155,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             if (item is null)
             {
                 writer.WriteByte(Rlp.EmptyListByte);
@@ -202,7 +201,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += FrameReceiptRlp.PopulateStoredExtensionLength(item, CompactLogEntryDecoder.Instance, ref lengths);
             }
 
-            contentLength += CompactLogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
+            contentLength += CompactLogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
             if (isEip658Receipts)

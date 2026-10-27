@@ -550,7 +550,6 @@ public class TxTrieCodecTests
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
-            lengths.Pop();
             Assert.That(rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), Is.True);
             writer.WriteByte((byte)Type);
             OnEncode?.Invoke();

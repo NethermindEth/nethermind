@@ -27,8 +27,6 @@ public ref struct LengthStack(Span<int> initialBuffer) : IDisposable
 
     public int Pop() => _lengths[--_count];
 
-    public readonly int Peek() => _lengths[_count - 1];
-
     private void Grow()
     {
         int[] grown = ArrayPool<int>.Shared.Rent(Math.Max(_lengths.Length * 2, 16));

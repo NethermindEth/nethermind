@@ -83,7 +83,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
 
     private static void PopulateLength(in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
-        int contentLength = Rlp.LengthOf(key) + StorageChangeDecoder.Instance.PopulateSequenceAndPeek(changes, ref lengths, rlpBehaviors);
+        int contentLength = Rlp.LengthOf(key) + StorageChangeDecoder.Instance.PopulateSequenceAndPop(changes, ref lengths, rlpBehaviors);
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
@@ -91,7 +91,6 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     private static void Encode<TWriter>(in UInt256 key, ReadOnlySpan<StorageChange> changes, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         writer.Encode(key);
         StorageChangeDecoder.Instance.EncodeSequence(changes, ref lengths, ref writer, rlpBehaviors);

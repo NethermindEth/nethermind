@@ -22,7 +22,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
         public void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);

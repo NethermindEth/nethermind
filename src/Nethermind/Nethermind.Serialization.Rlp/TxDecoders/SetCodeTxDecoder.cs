@@ -39,7 +39,7 @@ public sealed class SetCodeTxDecoder(Func<Transaction>? transactionFactory = nul
 
     internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
     {
-        int contentLength = AuthTupleDecoder.PopulateSequenceAndPeek(transaction.AuthorizationList, ref lengths);
+        int contentLength = AuthTupleDecoder.PopulateSequenceAndPop(transaction.AuthorizationList, ref lengths);
         contentLength += PopulateEip1559FieldsLength(transaction, ref lengths);
         PushTypedTransactionLength(contentLength + GetTypedSignatureLength(transaction.Signature, forSigning), ref lengths, rlpBehaviors);
     }

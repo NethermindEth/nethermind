@@ -16,7 +16,6 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.Encode(message.LastBlockIncomplete ? 1 : 0);
         _receiptsSerializer.Serialize(byteBuffer, new ReceiptsInnerMessage69(message.TxReceipts), ref lengths);
@@ -38,6 +37,6 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
     protected override void PopulateLengthInternal(ReceiptsMessage70 message, ref LengthStack lengths)
     {
         _receiptsSerializer.PopulateLength(new ReceiptsInnerMessage69(message.TxReceipts), ref lengths);
-        lengths.Push(Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + lengths.Peek());
+        lengths.Push(Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + lengths.Pop());
     }
 }

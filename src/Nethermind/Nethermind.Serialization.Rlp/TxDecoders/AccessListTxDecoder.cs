@@ -35,7 +35,7 @@ public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = 
         PushTypedTransactionLength(
             Rlp.LengthOf(transaction.ChainId ?? 0)
             + GetLegacyFieldsLength(transaction)
-            + AccessListDecoder.Instance.PopulateAndPeek(transaction.AccessList, ref lengths)
+            + AccessListDecoder.Instance.PopulateAndPop(transaction.AccessList, ref lengths)
             + GetTypedSignatureLength(transaction.Signature, forSigning),
             ref lengths, rlpBehaviors);
 

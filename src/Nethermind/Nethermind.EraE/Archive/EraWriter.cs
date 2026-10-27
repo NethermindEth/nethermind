@@ -307,7 +307,7 @@ public sealed class EraWriter : IDisposable
 
     private static int PopulateReceiptContentLength(TxReceipt receipt, bool isEip658, ref LengthStack lengths)
     {
-        int logsLength = LogEntryDecoder.Instance.PopulateSequenceAndPeek(receipt.Logs ?? [], ref lengths);
+        int logsLength = LogEntryDecoder.Instance.PopulateSequenceAndPop(receipt.Logs ?? [], ref lengths);
 
         // txType: 0x80 (empty = legacy) or single self-encoding byte (type 1/2/3) — always 1 byte
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);

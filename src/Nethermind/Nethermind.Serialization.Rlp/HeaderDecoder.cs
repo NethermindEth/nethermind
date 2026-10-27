@@ -150,7 +150,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode<TWriter>(BlockHeader? header, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             if (header is null)
             {
                 writer.EncodeNullObject();

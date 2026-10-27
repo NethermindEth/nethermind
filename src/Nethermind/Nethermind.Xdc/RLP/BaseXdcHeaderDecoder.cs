@@ -121,7 +121,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
     {
         if (header is null)
         {
-            lengths.Pop();
             writer.EncodeNullObject();
             return;
         }
@@ -133,7 +132,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             return;
         }
 
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
 
         // Common fields

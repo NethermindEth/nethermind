@@ -40,9 +40,9 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             return;
         }
 
-        int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoderDecoder.PopulateSequenceAndPeek(withdrawals, ref lengths) : 0;
-        contentLength += _headerDecoder.PopulateSequenceAndPeek(item.Uncles, ref lengths);
-        contentLength += _txDecoder.PopulateSequenceAndPeek(item.Transactions, ref lengths);
+        int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoderDecoder.PopulateSequenceAndPop(withdrawals, ref lengths) : 0;
+        contentLength += _headerDecoder.PopulateSequenceAndPop(item.Uncles, ref lengths);
+        contentLength += _txDecoder.PopulateSequenceAndPop(item.Transactions, ref lengths);
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
@@ -131,7 +131,6 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
 
     public override void Encode<TWriter>(BlockBody? body, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (body is null)
         {
             writer.EncodeNullObject();

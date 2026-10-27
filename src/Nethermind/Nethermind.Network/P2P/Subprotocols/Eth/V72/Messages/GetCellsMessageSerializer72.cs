@@ -19,7 +19,6 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
 
     public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(lengths.Pop());
         writer.Encode(message.RequestId);

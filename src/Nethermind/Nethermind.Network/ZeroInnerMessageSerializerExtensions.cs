@@ -18,7 +18,7 @@ public static class ZeroInnerMessageSerializerExtensions
             try
             {
                 serializer.PopulateLength(message, ref lengths);
-                byteBuffer.EnsureWritable(lengths.Peek());
+                byteBuffer.EnsureWritable(lengths.Pop());
                 serializer.Serialize(byteBuffer, message, ref lengths);
                 Debug.Assert(lengths.Count == 0, "serializer left lengths on the stack");
             }

@@ -29,7 +29,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int contentLength = Rlp.LengthOf(item.HasBlockOnMainChain)
-                + BlockInfoDecoder.Instance.PopulateSequenceAndPeek(item.BlockInfos, ref lengths);
+                + BlockInfoDecoder.Instance.PopulateSequenceAndPop(item.BlockInfos, ref lengths);
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
 
@@ -40,7 +40,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode<TWriter>(ChainLevelInfo? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();

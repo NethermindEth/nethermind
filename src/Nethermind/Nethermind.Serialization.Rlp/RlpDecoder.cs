@@ -36,7 +36,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         try
         {
             PopulateLength(item, ref lengths, rlpBehaviors);
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(lengths.Peek());
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(lengths.Pop());
             RlpEncoderExtensions.EncodeTo(this, item, ref lengths, bytes, rlpBehaviors);
             return bytes;
         }
@@ -57,7 +57,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         try
         {
             this.PopulateSequenceLength(items, ref lengths, rlpBehaviors);
-            byte[] bytes = new byte[lengths.Peek()];
+            byte[] bytes = new byte[lengths.Pop()];
             RlpEncoderExtensions.EncodeSequenceTo(this, items, ref lengths, bytes, rlpBehaviors);
             return new Rlp(bytes);
         }
@@ -198,7 +198,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         try
         {
             PopulateLength(item, ref lengths, rlpBehaviors);
-            CappedArray<byte> buffer = bufferPool.SafeRent(lengths.Peek());
+            CappedArray<byte> buffer = bufferPool.SafeRent(lengths.Pop());
             RlpEncoderExtensions.EncodeTo(this, item, ref lengths, buffer.AsSpan(), rlpBehaviors);
             return buffer;
         }

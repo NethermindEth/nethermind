@@ -174,6 +174,7 @@ public static class EthereumEcdsaExtensions
         try
         {
             _txDecoder.PopulateTxLength(tx, ref lengths, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
+            lengths.Pop();
             _txDecoder.EncodeTx(tx, ref lengths, ref writer, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
             return writer.GetValueHash();
         }

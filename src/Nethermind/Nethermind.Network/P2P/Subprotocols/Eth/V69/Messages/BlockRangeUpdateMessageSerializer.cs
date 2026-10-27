@@ -13,7 +13,6 @@ public class BlockRangeUpdateMessageSerializer :
 
     public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(lengths.Pop());
 

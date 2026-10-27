@@ -579,7 +579,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             int maxLength = 0;
             for (int i = transactions.Length - 1; i >= 0; i--)
             {
-                maxLength = Math.Max(maxLength, _txDecoder.PopulateAndPeek(transactions[i], ref lengths, behaviors));
+                maxLength = Math.Max(maxLength, _txDecoder.PopulateAndPop(transactions[i], ref lengths, behaviors));
             }
 
             using ArrayPoolSpan<byte> rented = new(maxLength);

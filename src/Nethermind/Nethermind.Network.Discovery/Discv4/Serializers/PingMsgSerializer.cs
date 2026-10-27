@@ -19,12 +19,13 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg, ref LengthStack lengths)
     {
-        int totalLength = lengths.Pop();
+        int contentLength = lengths.Pop();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
         Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, lengths.Pop());
         Encode(ref writer, msg.DestinationAddress, msg.DestinationTcpPort, lengths.Pop());

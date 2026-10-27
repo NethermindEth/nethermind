@@ -43,7 +43,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
     public override void Encode<TWriter>(AuthorizationTuple item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         writer.Encode(item.ChainId);
         writer.Encode(item.CodeAddress);

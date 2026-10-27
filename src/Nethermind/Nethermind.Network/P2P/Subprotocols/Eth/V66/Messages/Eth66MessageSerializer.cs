@@ -22,14 +22,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
         public void PopulateLength(TEth66Message message, ref LengthStack lengths)
         {
             _ethMessageSerializer.PopulateLength(message.EthMessage, ref lengths);
-            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Peek();
+            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Pop();
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         public void Serialize(IByteBuffer byteBuffer, TEth66Message message, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
             writer.Encode(message.RequestId);

@@ -97,7 +97,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             return Rlp.LengthOf((byte)item.TxType) + FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
         }
 
-        int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
+        int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
         contentLength += Rlp.LengthOf((byte)item.TxType);
         contentLength += Rlp.LengthOf(item.GasUsedTotal);
 
@@ -131,7 +131,6 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
     public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             writer.WriteByte(Rlp.EmptyListByte);

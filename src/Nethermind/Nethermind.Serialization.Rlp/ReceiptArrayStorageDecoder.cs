@@ -45,7 +45,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         int contentLength = 0;
         for (int i = items.Length - 1; i >= 0; i--)
         {
-            contentLength += decoder.PopulateAndPeek(items[i], ref lengths, rlpBehaviors);
+            contentLength += decoder.PopulateAndPop(items[i], ref lengths, rlpBehaviors);
         }
 
         lengths.Push(contentLength);
@@ -84,7 +84,6 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
     public override void Encode<TWriter>(TxReceipt[]? items, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (items is null || items.Length == 0)
         {
             writer.WriteByte(Rlp.EmptyListByte);

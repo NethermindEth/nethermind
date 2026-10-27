@@ -83,7 +83,7 @@ public class MessageSerializationService : IMessageSerializationService
         try
         {
             zeroInnerMessageSerializer?.PopulateLength(message, ref lengths);
-            int length = zeroInnerMessageSerializer is null ? 64 : lengths.Peek() + p2pMessageLength;
+            int length = zeroInnerMessageSerializer is null ? 64 : lengths.Pop() + p2pMessageLength;
 
             allocator ??= NethermindBuffers.Default;
             IByteBuffer byteBuffer = allocator.Buffer(length);

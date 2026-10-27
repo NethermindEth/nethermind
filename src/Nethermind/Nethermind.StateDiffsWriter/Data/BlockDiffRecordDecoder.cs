@@ -32,7 +32,6 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 
     public override void Encode<TWriter>(BlockDiffRecord? item, ref LengthStack lengths, ref TWriter stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             stream.EncodeNullObject();

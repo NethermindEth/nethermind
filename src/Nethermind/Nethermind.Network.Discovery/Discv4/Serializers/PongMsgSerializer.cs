@@ -21,12 +21,13 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
             throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.", NetworkExceptionType.Discovery);
         }
 
-        int totalLength = lengths.Pop();
+        int contentLength = lengths.Pop();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(contentLength);
         Encode(ref writer, msg.FarAddress, lengths.Pop());
         ValueHash256? pingMdc = msg.PingMdc;
         writer.Encode(in pingMdc);

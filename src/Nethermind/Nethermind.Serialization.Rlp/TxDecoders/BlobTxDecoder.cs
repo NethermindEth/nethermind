@@ -62,7 +62,6 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
     internal static void EncodeTransaction<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        lengths.Pop();
         int bodyContentLength = lengths.Pop();
         ShardBlobNetworkWrapper? wrapper = (rlpBehaviors & RlpBehaviors.InMempoolForm) != 0 ? GetNetworkWrapper(transaction) : null;
 

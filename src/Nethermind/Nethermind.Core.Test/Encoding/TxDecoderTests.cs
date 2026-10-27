@@ -458,10 +458,7 @@ namespace Nethermind.Core.Test.Encoding
             public void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
                 bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
                 where TWriter : struct, IRlpWriteBackend, allows ref struct
-            {
-                lengths.Pop();
-                writer.Write(Encoding);
-            }
+                => writer.Write(Encoding);
         }
 
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()

@@ -22,15 +22,15 @@ public sealed partial class ReceiptMessageDecoder
     {
         if (typeof(TWriter) != typeof(RlpWriter) || !IsOnePass(item, rlpBehaviors)) return;
 
-        ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(lengths.Pop()));
         int contentLength = lengths.Pop();
+        int length = (item.TxType == TxType.Legacy ? 0 : 1) + Rlp.LengthOfSequence(contentLength);
+        ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(length));
 
         if (item.TxType != TxType.Legacy) destination = ref WriteByte(ref destination, (byte)item.TxType);
         destination = ref WriteSequencePrefix(ref destination, contentLength);
         destination = ref WriteStatus(ref destination, item.StatusCode);
         destination = ref WriteUInt64(ref destination, item.GasUsedTotal);
         destination = ref WriteBloom(ref destination, GetBloom(item, rlpBehaviors));
-        lengths.Pop();
         destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
         foreach (LogEntry log in item.Logs!)
             destination = ref WriteLog(ref destination, log, ref lengths);
@@ -49,7 +49,6 @@ public sealed partial class ReceiptMessageDecoder
     {
         if (log is null) return ref WriteByte(ref destination, 0xc0);
 
-        lengths.Pop();
         destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
         Address? address = log.Address;
         if (address is null)

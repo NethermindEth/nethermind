@@ -39,7 +39,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
 
@@ -137,7 +136,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 }
 
-                contentLength += _decoder.PopulateAndPeek(receipt, ref lengths, behaviors);
+                contentLength += _decoder.PopulateAndPop(receipt, ref lengths, behaviors);
             }
 
             return contentLength;

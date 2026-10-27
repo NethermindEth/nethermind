@@ -15,7 +15,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.WriteByteArrayList(message.Data);
         }

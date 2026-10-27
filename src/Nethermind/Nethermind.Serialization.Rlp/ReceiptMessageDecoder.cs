@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
                 return FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
             }
 
-            int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
+            int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
             if (!skipBloom)
                 contentLength += Rlp.LengthOf(GetBloom(item, rlpBehaviors));
@@ -166,7 +166,6 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is null)
             {
-                lengths.Pop();
                 writer.EncodeNullObject();
                 return;
             }
@@ -175,7 +174,6 @@ namespace Nethermind.Serialization.Rlp
             if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(item, ref lengths, ref writer, rlpBehaviors, ref encoded);
             if (encoded) return;
 
-            lengths.Pop();
             int totalContentLength = lengths.Pop();
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 

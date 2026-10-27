@@ -16,7 +16,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message, ref LengthStack lengths)
         {
-            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
             for (int i = 0; i < message.BlockHashes.Count; i++)

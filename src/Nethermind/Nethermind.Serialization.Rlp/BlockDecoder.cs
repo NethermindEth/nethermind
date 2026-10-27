@@ -26,21 +26,20 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoder.PopulateSequenceAndPeek(withdrawals, ref lengths) : 0;
-            contentLength += _headerDecoder.PopulateSequenceAndPeek(item.Uncles, ref lengths);
+            int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoder.PopulateSequenceAndPop(withdrawals, ref lengths) : 0;
+            contentLength += _headerDecoder.PopulateSequenceAndPop(item.Uncles, ref lengths);
             if (item.EncodedTransactions is { } encodedTxs)
             {
                 int txsLength = GetPreEncodedTxLength(item.Transactions, encodedTxs);
                 lengths.Push(txsLength);
-                lengths.Push(Rlp.LengthOfSequence(txsLength));
                 contentLength += Rlp.LengthOfSequence(txsLength);
             }
             else
             {
-                contentLength += TxDecoder.Instance.PopulateSequenceAndPeek(item.Transactions, ref lengths);
+                contentLength += TxDecoder.Instance.PopulateSequenceAndPop(item.Transactions, ref lengths);
             }
 
-            contentLength += _headerDecoder.PopulateAndPeek(item.Header, ref lengths, rlpBehaviors);
+            contentLength += _headerDecoder.PopulateAndPop(item.Header, ref lengths, rlpBehaviors);
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
@@ -81,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
             try
             {
                 PopulateLength(block, ref lengths, rlpBehaviors);
-                ArrayPoolSpan<byte> buffer = new(lengths.Peek());
+                ArrayPoolSpan<byte> buffer = new(lengths.Pop());
                 try
                 {
                     RlpEncoderExtensions.EncodeTo(this, block, ref lengths, buffer, rlpBehaviors);
@@ -101,7 +100,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode<TWriter>(Block? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();
@@ -113,7 +111,6 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.EncodedTransactions is { } encodedTxs)
             {
-                lengths.Pop();
                 writer.StartSequence(lengths.Pop());
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {

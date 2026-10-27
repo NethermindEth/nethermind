@@ -17,10 +17,7 @@ namespace Nethermind.Serialization.Rlp
         public override void PopulateLength(Hash256? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(Rlp.LengthOf(item));
 
         public override void Encode<TWriter>(Hash256? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            lengths.Pop();
-            writer.Encode(item);
-        }
+            => writer.Encode(item);
 
         public override Rlp Encode(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 

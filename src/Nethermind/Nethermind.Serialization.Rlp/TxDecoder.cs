@@ -227,7 +227,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         try
         {
             PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-            byte[] bytes = new byte[lengths.Peek()];
+            byte[] bytes = new byte[lengths.Pop()];
             EncodeTxTo(item, ref lengths, bytes, rlpBehaviors, forSigning, isEip155Enabled, chainId);
             return new Rlp(bytes);
         }
@@ -251,7 +251,6 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     {
         if (item is null)
         {
-            lengths.Pop();
             writer.WriteByte(Rlp.EmptyListByte);
             return;
         }

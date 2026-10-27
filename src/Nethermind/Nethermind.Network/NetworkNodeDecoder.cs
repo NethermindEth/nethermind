@@ -103,7 +103,6 @@ namespace Nethermind.Network
 
         public override void Encode<TWriter>(NetworkNode item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             writer.StartSequence(lengths.Pop());
             if (!ShouldEncodeNodeString(item))
             {

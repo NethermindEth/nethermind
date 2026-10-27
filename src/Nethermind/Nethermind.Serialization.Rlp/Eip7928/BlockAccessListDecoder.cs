@@ -66,7 +66,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         try
         {
             PopulateLength(sortedAccounts.AsSpan(), ref lengths, rlpBehaviors);
-            byte[] bytes = new byte[lengths.Peek()];
+            byte[] bytes = new byte[lengths.Pop()];
             EncodeTo(sortedAccounts.AsSpan(), ref lengths, bytes, rlpBehaviors);
             return bytes;
         }
@@ -88,7 +88,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         try
         {
             PopulateLength(sortedAccounts.AsSpan(), ref lengths, rlpBehaviors);
-            ArrayPoolSpan<byte> bytes = new(lengths.Peek());
+            ArrayPoolSpan<byte> bytes = new(lengths.Pop());
             try
             {
                 EncodeTo(sortedAccounts.AsSpan(), ref lengths, bytes, rlpBehaviors);
@@ -117,7 +117,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         for (int i = sortedAccounts.Length - 1; i >= 0; i--)
         {
             accountChangesDecoder.PopulateLength(sortedAccounts[i], ref lengths, rlpBehaviors);
-            contentLength += lengths.Peek();
+            contentLength += lengths.Pop();
         }
 
         lengths.Push(contentLength);
@@ -133,7 +133,6 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     private static void Encode<TWriter>(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
         for (int i = 0; i < sortedAccounts.Length; i++)

@@ -60,26 +60,22 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
 
     public override void Encode<TWriter>(TxFrameSignature item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         EncodeContent(ref writer, item, elide: false);
     }
 
-    /// <summary>Populates the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>
+    /// <summary>Pushes the content length of the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>
     public int PopulateArrayLength(TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
     {
         int contentLength = items is null ? 0 : GetArrayContentLength(items, elideCanonicalSignatureBytes);
         lengths.Push(contentLength);
-        int length = Rlp.LengthOfSequence(contentLength);
-        lengths.Push(length);
-        return length;
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     /// <summary>Writes a sequence populated by <see cref="PopulateArrayLength"/>.</summary>
     public void EncodeArray<TWriter>(TxFrameSignature[]? items, ref LengthStack lengths, ref TWriter writer, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         if (items is null) return;
 

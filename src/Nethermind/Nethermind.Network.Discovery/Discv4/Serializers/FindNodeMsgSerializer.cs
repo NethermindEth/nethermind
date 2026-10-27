@@ -16,12 +16,13 @@ public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPri
 
     public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg, ref LengthStack lengths)
     {
-        int length = lengths.Pop();
+        int contentLength = lengths.Pop();
+        int length = Rlp.LengthOfSequence(contentLength);
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(contentLength);
         writer.Encode(msg.SearchedNodeId);
         writer.Encode(msg.ExpirationTime);
 

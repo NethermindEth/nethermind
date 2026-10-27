@@ -15,8 +15,5 @@ public class UInt256Decoder : RlpDecoder<UInt256>
     protected override UInt256 DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors) => ctx.DecodeUInt256();
 
     public override void Encode<TWriter>(UInt256 item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        lengths.Pop();
-        writer.Encode(item);
-    }
+        => writer.Encode(item);
 }

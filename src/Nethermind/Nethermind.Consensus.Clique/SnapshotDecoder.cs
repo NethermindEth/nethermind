@@ -43,7 +43,6 @@ namespace Nethermind.Consensus.Clique
 
         public override void Encode<TWriter>(Snapshot item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             writer.StartSequence(lengths.Pop());
             writer.Encode(item.Number);
             writer.Encode(item.Hash);

@@ -17,7 +17,6 @@ public class StatusMessageSerializer69 :
 
     public void Serialize(IByteBuffer byteBuffer, StatusMessage69 message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(lengths.Pop());
 

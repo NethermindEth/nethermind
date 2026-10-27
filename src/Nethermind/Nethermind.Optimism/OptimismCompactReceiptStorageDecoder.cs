@@ -152,7 +152,6 @@ public class OptimismCompactReceiptStorageDecoder :
 
     public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             writer.WriteByte(Rlp.EmptyListByte);
@@ -196,7 +195,7 @@ public class OptimismCompactReceiptStorageDecoder :
             return;
         }
 
-        int contentLength = LogEntryDecoder.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
+        int contentLength = LogEntryDecoder.PopulateSequenceAndPop(GetLogs(item), ref lengths);
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
         if (isEip658Receipts)

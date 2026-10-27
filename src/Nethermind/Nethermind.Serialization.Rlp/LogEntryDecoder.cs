@@ -100,7 +100,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode<TWriter>(LogEntry? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();

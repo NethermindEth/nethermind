@@ -36,7 +36,7 @@ public static class FrameReceiptRlp
             TxFrameReceipt frameReceipt = frameReceipts[i];
             int frameLength = Rlp.LengthOf((ulong)frameReceipt.Status)
                               + Rlp.LengthOfSequence(GetGasUsedLength(frameReceipt))
-                              + logDecoder.PopulateSequenceAndPeek(frameReceipt.Logs, ref lengths);
+                              + logDecoder.PopulateSequenceAndPop(frameReceipt.Logs, ref lengths);
             lengths.Push(frameLength);
             framesLength += Rlp.LengthOfSequence(frameLength);
         }

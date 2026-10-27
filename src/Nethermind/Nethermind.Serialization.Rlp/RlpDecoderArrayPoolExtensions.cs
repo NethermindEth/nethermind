@@ -26,7 +26,7 @@ public static class RlpDecoderArrayPoolExtensions
         try
         {
             decoder.PopulateLength(item, ref lengths, rlpBehaviors);
-            ArrayPoolSpan<byte> buffer = new(lengths.Peek());
+            ArrayPoolSpan<byte> buffer = new(lengths.Pop());
             try
             {
                 RlpEncoderExtensions.EncodeTo(decoder, item, ref lengths, buffer, rlpBehaviors);
@@ -53,7 +53,7 @@ public static class RlpDecoderArrayPoolExtensions
         try
         {
             decoder.PopulateSequenceLength(items, ref lengths, behaviors);
-            ArrayPoolSpan<byte> buffer = new(lengths.Peek());
+            ArrayPoolSpan<byte> buffer = new(lengths.Pop());
             try
             {
                 RlpEncoderExtensions.EncodeSequenceTo(decoder, items, ref lengths, buffer, behaviors);
@@ -98,7 +98,7 @@ public static class RlpDecoderArrayPoolExtensions
         try
         {
             decoder.PopulateLength(item, ref lengths, rlpBehaviors);
-            int length = lengths.Peek();
+            int length = lengths.Pop();
             ArrayPoolList<byte> buffer = new(length, length);
             try
             {

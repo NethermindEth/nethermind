@@ -300,7 +300,6 @@ public class RlpDecoderTests
         public override void Encode<TWriter>(NonNullableItem item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            lengths.Pop();
             writer.Encode(Rlp.OfEmptyByteArray);
         }
 

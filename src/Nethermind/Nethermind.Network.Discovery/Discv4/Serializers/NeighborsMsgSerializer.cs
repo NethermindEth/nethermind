@@ -44,12 +44,13 @@ public sealed class NeighborsMsgSerializer(
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg, ref LengthStack lengths)
     {
-        int totalLength = lengths.Pop();
+        int contentLength = lengths.Pop();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(contentLength);
         if (msg.Nodes.Count != 0)
         {
             writer.StartSequence(lengths.Pop());

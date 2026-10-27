@@ -20,12 +20,13 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
 
     public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg, ref LengthStack lengths)
     {
-        int totalLength = lengths.Pop();
+        int contentLength = lengths.Pop();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(lengths.Pop());
+        writer.StartSequence(contentLength);
         writer.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(ref writer);
 

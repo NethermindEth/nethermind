@@ -23,7 +23,7 @@ public abstract class BaseEIP1559TxDecoder(TxType txType, Func<Transaction>? tra
         Rlp.LengthOf(transaction.ChainId ?? 0)
         + GetLegacyFieldsLength(transaction)
         + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + AccessListDecoder.Instance.PopulateAndPeek(transaction.AccessList, ref lengths);
+        + AccessListDecoder.Instance.PopulateAndPop(transaction.AccessList, ref lengths);
 
     protected static void EncodeEip1559Fields<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct

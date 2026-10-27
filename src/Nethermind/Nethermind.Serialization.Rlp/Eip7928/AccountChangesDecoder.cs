@@ -78,11 +78,11 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     {
         ArgumentNullException.ThrowIfNull(item);
         int contentLength = Rlp.LengthOfAddressRlp
-            + CodeChangeDecoder.Instance.PopulateSequenceAndPeek(item.CodeChanges, ref lengths, rlpBehaviors)
-            + NonceChangeDecoder.Instance.PopulateSequenceAndPeek(item.NonceChanges, ref lengths, rlpBehaviors)
-            + BalanceChangeDecoder.Instance.PopulateSequenceAndPeek(item.BalanceChanges, ref lengths, rlpBehaviors)
-            + UInt256Decoder.Instance.PopulateSequenceAndPeek(item.StorageReads, ref lengths, rlpBehaviors)
-            + SlotChangesDecoder.Instance.PopulateSequenceAndPeek(item.StorageChanges, ref lengths, rlpBehaviors);
+            + CodeChangeDecoder.Instance.PopulateSequenceAndPop(item.CodeChanges, ref lengths, rlpBehaviors)
+            + NonceChangeDecoder.Instance.PopulateSequenceAndPop(item.NonceChanges, ref lengths, rlpBehaviors)
+            + BalanceChangeDecoder.Instance.PopulateSequenceAndPop(item.BalanceChanges, ref lengths, rlpBehaviors)
+            + UInt256Decoder.Instance.PopulateSequenceAndPop(item.StorageReads, ref lengths, rlpBehaviors)
+            + SlotChangesDecoder.Instance.PopulateSequenceAndPop(item.StorageChanges, ref lengths, rlpBehaviors);
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
@@ -94,9 +94,9 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     public void PopulateLength(GeneratedAccountChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = Rlp.LengthOfAddressRlp
-            + CodeChangeDecoder.Instance.PopulateSequenceAndPeek(CollectionsMarshal.AsSpan(item.CodeChanges), ref lengths, rlpBehaviors)
-            + NonceChangeDecoder.Instance.PopulateSequenceAndPeek(CollectionsMarshal.AsSpan(item.NonceChanges), ref lengths, rlpBehaviors)
-            + BalanceChangeDecoder.Instance.PopulateSequenceAndPeek(CollectionsMarshal.AsSpan(item.BalanceChanges), ref lengths, rlpBehaviors)
+            + CodeChangeDecoder.Instance.PopulateSequenceAndPop(CollectionsMarshal.AsSpan(item.CodeChanges), ref lengths, rlpBehaviors)
+            + NonceChangeDecoder.Instance.PopulateSequenceAndPop(CollectionsMarshal.AsSpan(item.NonceChanges), ref lengths, rlpBehaviors)
+            + BalanceChangeDecoder.Instance.PopulateSequenceAndPop(CollectionsMarshal.AsSpan(item.BalanceChanges), ref lengths, rlpBehaviors)
             + PushSequenceLength(UInt256ContentLength(item.StorageReads), ref lengths)
             + PushSequenceLength(GeneratedSlotChangesContentLength(item.StorageChanges, rlpBehaviors), ref lengths);
         lengths.Push(contentLength);
@@ -106,7 +106,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     public override void Encode<TWriter>(ReadOnlyAccountChanges item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         writer.Encode(item.Address);
         SlotChangesDecoder.Instance.EncodeSequence(item.StorageChanges, ref lengths, ref writer, rlpBehaviors);
@@ -119,22 +118,20 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     public void Encode<TWriter>(GeneratedAccountChanges item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         writer.Encode(item.Address);
 
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         using (ArrayPoolListRef<GeneratedSlotChanges> sortedSlots = item.GetSortedStorageChanges())
         {
             foreach (GeneratedSlotChanges slotChanges in sortedSlots.AsSpan())
             {
                 SlotChangesDecoder.Instance.PopulateLength(slotChanges, ref lengths, rlpBehaviors);
+                lengths.Pop();
                 SlotChangesDecoder.Instance.Encode(slotChanges, ref lengths, ref writer, rlpBehaviors);
             }
         }
 
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         using (ArrayPoolListRef<UInt256> sortedReads = item.GetSortedStorageReads())
         {
@@ -152,9 +149,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
     private static int PushSequenceLength(int contentLength, ref LengthStack lengths)
     {
         lengths.Push(contentLength);
-        int length = Rlp.LengthOfSequence(contentLength);
-        lengths.Push(length);
-        return length;
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static int GeneratedSlotChangesContentLength(IReadOnlyCollection<GeneratedSlotChanges> items, RlpBehaviors rlpBehaviors)

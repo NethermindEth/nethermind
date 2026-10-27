@@ -46,7 +46,6 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
     internal static void EncodeTransaction<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, bool forSigning, bool isEip155Enabled, ulong chainId)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
         EncodeLegacyFields(transaction, ref writer);
 

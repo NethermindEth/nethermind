@@ -58,7 +58,6 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
 
     public override void Encode<TWriter>(L1Origin item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         writer.StartSequence(lengths.Pop());
 
         writer.Encode(item.BlockId);

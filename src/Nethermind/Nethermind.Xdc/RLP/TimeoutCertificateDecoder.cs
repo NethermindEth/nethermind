@@ -58,7 +58,6 @@ public sealed class TimeoutCertificateDecoder : RlpDecoder<TimeoutCertificate>
 
     public override void Encode<TWriter>(TimeoutCertificate item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();

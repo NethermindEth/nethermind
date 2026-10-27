@@ -36,7 +36,6 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
 
     public override void Encode<TWriter>(T item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        lengths.Pop();
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
         writer.StartSequence(lengths.Pop());
         writer.Encode(item.Index);

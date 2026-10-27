@@ -38,7 +38,6 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message, ref LengthStack lengths)
     {
-        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(lengths.Pop());
         writer.Encode(message.RequestId);

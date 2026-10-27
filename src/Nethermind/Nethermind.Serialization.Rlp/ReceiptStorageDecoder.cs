@@ -131,7 +131,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            lengths.Pop();
             if (item is null)
             {
                 writer.WriteByte(Rlp.EmptyListByte);
@@ -213,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += FrameReceiptRlp.PopulateStoredExtensionLength(item, LogEntryDecoder.Instance, ref lengths);
             }
 
-            contentLength += LogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
+            contentLength += LogEntryDecoder.Instance.PopulateSequenceAndPop(GetLogs(item), ref lengths);
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
 
