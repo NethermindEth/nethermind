@@ -7,7 +7,6 @@ using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -123,10 +122,8 @@ public class UInt256Converter : JsonConverter<UInt256>
                 HexWriter.WriteUInt256HexRawValue(writer, value);
                 break;
             case NumberConversion.Decimal:
-                writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
-                break;
             case NumberConversion.Raw:
-                writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
+                WriteDecimalValue(writer, value, conversion);
                 break;
             case NumberConversion.ZeroPaddedHex:
                 HexWriter.WriteUInt256HexRawValue(writer, value, zeroPadded: true);
@@ -148,10 +145,8 @@ public class UInt256Converter : JsonConverter<UInt256>
                 HexWriter.WriteUInt256HexPropertyName(writer, value);
                 break;
             case NumberConversion.Decimal:
-                writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
-                break;
             case NumberConversion.Raw:
-                writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
+                WriteDecimalPropertyName(writer, value);
                 break;
             case NumberConversion.ZeroPaddedHex:
                 HexWriter.WriteUInt256HexPropertyName(writer, value, zeroPadded: true);
@@ -159,6 +154,25 @@ public class UInt256Converter : JsonConverter<UInt256>
             default:
                 throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");
         }
+    }
+
+    private static void WriteDecimalValue(Utf8JsonWriter writer, UInt256 value, NumberConversion conversion)
+    {
+        Span<byte> buffer = stackalloc byte[maxLength];
+        bool formatted = value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted);
+        if (conversion == NumberConversion.Decimal)
+            writer.WriteRawValue(buffer[..written]);
+        else
+            writer.WriteStringValue(buffer[..written]);
+    }
+
+    private static void WriteDecimalPropertyName(Utf8JsonWriter writer, UInt256 value)
+    {
+        Span<byte> buffer = stackalloc byte[maxLength];
+        bool formatted = value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture);
+        Debug.Assert(formatted);
+        writer.WritePropertyName(buffer[..written]);
     }
 
     [DoesNotReturn, StackTraceHidden]
