@@ -213,24 +213,40 @@ public class GethTraceOptionsDeserializationTests
         Assert.That(options.DisableStack, Is.True);
     }
 
-    [Test]
-    public void ByNumber_null_normalization_uses_supplied_property_metadata()
+    [TestCase(nameof(GethTraceOptions.Limit), "2")]
+    [TestCase(nameof(GethTraceOptions.DisableStorage), "true")]
+    [TestCase(nameof(GethTraceOptions.EnableReturnData), "true")]
+    [TestCase(nameof(GethTraceOptions.DisableStack), "true")]
+    [TestCase(nameof(GethTraceOptions.EnableMemory), "true")]
+    public void ByNumber_null_normalization_uses_supplied_property_metadata(string propertyName, string value)
     {
-        IJsonTypeInfoResolver resolver = EthereumJsonSerializer.JsonRpcRequestOptions.TypeInfoResolver!.WithAddedModifier(static typeInfo =>
+        IJsonTypeInfoResolver resolver = EthereumJsonSerializer.JsonRpcRequestOptions.TypeInfoResolver!.WithAddedModifier(typeInfo =>
         {
             if (typeInfo.Type != typeof(GethTraceOptionsConverter.WireOptions)) return;
             typeInfo.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
             foreach (JsonPropertyInfo property in typeInfo.Properties)
-                if (property.AttributeProvider is PropertyInfo { Name: nameof(GethTraceOptions.Limit) }) property.Name = "budget";
+                if (property.AttributeProvider is PropertyInfo info && info.Name == propertyName) property.Name = "budget";
         });
         JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions(resolver);
 
-        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{\"budget\":2,\"budget\":null}", serializerOptions)!;
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers("budget", $"{value},null"), serializerOptions)!;
 
+        using JsonDocument serialized = JsonDocument.Parse(JsonSerializer.Serialize(options, serializerOptions));
+
+        object actual = propertyName switch
+        {
+            nameof(GethTraceOptions.Limit) => options.Limit,
+            nameof(GethTraceOptions.DisableStorage) => options.DisableStorage,
+            nameof(GethTraceOptions.EnableReturnData) => options.EnableReturnData,
+            nameof(GethTraceOptions.DisableStack) => options.DisableStack,
+            _ => options.EnableMemory
+        };
+        object expected = propertyName == nameof(GethTraceOptions.Limit) ? 2L : true;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(options.Limit, Is.EqualTo(2));
-            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>("{\"limit\":null}", serializerOptions));
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(serialized.RootElement.GetProperty("budget").GetRawText(), Is.EqualTo(value));
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers(JsonNamingPolicy.CamelCase.ConvertName(propertyName), "null"), serializerOptions));
         }
     }
 
@@ -259,6 +275,12 @@ public class GethTraceOptionsDeserializationTests
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>("{\"enableMemory\":null}", serializerOptions));
     }
 
+    [TestCase("disableStorage", "{}")]
+    [TestCase("enableReturnData", "{}")]
+    [TestCase("enableMemory", "{}")]
+    [TestCase("disableStack", "{},true")]
+    [TestCase("limit", "\"bad\",2")]
+    [TestCase("limit", "9223372036854775808,2")]
     [TestCase("disableStack", "{}")]
     [TestCase("limit", "\"bad\"")]
     public void ByNumber_null_normalization_preserves_invalid_earlier_tokens(string property, string invalid) =>
@@ -371,11 +393,22 @@ public class GethTraceOptionsDeserializationTests
     [TestCase("2,3,null", 3)]
     public void ByNumber_null_limit_does_not_replace_the_previous_value(string values, long expected)
     {
-        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers("limit", values), CreateByNumberSerializerOptions())!;
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers("limit", values), serializerOptions)!;
+        GethTraceOptions copy = options with { Limit = expected + 1 };
+        using JsonDocument serialized = JsonDocument.Parse(JsonSerializer.Serialize(copy, serializerOptions));
 
-        Assert.That(options.Limit, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.Limit, Is.EqualTo(expected));
+            Assert.That(serialized.RootElement.GetProperty("limit").GetInt64(), Is.EqualTo(expected + 1), "record copies must serialize their current values");
+        }
     }
 
+    [TestCase("txHash", "{\"txHash\":\"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"txHash\":null}")]
+    [TestCase("tracerConfig", "{\"tracerConfig\":{},\"tracerConfig\":null}")]
+    [TestCase("stateOverrides", "{\"stateOverrides\":{},\"stateOverrides\":null}")]
+    [TestCase("blockOverrides", "{\"blockOverrides\":{},\"blockOverrides\":null}")]
     [TestCase("timeout", "{\"timeout\":\"5s\",\"timeout\":null}")]
     [TestCase("tracer", "{\"tracer\":\"noopTracer\",\"tracer\":null}")]
     [TestCase("txIndex", "{\"txIndex\":\"0x2\",\"txIndex\":null}")]
@@ -389,6 +422,10 @@ public class GethTraceOptionsDeserializationTests
             "timeout" => options.Timeout,
             "tracer" => options.Tracer,
             "streamMode" => options.StreamMode,
+            "txHash" => options.TxHash,
+            "tracerConfig" => options.TracerConfig,
+            "stateOverrides" => options.StateOverrides,
+            "blockOverrides" => options.BlockOverrides,
             _ => options.TxIndex
         };
         Assert.That(actual, Is.Null);
