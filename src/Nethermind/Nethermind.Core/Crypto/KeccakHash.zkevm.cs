@@ -508,8 +508,10 @@ public sealed partial class KeccakHash
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         ref ulong first = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
 
-        fixed (byte* data = node)
+        fixed (byte* pinned = node)
         {
+            // An array's elements start on a word boundary; rounding says so to the JIT.
+            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
             // The later states are addressed off the first rather than held: the keying loop has no registers to keep them in.
             ZeroCapacity(ref first);
             AbsorbBlock(ref first, data, intoZeroState: true);
@@ -537,8 +539,10 @@ public sealed partial class KeccakHash
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         nuint length = (nuint)node.Length;
 
-        fixed (byte* data = node)
+        fixed (byte* pinned = node)
         {
+            // An array's elements start on a word boundary; rounding says so to the JIT.
+            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
             ZeroCapacity(ref retained);
             AbsorbBlock(ref retained, data, intoZeroState: true);
             Accelerators.KeccakF(ref retained);
@@ -812,7 +816,8 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
-        if (intoZeroState)
+        // SP1 has no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes.
+        if (intoZeroState && !Sp1Flag.IsActive)
         {
             // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
             // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
