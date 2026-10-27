@@ -12,6 +12,7 @@ using System.Threading.Channels;
 using Autofac;
 using DotNetty.Buffers;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Api;
@@ -54,6 +55,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.Extensions;
 using ISession = Nethermind.Network.P2P.ISession;
 using Eth62Messages = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Eth66Messages = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -352,6 +354,100 @@ public class TransportTests
             Assert.That(second.Bloom, Is.Not.SameAs(first.Bloom).And.Not.SameAs(peers.Header.Bloom));
             Assert.That(second.Bloom!.ReadOnlyBytes.ToArray(), Is.EqualTo(bloom));
             Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1 }));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task History_short_prefixes_complete_within_the_production_peer_budget(
+        [Values(0, 400)] int responseDelayMs, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using CancellationTokenSource reading = CancellationTokenSource.CreateLinkedTokenSource(token);
+        BlockHeader[] chain = new BlockHeader[701];
+        for (int i = 0; i < chain.Length; i++)
+        {
+            BlockHeader header = EmptyHeader();
+            header.Number = (ulong)i;
+            header.ParentHash = i == 0 ? Keccak.Zero : chain[i - 1].Hash!;
+            header.StateRoot = Keccak.EmptyTreeHash;
+            header.Bloom = Bloom.Empty;
+            header.Hash = header.CalculateHash();
+            chain[i] = header;
+        }
+        BlockHeader anchor = chain[600];
+        ExecutionPeer peer = peers.Ordered[0];
+        peer.SyncPeer.HeadNumber = 600;
+        peer.SyncPeer.HeadHash = anchor.Hash!;
+        peer.SyncPeer.Configure().GetHeadBlockHeader(Arg.Is<Hash256?>(hash => hash == anchor.Hash), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<BlockHeader?>(anchor));
+        Channel<bool> responseDelays = Channel.CreateUnbounded<bool>();
+        TaskCompletionSource interrupted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TimeSpan responseDelay = TimeSpan.FromMilliseconds(responseDelayMs);
+        int pageRequests = 0;
+        peer.SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                ulong number = call.ArgAt<ulong>(0);
+                int count = Math.Min(17, call.ArgAt<int>(1));
+                CancellationToken cancellation = call.ArgAt<CancellationToken>(3);
+                Interlocked.Increment(ref pageRequests);
+                Task delay = Task.Delay(responseDelay, peers.Clock, cancellation);
+                responseDelays.Writer.TryWrite(true);
+                try { await delay; }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    interrupted.TrySetResult();
+                    throw;
+                }
+                BlockHeader[] headers = chain.AsSpan(checked((int)number), count).ToArray();
+                return (IOwnedReadOnlyList<BlockHeader>?)new TrackedResponse<BlockHeader>(headers,
+                    () => Interlocked.Increment(ref peer.ResponsesDisposed));
+            });
+        VerifiedHead finalized = new(600, anchor.Number, anchor.Hash!, anchor.StateRoot!);
+        Task<BlockHeader[]> query = peers.Transport.GetLogHeadersAsync(finalized, finalized, 100, 598, caller.Token);
+        Task<bool>? pendingRead = null;
+        try
+        {
+            while (true)
+            {
+                pendingRead = responseDelays.Reader.ReadAsync(reading.Token).AsTask();
+                Task completed = await Task.WhenAny(query, pendingRead, interrupted.Task);
+                Assert.That(interrupted.Task.IsCompleted, Is.False,
+                    $"The production 10-second peer deadline interrupted an active legal prefix response before the history page completed; firstVerified={peers.Transport.LogHistoryProgress.FirstVerifiedBlock}.");
+                if (ReferenceEquals(completed, query)) break;
+                await pendingRead;
+                pendingRead = null;
+                peers.Clock.Advance(responseDelay);
+            }
+            BlockHeader[] headers = await query;
+            HistoryProgress progress = peers.Transport.LogHistoryProgress;
+            MemoryCache cooldowns = (MemoryCache)typeof(ExecutionPeerTransport)
+                .GetField("_peerCooldowns", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(headers, Has.Length.EqualTo(499));
+                Assert.That(headers.Select(header => (header.Number, header.Hash, header.ParentHash, header.StateRoot)),
+                    Is.EqualTo(chain.Skip(100).Take(499)
+                        .Select(header => (header.Number, header.Hash, header.ParentHash, header.StateRoot))));
+                Assert.That(pageRequests, Is.GreaterThan(0));
+                Assert.That(peer.ResponsesDisposed, Is.EqualTo(pageRequests));
+                Assert.That(progress.FirstVerifiedBlock, Is.EqualTo(100));
+                Assert.That(progress.LastVerifiedBlock, Is.EqualTo(600));
+                Assert.That(progress.Error, Is.Null);
+                Assert.That(cooldowns.Count, Is.Zero);
+                Assert.That(peers.Pool.AllPeers.Select(info => info.SleepingContexts), Is.EqualTo(new[] { AllocationContexts.None }));
+            }
+        }
+        finally
+        {
+            reading.Cancel();
+            caller.Cancel();
+            if (pendingRead is not null)
+                await ((Task)pendingRead).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await peers.DisposeAsync();
+            await ((Task)query).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
     }
 

@@ -59,6 +59,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private const int ExecutionRequestLimit = 4;
     private const int ExecutionBulkLimit = ExecutionRequestLimit - 1;
     private const int SnapRequestLimit = 8;
+    private static readonly HeaderDecoder _logHeaderDecoder = new();
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
@@ -590,23 +591,30 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal static async Task<BlockHeader[]> ReadLogHeaderPageAsync(ISyncPeer peer, BlockHeader cursor, int count,
         CancellationToken cancellationToken)
     {
-        int responseCount;
-        using (IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(cursor.Number - (ulong)count, count, 0, cancellationToken))
+        if (count is < 1 or > VerifiedHeaderHistory.PageSize || cursor.Number < (ulong)count)
+            throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
+        BlockHeader[] result = new BlockHeader[count];
+        ulong first = cursor.Number - (ulong)count;
+        int received = 0;
+        while (received < count)
         {
-            if (headers is null || headers.Count == 0 || headers.Count > count)
+            cancellationToken.ThrowIfCancellationRequested();
+            int requested = count - received;
+            using IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(first + (ulong)received, requested, 0, cancellationToken);
+            if (headers is null || headers.Count == 0 || headers.Count > requested)
                 throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
-            responseCount = headers.Count;
-            if (responseCount == count)
+            for (int i = 0; i < headers.Count; i++)
             {
-                BlockHeader[] result = new BlockHeader[count];
-                for (int i = 0; i < count; i++) result[i] = headers[i];
-                VerifiedHeaderHistory.VerifyPage(cursor, count, result);
-                return result;
+                BlockHeader header = headers[i];
+                if (header is null || header.Number != first + (ulong)(received + i)
+                    || _logHeaderDecoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes)
+                    throw new InvalidDataException("Execution peer supplied an invalid log header page.");
+                result[received + i] = header;
             }
+            received += headers.Count;
         }
-        BlockHeader[] newer = await ReadLogHeaderPageAsync(peer, cursor, responseCount, cancellationToken);
-        BlockHeader[] older = await ReadLogHeaderPageAsync(peer, newer[0], count - responseCount, cancellationToken);
-        return [.. older, .. newer];
+        VerifiedHeaderHistory.VerifyPage(cursor, count, result);
+        return result;
     }
 
     private async Task<BlockHeader[]> ReadTransientLogHeadersAsync(VerifiedHead anchor, ulong first, ulong last,

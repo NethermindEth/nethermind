@@ -299,42 +299,132 @@ public class VerifiedHeaderHistoryTests
         Assert.That(() => VerifiedHeaderHistory.VerifyPage(chain.Headers[200], 128, page), Throws.TypeOf<InvalidDataException>());
     }
 
-    [TestCase(1, "success")]
-    [TestCase(17, "success")]
-    [TestCase(128, "success")]
-    [TestCase(17, "failure")]
-    [TestCase(17, "cancel")]
-    public async Task Native_short_pages_release_their_owner_before_the_next_request(
-        int limit, string outcome)
+    [TestCaseSource(nameof(HeaderPageLimits))]
+    public async Task Native_header_pages_keep_each_received_prefix(
+        int[] responseLimits)
     {
-        Chain chain = new(200);
+        Chain chain = new(700);
         List<TrackedHeaders> responses = [];
-        using CancellationTokenSource stop = new();
-        HeaderPeer peer = new((number, requested, token) =>
-            {
-                Assert.That(responses, Is.All.Matches<TrackedHeaders>(item => item is { Disposed: true }),
-                    "A response must be released before another page is requested.");
-                if (responses.Count > 0 && outcome == "cancel")
-                {
-                    stop.Cancel();
-                    return Task.FromCanceled<IOwnedReadOnlyList<BlockHeader>?>(stop.Token);
-                }
-                int count = Math.Min(limit, requested);
-                TrackedHeaders response = new(outcome == "failure" && responses.Count > 0 ? [] : chain.Headers
-                    .Skip(checked((int)number)).Take(count).ToArray());
-                responses.Add(response);
-                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(response);
-            });
-        Task<BlockHeader[]> request = ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, chain.Headers[200], 128, stop.Token);
-        if (outcome == "failure") Assert.That(async () => await request, Throws.TypeOf<InvalidDataException>());
-        else if (outcome == "cancel" && limit < 128)
-            Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
-        else AssertHeaders(await request, chain, 72, 199);
-        using (Assert.EnterMultipleScope())
+        List<(ulong Number, int Requested)> requests = [];
+        HeaderPeer peer = new((number, requested, _) =>
         {
-            Assert.That(responses, Is.All.Matches<TrackedHeaders>(item => item is { Disposed: true }));
-            Assert.That(responses.Count, Is.LessThanOrEqualTo(255));
+            Assert.That(responses, Is.All.Matches<TrackedHeaders>(item => item is { Disposed: true }),
+                "A response must be released before another page is requested.");
+            int count = Math.Min(responseLimits[requests.Count % responseLimits.Length], requested);
+            requests.Add((number, requested));
+            TrackedHeaders response = new(chain.Headers.Skip(checked((int)number)).Take(count).ToArray());
+            responses.Add(response);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(response);
+        });
+
+        BlockHeader[] result = await ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, chain.Headers[600], 128,
+            CancellationToken.None);
+
+        AssertHeaders(result, chain, 472, 599);
+        ulong[] expectedNumbers;
+        int[] expectedRequests;
+        if (responseLimits.Length == 1)
+        {
+            int effectiveLimit = responseLimits[0];
+            int count = (128 + effectiveLimit - 1) / effectiveLimit;
+            expectedNumbers = Enumerable.Range(0, count).Select(index => 472UL + (ulong)(index * effectiveLimit)).ToArray();
+            expectedRequests = Enumerable.Range(0, count).Select(index => 128 - index * effectiveLimit).ToArray();
         }
+        else
+        {
+            expectedNumbers = [472, 489, 520, 521, 538, 569, 570, 587];
+            expectedRequests = [128, 111, 80, 79, 62, 31, 30, 13];
+        }
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(requests.Count, Is.EqualTo(expectedNumbers.Length));
+        Assert.That(requests.Select(request => request.Number), Is.EqualTo(expectedNumbers), "No received prefix may be requested again.");
+        Assert.That(requests.Select(request => request.Requested), Is.EqualTo(expectedRequests));
+        Assert.That(responses, Is.All.Matches<TrackedHeaders>(item => item is { Disposed: true }));
+    }
+
+    private static IEnumerable<TestCaseData> HeaderPageLimits()
+    {
+        foreach (int responseLimit in new[] { 1, 17, 128 })
+            yield return new(new[] { responseLimit });
+        yield return new(new[] { 17, 31, 1 });
+    }
+
+    [TestCaseSource(nameof(HeaderPageFailures))]
+    public async Task Native_header_pages_reject_invalid_segments_and_release_every_owner(string failure, bool afterPrefix)
+    {
+        Chain chain = new(700);
+        BlockHeader cursor = chain.Headers[600].Clone();
+        if (failure == "anchor") cursor.ParentHash = Keccak.Zero;
+        List<TrackedHeaders> responses = [];
+        List<(ulong Number, int Requested)> requests = [];
+        using CancellationTokenSource stop = new();
+        bool injected = false;
+        HeaderPeer peer = new((number, requested, _) =>
+        {
+            Assert.That(responses, Is.All.Matches<TrackedHeaders>(item => item is { Disposed: true }),
+                "A response must be released before another page is requested.");
+            requests.Add((number, requested));
+            BlockHeader[] headers = chain.Headers.Skip(checked((int)number)).Take(Math.Min(17, requested)).ToArray();
+            if (!injected && (!afterPrefix || requests.Count > 1))
+            {
+                injected = true;
+                switch (failure)
+                {
+                    case "null": return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(null);
+                    case "empty": headers = []; break;
+                    case "over-count": headers = chain.Headers.Skip(checked((int)number)).Take(requested + 1).ToArray(); break;
+                    case "cancel":
+                        stop.Cancel();
+                        return Task.FromCanceled<IOwnedReadOnlyList<BlockHeader>?>(stop.Token);
+                    case "null-header": headers[0] = null!; break;
+                    case "number": headers[0] = headers[0].Clone(); headers[0].Number++; break;
+                    case "oversize": headers[0] = headers[0].Clone(); headers[0].ExtraData = new byte[VerifiedHeaderHistory.MaxHeaderBytes]; break;
+                    case "hash": headers[0] = headers[0].Clone(); headers[0].Hash = Keccak.Zero; break;
+                }
+            }
+            TrackedHeaders response = new(headers);
+            responses.Add(response);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(response);
+        });
+
+        Task<BlockHeader[]> request = ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, cursor, 128, stop.Token);
+        if (failure == "cancel") Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+        else Assert.That(async () => await request, Throws.TypeOf<InvalidDataException>());
+
+        Assert.That(requests.Count, Is.GreaterThanOrEqualTo(afterPrefix ? 2 : 1));
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(injected, Is.True);
+        Assert.That(requests.Count, Is.EqualTo(failure is "hash" or "anchor" ? 8 : afterPrefix ? 2 : 1),
+            "Invalid size/shape must stop retention immediately; an intrinsically shaped forged chain must reach final anchored verification.");
+        Assert.That(requests[0], Is.EqualTo((472UL, 128)));
+        if (afterPrefix) Assert.That(requests[1], Is.EqualTo((489UL, 111)));
+        Assert.That(responses, Is.All.Matches<TrackedHeaders>(item => item is { Disposed: true }));
+    }
+
+    private static IEnumerable<TestCaseData> HeaderPageFailures()
+    {
+        foreach (string failure in new[] { "null", "empty", "over-count", "null-header", "number", "oversize", "hash", "cancel" })
+            foreach (bool afterPrefix in new[] { false, true })
+                yield return new(failure, afterPrefix);
+        yield return new("anchor", false);
+    }
+
+    [TestCase(0, 600UL)]
+    [TestCase(129, 600UL)]
+    [TestCase(128, 127UL)]
+    public void Native_header_page_bounds_reject_before_requesting(int count, ulong cursorNumber)
+    {
+        Chain chain = new(700);
+        int requests = 0;
+        HeaderPeer peer = new((_, _, _) =>
+        {
+            requests++;
+            throw new AssertionException("An invalid page must not reach the peer.");
+        });
+
+        Assert.That(async () => await ExecutionPeerTransport.ReadLogHeaderPageAsync(peer, chain.Headers[cursorNumber], count,
+            CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+        Assert.That(requests, Is.Zero);
     }
 
     private static VerifiedHeaderHistory Create(Chain chain, IDb db, int capacity = 1024, TimeProvider? clock = null) =>
