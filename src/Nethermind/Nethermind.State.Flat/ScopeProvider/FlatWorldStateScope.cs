@@ -217,6 +217,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
+    /// <summary>A trie-less scope never rehashes storage, so an account it wrote storage to keeps its old root.</summary>
+    public bool StorageRootsAreAuthoritative => !_trieless;
+
     public void UpdateRootHash()
     {
         if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
@@ -746,13 +749,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (_storages.Count == 0) return;
 
-        using ArrayPoolList<FlatStorageTree> dirty = new(_storages.Count);
-        foreach (FlatStorageTree storage in _storages.Values)
+        using Dictionary<AddressAsKey, FlatStorageTree>.ValueCollection.Enumerator storages = _storages.Values.GetEnumerator();
+        do
         {
+            if (!storages.MoveNext()) return;
+        } while (!storages.Current.HasUncommittedNodes);
+
+        using ArrayPoolList<FlatStorageTree> dirty = new(_storages.Count) { storages.Current };
+        while (storages.MoveNext())
+        {
+            FlatStorageTree storage = storages.Current;
             if (storage.HasUncommittedNodes) dirty.Add(storage);
         }
-
-        if (dirty.Count == 0) return;
 
         if (dirty.Count == 1 || Core.Cpu.RuntimeInformation.IsSingleProcessor)
         {

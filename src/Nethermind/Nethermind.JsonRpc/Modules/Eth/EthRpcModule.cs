@@ -254,17 +254,19 @@ public partial class EthRpcModule(
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
         int bufferOffset = 0;
+        using ArrayPoolSpan<UInt256> storageValues = new(requests.TotalSlots);
 
         Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
         foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
         {
             UInt256[] slotKeys = entry.Value;
+            Span<UInt256> storage = storageValues.Slice(0, slotKeys.Length);
+            _stateReader.GetStorage(header, entry.Key, slotKeys, storage);
             Memory<byte>[] values = new Memory<byte>[slotKeys.Length];
             for (int i = 0; i < slotKeys.Length; i++)
             {
-                _stateReader.GetStorage(header, entry.Key, in slotKeys[i], out UInt256 storage);
                 Memory<byte> slot = buffer.AsMemory(bufferOffset, 32);
-                storage.ToBigEndian(slot.Span);
+                storage[i].ToBigEndian(slot.Span);
                 values[i] = slot;
                 bufferOffset += 32;
             }
@@ -1015,8 +1017,7 @@ public partial class EthRpcModule(
         if (filterId > int.MaxValue)
             return ResultWrapper<bool?>.Success(false);
 
-        _blockchainBridge.UninstallFilter((int)filterId);
-        return ResultWrapper<bool?>.Success(true);
+        return ResultWrapper<bool?>.Success(_blockchainBridge.UninstallFilter((int)filterId));
     }
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
@@ -1067,9 +1068,9 @@ public partial class EthRpcModule(
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException)
+        catch (ResourceNotFoundException e)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetLogsFailure(e);
         }
         finally
         {
@@ -1141,9 +1142,9 @@ public partial class EthRpcModule(
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
         }
-        catch (ResourceNotFoundException)
+        catch (ResourceNotFoundException e)
         {
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetLogsFailure(e);
         }
         finally
         {
@@ -1153,6 +1154,11 @@ public partial class EthRpcModule(
             }
         }
     }
+
+    // While receipts sync, the processed head can trail the synced headers, so a missing block is reported as not synced yet.
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogsFailure(ResourceNotFoundException e) => e is BlockNotProcessedException && !_ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet()
+        ? ResultWrapper<IEnumerable<FilterLog>>.Fail(e.Message, ErrorCodes.ResourceNotFound)
+        : ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
 
     // https://github.com/ethereum/EIPs/issues/1186
     public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)

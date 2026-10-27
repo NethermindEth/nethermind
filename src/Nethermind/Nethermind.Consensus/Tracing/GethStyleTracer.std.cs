@@ -23,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing;
@@ -164,9 +165,7 @@ public class GethStyleTracer(
         if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
         options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
         if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
-        IReleaseSpec overrideSpec = callSpec.WithoutEip158();
-        state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
-        state.Commit(overrideSpec);
+        state.ApplyStateOverrides(codeInfoRepository, options.StateOverrides, callSpec, tracedBlock.Header.Number, merkleize: false);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
             // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
@@ -304,6 +303,29 @@ public class GethStyleTracer(
         return tracer.BuildResult();
     }
 
+    public StorageRangeVisitor StorageRangeAt(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken)
+    {
+        if (block.IsGenesis) throw new GenesisNotTraceableException();
+        if ((uint)txIndex >= (uint)Math.Max(block.Transactions.Length, 1)) throw new ArgumentOutOfRangeException(nameof(txIndex));
+
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header);
+        // Chains whose block processor cannot stop before a transaction (AuRa, Taiko) do not install the trace executor.
+        if (scope.Component.TraceExecutor is null) throw new NotSupportedException("Replaying a block up to a transaction is not supported on this chain.");
+        TransactionTraceBoundary boundary = TransactionTraceBoundary.BeforeTransaction(NullBlockTracer.Instance.WithCancellation(cancellationToken), block, txIndex);
+        scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
+        // A processor that must build the full block access list executes the whole block, past the boundary.
+        if (!boundary.HasExecuted) throw new InvalidOperationException($"Block {block.Hash} was replayed past transaction {txIndex}, so the state before it is not available.");
+
+        // The prefix state is committed into the environment's overlay so that its tries can be walked.
+        IWorldState worldState = scope.Component.WorldState;
+        worldState.Commit(specProvider.GetSpec(block.Header), commitRoots: true);
+        worldState.CommitTree(block.Number);
+        BlockHeader stateHeader = block.Header.Clone();
+        stateHeader.StateRoot = worldState.StateRoot;
+
+        return scope.Component.StateReader.CollectStorageRange(stateHeader, address, startKey, limit);
+    }
+
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(blockHash);
@@ -343,7 +365,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(txHash);
 
         // For a synthetic tx trace (`debug_traceCall`), the base block must be the block itself rather than
-        // its parent, so that state overrides applied in `BuildAndOverride` bind to the correct state root.
+        // its parent, so that the call runs on the block's post-state.
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
@@ -351,8 +373,9 @@ public class GethStyleTracer(
 
         // The scope is opened before the block override lands on the header: the parent lookup keys on the
         // header's number, and an overridden number (zero included) would resolve the wrong state, or none.
+        // A synthetic call applies its state overrides when it starts, without merkleizing them, as an indexed call does.
         using Scope<BlockProcessingComponents> scope = useBlockAsBase
-            ? blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides, blockOverride: options.BlockOverrides)
+            ? blockProcessingEnv.BuildAndOverride(block.Header, stateOverride: null, blockOverride: options.BlockOverrides)
             : blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         if (!useBlockAsBase)
@@ -378,17 +401,28 @@ public class GethStyleTracer(
         }
 
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
-        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        long destroyRefund = (long)spec.GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {
+            IBlockTracer traced = tracer.WithCancellation(cancellationToken);
+            CallAtIndexBlockTracer? overridesTracer = null;
+            if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
+            {
+                IWorldState state = scope.Component.WorldState;
+                traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0],
+                    _ => state.ApplyStateOverrides(codeInfoRepository, stateOverrides, spec, block.Number, merkleize: false));
+            }
+
             // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered && !tracePreceding ? prefixSeeds : null);
+                traced, txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
+            if (overridesTracer is { IsPrepared: false }) throw new InvalidOperationException($"The state overrides of the call in block {block.Number} were not applied.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
         finally
@@ -417,6 +451,10 @@ public class GethStyleTracer(
         ProcessingOptions processingOptions = TraceProcessingOptions.ReadOnlyReplay)
     {
         ArgumentNullException.ThrowIfNull(block);
+
+        // As in geth, a block trace reports a JavaScript tracer's error on the failing transaction's entry, while a
+        // single-transaction trace fails the call. Unlike geth, this also covers a JavaScript child of muxTracer.
+        if (options.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
         // block and keeps one result, and the seeded single-transaction path produces the same result without the
@@ -647,5 +685,5 @@ public class GethStyleTracer(
         public UInt256? BlobBaseFee { get; set; }
     }
 
-    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);
+    public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor, IStateReader StateReader, TransactionTraceExecutor? TraceExecutor = null);
 }
