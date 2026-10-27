@@ -1103,6 +1103,17 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugGetBadBlocks_returns_block_access_list_when_present([Values] bool hasBal)
+    {
+        byte[] bal = [0xc1, 0xc0];
+        _debugBridge.GetBadBlocks().Returns([Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(hasBal ? bal : null).TestObject]);
+
+        JToken result = JToken.Parse(await SerializedRequest("debug_getBadBlocks"))["result"]![0]!;
+
+        Assert.That((string?)result["blockAccessList"], Is.EqualTo(hasBal ? bal.ToHexString(true) : null));
+    }
+
+    [Test]
     public async Task DebugGetBadBlocks_WhenFileGiven_WritesListAndReturnsNull()
     {
         _debugBridge.GetBadBlocks().Returns([Build.A.Block.WithNumber(1).TestObject]);

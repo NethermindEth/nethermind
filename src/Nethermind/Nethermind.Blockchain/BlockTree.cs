@@ -591,6 +591,7 @@ namespace Nethermind.Blockchain
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
+            long deletions = Volatile.Read(ref _deletions);
             bool shouldCache = ShouldCache(blockNumber);
             ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
             if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
@@ -604,7 +605,11 @@ namespace Nethermind.Blockchain
             {
                 header.Hash ??= blockInfo.BlockHash;
                 SetTotalDifficultyFromBlockInfo(header, blockInfo);
-                if (shouldCache) _headerStore.Cache(header);
+                if (shouldCache)
+                {
+                    _headerStore.Cache(header);
+                    if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return header;

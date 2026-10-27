@@ -108,7 +108,7 @@ runs:
         fi
 
         # Validate captured CLI output before it enters the evaluated Docker command.
-        if ! version=$(dotnet run --file scripts/Version.cs -- src/Nethermind/Directory.Build.props) ||
+        if ! version=$(dotnet run --file scripts/version.cs -- src/Nethermind/Directory.Build.props) ||
           [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
           echo "::error::Could not determine the version for the image labels"
           exit 1
