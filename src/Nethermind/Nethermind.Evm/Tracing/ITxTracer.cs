@@ -135,6 +135,19 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingStack { get; }
 
     /// <summary>
+    /// Stack pushes during instruction tracing
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportStackPush(in ReadOnlySpan{byte})"/>
+    /// Defaults to <see cref="IsTracingInstructions"/>. A tracer that reads the stack only through
+    /// <see cref="SetOperationStack"/> snapshots returns <c>false</c>. Pushes are then skipped unless another tracer in
+    /// the chain traces them, in which case this tracer receives them too. The value is read once per transaction, so
+    /// it must stay stable for the transaction.
+    /// </remarks>
+    bool IsTracingStackPushes => IsTracingInstructions;
+
+    /// <summary>
     /// Traces blockhash calls
     /// </summary>
     /// <remarks>
@@ -249,14 +262,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <remarks>Depends on <see cref="IsTracingStackPushes"/></remarks>
     void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
     /// <summary>
     /// </summary>
     /// <param name="stackItem"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportStackPush(byte stackItem) => ReportStackPush(new[] { stackItem });
+    /// <remarks>Depends on <see cref="IsTracingStackPushes"/></remarks>
+    void ReportStackPush(byte stackItem) => ReportStackPush(new ReadOnlySpan<byte>(in stackItem));
 
     /// <summary>
     ///
@@ -308,7 +321,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
+    void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new ReadOnlySpan<byte>(in data));
 
     /// <summary>
     /// Reports the slot key and new value written by SSTORE, for the vmTrace <c>store</c> entry.
@@ -380,7 +393,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="gas"></param>
-    /// <param name="output"></param>
+    /// <param name="output">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output);
 
@@ -388,7 +401,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="gasLeft"></param>
-    /// <param name="output"></param>
+    /// <param name="output">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output);
 
@@ -399,6 +412,9 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
 
+    /// <summary>Sets additional diagnostic information for the current action's subsequent error.</summary>
+    void ReportActionErrorDetails(string error) { }
+
     /// <summary>
     /// Reports the remaining gas observed at an execution-segment boundary.
     /// </summary>
@@ -406,7 +422,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>
     /// Depends on <see cref="IsTracingActions"/>. Checkpoints are emitted when execution suspends,
     /// resumes, completes or fails, before the corresponding action completion or error notification
-    /// where applicable. These are not per-opcode updates; early action failures can occur without
+    /// where applicable. An exceptional halt consumes all the frame's gas, so the checkpoint before
+    /// its error reports zero. These are not per-opcode updates; early action failures can occur without
     /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
     /// </remarks>
     void ReportActionRemainingGas(ulong gas) { }
@@ -446,7 +463,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="gas"></param>
     /// <param name="deploymentAddress"></param>
-    /// <param name="deployedCode"></param>
+    /// <param name="deployedCode">Never mutated afterwards, so a tracer may keep a whole underlying array without copying it.</param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode);
 

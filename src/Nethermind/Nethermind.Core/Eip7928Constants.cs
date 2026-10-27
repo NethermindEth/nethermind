@@ -23,4 +23,10 @@ public static class Eip7928Constants
     /// Gas cost per BAL item for size limit. bal_items <= block_gas_limit / ItemCost.
     /// </summary>
     public const ulong ItemCost = 2000;
+
+    /// <summary>
+    /// Whether <paramref name="itemCount"/> exceeds the block access list item limit of <paramref name="gasLimit"/> / <see cref="ItemCost"/>.
+    /// </summary>
+    public static bool ExceedsItemLimit(long itemCount, ulong gasLimit) =>
+        itemCount > 0 && (ulong)itemCount > gasLimit / ItemCost;
 }

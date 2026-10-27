@@ -22,10 +22,12 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
@@ -97,7 +99,7 @@ public class OptimismEthRpcModuleTest
         public Address? RecoverAddress(Signature signature, in ValueHash256 message) => null;
     }
 
-    private sealed class NullSenderTransactionForRpc(Transaction transaction) : SignableTransactionForRpc
+    private sealed class NullSenderTransactionForRpc(Transaction transaction) : LegacyTransactionForRpc
     {
         public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         {
@@ -260,6 +262,45 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
+    public async Task Send_transaction_without_gas_and_fees_fills_them_before_forwarding()
+    {
+        UInt256 suggestedFee = 1_000_000_000;
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetMaxPriorityGasFeeEstimate().Returns(suggestedFee);
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        sealer.TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(true);
+        IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
+        byte[]? forwarded = null;
+        sequencer.Post("eth_sendRawTransaction", Arg.Do<object?[]>(parameters => forwarded = (byte[])parameters[0]!))
+            .Returns($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""");
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithGasPriceOracle(oracle)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: sequencer,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build(new TestSpecProvider(London.Instance));
+        object? request = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressC}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1","nonce":"0x0"}""");
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", request);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+        Transaction sent = TxDecoder.Instance.DecodeCompleteNotNull(forwarded, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
+        BlockHeader head = rpcBlockchain.BlockTree.Head!.Header;
+        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");
+            Assert.That(sent.MaxPriorityFeePerGas, Is.EqualTo(suggestedFee), "the tip must come from the gas price oracle");
+            Assert.That(sent.MaxFeePerGas, Is.EqualTo(2 * nextBaseFee + suggestedFee), "the fee cap must be twice the next base fee plus the tip");
+        }
+    }
+
+    [Test]
     public async Task GetTransactionByHash_ReturnsCorrectTransactionType()
     {
         Transaction tx = Build.A.Transaction
@@ -412,7 +453,6 @@ public class OptimismEthRpcModuleTest
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Legacy)
             .WithHash(TestItem.KeccakA)
-            .WithSenderAddress(TestItem.AddressA)
             .TestObject;
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
@@ -427,6 +467,7 @@ public class OptimismEthRpcModuleTest
             BlockNumber = block.Number,
             Index = 0x20,
             DepositReceiptVersion = 0x30,
+            Sender = TestItem.AddressA,
         };
 
         TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
@@ -436,7 +477,7 @@ public class OptimismEthRpcModuleTest
                             "jsonrpc":"2.0",
                             "result": {
                                 "type": "0x0",
-                                "from": "{{tx.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                "from": "{{TestItem.AddressA.Bytes.ToHexString(withZeroX: true)}}",
                                 "to": "0x0000000000000000000000000000000000000000",
                                 "value": "0x1",
                                 "gas": "0x5208",

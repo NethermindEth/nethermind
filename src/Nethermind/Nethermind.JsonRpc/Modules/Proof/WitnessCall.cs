@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -92,7 +91,7 @@ internal sealed class WitnessCall(
         // EVM then throws OperationCanceledException, which JsonRpcService maps to a Timeout error. A
         // MissingTrieNodeException from a reorg/prune between header lookup and witness execution is
         // likewise mapped (to ResourceNotFound) by JsonRpcService, so no local catch is needed here.
-        using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         SingleCallWitnessResult result = blockchainBridge.GenerateExecutionWitness(callHeader, tx, timeout.Token);
         return CallResultWithProof.FromWitnessResult(result, tx.GasLimit);
     }

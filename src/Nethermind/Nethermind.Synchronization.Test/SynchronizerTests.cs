@@ -191,7 +191,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override PublicKey Id => Node.Id;
 
-        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
+        public override void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) { }
 
         public void AddBlocksUpTo(ulong i, ulong branchStart = 0, byte branchIndex = 0)
         {

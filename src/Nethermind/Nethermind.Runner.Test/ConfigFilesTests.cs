@@ -6,7 +6,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
+using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -15,22 +18,24 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.EthStats;
+using Nethermind.Evm.State;
 using Nethermind.JsonRpc;
-using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
@@ -45,8 +50,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     {
         foreach (string configFile in Resolve(configWildcard))
         {
-            string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
-            Assert.That(File.Exists(configPath), Is.True);
+            using Stream stream = BuiltInConfigs.Open(configFile);
+            Assert.That(stream, Is.Not.Null, configFile);
         }
     }
 
@@ -119,17 +124,14 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 4096000000UL)]
-    [TestCase("mainnet ^archive", 1024000000UL)]
-    [TestCase("volta archive", 768000000UL)]
-    [TestCase("volta ^archive", 768000000UL)]
-    [TestCase("gnosis archive", 1024000000UL)]
-    [TestCase("gnosis ^archive", 768000000UL)]
-    [TestCase("poacore archive", 1024000000UL)]
-    [TestCase("poacore ^archive", 768000000UL)]
-    [TestCase("spaceneth.json", 64000000UL)]
-    [TestCase("spaceneth_persistent.json", 128000000UL)]
-    public void Memory_hint_values_are_correct(string configWildcard, ulong expectedValue) => Test<IInitConfig, ulong?>(configWildcard, static c => c.MemoryHint, expectedValue);
+    [TestCase("mainnet archive", 2147483648UL, 536870912UL)]
+    [TestCase("op-mainnet_archive.json", 1073741824UL, 268435456UL)]
+    [TestCase("^archive", 536870912UL, 134217728UL)]
+    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize, ulong stateDbRowCacheSize)
+    {
+        Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, sharedBlockCacheSize);
+        Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
+    }
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
@@ -208,6 +210,67 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
             Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
+    }
+
+    [Test]
+    public void Deprecated_discovery_bootnodes_are_merged_into_network_bootnodes()
+    {
+        const string bootnode = "enode://04fb7acb86f47b64298374b5ccb3c2959f1e5e9362158e50e0793c261518ffe83759d8295ca4a88091d4726d5f85e6276d53ae9ef4f35b8c4c0cc6b99c8c0537@40.70.214.166:40303";
+        ConfigProvider configProvider = GetConfigProvider("hoodi.json");
+        configProvider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["Discovery.Bootnodes"] = bootnode }));
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile(initConfig.ChainSpecPath);
+        TestLogger logger = new();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider, chainSpec, useTestSpecProvider: false))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .Build();
+
+        Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
+        Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+    }
+
+    [TestCase("sepolia.json", 5)]
+    [TestCase("sepolia_archive.json", 5)]
+    [TestCase("hoodi.json", 5)]
+    [TestCase("hoodi_archive.json", 5)]
+    [TestCase("mainnet.json", 30)]
+    [TestCase("mainnet_archive.json", 30)]
+    [TestCase("mainnet_aztec.json", 30)]
+    public void Presets_use_shared_bootnodes_and_preserve_genesis(string configFile, int expectedBootnodeCount)
+    {
+        ConfigProvider configProvider = GetConfigProvider(configFile);
+        IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile(initConfig.ChainSpecPath);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider, chainSpec, useTestSpecProvider: false))
+            .Build();
+        NetworkNode[] bootnodes = container.Resolve<INetworkConfig>().Bootnodes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootnodes, Has.Length.EqualTo(expectedBootnodeCount));
+            Assert.That(bootnodes.Select(static node => node.ToString()),
+                Is.EqualTo(chainSpec.Bootnodes.Select(static node => node.ToString())));
+        }
+
+        foreach (NetworkNode bootnode in bootnodes)
+        {
+            if (bootnode.IsEnr)
+                Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr, out _), Is.True, bootnode.ToString());
+            else
+                Assert.That(bootnode.IsEnode, Is.True, bootnode.ToString());
+        }
+
+        using ILifetimeScope processingScope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        IWorldState worldState = processingScope.Resolve<IWorldState>();
+        using IDisposable stateScope = worldState.BeginScope(IWorldState.PreGenesis);
+        Block genesis = processingScope.Resolve<IGenesisBuilder>().Build();
+
+        Assert.That(genesis.Hash!.ToString(), Is.EqualTo(initConfig.GenesisHash));
     }
 
     [TestCase("*")]
@@ -300,7 +363,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Assert.That(JsonNode.DeepEquals(aztec, mainnet), Is.True, "mainnet_aztec.json has drifted from mainnet.json");
 
         static JsonObject ReadConfig(string file) =>
-            JsonNode.Parse(File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", file)))!.AsObject();
+            JsonNode.Parse(ReadBuiltInConfig(file))!.AsObject();
     }
 
     [TestCase("^spaceneth", "nethermind_db")]
@@ -471,7 +534,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
 
     [TestCase("*")]
-    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
+    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, INetworkConfig.DefaultNettyArenaOrder);
 
     [TestCase("chiado", 17_000_000UL, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000UL, 5UL, 3000)]
@@ -500,14 +563,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [Test]
     public void No_additional_commas_in_config_files()
     {
-        char pathSeparator = Path.AltDirectorySeparatorChar;
-        string configDirectory = $"{AppDomain.CurrentDomain.BaseDirectory}{pathSeparator}configs";
-
-        IEnumerable<string> filesPaths = Directory.EnumerateFiles(configDirectory);
-
-        foreach (string filePath in filesPaths)
+        foreach (string name in BuiltInConfigs.Names)
         {
-            string content = File.ReadAllText(filePath)
+            string content = ReadBuiltInConfig(name)
                 .Replace("\n", string.Empty)
                 .Replace(" ", string.Empty);
 
@@ -516,24 +574,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
             foreach (int commaIndex in commaIndexes)
             {
                 char nextChar = content.ElementAt(commaIndex + 1);
-                Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {filePath}");
+                Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {name}");
             }
-        }
-    }
-
-    [TestCase("*")]
-    public void Memory_hint_is_enough(string configWildcard)
-    {
-        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
-        {
-            MemoryHintMan memoryHintMan = new(LimboLogs.Instance);
-            memoryHintMan.SetMemoryAllowances(
-                configProvider.GetConfig<IDbConfig>(),
-                configProvider.GetConfig<IInitConfig>(),
-                configProvider.GetConfig<INetworkConfig>(),
-                configProvider.GetConfig<ISyncConfig>(),
-                configProvider.GetConfig<ITxPoolConfig>(),
-                (uint)Environment.ProcessorCount);
         }
     }
 
@@ -570,29 +612,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
-    private static IEnumerable<string> AllConfigFiles()
-    {
-        string[] configPaths = Directory.GetFiles(ConfigDirectory, "*.json");
-        Array.Sort(configPaths, StringComparer.OrdinalIgnoreCase);
-
-        for (int i = 0; i < configPaths.Length; i++)
-        {
-            yield return Path.GetFileName(configPaths[i]);
-        }
-    }
+    private static IEnumerable<string> AllConfigFiles() => BuiltInConfigs.Names.Select(static name => $"{name}.json");
 
     private static T GetConfigFromFile<T>(string configFile) where T : IConfig => GetConfigProvider(configFile).GetConfig<T>();
 
     private static ConfigProvider GetConfigProvider(string configFile)
     {
         ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource(Path.Combine(ConfigDirectory, configFile)));
+        configProvider.AddSource(LoadBuiltInConfig(configFile));
         return configProvider;
     }
 
     private static bool IsArchiveConfig(string configFile) =>
         configFile.Contains("_archive", StringComparison.OrdinalIgnoreCase) ||
         configFile.Contains("-archive", StringComparison.OrdinalIgnoreCase);
-
-    private static string ConfigDirectory => Path.Combine(TestContext.CurrentContext.TestDirectory, "configs");
 }

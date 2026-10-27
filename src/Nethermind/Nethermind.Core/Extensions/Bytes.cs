@@ -903,8 +903,9 @@ namespace Nethermind.Core.Extensions
         /// </remarks>
         internal static int CountZerosWordAtATime(ReadOnlySpan<byte> data)
         {
-            // Lanes reach at most 31, so the sum of all eight fits the byte a multiply-fold leaves it in.
-            const int maxChunkBytes = 31 * sizeof(ulong);
+            // Lanes reach at most 28, so the sum of all eight fits the byte a multiply-fold leaves it in, and a chunk
+            // is a whole number of the four-word steps below.
+            const int maxChunkBytes = 28 * sizeof(ulong);
             ref byte bytes = ref MemoryMarshal.GetReference(data);
             int wordBytes = data.Length & ~(sizeof(ulong) - 1);
             int nonZeros = 0;
@@ -913,11 +914,19 @@ namespace Nethermind.Core.Extensions
             {
                 int chunkEnd = Math.Min(wordBytes, offset + maxChunkBytes);
                 ulong laneCounts = 0;
+                // Four words a step pay for the loop's test and the offset's add once.
+                for (; offset <= chunkEnd - 4 * sizeof(ulong); offset += 4 * sizeof(ulong))
+                {
+                    ref byte words = ref Unsafe.Add(ref bytes, offset);
+                    laneCounts += NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref words)) +
+                        NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref words, sizeof(ulong)))) +
+                        NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref words, 2 * sizeof(ulong)))) +
+                        NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref words, 3 * sizeof(ulong))));
+                }
+
                 for (; offset < chunkEnd; offset += sizeof(ulong))
                 {
-                    ulong word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, offset));
-                    // Sets 0x80 in every non-zero byte; the add carries within each byte only, so lanes stay apart.
-                    laneCounts += ((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) >> 7) & 0x0101010101010101UL;
+                    laneCounts += NonZeroLanes(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, offset)));
                 }
 
                 // Sum the lanes without PopCount, which lacks a hardware instruction on some targets.
@@ -935,6 +944,12 @@ namespace Nethermind.Core.Extensions
 
             return zeros;
         }
+
+        /// <summary>One in each byte lane of <paramref name="word"/> that holds a non-zero byte.</summary>
+        /// <remarks>Sets 0x80 in every non-zero byte; the add carries within each byte only, so lanes stay apart.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong NonZeroLanes(ulong word) =>
+            ((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) >> 7) & 0x0101010101010101UL;
 
         [DebuggerStepThrough]
         public static byte[] FromUtf8HexString(scoped ReadOnlySpan<byte> hexString)

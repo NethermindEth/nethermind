@@ -149,9 +149,10 @@ public class XdcModule : Module
 
             .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
             .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
-            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>();
+            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>()
+            .OnBuild(static _ => XdcBlockParameterConverter.Register());
 
-        RegisterRewardCalculatorSource(builder);
+        RegisterRewardCalculator(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
@@ -163,8 +164,8 @@ public class XdcModule : Module
 
     protected virtual XdcChainSpecLoader CreateChainSpecLoader() => new();
 
-    protected virtual void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
-        builder.AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>();
+    protected virtual void RegisterRewardCalculator(ContainerBuilder builder) =>
+        builder.AddScoped<IRewardCalculator, XdcRewardCalculator>();
 
     private static ITxPool CreateTxPool(IComponentContext ctx)
     {
@@ -197,7 +198,8 @@ public class XdcModule : Module
                 new MinGasPriceFilter(chainHeadInfoProvider, specProvider, logManager)
             ],
             true,
-            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>());
+            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+            stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

@@ -140,7 +140,7 @@ public partial class TrieStoreScopeProvider(
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => ScopeBalApplier.Apply(this, bal, _logManager, cancellationToken);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -303,6 +303,7 @@ public partial class TrieStoreScopeProvider(
             _storages.Clear();
         }
 
+        [SkipLocalsInit]
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out StorageTree? storageTree))
@@ -358,7 +359,7 @@ public partial class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-            WriteAccounts(scope._backingStateTree, _dirtyAccounts);
+            scope._backingStateTree.WriteAccounts(_dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -366,9 +367,6 @@ public partial class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
-
-        /// <summary>Writes the changed accounts into <paramref name="stateTree"/>.</summary>
-        private static partial void WriteAccounts(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts);
     }
 
     public partial class StorageTreeBulkWriteBatch(

@@ -106,7 +106,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
         return new IntrinsicGas<TGasPolicy>(intrinsicGas, intrinsicGas);
     }
 
-    protected override TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
+    protected override TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
     {
         if (tx is SystemCall)
         {
@@ -117,7 +117,7 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
         Debug.Assert(TGasPolicy.GetStateReservoir(intrinsicGas.Standard) == 0,
             "System transactions other than SystemCall bypass minimum-gas validation and must have no intrinsic state reservoir.");
-        return base.CalculateAvailableGas(tx, spec, in intrinsicGas, out gasAvailable);
+        return base.CalculateAvailableGas(tx, spec, opts, in intrinsicGas, out gasAvailable);
     }
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)

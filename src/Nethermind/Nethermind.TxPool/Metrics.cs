@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxMissingSidecar { get; set; }
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_GAS.")]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds the node verification budget.")]
         public static long PendingTransactionsFrameTxVerifyGasTooHigh { get; set; }
 
         [CounterMetric]
@@ -165,8 +165,16 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulationsPreempted;
 
         [CounterMetric]
+        [Description("Number of EIP-8141 frame transaction signature verifications at admission stopped because block processing or building preempted them.")]
+        public static long FrameTxSignatureVerificationsPreempted;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]
         public static long PendingTransactionsFrameTxSimulationDeferred;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were dropped unvalidated because the sending peer had spent its share of the per-head validation time on rejected transactions.")]
+        public static long PendingTransactionsFramePeerShareSpent;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
@@ -293,6 +301,10 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Number of blob transactions in pool.")]
         public static long BlobTransactionCount { get; set; }
+
+        [CounterMetric]
+        [Description("Number of blobs served to engine_getBlobs from the processed rows of recently included transactions.")]
+        public static long IncludedBlobsServed;
 
         [Description("Number of pending transactions rejected due to excessive size.")]
         public static long PendingTransactionsSizeTooLarge { get; set; }

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -14,16 +16,23 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
+    private const int MinStackBufferSize = 16 * EvmStack.WordSize;
+    private const int MinMemoryBufferSize = 1024;
+
     private readonly IGethFileTraceSink _sink;
     private readonly Stack<ulong>? _actionGas;
     private GethTxFileTraceEntry? _reusableEntry;
+    private byte[] _stackBuffer = [];
+    private byte[] _memoryBuffer = [];
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
     /// </summary>
-    /// <param name="dumpCallback">Callback invoked for each completed trace entry.</param>
+    /// <param name="dumpCallback">Callback invoked for each completed trace entry. The entry, and the memory its
+    /// <see cref="GethTxTraceEntry.Stack"/> and <see cref="GethTxTraceEntry.Memory"/> point to, are reused for the
+    /// next opcode, so they are valid only during the callback.</param>
     /// <param name="options">Geth trace configuration.</param>
     /// <param name="destroyRefund">Refund awarded for the first successful legacy self-destruct of an account.</param>
     /// <param name="standardIntrinsicGas">Standard intrinsic gas removed from the receipt fallback when no action is traced.</param>
@@ -68,6 +77,58 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (_captureStopped) return;
         base.StartOperation(pc, opcode, gas, in env);
         if (_captureStopped) CurrentTraceEntry = null;
+    }
+
+    // The entry is written to the sink before the next opcode starts, so the snapshots can live in pooled buffers reused
+    // across opcodes. The buffers go back to the pool on Dispose.
+    public override void SetOperationStack(TraceStack stack)
+    {
+        if (CurrentTraceEntry is null) return;
+
+        int length = stack.RawByteLength;
+        EnsureCapacity(ref _stackBuffer, length, MinStackBufferSize);
+        stack.CopyRawBytesTo(_stackBuffer);
+        CurrentTraceEntry.Stack = _stackBuffer.AsMemory(0, length);
+    }
+
+    public override void SetOperationMemory(TraceMemory memoryTrace)
+    {
+        if (!IsTracingFullMemory || CurrentTraceEntry is null) return;
+
+        int length = memoryTrace.RawWordByteLength;
+        EnsureCapacity(ref _memoryBuffer, length, MinMemoryBufferSize);
+        memoryTrace.CopyRawWordBytesTo(_memoryBuffer);
+        CurrentTraceEntry.Memory = _memoryBuffer.AsMemory(0, length);
+    }
+
+    public override void Dispose()
+    {
+        if (_reusableEntry is not null)
+        {
+            _reusableEntry.Stack = default;
+            _reusableEntry.Memory = default;
+        }
+
+        ReturnBuffer(ref _stackBuffer);
+        ReturnBuffer(ref _memoryBuffer);
+        base.Dispose();
+    }
+
+    private static void EnsureCapacity(ref byte[] buffer, int length, int minLength)
+    {
+        if (buffer.Length >= length) return;
+
+        byte[] previous = buffer;
+        buffer = ArrayPool<byte>.Shared.Rent(Math.Max(length, minLength));
+        if (previous.Length != 0) ArrayPool<byte>.Shared.Return(previous);
+    }
+
+    private static void ReturnBuffer(ref byte[] buffer)
+    {
+        if (buffer.Length == 0) return;
+
+        ArrayPool<byte>.Shared.Return(buffer);
+        buffer = [];
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)

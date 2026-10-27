@@ -192,8 +192,10 @@ public static partial class Merkle
     public static void MixIn(ref UInt256 root, int value)
     {
         ulong v = value < 0 ? ulong.MaxValue : 0L;
-        UInt256 lengthPart = new((ulong)value, v, v, v);
-        HashPair(in root, in lengthPart, out root);
+        NodePair pair;
+        pair.Left = root;
+        pair.Right = new((ulong)value, v, v, v);
+        HashPair(in pair.Left, in pair.Right, out root);
     }
 
     // EIP-7495 mixes the static active_fields bitvector into the progressive container root.
@@ -228,6 +230,7 @@ public static partial class Merkle
     }
 
     /// <summary>Merkleizes <paramref name="chunks"/> followed by the at most one chunk of <paramref name="lastChunk"/> progressively.</summary>
+    [SkipLocalsInit]
     private static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ReadOnlySpan<UInt256> lastChunk, ulong numLeaves)
     {
         ArgumentOutOfRangeException.ThrowIfZero(numLeaves, nameof(numLeaves));
@@ -241,25 +244,32 @@ public static partial class Merkle
 
         // The `numLeaves`-sized subtree is the left child; the remaining chunks recurse into the right.
         int subtreeChunkCount = (int)Math.Min((ulong)count, Math.Min(numLeaves, (ulong)int.MaxValue));
-        UInt256 subtree;
+        NodePair children;
         if (subtreeChunkCount <= chunks.Length)
         {
-            Merkleize(out subtree, chunks[..subtreeChunkCount], ReadOnlySpan<UInt256>.Empty, numLeaves);
+            if (numLeaves == 1)
+                children.Left = chunks[0];
+            else
+                Merkleize(out children.Left, chunks[..subtreeChunkCount], ReadOnlySpan<UInt256>.Empty, numLeaves);
+
             chunks = chunks[subtreeChunkCount..];
         }
         else
         {
-            Merkleize(out subtree, chunks, lastChunk, numLeaves);
+            Merkleize(out children.Left, chunks, lastChunk, numLeaves);
             chunks = lastChunk = ReadOnlySpan<UInt256>.Empty;
         }
 
-        UInt256 continuation = UInt256.Zero;
         if (chunks.Length + lastChunk.Length != 0)
         {
-            MerkleizeProgressive(out continuation, chunks, lastChunk, checked(numLeaves * 4));
+            MerkleizeProgressive(out children.Right, chunks, lastChunk, checked(numLeaves * 4));
+        }
+        else
+        {
+            children.Right = UInt256.Zero;
         }
 
-        HashPair(in subtree, in continuation, out root);
+        HashPair(in children.Left, in children.Right, out root);
     }
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
@@ -328,16 +338,14 @@ public static partial class Merkle
 
         int nodeCount = (count + 1) / 2;
         UInt256[]? rented = null;
-        Span<UInt256> nodes = nodeCount <= StackNodeLimit
+        // An odd first level needs one node more, so its lone last node can pair with a zero hash in place;
+        // later levels are smaller and fit.
+        int nodeCapacity = nodeCount + (nodeCount & 1);
+        Span<UInt256> nodes = nodeCapacity <= StackNodeLimit
             ? stackalloc UInt256[StackNodeLimit]
-            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCount);
+            : rented = ArrayPool<UInt256>.Shared.Rent(nodeCapacity);
 
         int pairs = value.Length / 2;
-        for (int i = 0; i < pairs; i++)
-        {
-            HashNodes(in value[2 * i], in value[2 * i + 1], 0, out nodes[i]);
-        }
-
         if (value.Length % 2 == 1)
         {
             HashNodes(in value[^1], lastChunk.Length == 1 ? lastChunk[0] : UInt256.Zero, 0, out nodes[pairs]);
@@ -347,21 +355,29 @@ public static partial class Merkle
             HashNodes(in lastChunk[0], UInt256.Zero, 0, out nodes[pairs]);
         }
 
-        for (int level = 1; level < depth; level++)
+        if (!TryHashTree(value[..(2 * pairs)], nodes, nodeCount, depth))
         {
-            int parentCount = nodeCount / 2;
-            for (int i = 0; i < parentCount; i++)
+            for (int i = 0; i < pairs; i++)
             {
-                HashNodes(in nodes[2 * i], in nodes[2 * i + 1], level, out nodes[i]);
+                HashNodes(in value[2 * i], in value[2 * i + 1], 0, out nodes[i]);
             }
 
-            if (nodeCount % 2 == 1)
+            for (int level = 1; level < depth; level++)
             {
-                HashNodes(in nodes[nodeCount - 1], ZeroHash(level), level, out nodes[parentCount]);
-                parentCount++;
-            }
+                int parentCount = nodeCount / 2;
+                for (int i = 0; i < parentCount; i++)
+                {
+                    HashNodes(in nodes[2 * i], in nodes[2 * i + 1], level, out nodes[i]);
+                }
 
-            nodeCount = parentCount;
+                if (nodeCount % 2 == 1)
+                {
+                    HashNodes(in nodes[nodeCount - 1], ZeroHash(level), level, out nodes[parentCount]);
+                    parentCount++;
+                }
+
+                nodeCount = parentCount;
+            }
         }
 
         root = nodes[0];
@@ -373,4 +389,11 @@ public static partial class Merkle
     }
 
     private const int StackNodeLimit = 32;
+
+    /// <summary>Two sibling nodes side by side, as a single 64-byte block that hashing reads in place.</summary>
+    private struct NodePair
+    {
+        public UInt256 Left;
+        public UInt256 Right;
+    }
 }

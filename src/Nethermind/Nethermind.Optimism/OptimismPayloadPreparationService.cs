@@ -33,7 +33,7 @@ public class OptimismPayloadPreparationService(
     private readonly ILogger _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {

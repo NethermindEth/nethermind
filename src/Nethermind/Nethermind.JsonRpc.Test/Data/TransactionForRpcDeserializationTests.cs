@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -36,6 +36,24 @@ public class TransactionForRpcDeserializationTests
         "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
     ];
 
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 1, false)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 0, false)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 1, true)]
+    [TestCase(ulong.MaxValue, 0, true)]
+    public void Protected_legacy_v_fails_where_no_eip155_v_fits_the_chain_id(ulong chainId, int yParity, bool isError)
+    {
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\":\"0x0\",\"chainId\":\"0x{chainId:x}\",\"v\":\"0x{yParity}\",\"r\":\"0x1\",\"s\":\"0x1\"}}")!;
+
+        Result<Transaction> result = transactionForRpc.ToTransaction();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.EqualTo(isError));
+            if (!isError) Assert.That(result.Data!.Signature!.ChainId, Is.EqualTo(chainId));
+        }
+    }
+
     [TestCaseSource(nameof(TxJsonTestCases))]
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)
     {
@@ -57,7 +75,8 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{}""");
             yield return Make(TxType.EIP1559, """{"type":null}""");
             yield return Make(TxType.EIP1559, """{"additionalField":""}""");
-            yield return Make(TxType.EIP1559, """{"MaxFeePerBlobGas":"0x0"}""");
+            // A blob fee cap names a blob transaction, which needs blob hashes, so it no longer converts without them.
+            yield return Make(TxType.Blob, """{"MaxFeePerBlobGas":"0x0"}""");
             yield return Make(TxType.EIP1559,
                 """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x1","gas":"0x0","input":null,"maxPriorityFeePerGas":"0x1"}""");
             yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""");
@@ -86,7 +105,7 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"maxPriorityFeePerGas":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"MaxPriorityFeePerGas":"0x0"}""");
-            yield return Make(TxType.EIP1559, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
+            yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","maxPriorityFeePerGas":"0x0", "maxFeePerGas":"0x0","maxFeePerBlobGas":"0x0"}""");
 
             yield return Make(TxType.Blob, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[],"blobVersionedHashes":[]}""");
             yield return Make(TxType.Blob, """{"maxFeePerBlobGas":"0x0", "blobVersionedHashes":[]}""");
@@ -222,7 +241,7 @@ public class TransactionForRpcDeserializationTests
     [Test]
     public void Test_DifferingInputAndData_Throws([ValueSource(nameof(DifferingInputAndData))] string txJson) =>
         Assert.That(() => _serializer.Deserialize<TransactionForRpc>(txJson),
-            Throws.TypeOf<SafePublicMessageFormatException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
+            Throws.TypeOf<DataAndInputDifferException>().With.Message.EqualTo(RpcTransactionErrors.DataAndInputDiffer));
 
     [Test]
     public void Data_assignment_updates_input_outside_deserialization([Values] bool deserialized)

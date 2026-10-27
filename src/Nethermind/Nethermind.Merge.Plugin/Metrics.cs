@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Merge.Plugin.Synchronization;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -24,6 +26,11 @@ namespace Nethermind.Merge.Plugin
         [CounterMetric]
         [Description("Number of finalized blocks caught up by applying their block access list instead of executing them")]
         public static long BalCatchUpBlocks { get; set; }
+
+        [CounterMetric]
+        [KeyIsLabel("reason")]
+        [Description("Number of finalized blocks executed after all because they could not be caught up from their block access list, by reason")]
+        public static ConcurrentDictionary<BalCatchUpFallbackReason, long> BalCatchUpFallbacks { get; } = new();
 
         [GaugeMetric]
         [Description("Number of Transactions included in the Last GetPayload Request")]

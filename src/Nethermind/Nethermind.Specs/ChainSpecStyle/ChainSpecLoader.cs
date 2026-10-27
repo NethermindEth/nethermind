@@ -114,7 +114,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             MaximumExtraDataSize = parameters.MaximumExtraDataSize ?? 32,
             MinGasLimit = parameters.MinGasLimit ?? 5000UL,
             MinHistoryRetentionEpochs = parameters.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
-            MinBalRetentionEpochs = parameters.MinBalRetentionEpochs ?? HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MinBalRetentionEpochs = parameters.MinBalRetentionEpochs ?? HistoryRetentionConstants.HistoryPruneEpochs,
             MaxCodeSize = parameters.MaxCodeSize,
             MaxCodeSizeTransition = parameters.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = parameters.MaxCodeSizeTransitionTimestamp,
@@ -231,6 +231,8 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8024TransitionTimestamp = parameters.Eip8024TransitionTimestamp,
             Eip8246TransitionTimestamp = parameters.Eip8246TransitionTimestamp,
             Eip8253TransitionTimestamp = parameters.Eip8253TransitionTimestamp,
+            ZeroNonceStorageAccounts = parameters.ZeroNonceStorageAccounts,
+            Eip7709TransitionTimestamp = parameters.Eip7709TransitionTimestamp,
             Eip8038TransitionTimestamp = parameters.Eip8038TransitionTimestamp,
             Eip8282TransitionTimestamp = parameters.Eip8282TransitionTimestamp,
             Eip8141TransitionTimestamp = parameters.Eip8141TransitionTimestamp,
@@ -250,6 +252,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8279TransitionTimestamp = parameters.Eip8279TransitionTimestamp,
             Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
             Eip8298TransitionTimestamp = parameters.Eip8298TransitionTimestamp,
+            Eip4758TransitionTimestamp = parameters.Eip4758TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(parameters);

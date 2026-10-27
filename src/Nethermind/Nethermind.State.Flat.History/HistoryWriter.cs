@@ -33,6 +33,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Above this, materializing a pre-value row per wiped slot is unbounded work on one block; poison instead.
     internal const int DestructSlotEnumerationCap = 10_000;
 
+    // Above every history key: the longest is a storage row, a flat storage key plus the block suffix.
+    private const int MaxHistoryKeyLength = 128;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore? _accountHistory;
@@ -61,6 +63,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly ulong _captureFromBlock;
     private readonly PendingV3Writes? _pendingV3;
     private readonly ForwardCommitmentCapture? _commitments;
+    private readonly ulong _pivotImageGranularity;
+    private readonly FlatLayout _layout;
+    private readonly PivotHistoryImageWriter? _pivotImageWriter;
     private bool _formatStamped;
 
     public HistoryWriter(
@@ -70,12 +75,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         ILogManager logManager,
-        ForwardCommitmentCapture? commitments)
+        ForwardCommitmentCapture? commitments,
+        CommitmentDepthPolicy? commitmentPolicy = null,
+        PivotHistoryImageWriter? pivotImageWriter = null)
     {
         ArgumentNullException.ThrowIfNull(history);
+        _pivotImageWriter = pivotImageWriter;
+        _pivotImageGranularity = Math.Max(1UL, commitmentPolicy?.Interval ?? 1UL);
         _commitments = commitments is { Enabled: true } ? commitments : null;
         ILogger logger = logManager.GetClassLogger<HistoryWriter>();
         _enabled = config.HistoryEnabled;
+        _layout = config.Layout;
         _history = history;
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(
             db,
@@ -112,6 +122,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             Metrics.FlatHistoryWatermark = (long)LastCapturedBlock;
             bool hasFloor = _availability.TryGetGlobalFloor(out ulong floor);
             if (hasFloor) Metrics.FlatHistoryFloor = (long)floor;
+            if (_pivotImageWriter is not null) _pivotImageWriter.Failed += DisableCapture;
+            ReportFlatStateAboveHistory(db.GetColumnDb(FlatDbColumns.Metadata));
             if (_captureFromBlock > 0) PublishSinceBlockFloor();
             else if (hasFloor && config.HistoryRetention == HistoryRetentionMode.None)
             {
@@ -120,6 +132,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
         }
     }
+
+    /// <inheritdoc/>
+    public bool HoldsFlatPersist => _enabled && _pivotImageWriter is { Holds: true };
+
+    /// <inheritdoc/>
+    public Task FlatPersistReleased => _pivotImageWriter?.Released ?? Task.CompletedTask;
 
     /// <inheritdoc/>
     public bool CaptureHealthy => _enabled && !_permanentGapDetected && _captureProven;
@@ -269,6 +287,30 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
+    }
+
+    /// <summary>Capture runs before every flat persist, so a flat state persisted above the watermark means history was
+    /// turned on after the node synced without it (for example by <c>Pruning.Mode=None</c> on an upgraded node). The
+    /// blocks between are gone, and the first walk could only fail with a vaguer reason, so say why now.</summary>
+    /// <remarks>Not a gap: no persisted state yet, a state at genesis (seeded, or captured by the walk), a wipe for a
+    /// resync, a pivot image still being written, or a state below a since-block floor, where the watermark follows the
+    /// state without rows. A genesis state with no history is also what a crash leaves after it recorded a pivot image
+    /// and before the state pointer moved; the next sync begins a new image.</remarks>
+    private void ReportFlatStateAboveHistory(IDb metadata)
+    {
+        if (_pivotImageWriter is { Holds: true } || BasePersistence.ReadWipedForSync(metadata)) return;
+
+        StateId persisted = BasePersistence.ReadCurrentState(metadata);
+        if (persisted == StateId.PreGenesis || persisted.BlockNumber == 0 || persisted.BlockNumber < _captureFromBlock) return;
+
+        bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
+        if (hasWatermark && persisted.BlockNumber <= watermark) return;
+
+        DisableCapture(
+            $"Flat history cannot follow this node: the flat state is persisted at block {persisted.BlockNumber}, but history is captured " +
+            $"{(hasWatermark ? $"only up to block {watermark}" : "for no block")}, and the blocks between are no longer available. This happens " +
+            "when history is turned on, for example by Pruning.Mode=None, on a node that synced without it. As-of reads report no history. " +
+            "To keep history, wipe the flat and flatHistory databases and sync again.");
     }
 
     /// <summary>A since-block floor is set by config once and never moves. A published floor above it is a snap
@@ -482,18 +524,24 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _history.SyncWal();
     }
 
-    /// <summary>Seeds a windowed node's floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
+    /// <summary>Seeds the floor at a snap-sync pivot, publishing watermark = floor = pivot.</summary>
     /// <remarks>
+    /// Under v2 (unwindowed) this only records the pivot image, see <see cref="SeedUnwindowedPivot"/>.
     /// No rows are needed under v3: the persisted flat column holds exactly the pivot's state and the fallback answers.
     /// A since-block floor already standing above the pivot stays - the state starts at the pivot, the history at the
     /// configured block. Every slice floor rises with the general one: a row below the pivot resolves through live
     /// state the sync replaced, so nothing below it may stay readable. Receipt bodies still retained in memory for
-    /// blocks the pivot passes over are not derivable afterwards. No-op on v2, which has no fallback to lean on. Call
-    /// at the sync-completion seam before any block processes on top.
+    /// blocks the pivot passes over are not derivable afterwards. Call at the sync-completion seam before any block
+    /// processes on top.
     /// </remarks>
     public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
-        if (!_enabled || !_isV3) return;
+        if (!_enabled) return;
+        if (!_isV3)
+        {
+            SeedUnwindowedPivot(pivotBlock, pivotStateRoot);
+            return;
+        }
 
         // Raise-only for a rolling floor: seeding a pivot below it would re-admit reads for heights whose rows the
         // pruner has already deleted, and they would answer from live state instead of failing closed. A since-block
@@ -545,6 +593,65 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         if (_captureFromBlock > 0 && pivotBlock > _captureFromBlock && _logger.IsInfo) _logger.Info(
             $"Flat history starts at the sync pivot {pivotBlock}, not at FlatDb.HistoryRetentionSinceBlock {_captureFromBlock}: the node's state starts there.");
+    }
+
+    /// <summary>Starts an unwindowed history at a snap-sync pivot. v2 rows are post-values with no fallback, so the
+    /// pivot's whole state must be in rows before the history starts there; <see cref="PivotHistoryImageWriter"/>
+    /// writes them in the background and publishes the watermark and floor at the pivot when done. The image goes at the
+    /// start of the pivot's checkpoint window, so the every-block walk builds proof commitments for the pivot itself.</summary>
+    private void SeedUnwindowedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
+    {
+        if (_availability.TryGetWatermark(out ulong watermark) && (watermark > 0 || _availability.TryGetGlobalFloor(out _)))
+        {
+            throw new InvalidOperationException(
+                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock}: the flatHistory database already " +
+                $"holds history up to block {watermark}, whose rows resolve through state the snap sync replaced. Resync the " +
+                "flatHistory database.");
+        }
+
+        // The slots copy over from the flat storage column, whose keys and values match history rows only on this layout.
+        if (_layout != FlatLayout.Flat)
+        {
+            DisableCapture(
+                $"The sync moved the state to pivot {pivotBlock}, but unwindowed (v2) history can start at a pivot only on " +
+                $"FlatDb.Layout={nameof(FlatLayout.Flat)}; this node runs {_layout}. Capture stops here and as-of reads report no " +
+                $"history. Resync with FlatDb.Layout={nameof(FlatLayout.Flat)}, or sync from genesis with Sync.FastSync=false.");
+            return;
+        }
+
+        if (_pivotImageWriter is null)
+        {
+            throw new InvalidOperationException(
+                $"Cannot start the unwindowed flat history at the sync pivot {pivotBlock} without the pivot image writer.");
+        }
+
+        DiscardPriorHistory();
+        _pivotImageWriter.Begin(pivotBlock, pivotStateRoot, pivotBlock - pivotBlock % _pivotImageGranularity);
+    }
+
+    /// <summary>A fresh node executes genesis before it syncs, and an earlier sync attempt can leave part of an image:
+    /// either would read through below the new image, and a key gone by the pivot would resurface. Nothing here is
+    /// served yet, so all of it goes, at a cost independent of its size.</summary>
+    private void DiscardPriorHistory()
+    {
+        _commitments?.DiscardForPivot();
+
+        ReadOnlySpan<byte> first = [0x00];
+        Span<byte> last = stackalloc byte[MaxHistoryKeyLength];
+        last.Fill(0xFF);
+        foreach (FlatHistoryColumns column in Enum.GetValues<FlatHistoryColumns>())
+        {
+            bool commitmentColumn = column is FlatHistoryColumns.AccountCommitments or FlatHistoryColumns.StorageCommitments;
+            if (commitmentColumn && _commitments is not null) continue;
+
+            IRangeRemovableKeyValueStore removable = (IRangeRemovableKeyValueStore)_history.GetColumnDb(column);
+            removable.RemoveRange(first, last);
+            removable.ReclaimRange(first, last);
+        }
+
+        _history.SyncWal();
+        _availability.ForgetObservedRecords();
+        _formatStamped = false;
     }
 
     [SkipLocalsInit]

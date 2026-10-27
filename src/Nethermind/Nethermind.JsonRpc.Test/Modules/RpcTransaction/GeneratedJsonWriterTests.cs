@@ -10,10 +10,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -65,6 +67,16 @@ public class GeneratedJsonWriterTests
             .SetArgDisplayNames("log, removed");
         yield return new TestCaseData(new FilterLog(0, 0, 0, null!, 0, null!, null!, null!, null!)).SetArgDisplayNames("log, nulls");
         yield return new TestCaseData(new FilterLog(0, 1, 2, TestItem.KeccakA, 0, TestItem.KeccakB, TestItem.AddressA, [], [])).SetArgDisplayNames("log, empty");
+
+        yield return new TestCaseData(new ReceiptForRpc()).SetArgDisplayNames("receipt, all default");
+        foreach ((string name, ReceiptForRpc receipt) in Receipts())
+        {
+            yield return new TestCaseData(receipt).SetArgDisplayNames(name);
+        }
+
+        yield return new TestCaseData(new LogEntryForRpc()).SetArgDisplayNames("receipt log, all default");
+        yield return new TestCaseData(new LogEntryForRpc { Removed = false, LogIndex = 4, TransactionIndex = 2, TransactionHash = TestItem.KeccakA, BlockHash = TestItem.KeccakB, BlockNumber = 25_000_000, BlockTimestamp = 1_700_000_000, Address = TestItem.AddressA, Data = [1, 2], Topics = [TestItem.KeccakC] })
+            .SetArgDisplayNames("receipt log");
     }
 
     [TestCaseSource(nameof(Values))]
@@ -444,6 +456,60 @@ public class GeneratedJsonWriterTests
         yield return ("frame", FrameTx(SelfVerify(PrefixFrameGas), OnlyVerify()));
     }
 
+    private static IEnumerable<(string Name, ReceiptForRpc Receipt)> Receipts()
+    {
+        LogEntry[] logs = [new(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]), new(TestItem.AddressB, [], [])];
+        TxGasInfo gasInfo = new(10 * Unit.GWei);
+        foreach ((string name, Transaction tx) in Transactions())
+        {
+            TxReceipt receipt = Receipt(tx.Type, logs);
+            receipt.Recipient = tx.To;
+            receipt.ContractAddress = tx.To is null ? TestItem.AddressC : null;
+            if (tx.Type == TxType.FrameTx)
+            {
+                receipt.Payer = TestItem.AddressD;
+                receipt.FrameReceipts = [new(TxFrameReceipt.StatusSuccess, 7, 3, [logs[0]]), new(TxFrameReceipt.StatusSkipped, 0, 0, []), new(TxFrameReceipt.StatusFailure, 5, 0, [logs[1]])];
+            }
+
+            TxGasInfo txGasInfo = tx.Type == TxType.Blob ? new(10 * Unit.GWei, 3, 131072) : gasInfo;
+            yield return ($"receipt, {name}", new ReceiptForRpc(TestItem.KeccakA, receipt, 1_700_000_000, txGasInfo, logIndexStart: 5));
+        }
+
+        TxReceipt failed = Receipt(TxType.EIP1559, []);
+        failed.StatusCode = 0;
+        yield return ("receipt, failed, no logs", new ReceiptForRpc(TestItem.KeccakA, failed, 1_700_000_000, gasInfo));
+
+        TxReceipt preByzantium = Receipt(TxType.Legacy, logs);
+        preByzantium.PostTransactionState = TestItem.KeccakE;
+        yield return ("receipt, pre-Byzantium root", new ReceiptForRpc(TestItem.KeccakA, preByzantium, 1, default));
+
+        TxReceipt noLogs = Receipt(TxType.Legacy, null!);
+        noLogs.BlockHash = null;
+        yield return ("receipt, null logs and block hash", new ReceiptForRpc(TestItem.KeccakA, noLogs, 0, default));
+
+        ReceiptForRpc materialized = new(TestItem.KeccakA, Receipt(TxType.EIP1559, logs), 1_700_000_000, gasInfo) { BlockGasUsed = 10, ExecutionGasUsed = 11 };
+        materialized.Logs = [.. materialized.Logs!];
+        yield return ("receipt, materialized logs and gas breakdown", materialized);
+
+        yield return ("receipt, null logs list", new ReceiptForRpc(TestItem.KeccakA, Receipt(TxType.EIP1559, logs), 1_700_000_000, gasInfo) { Logs = null });
+
+        static TxReceipt Receipt(TxType type, LogEntry[] logs) => new()
+        {
+            TxType = type,
+            StatusCode = 1,
+            TxHash = TestItem.KeccakA,
+            BlockHash = TestItem.KeccakB,
+            BlockNumber = 25_000_000,
+            Index = 3,
+            GasUsed = 21_000,
+            GasUsedTotal = 63_000,
+            Sender = TestItem.AddressA,
+            Recipient = TestItem.AddressB,
+            Logs = logs,
+            Bloom = logs is null ? null : new Bloom(logs),
+        };
+    }
+
     private static IEnumerable<(string Name, Block Block)> Blocks()
     {
         Transaction[] transactions = [.. Transactions().Where(static t => t.Tx.Type != TxType.FrameTx).Select(static t => t.Tx)];
@@ -482,7 +548,7 @@ public class GeneratedJsonWriterTests
         {
             foreach (JsonSerializerOptions options in AllOptions)
             {
-                Assert.That(options.TypeInfoResolverChain.OfType<IGeneratedJsonWriterResolver>().Select(static w => w.WrittenType), Is.EquivalentTo(new[] { typeof(BlockForRpc), typeof(FilterLog) }));
+                Assert.That(options.TypeInfoResolverChain.OfType<IGeneratedJsonWriterResolver>().Select(static w => w.WrittenType), Is.EquivalentTo(new[] { typeof(BlockForRpc), typeof(FilterLog), typeof(ReceiptForRpc), typeof(LogEntryForRpc) }));
             }
 
             foreach (Type type in new[] { typeof(LegacyTransactionForRpc), typeof(AccessListTransactionForRpc), typeof(EIP1559TransactionForRpc), typeof(BlobTransactionForRpc), typeof(SetCodeTransactionForRpc), typeof(FrameTransactionForRpc) })

@@ -10,6 +10,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
@@ -153,6 +154,47 @@ public class TransactionForRpcTests
         string serialized = _serializer.Serialize(TransactionForRpc.FromTransaction(transaction, new(SomeChainId)));
 
         Assert.That(DeserializeTransactionForRpc(serialized).Type, Is.EqualTo(transaction.Type));
+    }
+
+    [TestCase("""{"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.BlobFeeCapWithoutBlobHashes)]
+    [TestCase("""{"maxFeePerBlobGas":"0x0","maxFeePerGas":"0x7"}""", RpcTransactionErrors.BlobFeeCapWithoutBlobHashes)]
+    [TestCase("""{"maxFeePerBlobGas":"0x1","blobVersionedHashes":[]}""", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    [TestCase("""{"blobVersionedHashes":[]}""", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    public void A_blob_fee_cap_without_blob_hashes_or_an_empty_list_names_a_blob_call_that_is_rejected(string json, string error)
+    {
+        TransactionForRpc call = DeserializeTransactionForRpc(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call, Is.TypeOf<BlobTransactionForRpc>());
+            Assert.That(call.ToTransaction().Error, Is.EqualTo(error));
+        }
+    }
+
+    // A frame transaction carries a blob fee cap without blob hashes, so frames keep selecting it.
+    [Test]
+    public void A_blob_fee_cap_with_frames_stays_a_frame_call() =>
+        Assert.That(DeserializeTransactionForRpc(
+            """{"frames":[{"mode":0,"flags":3,"executionGas":"0x186a0","value":"0x0","data":"0x"}],"maxFeePerBlobGas":"0x1"}"""),
+            Is.TypeOf<FrameTransactionForRpc>());
+
+    [Test]
+    public void A_blob_fee_cap_beside_an_authorization_list_is_rejected() =>
+        Assert.Throws<JsonException>(() => DeserializeTransactionForRpc(
+            """{"maxFeePerBlobGas":"0x0","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}"""));
+
+    [TestCase("""{"maxFeePerBlobGas":"0x0"}""", TxType.Legacy)]
+    [TestCase("""{"maxFeePerBlobGas":"0x0","maxFeePerGas":"0x7"}""", TxType.EIP1559)]
+    public void Simulation_reads_a_lone_blob_fee_cap_as_absent(string json, TxType beforeBerlin)
+    {
+        TransactionForRpc call = BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(DeserializeTransactionForRpc(json));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call, Is.TypeOf<EIP1559TransactionForRpc>());
+            // A defaulted type downgrades to legacy before Berlin; a type the fields chose stays.
+            Assert.That(call.ToTransaction(spec: Istanbul.Instance).Data?.Type, Is.EqualTo(beforeBerlin));
+        }
     }
 
     [Test]

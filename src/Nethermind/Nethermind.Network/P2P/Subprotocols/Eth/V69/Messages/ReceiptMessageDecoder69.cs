@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -34,7 +35,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             return txReceipt;
         }
 
-        byte[] firstItem = ctx.DecodeByteArray();
+        ReadOnlySpan<byte> firstItem = ctx.DecodeByteArraySpan();
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
@@ -46,6 +47,11 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         }
         else
         {
+            if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+            {
+                ThrowUnexpectedPostStateLength(firstItem.Length);
+            }
+
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
@@ -73,6 +79,10 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         }
 
         return txReceipt;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedPostStateLength(int length)
+            => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedReceiptField()

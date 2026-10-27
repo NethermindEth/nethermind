@@ -24,7 +24,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to download/process new blocks.", DefaultValue = "true")]
     bool ProcessingEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to connect to newly discovered peers.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to start the peer manager. If disabled, Nethermind doesn't initiate connections to any peers, including static and trusted nodes, `Network.StaticPeers`, and peers added via `admin_addPeer`, and doesn't persist peers to the peer database.", DefaultValue = "true")]
     bool PeerManagerEnabled { get; set; }
 
     [ConfigItem(Description = "The path to the chain spec file.", DefaultValue = "chainspec/foundation.json")]
@@ -57,6 +57,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
 
+    [ConfigItem(Description = "Whether to mask IP addresses, enode URLs and ENR records in logs. Loopback and unspecified addresses are not masked.", DefaultValue = "false")]
+    bool MaskIpsInLogs { get; set; }
+
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
 
@@ -65,9 +68,6 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
-
-    [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
-    ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
@@ -87,7 +87,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "2", HiddenFromDocs = true)]

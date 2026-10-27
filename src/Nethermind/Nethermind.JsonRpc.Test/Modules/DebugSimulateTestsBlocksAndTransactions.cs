@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -12,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
@@ -57,6 +59,26 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         }
 
         Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+    }
+
+    /// <summary>The call tracer reports the gas the call runs with, after the RPC gas cap clamps the requested gas.</summary>
+    [Test]
+    public async Task Test_debug_simulate_call_tracer_reports_the_gas_capped_gas([Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        chain.Container.Resolve<IJsonRpcConfig>().GasCap = 30_000;
+        SimulatePayload<TransactionForRpc> payload = EthRpcSimulateTestsBase.CreateGasProbePayload(50_000);
+        payload.BlockStateCalls![0].BlockOverrides = new BlockOverride { GasLimit = 100_000, BaseFeePerGas = 0 };
+        payload.Validation = validation;
+
+        string serialized = await RpcTest.TestSerializedRequest(
+            chain.DebugRpcModule, "debug_simulateV1", payload, "latest", new GethTraceOptions { Tracer = "callTracer" });
+
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        JsonElement root = document.RootElement;
+        Assert.That(root.TryGetProperty("result", out JsonElement result), Is.True, serialized);
+        string gas = result[0].GetProperty("traces")[0].GetProperty("gas").GetString()!;
+        Assert.That(Convert.ToUInt64(gas, 16), Is.EqualTo(30_000UL));
     }
 
     [Test]

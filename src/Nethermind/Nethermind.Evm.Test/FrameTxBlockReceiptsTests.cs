@@ -109,7 +109,6 @@ public class FrameTxBlockReceiptsTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
             DecodedMaxFeePerGas = 1,
         };
         TxGasInfo blobInfo = blobFrameTx.GetGasInfo(spec, header);
@@ -159,7 +158,7 @@ public class FrameTxBlockReceiptsTests
             ],
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
         Block block = Build.A.Block.WithNumber(1)
@@ -183,7 +182,7 @@ public class FrameTxBlockReceiptsTests
     // EIP-7906: a failed assertion drops the body's logs but keeps the prefix's, so an empty log set
     // would contradict the frame receipts and leave them out of the bloom.
     [Test]
-    public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
+    public void Execute_AssertFrameReverts_FailedReceiptKeepsThePrefixLogs()
     {
         (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx();
         using IDisposable _ = scope;
@@ -211,7 +210,7 @@ public class FrameTxBlockReceiptsTests
     // A failed transaction's receipt still carries the prefix log, so the next transaction's callTracer
     // indexes must continue after it.
     [Test]
-    public void Execute_PostTxReverts_CallTracerLogIndexCountsThePrefixLogs()
+    public void Execute_AssertFrameReverts_CallTracerLogIndexCountsThePrefixLogs()
     {
         (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx();
         using IDisposable _ = scope;
@@ -300,11 +299,11 @@ public class FrameTxBlockReceiptsTests
                 new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
                 new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
                 new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
-                new TxFrame(FrameMode.PostTx, 0, Asserter, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Assert, 0, Asserter, 200_000, UInt256.Zero, default),
             ],
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
         Block block = Build.A.Block.WithNumber(1)

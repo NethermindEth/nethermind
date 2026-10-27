@@ -4,14 +4,13 @@
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet_aztec",
-    "LogFileName": "mainnet_aztec.log",
-    "MemoryHint": 1024000000
+    "LogFileName": "mainnet_aztec.log"
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 26164000,
-    "PivotHash": "0x7a85b7c7099e4a99fbc3a3c65082e66551b7fe8f497b7d08bdbcebc10fdb8b5a",
+    "PivotNumber": 26265000,
+    "PivotHash": "0x9d290329b90c504b4bcc4af3aa11b7370e3b52fa43e7ffc3df2226339a97cad8",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": 10000000000,
     "AncientReceiptsBarrier": 24600000,

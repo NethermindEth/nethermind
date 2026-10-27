@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -249,6 +250,20 @@ public class BlockDecoderTests
     }
 
     [Test]
+    public void Encode_to_array_pool_span_matches_encode(
+        [ValueSource(nameof(BlockScenarios))] Block block, [Values] bool preEncodedTransactions)
+    {
+        BlockDecoder decoder = new();
+        Block target = preEncodedTransactions
+            ? new(block.Header, block.Body) { EncodedTransactions = block.Transactions.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray() }
+            : block;
+
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(target);
+
+        Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(decoder.Encode(target).Bytes));
+    }
+
+    [Test]
     public void Encode_with_pre_encoded_typed_transactions_produces_same_rlp()
     {
         Transaction[] transactions =
@@ -350,6 +365,38 @@ public class BlockDecoderTests
         finally
         {
             recovery.Dispose();
+        }
+    }
+
+    [Test]
+    public void Receipt_recovery_transaction_at_an_index_does_not_reference_the_block_memory()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).WithTo(null).WithCode([0x60, 0x00]).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).WithMaxFeePerGas(1).WithData([1, 2, 3]).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithMaxFeePerGas(1).WithShardBlobTxTypeAndFields(2, isMempoolTx: false).Signed().TestObject,
+            Build.A.Transaction.WithNonce(4).WithType(TxType.SetCode).WithMaxFeePerGas(1)
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressC, 7, new Signature(new byte[64], 0))).Signed().TestObject,
+        ];
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(transactions).TestObject).Bytes;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)
+            ?? throw new AssertionException("encoded block should decode for receipt recovery");
+        recovery.SkipNextTransaction();
+
+        Transaction[] decoded = Enumerable.Range(0, transactions.Length).Reverse().Select(recovery.GetTransaction).Reverse().ToArray();
+        Array.Fill(encoded, (byte)0xff);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(decoded[i].Hash, Is.EqualTo(transactions[i].Hash), $"transaction {i}");
+                Assert.That(TxDecoder.Instance.Encode(decoded[i]).Bytes, Is.EqualTo(TxDecoder.Instance.Encode(transactions[i]).Bytes), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetTransaction(transactions.Length));
         }
     }
 

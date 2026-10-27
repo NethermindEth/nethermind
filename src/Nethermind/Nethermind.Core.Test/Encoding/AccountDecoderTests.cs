@@ -27,6 +27,26 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
+        private static readonly UInt256[] Words =
+        [
+            UInt256.Zero, UInt256.One, 127, 128, 255, 256, ulong.MaxValue, (UInt256)ulong.MaxValue + 1,
+            UInt256.One << 127, (UInt256.One << 128) - 1, UInt256.One << 200, UInt256.MaxValue
+        ];
+
+        [Test]
+        public void EncodeAsBytes_matches_the_writer_encoding(
+            [Values(0UL, 1UL, 127UL, 128UL, 255UL, 256UL, ulong.MaxValue)] ulong nonce, [ValueSource(nameof(Words))] UInt256 balance, [Values] bool slim, [Values] bool hasStorageAndCode)
+        {
+            Account account = new(nonce, balance);
+            if (hasStorageAndCode) account = account.WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
+            AccountDecoder decoder = new(slim);
+            byte[] expected = new byte[decoder.GetLength(account)];
+            RlpWriter writer = new(expected);
+            decoder.Encode(account, ref writer);
+
+            Assert.That(decoder.EncodeAsBytes(account), Is.EqualTo(expected));
+        }
+
         [Test]
         public void Roundtrip_test()
         {

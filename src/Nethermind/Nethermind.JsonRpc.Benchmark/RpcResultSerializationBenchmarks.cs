@@ -13,8 +13,11 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -25,7 +28,7 @@ using Nethermind.Wallet;
 namespace Nethermind.JsonRpc.Benchmark;
 
 /// <summary>
-/// Full and hashes-only block responses through the generated writers and through the metadata path, split into building
+/// Full and hashes-only block responses, block receipts and logs through the generated writers and through the metadata path, split into building
 /// the RPC objects, serializing them, and the whole <c>eth_getBlockByNumber</c> call as the RPC module answers it.
 /// </summary>
 [MemoryDiagnoser]
@@ -35,8 +38,8 @@ public class RpcResultSerializationBenchmarks
 {
     private const string Generated = "generated writers";
 
-    // Only the block and log writers can be switched off; transactions reach their writers through the dispatch either way.
-    private const string Metadata = "block and log metadata path";
+    // Only the block, receipt and log writers can be switched off; transactions reach their writers through the dispatch either way.
+    private const string Metadata = "block, receipt and log metadata path";
 
     private readonly ArrayBufferWriter<byte> _buffer = new(1 << 20);
     private JsonSerializerOptions _generated = null!;
@@ -45,6 +48,7 @@ public class RpcResultSerializationBenchmarks
     private BlockForRpc _full = null!;
     private BlockForRpc _hashes = null!;
     private FilterLog[] _logs = null!;
+    private ReceiptsForRpc<ReceiptForRpc> _receipts = null!;
     private IContainer _container = null!;
     private IEthRpcModule _ethModule = null!;
 
@@ -55,11 +59,12 @@ public class RpcResultSerializationBenchmarks
         _full = new BlockForRpc(_block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
         _hashes = new BlockForRpc(_block, includeFullTransactionData: false, MainnetSpecProvider.Instance);
         _logs = BuildLogs(1000);
+        _receipts = BuildReceipts(_block);
 
         // Read after Facade's module initializer registered the writers, which rebuilds the options.
         _generated = EthereumJsonSerializer.JsonOptions;
         _metadata = GeneratedJsonWriters.CreateMetadataOptions(_generated);
-        foreach (Type type in new[] { typeof(BlockForRpc), typeof(FilterLog) })
+        foreach (Type type in new[] { typeof(BlockForRpc), typeof(FilterLog), typeof(ReceiptForRpc), typeof(LogEntryForRpc) })
         {
             if (_generated.GetTypeInfo(type).Converter is not IGeneratedJsonWriter writer || !writer.IsActive(_generated))
             {
@@ -77,6 +82,7 @@ public class RpcResultSerializationBenchmarks
         Check("full block", () => Serialize(_full, _generated), () => Serialize(_full, _metadata));
         Check("hashes block", () => Serialize(_hashes, _generated), () => Serialize(_hashes, _metadata));
         Check("logs", () => Serialize(_logs, _generated), () => Serialize(_logs, _metadata));
+        Check("receipts", () => Serialize(_receipts, _generated), () => Serialize(_receipts, _metadata));
         Check("rpc full", () => Rpc(true, _generated), () => Rpc(true, _metadata));
         Check("rpc hashes", () => Rpc(false, _generated), () => Rpc(false, _metadata));
     }
@@ -119,6 +125,12 @@ public class RpcResultSerializationBenchmarks
 
     [BenchmarkCategory("serialize 1000 logs"), Benchmark(Description = Generated)]
     public int LogsGenerated() => Serialize(_logs, _generated);
+
+    [BenchmarkCategory("serialize 200 block receipts"), Benchmark(Baseline = true, Description = Metadata)]
+    public int ReceiptsMetadata() => Serialize(_receipts, _metadata);
+
+    [BenchmarkCategory("serialize 200 block receipts"), Benchmark(Description = Generated)]
+    public int ReceiptsGenerated() => Serialize(_receipts, _generated);
 
     private int Serialize<T>(T value, JsonSerializerOptions options)
     {
@@ -191,6 +203,43 @@ public class RpcResultSerializationBenchmarks
         }
 
         return logs;
+    }
+
+    private static ReceiptsForRpc<ReceiptForRpc> BuildReceipts(Block block)
+    {
+        Transaction[] transactions = block.Transactions;
+        TxReceipt[] receipts = new TxReceipt[transactions.Length];
+        ulong gasUsedTotal = 0;
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            LogEntry[] logs = new LogEntry[i % 4];
+            for (int j = 0; j < logs.Length; j++)
+            {
+                logs[j] = new LogEntry(TestItem.Addresses[(i + j) % TestItem.Addresses.Length], new byte[32 * j + 32], [TestItem.KeccakA, TestItem.Keccaks[i % TestItem.Keccaks.Length]]);
+            }
+
+            gasUsedTotal += transactions[i].GasLimit;
+            receipts[i] = new TxReceipt
+            {
+                Index = i,
+                TxHash = transactions[i].Hash,
+                BlockHash = block.Hash,
+                BlockNumber = block.Number,
+                Sender = transactions[i].SenderAddress,
+                Recipient = transactions[i].To,
+                GasUsed = transactions[i].GasLimit,
+                GasUsedTotal = gasUsedTotal,
+                StatusCode = 1,
+                TxType = transactions[i].Type,
+                Logs = logs,
+                Bloom = new Bloom(logs),
+            };
+        }
+
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(block.Header);
+        UInt256? feePerBlobGas = null;
+        return new(receipts, transactions, logIndexPerReceipt: false, (target, receipt, transaction, logIndexStart) =>
+            target.Populate(transaction.Hash!, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header, ref feePerBlobGas), logIndexStart));
     }
 
     private static Block BuildBlock(int count)

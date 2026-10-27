@@ -4,11 +4,12 @@
 using System;
 using System.Buffers;
 using System.IO;
-using System.IO.Pipelines;
+using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
@@ -54,13 +55,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
         int concurrency = 1,
-        long? maxRequestBodySize = null)
+        long? maxRequestBodySize = null,
+        IPAddress? remoteAddress = null,
+        StringValues forwardedFor = default)
         : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
-        _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
+        _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
@@ -84,7 +87,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             _sendFailure.Dispose();
         }
-        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -135,6 +137,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             // would hide a client reset from disconnect filters.
             ExceptionDispatchInfo.Throw(failure);
         }
+        finally
+        {
+            // Only after the workers finish: a client that closes its send side still waits for the pending responses.
+            await _stream.DisposeAsync();
+        }
 
         // The failed send's cancellation can close the transport before a worker observes it, ending every task cleanly.
         if (sendFailedBeforeClose && !cancellationToken.IsCancellationRequested && _sendLock.Failure is { } sendFailure)
@@ -154,7 +161,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
-        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         using SocketJsonRpcResponseSink<TStream> sink = new(
             _stream,
             _jsonRpcLocalStats,
@@ -163,7 +169,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             _jsonRpcContext);
 
         await _jsonRpcProcessor.ProcessAsync(
-            request,
+            data,
             _jsonRpcContext,
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),

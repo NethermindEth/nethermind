@@ -522,7 +522,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     /// <remarks>
     /// EIP-8298: adopted bytecode is declared at a lower block access index or is in the pre-block state.
     /// A hash found in neither is a malformed BAL, so it must surface as <see cref="InvalidBlockLevelAccessListException"/>
-    /// for the parallel path to retry sequentially, not as the code database's <see cref="InvalidOperationException"/>.
+    /// so the block is rejected as invalid, not as the code database's <see cref="InvalidOperationException"/>.
     /// </remarks>
     private ReadOnlyMemory<byte> GetAdoptedCode(in ValueHash256 codeHash)
     {
