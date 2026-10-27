@@ -449,6 +449,12 @@ public sealed partial class KeccakHash
         ref ulong lane = ref AirbenderFlag.IsActive ? ref *WitnessNodes.Lane : ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         fixed (byte* data = input, original = previous)
         {
+            // Airbender reads lanes as two plain words (ReadLane), so the input must be word aligned, as an array's data is.
+            if (AirbenderFlag.IsActive && ((nuint)data & 3) != 0)
+            {
+                return ValueKeccak.Compute(input);
+            }
+
             bool absorbed = StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0
                 ? TryAbsorbEdited(ref lane, AlignedDown(data), AlignedDown(original), index, length)
                 : TryAbsorbEdited(ref lane, data, original, index, length);
@@ -948,13 +954,16 @@ public sealed partial class KeccakHash
     [DllImport("*")]
     private static extern unsafe void airbender_keccak_f1600_in_place(ulong* state);
 
-    /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned.</summary>
+    /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned, except on Airbender, where it
+    /// must be word aligned.</summary>
     /// <remarks>Where the JIT tests alignment (<see cref="StrictAlignmentFlag"/>), a plain load: the JIT drops the test for a
-    /// plain load whose address it can prove aligned, but keeps it for an unaligned read. Elsewhere an unaligned read: one
-    /// wide load on targets that tolerate misalignment, and expanded byte-wise on targets that reject it.</remarks>
+    /// plain load whose address it can prove aligned, but keeps it for an unaligned read. On Airbender a plain load too, two
+    /// word loads where an unaligned read tests alignment per word: there every caller reads an array's data or the input
+    /// <see cref="ComputeHash256OfEdited"/> checks. Elsewhere an unaligned read: one wide load on targets that tolerate
+    /// misalignment, and expanded byte-wise on targets that reject it.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong ReadLane(byte* data, nuint index) =>
-        StrictAlignmentFlag.IsActive
+        StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive
             ? *(ulong*)(data + index * sizeof(ulong))
             : Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
 
