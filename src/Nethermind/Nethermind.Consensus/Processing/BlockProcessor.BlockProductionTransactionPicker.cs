@@ -159,11 +159,13 @@ namespace Nethermind.Consensus.Processing
                 return args;
             }
 
-            private static readonly int MaxStarkProofLength = Rlp.LengthOfByteString(Eip8288Constants.MaxAggregateProofBytes, 0);
+            // len(rlp(stark_proof)) - 1: the one byte of an empty stark_proof is already part of the block's fixed overhead.
+            private static readonly int MaxStarkProofLength = Rlp.LengthOfByteString(Eip8288Constants.MaxAggregateProofBytes, 0) - 1;
 
             /// <summary>The body bytes kept for the EIP-8288 <c>stark_proof</c> once the block carries dependencies.</summary>
             /// <remarks>The proof counts toward the EIP-7934 RLP block size and the CL payload but is attached only after packing,
-            /// so the largest admissible proof, <c>MAX_AGGREGATE_PROOF_BYTES</c>, is reserved out of the transaction byte budget.</remarks>
+            /// so the largest admissible proof, <c>MAX_AGGREGATE_PROOF_BYTES</c>, is reserved out of the transaction byte budget,
+            /// measured against an empty <c>stark_proof</c> in place.</remarks>
             private static int StarkProofReserve(BlockToProduce block, Transaction candidate, IReleaseSpec spec) =>
                 spec.IsEip8288Enabled && (block.LeanProofInputs.Count != 0 || Eip8288Dependencies.IsDependencyBearing(candidate))
                     ? MaxStarkProofLength

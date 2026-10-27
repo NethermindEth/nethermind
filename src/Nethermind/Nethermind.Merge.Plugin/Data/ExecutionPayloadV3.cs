@@ -59,7 +59,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
         if (InclusionLists is not null)
         {
-            // ValidateParams has already checked each list's shape. Each list is decoded on its own, so its commitment stays
+            // ValidateParams has already checked each list's shape. Each list is decoded on its own, so its proof stays
             // with exactly its transactions.
             CommitteeInclusionList[] lists = InclusionListV1.Decode(InclusionLists);
             block.InclusionLists = lists;

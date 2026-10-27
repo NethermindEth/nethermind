@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
@@ -30,17 +31,22 @@ public class InclusionListValidatorTests
         ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
-    private static readonly InclusionListCommitment Committed = new(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+    private const bool Proven = true;
 
-    /// <summary>A counted list as newPayload resolves it for an attester holding the committed proof, if any.</summary>
-    private static CommitteeInclusionList Counted(ulong index, Transaction[] transactions, InclusionListCommitment? commitment)
-        => new(index, transactions, commitment) { HoldsValidProof = commitment is not null };
+    /// <summary>A counted list as newPayload resolves it: with a verified proof covering its entries, or with none.</summary>
+    private static CommitteeInclusionList Counted(Transaction[] transactions, bool proven)
+        => new(transactions)
+        {
+            VerifiedProofDeps = proven
+                ? transactions.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)).ToHashSet()
+                : null
+        };
 
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(false, true)]
     [TestCase(true, true)]
-    public void Null_commitments_establish_no_mandatory_dependency_transactions(bool dependencies, bool full)
+    public void Lists_without_a_verified_proof_establish_no_mandatory_dependency_transactions(bool dependencies, bool full)
     {
         Transaction transaction = BuildFrameTx();
         byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
@@ -49,8 +55,8 @@ public class InclusionListValidatorTests
             Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
             .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
-        // A null commitment obligates only dependency-free entries; an empty list binds nothing whatever it commits to.
-        block.InclusionLists = [Counted(0, block.InclusionListTransactions!, dependencies ? null : Committed)];
+        // A list without a verified proof obligates only dependency-free entries; an empty list binds nothing whatever it proves.
+        block.InclusionLists = [Counted(block.InclusionListTransactions!, !dependencies)];
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
         Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
@@ -199,7 +205,7 @@ public class InclusionListValidatorTests
             .WithInclusionListTransactions([entry]).TestObject;
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
-        CommitteeInclusionList[] lists = [Counted(0, [entry], Committed)];
+        CommitteeInclusionList[] lists = [Counted([entry], Proven)];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, spec), Has.Length.EqualTo(1));
@@ -208,13 +214,12 @@ public class InclusionListValidatorTests
         }
     }
 
-    // EIPs#12475: obligations follow from signed data alone. An entry with dependencies binds through a list whose
-    // recursive_stark is non-null, even for a builder lacking the proof, and not through a null one; an independent committed
-    // list can still require it.
-    [TestCase(false, false, ExpectedResult = true, TestName = "Entry under only a null commitment imposes no obligation")]
-    [TestCase(false, true, ExpectedResult = false, TestName = "Another committed list still requires the entry")]
-    [TestCase(true, false, ExpectedResult = false, TestName = "Entry under a committed list is required")]
-    public bool Each_list_commitment_derives_its_own_obligations(bool firstCommitted, bool secondList)
+    // EIPs#12475: obligations follow from each signed list alone. An entry with dependencies binds through a list whose proof
+    // verifies and covers it, and not through a list without one; an independent proven list can still require it.
+    [TestCase(false, false, ExpectedResult = true, TestName = "Entry under only an unproven list imposes no obligation")]
+    [TestCase(false, true, ExpectedResult = false, TestName = "Another proven list still requires the entry")]
+    [TestCase(true, false, ExpectedResult = false, TestName = "Entry under a proven list is required")]
+    public bool Each_list_proof_derives_its_own_obligations(bool firstProven, bool secondList)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("entry"), default);
         Transaction entry = BuildFrameTx();
@@ -222,8 +227,8 @@ public class InclusionListValidatorTests
         entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         entry.Hash = entry.CalculateHash();
-        List<CommitteeInclusionList> lists = [Counted(0, [entry], firstCommitted ? Committed : null)];
-        if (secondList) lists.Add(Counted(9, [entry], Committed));
+        List<CommitteeInclusionList> lists = [Counted([entry], firstProven)];
+        if (secondList) lists.Add(Counted([entry], Proven));
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).TestObject;
         block.InclusionLists = lists;
         block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);

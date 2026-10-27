@@ -329,9 +329,9 @@ public partial class BlockProcessor(
 
     private const int MaxExtensionCandidates = 4;
 
-    /// <summary>Offers the verified recursive proofs behind the committed inclusion lists as reusable statements.</summary>
+    /// <summary>Offers the verified recursive proofs of the inclusion lists as reusable statements.</summary>
     /// <remarks>
-    /// A rebuild under a deadline keeps only transactions whose dependencies form a proven statement. A held list proof is one,
+    /// A rebuild under a deadline keeps only transactions whose dependencies form a proven statement. A verified list proof is one,
     /// so the rebuild can keep the list's transactions, which attesters still obligate, and reuse that proof unchanged.
     /// </remarks>
     private static void OfferInclusionListProofs(BlockToProduce producing, LeanProofStore store)

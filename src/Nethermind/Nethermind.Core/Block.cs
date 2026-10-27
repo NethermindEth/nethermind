@@ -142,7 +142,7 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
-    /// <summary>The counted inclusion lists with their EIP-8288 commitments, when the Engine API supplied them per list.</summary>
+    /// <summary>The counted inclusion lists with their EIP-8288 proofs, when the Engine API supplied them per list.</summary>
     /// <remarks>Their transactions are also flattened into <see cref="InclusionListTransactions"/>.</remarks>
     [JsonIgnore]
     public IReadOnlyList<CommitteeInclusionList>? InclusionLists { get; set; }

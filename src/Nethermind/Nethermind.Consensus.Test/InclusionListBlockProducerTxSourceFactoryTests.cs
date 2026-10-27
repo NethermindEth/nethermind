@@ -55,22 +55,22 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             DecodedMaxFeePerGas = 1
         };
         FrameTxTestFrames.SignSecp256k1(frame, TestItem.PrivateKeyA, frame.SenderAddress);
-        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        // The list commits to a mempool wrapper proof this builder holds.
+        // The list carries a proof covering the frame transaction's dependencies.
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame, FrameTxSigHash.ComputeValue);
-        store.AddVerified(dependencies, null, [1]);
         FakeLeanProofVerifier verifier = new(true);
-        ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.Pinned, Eip8288Dependencies.ComputeDepsHash(dependencies), [1], dependencies);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance,
-            new InclusionListProofService(new TestSingleReleaseSpecProvider(spec), verifier, store, Timestamper.Default));
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, new InclusionListProofService(verifier));
         PayloadAttributes attributes = new()
         {
             InclusionLists = [new InclusionListV1
             {
                 Transactions = [TxDecoder.Instance.Encode(legacy, RlpBehaviors.SkipTypedWrapping).Bytes,
                     TxDecoder.Instance.Encode(frame, RlpBehaviors.SkipTypedWrapping).Bytes],
-                RecursiveStark = new RecursiveStarkV1 { StarkProofHash = Keccak.Compute([1]), DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)) }
+                RecursiveStark = new RecursiveStarkV1
+                {
+                    StarkProof = [1],
+                    ProofDeps = [.. dependencies.Select(static dependency => Eip8288Dependencies.Serialize([dependency]))]
+                }
             }]
         };
         source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
@@ -89,7 +89,6 @@ public class InclusionListBlockProducerTxSourceFactoryTests
                 TestItem.PrivateKeyB.Address, TestItem.PrivateKeyA.Address, TestItem.PrivateKeyC.Address]));
             Assert.That(selected[1].NonceKeys, Is.EqualTo((UInt256[])[0]));
             Assert.That(selected[1].Frames![^1].Mode, Is.EqualTo(FrameMode.Assert));
-            Assert.That(store.Covers(selected[1]), Is.True);
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         }
     }

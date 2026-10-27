@@ -26,7 +26,7 @@ public static class InclusionListValidator
         => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, block.InclusionLists);
 
     /// <summary>Checks appendability against state after transactions, before withdrawals and request system calls.</summary>
-    /// <param name="lists">The counted lists with their EIP-8288 commitments, or <c>null</c> when only the flattened
+    /// <param name="lists">The counted lists with their resolved EIP-8288 proofs, or <c>null</c> when only the flattened
     /// <paramref name="il"/> was supplied, which then binds only its transactions without dependencies.</param>
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
         IReadOnlyList<CommitteeInclusionList>? lists, Func<Transaction, bool>? frameCanInclude = null)

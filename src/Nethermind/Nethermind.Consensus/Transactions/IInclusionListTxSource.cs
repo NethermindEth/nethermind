@@ -14,7 +14,7 @@ public interface IInclusionListTxSource : ITxSource
     /// array instance, which is the key <c>GetTransactions</c> looks it up by.</summary>
     void Set(byte[][] inclusionListTransactions, IReleaseSpec spec);
 
-    /// <summary>Supplies the counted lists and their EIP-8288 commitments to proof-aware sources.</summary>
+    /// <summary>Supplies the counted lists and their EIP-8288 proofs to proof-aware sources.</summary>
     /// <param name="inclusionListTransactions">The lists flattened, identifying the build as in <see cref="Set(byte[][], IReleaseSpec)"/>.</param>
     /// <param name="lists">The counted lists, or <c>null</c> for a flattened list alone.</param>
     void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, IReadOnlyList<InclusionListV1>? lists)

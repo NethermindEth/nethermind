@@ -307,60 +307,29 @@ within a normal slot budget.
 
 ## Proof-bearing inclusion lists
 
-A signed inclusion list commits to `recursive_stark = [stark_proof_hash, deps_hash]`, or null.
-The committed proof usually is a mempool wrapper's, which other nodes already hold, and may
-cover a superset of the list's dependencies; otherwise it travels as an
-`il_proof = [stark_proof, proof_deps]` on the consensus layer. A node holds a valid proof for a
-commitment only with all three of the proof bytes, their `proof_deps` and a `VALID` aggregate
-verdict under the target block fork's `AGGREGATED_VK`, and `proof_deps` contain the list's `deps`,
-the union over entries that decode and pass EIP-8141/EIP-8288 static validity. A verdict whose
-bytes were released only spares verifying the proof again when it is supplied again.
+A signed inclusion list carries `recursive_stark = InclusionListProof{stark_proof, proof_deps}`
+inline, whose serialized SSZ container fits `MAX_IL_PROOF_BYTES`; an empty proof is `"0x"` with no
+`proof_deps`. The proof is often a mempool wrapper's and may cover a superset of the list's
+dependencies. Under the target block's fork, a nonempty proof whose `proof_deps` are sorted,
+deduplicated and of `ENABLED_SCHEMES` is verified against `get_deps_hash(proof_deps)` and
+`AGGREGATED_VK`, its verdict cached by `(keccak256(stark_proof), deps_hash, AGGREGATED_VK)`.
+Each entry binds independently: a dependency-free one always, and a dependency-bearing one that
+passes EIP-8141/EIP-8288 static validity when the list's proof verifies and its `proof_deps`
+contain `dependencies(tx)`. The builder folds each verified list proof into its block aggregate
+whole and discards the dependencies absent from `dependencies(block)`.
 
-The methods follow [execution-apis#945](https://github.com/ethereum/execution-apis/pull/945). Each
-takes the target block's `timestamp`, whose fork fixes static validity and the key, and fails with
-`-38005` outside EIP-8288:
+With both EIP-8288 and EIP-7805 active, `engine_getInclusionListV2` returns `transactions` with
+`recursiveStark: {starkProof, proofDeps}` (empty for the local list, which omits frame
+transactions), `engine_forkchoiceUpdatedV6` accepts `PayloadAttributesV6.inclusionLists` and
+`engine_newPayloadV7` receives `InclusionListV1` entries `{transactions, recursiveStark}` in
+committee-position order. Earlier API versions retain their existing formats. The execution
+client assumes the consensus client supplies the lists counted by EIP-7805; it does not
+authenticate consensus-layer signatures.
 
-* `engine_verifyInclusionListProofV1(timestamp, transactions, recursiveStark, ilProof|null,
-  attestationDeadlineMs)` returns `{status, validationError}`: `VALID` when the proof's bytes are
-  held, a lookup, or the supplied matching `il_proof` matches a cached `VALID` verdict or verifies,
-  retaining the bytes until `attestationDeadlineMs`; `INVALID` when the list has no dependencies,
-  the known `proof_deps` omit one, an `INVALID` verdict is held (with or without an `il_proof`), or
-  the matching proof fails; `PROOF_UNKNOWN` otherwise, including for a `VALID` verdict whose bytes
-  were released. After parameter decoding, a matching `il_proof` failing submit's shape checks is
-  `INVALID` without verification, its verdict recorded; one that does not hash to the commitment
-  is ignored, whatever its shape.
-* `engine_getInclusionListProofV1(timestamp, starkProofHash)` returns the held `il_proof`, from
-  a validated mode-1 wrapper or a retained `il_proof`, or null once its bytes are released.
-* `engine_submitInclusionListProofV1(timestamp, ilProof, viewFreezeDeadlineMs)` verifies a
-  proof-topic `il_proof` and records its verdict, `VALID` or `INVALID`, retaining a valid proof
-  until `viewFreezeDeadlineMs`; size bounds, noncanonical `proof_deps` and schemes outside
-  `ENABLED_SCHEMES` are `INVALID` without verification, and that verdict is recorded too.
-
-Retention follows the deadlines the consensus layer supplies, in Unix milliseconds: a proof stays
-until the latest deadline any call gave it, and a deadline already past adds none. The execution
-client derives no deadline from slot lengths. The store is bounded by EIP-8288's peak of 80
-`il_proof`s (130 MiB).
-
-With both EIP-8288 and EIP-7805 active, `engine_forkchoiceUpdatedV6` accepts
-`PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives separate
-`InclusionListV1` entries in strictly increasing committee-position order. Each entry carries
-`committeeIndex`, `transactions`, and `recursiveStark: {starkProofHash, depsHash}` or null.
-Earlier API versions retain their existing formats. The execution client assumes the consensus
-client supplies the lists counted by EIP-7805; it does not authenticate consensus-layer
-signatures.
-
-A counted list always obligates its dependency-free entries, those without a dependency frame; its
-dependency-bearing entries, including one whose dependency frame carries no triples, only when this
-node holds a valid proof for its commitment. A commitment to an unknown or failing
-proof, one whose `proof_deps` omit a list dependency, or one on a list without dependencies is
-treated as null. Request bounds (positions, sizes, an incomplete commitment) fail the call; an
-undecodable entry only affects its own list. Builders fold each held committed proof into the
-block aggregate whole and discard the dependencies their block does not need, so the block proof
-stays exact. `getPayload` does not echo inclusion-list commitments.
-
-`engine_getInclusionListV1` keeps its existing non-frame sampling and returns transaction
-bytes only; constructing and signing a list with its proof remains a consensus-layer
-integration requirement.
+Request bounds (list count and size, a missing or oversized proof, a `proofDeps` entry that is not
+96 bytes) fail the call; an undecodable entry or an invalid proof only affects its own list.
+`getPayload` does not echo inclusion-list proofs. Constructing and signing a list with a nonempty
+proof remains a consensus-layer integration requirement.
 
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.

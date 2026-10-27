@@ -205,7 +205,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
-        // A commitment this node holds no valid proof for is treated as null (EIPs#12475).
+        // An empty or invalid list proof obligates only the list's dependency-free transactions (EIPs#12475).
         _inclusionListProofs?.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
         ValueHash256 inclusionListDigest = ComputeInclusionListDigest(block);
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
@@ -492,15 +492,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         fields[^1] = block.InclusionLists is null ? (byte)0 : (byte)1;
         hash.Update(fields);
         foreach (Transaction tx in block.InclusionListTransactions ?? []) hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
-        // The verdict depends on how the transactions split into lists and on whether each list's commitment obligates.
+        // The verdict depends on how the transactions split into lists and on the dependencies each list's verified proof covers.
         foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
         {
-            // The committee index is below IL_COMMITTEE_SIZE, so one byte holds it.
             BinaryPrimitives.WriteInt32BigEndian(fields, list.Transactions.Length);
-            fields[^1] = (byte)list.CommitteeIndex;
+            fields[^1] = list.VerifiedProofDeps is null ? (byte)0 : (byte)1;
             hash.Update(fields);
-            fields[^1] = list.HoldsValidProof ? (byte)1 : (byte)0;
-            hash.Update(fields[^1..]);
+            if (list.VerifiedProofDeps is null) continue;
+            BinaryPrimitives.WriteInt32BigEndian(fields, list.ProofDeps.Length);
+            hash.Update(fields[..sizeof(int)]);
+            foreach (byte[] dependency in list.ProofDeps) hash.Update(dependency);
         }
         return hash.GenerateValueHash();
     }
@@ -536,29 +537,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
         => TryEvaluate(blockHash, inclusionListTransactions, null);
 
+    /// <inheritdoc/>
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1>? lists)
-        => TryEvaluate(blockHash, inclusionListTransactions, lists, null);
-
-    /// <inheritdoc/>
-    public bool[]? ResolveHeldProofs(IReadOnlyList<InclusionListV1> lists, ulong blockNumber, ulong timestamp)
-    {
-        if (_inclusionListProofs is null) return null;
-        try
-        {
-            CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
-            _inclusionListProofs.ResolveObligations(decoded, _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)));
-            bool[] held = new bool[decoded.Length];
-            for (int i = 0; i < held.Length; i++) held[i] = decoded[i].HoldsValidProof;
-            return held;
-        }
-        catch (Exception exception) when (exception is RlpException or ArgumentException)
-        {
-            return null;
-        }
-    }
-
-    /// <inheritdoc/>
-    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1>? lists, bool[]? heldProofs)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block is null || !WasExecuted(block) || !_stateReader.HasStateForBlock(block.Header)) return null;
@@ -574,10 +554,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
         }
         CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
-        // Obligations resolved when the payload arrived stand: a proof released since then must not excuse an omission.
-        if (heldProofs is not null && heldProofs.Length == decoded.Length)
-            for (int i = 0; i < decoded.Length; i++) decoded[i].HoldsValidProof = heldProofs[i];
-        else _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
+        _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
         block.InclusionLists = decoded;
         return IsInclusionListSatisfied(block, CommitteeInclusionList.Flatten(decoded));
     }

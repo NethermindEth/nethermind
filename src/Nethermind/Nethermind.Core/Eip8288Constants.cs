@@ -39,6 +39,11 @@ public static class Eip8288Constants
     /// list ceilings fit <see cref="MaxWrapperBytes"/>.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
+    /// <summary>EIP-8288 <c>MAX_IL_PROOF_BYTES</c> (1.25 MiB): the bound on an inclusion list's serialized SSZ
+    /// <c>InclusionListProof</c> container, both fields and their offsets included.</summary>
+    /// <remarks>Provisional, like <see cref="MaxAggregateProofBytes"/>.</remarks>
+    public const int MaxIlProofBytes = 1_310_720;
+
     /// <summary>Native acceptance bound for the serialized mixed guest proof, which the pinned backend reports back.</summary>
     /// <remarks>Above <see cref="MaxAggregateProofBytes"/>, which every caller checks first.</remarks>
     public const int MaxMixedGuestProofBytes = 8 * 1024 * 1024;

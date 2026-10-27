@@ -29,7 +29,7 @@ public class PayloadAttributes
 
     public byte[][]? InclusionListTransactions { get; set; }
 
-    /// <summary><c>PayloadAttributesV6</c>: each counted inclusion list with its EIP-8288 commitment, in place of
+    /// <summary><c>PayloadAttributesV6</c>: each counted inclusion list with its EIP-8288 proof, in place of
     /// <see cref="InclusionListTransactions"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public InclusionListV1[]? InclusionLists
@@ -343,7 +343,7 @@ public class PayloadAttributes
             // bogota.md PayloadAttributesV5 appends this field unconditionally; an empty array is valid,
             // an absent one is not.
             PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
-            // PayloadAttributesV6 replaces the flattened list with each counted list and its EIP-8288 commitment.
+            // PayloadAttributesV6 replaces the flattened list with each counted list and its EIP-8288 proof.
             >= PayloadAttributesVersions.V6 when InclusionLists is null => $"{nameof(InclusionLists)} must be provided",
             _ => null
         };

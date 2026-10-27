@@ -1424,30 +1424,6 @@ public partial class EngineModuleTests
         }
     }
 
-    // EIP-8288: whether a committed list obligates its dependency-bearing entries is fixed when its payload arrives; a held
-    // proof released by the time engine_forkchoiceUpdated evaluates the retained list must not excuse an omission.
-    [Test]
-    public async Task Retained_lists_are_evaluated_with_the_obligations_resolved_on_arrival()
-    {
-        InterleavingEvaluator evaluator = new();
-        bool[]? evaluatedWith = null;
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
-            {
-                evaluator.Inner = inner;
-                return evaluator;
-            }));
-        EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
-        Hash256 head = Keccak.Compute("retained-held-proof");
-        InclusionListV1[] lists = [new() { CommitteeIndex = 0, Transactions = [] }];
-        rpc.SetRetainedInclusionList(head, 1, [new byte[1]], accepted: true, lists, heldProofs: [true]);
-        evaluator.OnHeldProofs = held => evaluatedWith = held;
-
-        rpc.GetInclusionListSatisfied(head);
-
-        Assert.That(evaluatedWith, Is.EqualTo(new[] { true }));
-    }
-
     [Test]
     public async Task Inclusion_list_cache_keeps_accepted_tips_without_finality()
     {
@@ -1824,8 +1800,6 @@ public partial class EngineModuleTests
 
         public Action? BeforeEvaluate { get; set; }
 
-        public Action<bool[]?>? OnHeldProofs { get; set; }
-
         public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
         {
             BeforeEvaluate?.Invoke();
@@ -1837,16 +1811,6 @@ public partial class EngineModuleTests
             BeforeEvaluate?.Invoke();
             return Inner.TryEvaluate(blockHash, inclusionListTransactions, lists);
         }
-
-        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1> lists, bool[]? heldProofs)
-        {
-            BeforeEvaluate?.Invoke();
-            OnHeldProofs?.Invoke(heldProofs);
-            return Inner.TryEvaluate(blockHash, inclusionListTransactions, lists, heldProofs);
-        }
-
-        public bool[]? ResolveHeldProofs(IReadOnlyList<InclusionListV1> lists, ulong blockNumber, ulong timestamp)
-            => Inner.ResolveHeldProofs(lists, blockNumber, timestamp);
     }
 
     /// <summary>Wraps the chain's <see cref="IStateReader"/> so one block's state can be made unreadable.</summary>

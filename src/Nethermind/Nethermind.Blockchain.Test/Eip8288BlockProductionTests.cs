@@ -915,7 +915,7 @@ public class Eip8288BlockProductionTests
         Assert.That(processed.StarkProof, Is.Empty);
     }
 
-    // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a committed mempool wrapper proof); it is
+    // EIP-8288 Test Case 11: an inclusion-list proof may cover a superset of its list (a reused mempool wrapper proof); it is
     // merged into the block proof with the surplus discarded, and block_deps_hash covers exactly dependencies(block).
     [Test]
     public async Task Owned_inclusion_list_witnesses_produce_when_the_shared_store_is_full([Values] bool superset)
@@ -969,10 +969,10 @@ public class Eip8288BlockProductionTests
         }
     }
 
-    // A held inclusion-list proof is a reusable statement under a deadline, and a rebuild keeps the obligated list
+    // A verified inclusion-list proof is a reusable statement under a deadline, and a rebuild keeps the obligated list
     // transactions ahead of a larger proven set that would omit them.
     [Test]
-    public async Task Deadline_production_keeps_inclusion_list_transactions_covered_by_a_held_list_proof()
+    public async Task Deadline_production_keeps_inclusion_list_transactions_covered_by_a_verified_list_proof()
     {
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(new CountingVerifier(), proofs);
@@ -1002,7 +1002,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(notReady!.Proven, Is.EquivalentTo(new[] { listedDependency }), "the list's statement wins over the larger unlisted one");
-            Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the held list proof");
+            Assert.That(proofs.TryGetRecursiveProof([listedDependency], out _), Is.True, "the rebuild reuses the verified list proof");
         }
     }
 

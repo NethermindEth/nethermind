@@ -48,7 +48,7 @@ public class ExecutionPayloadParams(
     /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
     public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
 
-    /// <summary>Each counted inclusion list with its EIP-8288 commitment, from <c>engine_newPayloadV7</c>.</summary>
+    /// <summary>Each counted inclusion list with its EIP-8288 proof, from <c>engine_newPayloadV7</c>.</summary>
     /// <remarks>Once validated, <see cref="InclusionListTransactions"/> holds them flattened for EIP-7805's checks.</remarks>
     public InclusionListV1[]? InclusionLists { get; } = inclusionLists;
 
@@ -161,7 +161,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        // engine_newPayloadV7 carries each list with its commitment in place of the flattened list; earlier versions keep theirs.
+        // engine_newPayloadV7 carries each list with its proof in place of the flattened list; earlier versions keep theirs.
         if ((version >= EngineApiVersions.NewPayload.V7) != (InclusionLists is not null))
         {
             error = version >= EngineApiVersions.NewPayload.V7 ? "Inclusion lists must be set" : "Inclusion lists must not be set before engine_newPayloadV7";
