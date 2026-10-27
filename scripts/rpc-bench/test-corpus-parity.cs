@@ -55,6 +55,22 @@ try
         using var parity = Create(); Equal(parity.LoadCorpus(path).Length, 5);
         return Task.CompletedTask;
     });
+    await Check("large gzip member followed by an empty member remains loadable", () =>
+    {
+        var random = new Random(42);
+        var records = Enumerable.Range(0, 400).Select(_ =>
+        {
+            var data = new byte[128];
+            random.NextBytes(data);
+            return Record().Replace(sentinel, "0x" + Convert.ToHexString(data), StringComparison.Ordinal);
+        }).ToArray();
+        var path = Write(string.Join('\n', records) + "\n", true);
+        var compressed = File.ReadAllBytes(path);
+        Equal(compressed.Length > 8192 * 2, true);
+        File.WriteAllBytes(path, [.. compressed, .. Convert.FromHexString("1F8B08000000000000FF03000000000000000000")]);
+        using var parity = Create(); Equal(parity.LoadCorpus(path).Length, records.Length);
+        return Task.CompletedTask;
+    });
     foreach (var tracer in new[] { "callTracer", "prestateTracer", "4byteTracer", "stateGasTracer", "" }) await Check($"debug rewrite {tracer}", () =>
     {
         using var parity = Create(values: [("RPC_BENCH_CORPUS_METHOD", "debug_traceCall"), ("RPC_BENCH_CORPUS_TRACER", tracer)]);

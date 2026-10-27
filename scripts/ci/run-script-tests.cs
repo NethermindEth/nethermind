@@ -33,6 +33,8 @@ try
             if (!ScriptName().IsMatch(Path.GetFileName(file)))
                 throw new InvalidOperationException($"Script filename must be lowercase kebab-case (with optional .helpers suffix): {file}");
         files = files.Where(file => !file.EndsWith(".helpers.cs", StringComparison.Ordinal)).ToArray();
+        if (files.Length == 0)
+            throw new InvalidOperationException($"No C# entry points to check in {path}; helpers are checked through the scripts that include them.");
         var artifacts = Directory.CreateTempSubdirectory("nethermind-script-check-");
         try
         {

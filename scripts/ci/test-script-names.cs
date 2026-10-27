@@ -27,8 +27,16 @@ try
         finally { File.Delete(file); }
     }
 
-    File.WriteAllText(Path.Combine(directory.FullName, "test-example2.cs"), "#:include example.helpers.cs\nConsole.WriteLine(Example.Value);");
     File.WriteAllText(Path.Combine(directory.FullName, "example.helpers.cs"), "static class Example { internal const int Value = 1; }");
+    foreach (var target in new[] { Path.Combine(directory.FullName, "example.helpers.cs"), directory.FullName })
+    {
+        var result = await ScriptProcess.Run("dotnet", ["run", "--file", runner, "--", "--check", target], CancellationToken.None);
+        if (result.Code != 1 || !result.Error.Contains("No C# entry points to check", StringComparison.Ordinal))
+            throw new InvalidOperationException($"Accepted helper-only target {target}: {result.Output}{result.Error}");
+        Console.WriteLine($"PASS reject helper-only target {target}");
+        passed++;
+    }
+    File.WriteAllText(Path.Combine(directory.FullName, "test-example2.cs"), "#:include example.helpers.cs\nConsole.WriteLine(Example.Value);");
     foreach (var excluded in new[] { "build", "bin", "obj" })
         File.WriteAllText(Path.Combine(Directory.CreateDirectory(Path.Combine(directory.FullName, excluded)).FullName, "Invalid.cs"), "not C#");
     var valid = await ScriptProcess.Run("dotnet", ["run", "--file", runner, "--", "--check", directory.FullName], CancellationToken.None);
