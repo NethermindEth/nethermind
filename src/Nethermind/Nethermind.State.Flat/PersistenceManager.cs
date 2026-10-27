@@ -19,6 +19,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
