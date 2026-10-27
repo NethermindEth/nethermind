@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Eez.Prove.V2;
+using Nethermind.Eez.Execution;
 
 namespace Nethermind.Eez.Attester;
 
@@ -24,6 +25,7 @@ internal sealed class StreamingSessionRegistry : IDisposable
     private long _reservedBytes;
     private bool _disposed;
     internal StreamingProtocolRules Rules { get; }
+    internal bool SupportsOfflineSettlement => _nativeProfile?.Genesis.Rules.NativeFormat == NativeSystemTxFormat.ContractV4;
 
     internal StreamingSessionRegistry(StreamingRegistryLimits limits, StreamingSessionLimits sessionLimits, TimeProvider time,
         StreamingSettlementProfile profile = StreamingSettlementProfile.Rollup0Calldata, NativeStreamingProfile? nativeProfile = null)

@@ -69,7 +69,7 @@ public partial class EezSystemTxDecoderTests
     }
 
     [Test]
-    public void ContractV3Envelope_InvalidFormat_Rejects([Values(-1, 0, 2, 4)] int format) =>
+    public void ContractV3Envelope_InvalidFormat_Rejects([Values(-1, 0, 2, 5)] int format) =>
         Assert.That(() => new EezNativeSystemTxDecoder((NativeSystemTxFormat)format), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

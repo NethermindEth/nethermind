@@ -113,19 +113,45 @@ public sealed class NativeStreamingSessionTests(int version)
             return;
         }
         NativeOfflineFinalizer finalizer = new(_profile, context, registry, manager, signer, LimboLogs.Instance);
-        StreamingSession session = Session();
-        foreach (BlockWitness block in _blocks) Append(session, block);
-        ClientFrame request = _frames[^1].Clone();
-        using SessionOperation operation = session.AdmitFinalize(session.Binding, 90, request.Finalize, request.CalculateSize());
-        Proof proof = await finalizer.Finalize(operation, CancellationToken.None);
-        using JsonDocument response = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "response.json")));
-        using (Assert.EnterMultipleScope())
+        StreamingRegistryLimits limits = new(2, 2, 64 * 1024 * 1024, TimeSpan.FromMinutes(10));
+        using StreamingSessionRegistry sessions = new(limits, new StreamingSessionLimits(64, 4 * 1024 * 1024, 100_000),
+            TimeProvider.System, StreamingSettlementProfile.RollupXNative, _profile);
+        StreamingConnection connection = new(sessions, "composer", context.RollupId);
+        ServerFrame previous = connection.Dispatch(_frames[0].Clone()).Response!;
+        foreach (BlockWitness block in _blocks)
         {
-            Assert.That(Convert.ToHexStringLower(proof.PublicInputsHash.Span), Is.EqualTo(response.RootElement.GetProperty("public_inputs_hash").GetString()),
-                "the native finalizer must reproduce the unchanged independently generated digest");
-            Assert.That(Convert.ToHexStringLower(proof.Proof_.Span), Is.EqualTo(response.RootElement.GetProperty("signature").GetString()),
-                "the native finalizer must reproduce the unchanged independently generated signature");
+            ClientFrame frame = new()
+            {
+                SessionId = previous.SessionId,
+                Epoch = previous.Epoch,
+                RequestId = block.Number + 1,
+                Block = new ProveBlock { Data = block.Clone() }
+            };
+            SessionOperation append = connection.Dispatch(frame).Operation!;
+            try { previous = connection.CommitBlock(append, _executor.Execute(append, CancellationToken.None)); }
+            finally { connection.FinishOperation(append); }
         }
+        ClientFrame request = _frames[^1].Clone();
+        request.SessionId = previous.SessionId;
+        request.Epoch = previous.Epoch;
+        StreamingDispatch dispatched = connection.Dispatch(request);
+        Assert.That(dispatched.Operation, Is.Not.Null, "the configured V4 route must reach the real finalizer");
+        SessionOperation operation = dispatched.Operation!;
+        try
+        {
+            Proof proof = await finalizer.Finalize(operation, CancellationToken.None);
+            ServerFrame completed = connection.CompleteProof(operation, proof);
+            using JsonDocument response = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "response.json")));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(completed.Proof, Is.EqualTo(proof), "the connection must publish the validated proof");
+                Assert.That(Convert.ToHexStringLower(proof.PublicInputsHash.Span), Is.EqualTo(response.RootElement.GetProperty("public_inputs_hash").GetString()),
+                    "the native finalizer must reproduce the unchanged independently generated digest");
+                Assert.That(Convert.ToHexStringLower(proof.Proof_.Span), Is.EqualTo(response.RootElement.GetProperty("signature").GetString()),
+                    "the native finalizer must reproduce the unchanged independently generated signature");
+            }
+        }
+        finally { connection.FinishOperation(operation); }
     }
 
     [Test]
@@ -236,7 +262,7 @@ public sealed class NativeStreamingSessionTests(int version)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rejected.Rejected.Code, Is.EqualTo((int)StatusCode.Unimplemented));
-                Assert.That(rejected.Rejected.Message, Is.EqualTo("native settlement authorization unavailable"));
+                Assert.That(rejected.Rejected.Message, Is.EqualTo(version == 3 ? "native settlement authorization unavailable" : "settlement authorization unavailable"));
                 Assert.That(rejected.Rejected.ValidatedThrough, Is.EqualTo(_blocks[^1].Number));
                 Assert.That(rejected.Rejected.ValidatedHash, Is.EqualTo(_blocks[^1].Hash));
             }

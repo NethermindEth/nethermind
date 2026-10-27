@@ -26,7 +26,12 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     private void ValidateSettlement(SettlementInput? settlement)
     {
         if (registry.Rules.HasNativeHistory)
-            throw Error(StatusCode.Unimplemented, "native settlement authorization unavailable");
+        {
+            if (!registry.SupportsOfflineSettlement) throw Error(StatusCode.Unimplemented, "native settlement authorization unavailable");
+            if (settlement is null || settlement.AbiCalldata.IsEmpty || settlement.Blobs.Count == 0)
+                throw Error(StatusCode.InvalidArgument, "native settlement input missing");
+            return;
+        }
         switch (registry.Rules.Profile)
         {
             case StreamingSettlementProfile.Rollup0Calldata:
