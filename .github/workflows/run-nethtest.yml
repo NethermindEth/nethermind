@@ -132,15 +132,15 @@ env:
   # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
   FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.3.0' }}
   # EIP-8141 frame-transaction fixtures, likewise their own release line and likewise an exact tag.
-  # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
-  # EIP-7906, where the FOCIL archive means Amsterdam plus EIP-7805; nothing inside a fixture
+  # This archive labels its fork "Bogota" meaning the bogota-devnet-2 fork, where the FOCIL archive
+  # means Amsterdam plus EIP-7805; nothing inside a fixture
   # separates the two, so the lane names the fork it means through the runner's --forkAlias.
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v2.0.0' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
   # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
-  FRAME_MIN_CASES: '750'
+  FRAME_MIN_CASES: '1391'
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
-  FRAME_TX_MIN_CASES: '99'
+  FRAME_TX_MIN_CASES: '94'
   # nethtest runs with the server GC from its project. A workstation GC + GCConserveMemory=9 override spent more
   # than half of each blockTest chunk in GC pauses. Most of the garbage was a production-sized trie node cache
   # per test, which Ethereum.Test.Base now sizes for EF-test chains.
@@ -572,10 +572,9 @@ jobs:
               exit 1
             fi
             FIXTURE_DIR="$SCOPED_DIR"
-            # This archive's fixtures declare fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250,
-            # EIP-8272 and EIP-7906, which is FramesDevnet1 here; the FOCIL archive gives the same name a
-            # different meaning.
-            echo "fork_alias=Bogota=FramesDevnet1" >> "$GITHUB_OUTPUT"
+            # This archive's fixtures declare fork "Bogota" meaning the bogota-devnet-2 fork, which is
+            # BogotaDevnet2 here; the FOCIL archive gives the same name a different meaning.
+            echo "fork_alias=Bogota=BogotaDevnet2" >> "$GITHUB_OUTPUT"
           fi
 
           # Fixtures whose expectations are knowingly not met, excluded so the lane still gates on the
@@ -614,19 +613,6 @@ jobs:
                 'test_tx_total_gas_limit_cap\[fork_Bogota-tx_type_3-blockchain_test_engine_inclusion_list_from_state_test-at_cap\]$'
               )
             fi
-          elif [ "$SCOPE" = "frames" ]; then
-            KNOWN_FAILURES+=(
-              # The v1.1.0 release also carries the APPROVE changes of ethereum/execution-specs#3801,
-              # implemented in NethermindEth/nethermind#14639; drop these once it lands.
-              'test_refused_approval_charges_memory_expansion'
-              'test_approve_creates_sender.*sender_emptied_by_earlier_frame'
-              'test_approve_sender_creation_unaffordable.*sender_emptied_by_earlier_frame'
-              # The release encodes frame fees as [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas],
-              # where EIP-8141 now takes [max_fee, max_priority_fee_per_gas] (ethereum/EIPs#12414). Every fixture
-              # carrying a frame transaction therefore awaits a refill; only the legacy-transaction ones still run.
-              # Drop this once a release is filled with the max_fee shape.
-              '(?!test_diff_instructions_in_legacy_transaction\[)test_'
-            )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
