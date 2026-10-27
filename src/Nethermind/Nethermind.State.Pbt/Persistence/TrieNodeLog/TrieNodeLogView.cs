@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -63,12 +65,43 @@ public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNo
     [SkipLocalsInit]
     public bool TryGet(ReadOnlySpan<byte> key, out byte[]? value)
     {
-        ulong hash = TrieNodeLogRecord.Hash(key);
         Span<byte> buffer = stackalloc byte[ReadBufferSize];
+        if (!TryFind(key, buffer, out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header, out long offset, out int bytesRead))
+        {
+            value = null;
+            return false;
+        }
+
+        value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
+        return true;
+    }
+
+    /// <summary>Whether the shard holds the record for <paramref name="key"/> at this view's version, passing its value to <paramref name="action"/>, which must not keep it.</summary>
+    /// <returns>Whether the shard holds a record; a found tombstone sets <paramref name="tombstone"/> and passes nothing.</returns>
+    [SkipLocalsInit]
+    public bool TryGet<TArg>(ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct
+    {
+        Span<byte> buffer = stackalloc byte[ReadBufferSize];
+        if (!TryFind(key, buffer, out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header, out long offset, out int bytesRead))
+        {
+            tombstone = false;
+            return false;
+        }
+
+        tombstone = header.Type == TrieNodeLogRecord.Delete;
+        if (!tombstone) generation.ReadValue(offset, header, buffer, bytesRead, action, arg);
+        return true;
+    }
+
+    /// <summary>Finds the record for <paramref name="key"/> at this view's version, leaving its first <paramref name="bytesRead"/> bytes in <paramref name="buffer"/>.</summary>
+    private bool TryFind(ReadOnlySpan<byte> key, Span<byte> buffer, [NotNullWhen(true)] out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header,
+        out long offset, out int bytesRead)
+    {
+        ulong hash = TrieNodeLogRecord.Hash(key);
         for (int i = pinned.Count - 1; i >= 0; i--)
         {
-            TrieNodeLogGeneration generation = pinned[i];
-            if (!generation.TryLocate(hash, key, buffer, out TrieNodeLogRecord header, out _, out long offset, out int bytesRead)) continue;
+            generation = pinned[i];
+            if (!generation.TryLocate(hash, key, buffer, out header, out _, out offset, out bytesRead)) continue;
 
             // Walk the key's versions within this generation; once they run out, the next older generation's index
             // takes over, and RocksDB holds whatever the pinned generations do not.
@@ -93,12 +126,14 @@ public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNo
             if (!found) continue;
 
             Interlocked.Increment(ref walked ? ref _chainHits : ref _hits);
-            value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
             return true;
         }
 
         Interlocked.Increment(ref _misses);
-        value = null;
+        generation = null;
+        header = default;
+        offset = -1;
+        bytesRead = 0;
         return false;
     }
 }

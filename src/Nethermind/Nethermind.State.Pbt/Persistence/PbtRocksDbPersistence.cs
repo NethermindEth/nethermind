@@ -246,8 +246,11 @@ public class PbtRocksDbPersistence(
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
         {
             PbtColumns column = NodeGroupColumn(groupKey);
-            IReadOnlyKeyValueStore store = GetNodeGroupColumn(column);
-            Span<byte> payload = store.GetSpan(NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]));
+            ReadOnlySpan<byte> key = NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]);
+            // A logged group was validated as it was written.
+            if (view.TryLoad(column, key, action, arg, out bool tombstone)) return !tombstone;
+            IReadOnlyKeyValueStore store = view.Snapshot.GetColumn(column);
+            Span<byte> payload = store.GetSpan(key);
             if (payload.IsEmpty) return false;
             try
             {

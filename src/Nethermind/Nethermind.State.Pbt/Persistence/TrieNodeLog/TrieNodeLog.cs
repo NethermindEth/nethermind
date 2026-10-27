@@ -311,6 +311,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public IReadOnlyKeyValueStore GetColumn(PbtColumns column) =>
             Covers(column) ? new Column(log, views, column, snapshot.GetColumn(column)) : snapshot.GetColumn(column);
 
+        public bool TryLoad<TArg>(PbtColumns column, ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct
+        {
+            tombstone = false;
+            if (!Covers(column)) return false;
+            int shard = log.ShardIndex(column, key);
+            return views[shard].TryGet(key, action, arg, out tombstone)
+                || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(key, action, arg, out tombstone));
+        }
+
         public void Dispose()
         {
             snapshot.Dispose();

@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Pbt.Persistence.TrieNodeLog;
@@ -180,13 +182,35 @@ public sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     /// <summary>Materializes the value of the record at <paramref name="offset"/> whose first <paramref name="bytesRead"/> bytes are in <paramref name="buffer"/>.</summary>
     public byte[] ReadValue(long offset, in TrieNodeLogRecord header, ReadOnlySpan<byte> buffer, int bytesRead)
     {
-        int valueStart = TrieNodeLogRecord.HeaderLength + header.KeyLength;
         byte[] value = new byte[header.ValueLength];
+        ReadValue(offset, header, buffer, bytesRead, value);
+        return value;
+    }
+
+    /// <summary>Passes the value of the record at <paramref name="offset"/> to <paramref name="action"/>, which must not keep it.</summary>
+    /// <remarks>A value the first <paramref name="bytesRead"/> bytes in <paramref name="buffer"/> hold is passed in place; a longer one is read into a pooled array.</remarks>
+    public void ReadValue<TArg>(long offset, in TrieNodeLogRecord header, ReadOnlySpan<byte> buffer, int bytesRead, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct
+    {
+        int valueStart = TrieNodeLogRecord.HeaderLength + header.KeyLength;
+        if (bytesRead - valueStart >= header.ValueLength)
+        {
+            action(buffer.Slice(valueStart, header.ValueLength), arg);
+            return;
+        }
+
+        using ArrayPoolSpan<byte> value = new(header.ValueLength);
+        ReadValue(offset, header, buffer, bytesRead, value);
+        action(value, arg);
+    }
+
+    private void ReadValue(long offset, in TrieNodeLogRecord header, ReadOnlySpan<byte> buffer, int bytesRead, Span<byte> value)
+    {
+        int valueStart = TrieNodeLogRecord.HeaderLength + header.KeyLength;
         int available = Math.Min(header.ValueLength, Math.Max(0, bytesRead - valueStart));
         buffer.Slice(valueStart, available).CopyTo(value);
-        if (available < header.ValueLength && ReadAt(offset + valueStart + available, value.AsSpan(available)) != header.ValueLength - available)
+        if (available < header.ValueLength && ReadAt(offset + valueStart + available, value[available..]) != header.ValueLength - available)
             throw new IOException($"Short read of trie node log record at {Path}:{offset}");
-        return value;
     }
 
     public void Write(long offset, ReadOnlySpan<byte> data) => RandomAccess.Write(Handle, data, offset);
