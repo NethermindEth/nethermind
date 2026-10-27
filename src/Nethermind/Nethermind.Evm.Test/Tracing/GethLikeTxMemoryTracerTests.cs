@@ -127,6 +127,28 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
     }
 
+    [TestCaseSource(nameof(OutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_full_cost(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
+    internal static TestCaseData[] OutOfGasOperations() =>
+    [
+        new TestCaseData(Prepare.EvmCode.PushData(1).Done, 2UL, GasCostOf.VeryLow).SetArgDisplayNames("PUSH1"),
+        new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 30UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 40UL, GasCostOf.Sha3 + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("KECCAK256"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).Op(Instruction.LOG3).Done, 100UL, GasCostOf.Log + 3 * GasCostOf.LogTopic).SetArgDisplayNames("LOG3"),
+        new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, 3000UL, GasCostOf.SSet).SetArgDisplayNames("SSTORE"),
+        new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 1000UL, GasCostOf.Create).SetArgDisplayNames("CREATE"),
+    ];
+
     [Test]
     public void AccessGasDiagnostics_WhenOperationRepeats_PreservesColdAndWarmCosts(
         [Values(Instruction.SLOAD, Instruction.BALANCE, Instruction.EXTCODESIZE, Instruction.EXTCODEHASH)] Instruction opcode,

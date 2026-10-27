@@ -412,7 +412,11 @@ public static partial class EvmInstructions
         where Eip160 : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas))
+        {
+            if (TTracingInst.IsActive) vm.TraceOperationGasCost(ExpGasCost.GasCost);
+            return EvmExceptionType.OutOfGas;
+        }
 
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -429,7 +433,12 @@ public static partial class EvmInstructions
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize))
+        {
+            if (TTracingInst.IsActive)
+                vm.TraceOperationGasCost(ExpGasCost.GasCost + (Eip160.IsActive ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * expSize);
+            return EvmExceptionType.OutOfGas;
+        }
 
         if (a.IsZero)
         {
