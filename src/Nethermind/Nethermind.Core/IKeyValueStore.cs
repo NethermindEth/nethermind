@@ -179,6 +179,21 @@ namespace Nethermind.Core
             Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
     }
 
+    /// <summary>Provides ceiling reads that may reuse a per-thread point-in-time view while the caller's epoch stays
+    /// the same.</summary>
+    public interface IEpochSortedKeyValueStore : ISortedKeyValueStore
+    {
+        /// <summary>Finds the first key in the range in a view taken at or after the caller moved to
+        /// <paramref name="epoch"/>.</summary>
+        /// <remarks>The caller must change the epoch, before it reads them, whenever rows it must observe were
+        /// written. Writes it need not observe leave the epoch unchanged, so the view outlives them. Reports the stored
+        /// lengths. A buffer too short for its part remains unchanged. Neither buffer changes on a miss. The lower
+        /// bound is inclusive; the upper bound is exclusive.</remarks>
+        bool TryGetCeilingAtEpoch(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive, long epoch,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
+    }
+
     /// <summary>
     /// Provides the capability to create read-only snapshots of a key-value store.
     /// </summary>
