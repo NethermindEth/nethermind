@@ -168,6 +168,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Eip7002ContractAddress = config.PragueTime is null ? null : Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251ContractAddress = config.PragueTime is null ? null : Eip7251Constants.ConsolidationRequestPredeployAddress,
             Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize,
+            ZeroNonceStorageAccounts = config.ZeroNonceStorageAccounts,
 
             BlobSchedule = blobSchedule
         };
@@ -178,6 +179,10 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
         chainSpec.Parameters.ValidateEip8198SlotDuration();
     }
+
+    /// <summary>Precedence of <paramref name="forkName"/>'s <c>blobSchedule</c> entry over others at the same timestamp; <c>null</c> when the key is ignored.</summary>
+    internal static int? BlobScheduleOrder(string forkName) =>
+        _blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork) ? fork.Order : null;
 
     private readonly record struct BlobScheduleFork(int Order);
 

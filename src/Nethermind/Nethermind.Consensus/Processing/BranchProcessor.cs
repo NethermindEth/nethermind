@@ -124,7 +124,7 @@ public class BranchProcessor(
             {
                 // Start prewarming as early as possible.
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                prefetchBlockhash = spec.IsEip7709Enabled ? null : blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
                 blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
                 BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
             }
@@ -148,7 +148,7 @@ public class BranchProcessor(
                 // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
                 if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                if (!spec.IsEip7709Enabled) prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -246,10 +246,7 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts)
-                    {
-                        WasValidated = !options.ContainsFlag(ProcessingOptions.NoValidation)
-                    });
+                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
                 // CommitBranch in parts if we have long running branch

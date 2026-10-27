@@ -62,6 +62,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.GrayGlacierBlockNumber, Is.EqualTo(MainnetSpecProvider.GrayGlacierBlockNumber));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.ShanghaiBlockTimestamp));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(MainnetSpecProvider.Instance.TimestampFork));
+            Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(Eip8253TestData.MainnetAccounts.ToArray()), "EIP-8253 accounts");
         }
     }
 
@@ -423,6 +424,7 @@ public class ChainSpecLoaderTests
         if (underlyingType == typeof(UInt256)) return (UInt256)77777;
         if (underlyingType == typeof(Address)) return new Address("0x1111111111111111111111111111111111111111");
         if (underlyingType == typeof(Hash256)) return new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111");
+        if (type == typeof(Address[])) return new[] { new Address("0x1111111111111111111111111111111111111111") };
         if (type == typeof(List<BlobScheduleSettings>))
             return new List<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
         return null;

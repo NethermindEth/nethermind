@@ -588,6 +588,139 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// The sender and recipient fan-out, queued behind the transaction workers, runs while those workers are still in
+    /// flight; it is never left until the transaction pass is over.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_WarmsSendersAndRecipients_WhileTransactionWarmingIsStillInFlight(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: static () => { });
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        // Four senders so both warm workers claim a job and park; the recipient is read by nothing but the fan-out
+        // while they are parked.
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
+            Build.A.Transaction.WithNonce(0).WithGasLimit(100_000).WithTo(TestItem.AddressF).SignedAndResolved(TestItem.PrivateKeyD).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        bool warmedWhileTxsParked;
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: both warm workers must be parked inside their first job's scope setup");
+
+                warmedWhileTxsParked = SpinWait.SpinUntil(
+                    () => preBlockCaches.StateCache.TryGetValue(TestItem.AddressF, out _),
+                    TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedWhileTxsParked, Is.True,
+            "the recipients are warmed by the fan-out while the transaction workers are in flight, not after the transaction pass");
+    }
+
+    /// <summary>
+    /// A pass that fails before its transaction workers are queued still lets a held sender and recipient fan-out go, so
+    /// its session ends without waiting for the session's token to be cancelled.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_APassThatFailsBeforeItsWorkers_LetsTheHeldFanOutGo(CancellationToken testToken)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        Block block = BuildReactiveWarmBlock();
+        block.Header.Beneficiary = TestItem.AddressF;
+        BlockHeader parent = BuildParentHeader();
+        // Thrown once the address warmer has warmed the coinbase, so it is running when the pass unwinds and joins it.
+        preWarmer.BeforeTransactionWorkers = () =>
+        {
+            SpinWait.SpinUntil(() => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(TestItem.AddressF, out _),
+                TimeSpan.FromSeconds(10));
+            throw new InvalidOperationException("the pass fails before its transaction workers are queued");
+        };
+
+        bool ended;
+        using (preWarmer)
+        using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
+        {
+            // Disposing the session cancels its token, which lets a fan-out still held go in any case.
+            using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            Task completion = Task.Run(() => ((PrewarmingSession?)session)?.WaitForCompletion());
+            ended = completion.Wait(TimeSpan.FromSeconds(10));
+        }
+
+        Assert.That(ended, Is.True, "the session waited for its token to be cancelled");
+    }
+
+    /// <summary>
+    /// The fan-out over the senders and recipients is queued behind the transaction workers, so they take the worker
+    /// budget first. The recipient is read by nothing else before the workers start.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_QueuesTheSenderAndRecipientFanOutBehindTheTransactionWorkers(CancellationToken testToken)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        Block block = BuildReactiveWarmBlock();
+        block.Header.Beneficiary = TestItem.AddressF;
+        bool fannedOutFirst = false;
+        // Judged by the cache once the wait is over, and the wait ends well before the test is cancelled.
+        preWarmer.BeforeTransactionWorkers = () =>
+        {
+            SpinWait.SpinUntil(
+                () => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _),
+                PendingProbe);
+            fannedOutFirst = preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _);
+        };
+
+        using (preWarmer)
+        {
+            RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance).GetAwaiter().GetResult();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fannedOutFirst, Is.False);
+            Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), Is.True);
+        }
+    }
+
+    /// <summary>
     /// The system access lists are registered through an <c>as IHasAccessList</c> cast, so a decorator over
     /// <see cref="IExecutionRequestsProcessor"/> that stops implementing it would drop the hint with no error.
     /// </summary>
@@ -1213,8 +1346,10 @@ public class BlockCachePreWarmerTests
         ManualResetEventSlim release = new(false);
         // Should the open not wait, the pass is released anyway, so the test fails instead of hanging.
         _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => release.Set());
-        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        CancellationToken speculativeToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, token =>
         {
+            speculativeToken = token;
             inPass.Set();
             release.Wait();
             return null;
@@ -1225,6 +1360,9 @@ public class BlockCachePreWarmerTests
         {
             using (mainWorldState.BeginScope(head)) { }
         });
+        // The open is queued to the thread pool: only its stop cancelling the pass shows it reached the session in that pass.
+        Assert.That(SpinWait.SpinUntil(() => speculativeToken.IsCancellationRequested, DiscoveryTimeout), Is.True,
+            "the open must stop the session while it is in a pass");
         Assert.That(open.Wait(PendingProbe), Is.False, "a session in a pass may still write, so the open waits for it");
         release.Set();
         using (Assert.EnterMultipleScope())
@@ -1257,13 +1395,20 @@ public class BlockCachePreWarmerTests
         // An empty delta still warms the system-contract hints, which is where this pass is held.
         Block delta = BuildEmptyChild(head, timestamp: 12);
         using CancellationTokenSource cancellation = new();
-        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ => (delta, Osaka.Instance), idlePassDelayMs: 5, cancellation.Token);
+        CancellationToken speculativeToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, token =>
+        {
+            speculativeToken = token;
+            return (delta, Osaka.Instance);
+        }, idlePassDelayMs: 5, cancellation.Token);
         Assert.That(inWarm.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be warming its delta");
 
         Task open = Task.Run(() =>
         {
             using (mainWorldState.BeginScope(head)) { }
         });
+        Assert.That(SpinWait.SpinUntil(() => speculativeToken.IsCancellationRequested, DiscoveryTimeout), Is.True,
+            "the open must stop the session while it is warming its delta");
         Assert.That(open.Wait(PendingProbe), Is.False, "a session warming its delta may still write, so the open waits for it");
         release.Set();
         using (Assert.EnterMultipleScope())
@@ -3418,6 +3563,7 @@ public class BlockCachePreWarmerTests
                 preWarmer,
                 new PrewarmerState(preBlockCaches, isPrewarmer),
                 _processingScope.Resolve<IWorldState>(),
+                _processingScope.Resolve<ICodeInfoRepository>(),
                 LimboLogs.Instance);
 
             adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);

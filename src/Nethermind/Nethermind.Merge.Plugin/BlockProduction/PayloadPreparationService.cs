@@ -54,6 +54,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+    private readonly ConcurrentDictionary<string, EmptyBlockPreparation> _emptyBlockPreparations = new();
 
     public PayloadPreparationService(
         IBlockProducer blockProducer,
@@ -102,15 +103,25 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
-        if (!_payloadStorage.ContainsKey(payloadId))
+        EmptyBlockPreparation preparation = new(new SharedCancellationTokenSource(CreateShutdownLinkedSource()));
+        if (_emptyBlockPreparations.TryAdd(payloadId, preparation))
         {
-            if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
-            long startTimestamp = Stopwatch.GetTimestamp();
-            Block? emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            if (_logger.IsInfo && emptyBlock is not null) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
+            // A preparation that finished before the add published its payload first.
+            if (!_payloadStorage.ContainsKey(payloadId))
+            {
+                if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
+                // The empty block executes the inclusion list (EIP-7805) and waits for the producer, so the payload id must not wait for it.
+                _ = Task.Run(() => PrepareEmptyBlockAndImprove(payloadId, parentHeader, payloadAttributes, preparation));
+                return payloadId;
+            }
+
+            preparation.Prepared.SetResult();
+            _emptyBlockPreparations.TryRemove(new KeyValuePair<string, EmptyBlockPreparation>(payloadId, preparation));
         }
-        else if (_logger.IsInfo)
+
+        preparation.Cts.CancelAndDispose();
+
+        if (_logger.IsInfo)
         {
             // Shouldn't really happen so move string construction code out of hot method
             LogMultiStartRequest(payloadId, parentHeader.Number + 1);
@@ -122,12 +133,64 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         void LogMultiStartRequest(string payloadId, ulong number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
     }
 
-    protected virtual Block? ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    private CancellationTokenSource CreateShutdownLinkedSource()
+    {
+        CancellationTokenSource? shutdown = Volatile.Read(ref _shutdown);
+        if (shutdown is not null)
+        {
+            try
+            {
+                return CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Dispose ran after the read, so the build starts cancelled like any build after shutdown.
+            }
+        }
+
+        return CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenExtensions.AlreadyCancelledToken);
+    }
+
+    private async Task PrepareEmptyBlockAndImprove(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, EmptyBlockPreparation preparation)
+    {
+        try
+        {
+            long startTimestamp = Stopwatch.GetTimestamp();
+            Block? emptyBlock = null;
+            try
+            {
+                emptyBlock = await ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, preparation.Cts.Token);
+            }
+            catch (OperationCanceledException) when (preparation.Cts.Token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Empty block for payload {payloadId} cancelled");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Empty block for payload {payloadId} failed", e);
+            }
+
+            if (_logger.IsInfo && emptyBlock is not null) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, preparation.Cts);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Block improvement for payload {payloadId} failed", e);
+        }
+        finally
+        {
+            // Removed after publishing, so getPayload finds either the preparation or the payload.
+            _emptyBlockPreparations.TryRemove(new KeyValuePair<string, EmptyBlockPreparation>(payloadId, preparation));
+            preparation.Prepared.SetResult();
+        }
+    }
+
+    protected virtual async Task<Block?> ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, CancellationToken token)
     {
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        Block? emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result;
+        Block? emptyBlock = await _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock, cancellationToken: token);
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
@@ -191,6 +254,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 if (cts.IsCancellationRequested)
                 {
                     published.DisposeAndCancelOngoingImprovements();
+                    // Dispose clears _shutdown before it empties the storage, so a publish it missed is removed here.
+                    if (Volatile.Read(ref _shutdown) is null) _payloadStorage.TryRemove(new KeyValuePair<string, IBlockImprovementContext>(payloadId, published));
                 }
 
                 return;
@@ -425,6 +490,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
+        if (_emptyBlockPreparations.TryGetValue(payloadId, out EmptyBlockPreparation? preparation)) await preparation.Prepared.Task;
+
         if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
         {
             try
@@ -524,10 +591,19 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     /// <remarks>Stops without <see cref="GetPayload"/>'s wait for a missing block, so a simulated build does not hold the producer while newPayload runs.</remarks>
     public void CancelBlockProduction(string payloadId)
     {
+        // Stops a build whose empty block is still pending, so its improvements never start.
+        if (_emptyBlockPreparations.TryGetValue(payloadId, out EmptyBlockPreparation? preparation)) preparation.Cts.CancelAndDispose();
+
         if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
         {
             blockContext.DisposeAndCancelOngoingImprovements();
             RetainRetrievedContext(payloadId, blockContext);
         }
+    }
+
+    private sealed class EmptyBlockPreparation(SharedCancellationTokenSource cts)
+    {
+        public TaskCompletionSource Prepared { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public SharedCancellationTokenSource Cts { get; } = cts;
     }
 }
