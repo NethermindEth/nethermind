@@ -756,8 +756,6 @@ jobs:
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
 
       - name: Wait for publish-docker.yml to complete
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
@@ -971,7 +969,7 @@ jobs:
         if: needs.resolve.outputs.perf == 'true'
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: expb-ci-tools/global.json
 
       - name: Resolve benchmark config for payload set
         id: resolve-config
@@ -3015,8 +3013,6 @@ jobs:
           [[ "${yq_version}" == "yq "* ]] || { echo "Downloaded yq is not yq: ${yq_version}"; exit 1; }
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
 
       - name: Run sequential EXPB campaign
         id: run-campaign

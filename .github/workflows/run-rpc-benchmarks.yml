@@ -840,7 +840,7 @@ jobs:
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: rpc-bench-workspace/global.json
 
       - name: Verify scripts checkout
         id: scripts
@@ -1873,8 +1873,6 @@ jobs:
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
 
       - name: Summarize hot spots
         shell: bash

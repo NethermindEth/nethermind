@@ -157,8 +157,6 @@ runs:
   steps:
     - name: Set up .NET for CI scripts
       uses: actions/setup-dotnet@v6
-      with:
-        dotnet-version: 10.0.402
 
     - name: Authenticate to GCP
       if: inputs.skip_auth != 'true'
