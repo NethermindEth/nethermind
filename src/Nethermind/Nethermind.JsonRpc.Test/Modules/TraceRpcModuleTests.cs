@@ -1075,7 +1075,7 @@ public class TraceRpcModuleTests
         }
     }
 
-    public enum UnservedBlock { Unknown, SideChain, Unprocessed, MissingState, PrunedBody, MissingBody }
+    public enum UnservedBlock { Unknown, SideChain, SideChainMissingBody, Unprocessed, MissingState, PrunedBody, MissingBody }
 
     // Neither [] nor another block's records: the hash names a block this node cannot trace as canonical.
     [Test]
@@ -1088,10 +1088,10 @@ public class TraceRpcModuleTests
         Block block = blockchain.BlockTree.FindBlock(blockchain.BlockTree.Head!.Number - 2)!;
         Hash256 hash = block.Hash!;
         if (unserved == UnservedBlock.Unknown) hash = TestItem.KeccakH;
-        if (unserved == UnservedBlock.SideChain)
+        // A known sibling of the block, never executed.
+        Block sibling = Build.A.Block.WithParent(blockchain.BlockTree.FindHeader(block.ParentHash!)!).WithExtraData([1]).TestObject;
+        if (unserved is UnservedBlock.SideChain or UnservedBlock.SideChainMissingBody)
         {
-            // A known sibling of the block, never executed.
-            Block sibling = Build.A.Block.WithParent(blockchain.BlockTree.FindHeader(block.ParentHash!)!).WithExtraData([1]).TestObject;
             blockchain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
             hash = sibling.Hash!;
         }
@@ -1104,6 +1104,7 @@ public class TraceRpcModuleTests
             UnservedBlock.MissingState => WithStateAvailability(blockchain, header => header.Hash != hash),
             UnservedBlock.PrunedBody => WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, block)),
             UnservedBlock.MissingBody => WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, block, isPruned: false)),
+            UnservedBlock.SideChainMissingBody => WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, sibling, isPruned: false)),
             UnservedBlock.Unprocessed => WithStateAvailability(blockchain, _ => true, new UnprocessedCanonicalBlockTree(blockchain.BlockTree, next)),
             _ => WithStateAvailability(blockchain, _ => true),
         };
@@ -1116,8 +1117,8 @@ public class TraceRpcModuleTests
         (int Code, IResolveConstraint Message) expected = unserved switch
         {
             UnservedBlock.Unknown => (ErrorCodes.StandardResourceNotFound, Is.EqualTo(BlockFinderExtensions.HeaderNotFound)),
-            UnservedBlock.SideChain => (ErrorCodes.InvalidInput, Is.EqualTo($"{hash} block is not canonical")),
-            UnservedBlock.Unprocessed => (ErrorCodes.ResourceUnavailable, Is.EqualTo($"{hash} block is not processed")),
+            UnservedBlock.SideChain or UnservedBlock.SideChainMissingBody => (ErrorCodes.StandardResourceNotFound, Is.EqualTo($"{hash} block is not canonical")),
+            UnservedBlock.Unprocessed => (ErrorCodes.StandardResourceNotFound, Is.EqualTo($"{hash} block is not processed")),
             UnservedBlock.MissingState => (ErrorCodes.ResourceUnavailable, Does.Contain($"No state available for block {block.Number} ")),
             UnservedBlock.MissingBody => (ErrorCodes.ResourceNotFound, Is.EqualTo(BlockFinderExtensions.BlockBodyNotFound)),
             _ => (ErrorCodes.PrunedHistoryUnavailable, Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)),
@@ -1126,6 +1127,36 @@ public class TraceRpcModuleTests
         {
             Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expected.Code), response);
             Assert.That(error.GetProperty("message").GetString(), expected.Message, response);
+        }
+    }
+
+    // Unlike a trace_filter block hash, an EIP-1898 hash that must be canonical keeps reporting a side-chain block as an invalid input.
+    [Test]
+    public async Task Trace_methods_report_a_required_canonical_hash_of_a_side_chain_block_as_invalid_input(
+        [Values("trace_call", "trace_callMany", "trace_block", "trace_replayBlockTransactions")] string method)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block block = blockchain.BlockTree.FindBlock(blockchain.BlockTree.Head!.Number - 2)!;
+        Block sibling = Build.A.Block.WithParent(blockchain.BlockTree.FindHeader(block.ParentHash!)!).WithExtraData([1]).TestObject;
+        blockchain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        object call = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x5208" };
+        object selector = new { blockHash = sibling.Hash, requireCanonical = true };
+
+        string response = method switch
+        {
+            "trace_call" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, call, new[] { "trace" }, selector),
+            "trace_callMany" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, new[] { new object[] { call, new[] { "trace" } } }, selector),
+            "trace_replayBlockTransactions" => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, selector, new[] { "trace" }),
+            _ => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, selector),
+        };
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo($"{sibling.Hash} block is not canonical"), response);
         }
     }
 
@@ -1224,7 +1255,7 @@ public class TraceRpcModuleTests
         {
             Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
             if (expectedMessage is not null)
-                Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
+                Assert.That(error.GetProperty("message").GetString(), Is.EqualTo($"invalid argument 0: {expectedMessage}"), response);
         }
     }
 
@@ -1568,7 +1599,7 @@ public class TraceRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter.RootElement);
 
-        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 0: invalid trace filter mode, expected \"intersection\" or \"union\""},"id":67}"""));
     }
 
     [Test]

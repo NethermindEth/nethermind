@@ -1346,8 +1346,10 @@ public class BlockCachePreWarmerTests
         ManualResetEventSlim release = new(false);
         // Should the open not wait, the pass is released anyway, so the test fails instead of hanging.
         _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => release.Set());
-        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        CancellationToken speculativeToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, token =>
         {
+            speculativeToken = token;
             inPass.Set();
             release.Wait();
             return null;
@@ -1358,6 +1360,9 @@ public class BlockCachePreWarmerTests
         {
             using (mainWorldState.BeginScope(head)) { }
         });
+        // The open is queued to the thread pool: only its stop cancelling the pass shows it reached the session in that pass.
+        Assert.That(SpinWait.SpinUntil(() => speculativeToken.IsCancellationRequested, DiscoveryTimeout), Is.True,
+            "the open must stop the session while it is in a pass");
         Assert.That(open.Wait(PendingProbe), Is.False, "a session in a pass may still write, so the open waits for it");
         release.Set();
         using (Assert.EnterMultipleScope())
@@ -1390,13 +1395,20 @@ public class BlockCachePreWarmerTests
         // An empty delta still warms the system-contract hints, which is where this pass is held.
         Block delta = BuildEmptyChild(head, timestamp: 12);
         using CancellationTokenSource cancellation = new();
-        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ => (delta, Osaka.Instance), idlePassDelayMs: 5, cancellation.Token);
+        CancellationToken speculativeToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, token =>
+        {
+            speculativeToken = token;
+            return (delta, Osaka.Instance);
+        }, idlePassDelayMs: 5, cancellation.Token);
         Assert.That(inWarm.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be warming its delta");
 
         Task open = Task.Run(() =>
         {
             using (mainWorldState.BeginScope(head)) { }
         });
+        Assert.That(SpinWait.SpinUntil(() => speculativeToken.IsCancellationRequested, DiscoveryTimeout), Is.True,
+            "the open must stop the session while it is warming its delta");
         Assert.That(open.Wait(PendingProbe), Is.False, "a session warming its delta may still write, so the open waits for it");
         release.Set();
         using (Assert.EnterMultipleScope())
@@ -3551,6 +3563,7 @@ public class BlockCachePreWarmerTests
                 preWarmer,
                 new PrewarmerState(preBlockCaches, isPrewarmer),
                 _processingScope.Resolve<IWorldState>(),
+                _processingScope.Resolve<ICodeInfoRepository>(),
                 LimboLogs.Instance);
 
             adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);

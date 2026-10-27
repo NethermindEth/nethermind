@@ -23,17 +23,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
-public static class NettyMemoryEstimator
-{
-    private const uint PageSize = 8192;
-
-    public static void SetPageSize() =>
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-
-    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
-}
-
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),

@@ -15,12 +15,12 @@ namespace Nethermind.State.Flat.Io;
 /// one per source in an array and use it from an iterator; the pointer is owned here and stays valid
 /// until <see cref="Dispose"/>.</para>
 /// </remarks>
-internal sealed unsafe class MappedByteFile : IByteReaderSource<MappedByteFile, NoOpPin>, IByteReader<NoOpPin>, IDisposable
+internal sealed unsafe partial class MappedByteFile : IByteReaderSource<MappedByteFile, NoOpPin>, IByteReader<NoOpPin>, IDisposable
 {
     private const int MADV_SEQUENTIAL = 2;
 
-    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
-    private static extern int Madvise(void* addr, nuint length, int advice);
+    [LibraryImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static partial int Madvise(void* addr, nuint length, int advice);
 
     private readonly MemoryMappedFile _file;
     private readonly MemoryMappedViewAccessor _view;

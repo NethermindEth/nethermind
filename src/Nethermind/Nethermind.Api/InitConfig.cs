@@ -24,13 +24,13 @@ namespace Nethermind.Api
         public string? KzgSetupPath { get; set; } = null;
         public string LogDirectory { get; set; } = "logs";
         public string? LogRules { get; set; } = null;
+        public bool MaskIpsInLogs { get; set; } = false;
         public bool StoreReceipts { get; set; } = true;
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public DumpOptions AutoDump { get; set; } = DumpOptions.Default;
 
         public string RpcDbUrl { get; set; } = string.Empty;
-        public ulong? MemoryHint { get; set; }
         public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;

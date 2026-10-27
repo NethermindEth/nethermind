@@ -35,13 +35,12 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     public override int GetLength(BlockBody? item, RlpBehaviors rlpBehaviors)
         => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetBodyLength(item));
 
-    public int GetBodyLength(BlockBody b)
-    {
-        (int txs, int uncles, int? withdrawals) = GetBodyComponentLength(b);
-        return Rlp.LengthOfSequence(txs) +
-               Rlp.LengthOfSequence(uncles) +
-               (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
-    }
+    public int GetBodyLength(BlockBody b) => GetBodyLength(GetBodyComponentLength(b));
+
+    private static int GetBodyLength((int Txs, int Uncles, int? Withdrawals) lengths) =>
+        Rlp.LengthOfSequence(lengths.Txs) +
+        Rlp.LengthOfSequence(lengths.Uncles) +
+        (lengths.Withdrawals is not null ? Rlp.LengthOfSequence(lengths.Withdrawals.Value) : 0);
 
     public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
         GetBodyComponentLength(b, GetTxLength(b.Transactions));
@@ -176,14 +175,15 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
 
     public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(GetBodyLength(body));
-        writer.StartSequence(GetTxLength(body.Transactions));
+        (int Txs, int Uncles, int? Withdrawals) lengths = GetBodyComponentLength(body);
+        writer.StartSequence(GetBodyLength(lengths));
+        writer.StartSequence(lengths.Txs);
         foreach (Transaction? txn in body.Transactions)
         {
             _txDecoder.Encode(ref writer, txn);
         }
 
-        writer.StartSequence(GetUnclesLength(body.Uncles));
+        writer.StartSequence(lengths.Uncles);
         foreach (BlockHeader? uncle in body.Uncles)
         {
             _headerDecoder.Encode(ref writer, uncle);
@@ -191,7 +191,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
 
         if (body.Withdrawals is not null)
         {
-            writer.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+            writer.StartSequence(lengths.Withdrawals.GetValueOrDefault());
             foreach (Withdrawal? withdrawal in body.Withdrawals)
             {
                 _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);

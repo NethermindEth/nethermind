@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Overlay;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -62,6 +63,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
         builder
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
+            // Resolved by StartRpc so plugins can decorate it. A decorator sees a request before its method is checked
+            // against the endpoint and authentication; one that answers by itself must check with IRpcModuleProvider first.
+            .AddSingleton<IJsonRpcService, JsonRpcService>()
             .AddSingleton<IJsonRpcLocalStats, JsonRpcLocalStats>()
             .AddSingleton<IWebSocketsManager, WebSocketsManager>()
 
@@ -94,6 +98,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Eth and its dependencies
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
             .AddSingleton<HashesOnlyBlockReader>()
+            .AddSingleton<IBatchConcurrencyStrategy, EthCallBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
@@ -111,6 +116,10 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .RegisterBoundedJsonRpcModule<IProofRpcModule, ProofModuleFactory>(2, jsonRpcConfig.Timeout)
                 .AddScoped<IProofRpcModule, ProofRpcModule>()
 
+            // Overlay
+            .RegisterBoundedJsonRpcModule<IOverlayRpcModule, OverlayModuleFactory>(2, jsonRpcConfig.Timeout)
+                .AddScoped<IOverlayRpcModule, OverlayRpcModule>()
+
             // Trace
             .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
@@ -121,7 +130,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16), jsonRpcConfig.Timeout)
+            .AddSingleton<IBatchConcurrencyStrategy, DebugTraceCallBatchConcurrency>()
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.GetDebugModuleConcurrentInstances(), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()
