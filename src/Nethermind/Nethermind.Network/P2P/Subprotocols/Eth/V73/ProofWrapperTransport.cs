@@ -36,6 +36,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly WrapperStore _store = new();
     private readonly Dictionary<ValueHash256, WrapperFetch> _fetches = [];
     private readonly WrapperBoundedSet _tombstones = new(WrapperTransportLimits.MaxTombstones);
+    // Wrappers that failed proof or dependency rules under the current verifier; the target fork's next verifier may accept them.
+    private readonly WrapperBoundedSet _invalid = new(WrapperTransportLimits.MaxTombstones);
     private readonly Queue<WrapperFetch> _validation = [];
     private readonly SemaphoreSlim _verification = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
@@ -73,7 +75,9 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// <summary>A held wrapper validated under the current target fork's verifier, which alone may be announced or served.</summary>
     private bool TryGetOffered(in ValueHash256 wrapperHash, out WrapperStore.Entry entry)
         => _store.TryGet(wrapperHash, out entry) && entry.Verifier == _verifier;
-    internal bool IsTombstoned(in ValueHash256 wrapperHash) { lock (_gate) return _tombstones.Contains(wrapperHash, _clock.GetTimestamp()); }
+    internal bool IsTombstoned(in ValueHash256 wrapperHash) { lock (_gate) return IsTombstoned(wrapperHash, _clock.GetTimestamp()); }
+
+    private bool IsTombstoned(in ValueHash256 wrapperHash, long now) => _tombstones.Contains(wrapperHash, now) || _invalid.Contains(wrapperHash, now);
 
     /// <summary>Registers an <c>eth/73</c> peer once its Status is accepted.</summary>
     /// <remarks>Peers negotiate no verifier: each validates under its own target fork. A peer connected before EIP-8288 is
@@ -307,6 +311,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         lock (_gate)
         {
             if (_disposed || _verifier != verifier) return;
+            _invalid.Clear();
             foreach (WrapperStore.Entry entry in held)
             {
                 if (revalidated.Contains(entry)) entry.Verifier = verifier;
@@ -350,6 +355,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (_disposed || verifier != _verifier
                 || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape))) return false;
             _tombstones.Remove(announcement.Hash);
+            _invalid.Remove(announcement.Hash);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {

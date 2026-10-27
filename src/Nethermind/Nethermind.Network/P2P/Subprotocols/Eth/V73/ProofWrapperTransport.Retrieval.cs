@@ -47,7 +47,7 @@ public sealed partial class ProofWrapperTransport
                 peer.Known.Add(wrapperHash);
                 peer.Exchanged.Add(wrapperHash);
                 if (!enabled || _store.Contains(wrapperHash)
-                    || _tombstones.Contains(wrapperHash, now)) continue;
+                    || IsTombstoned(wrapperHash, now)) continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
                     existing.AddSource(peer, announcement.Mode, announcement.Length);
@@ -329,12 +329,16 @@ public sealed partial class ProofWrapperTransport
             Conclude(fetch, Verdict.Malformed, $"noncanonical wrapper: {exception.Message}");
             return;
         }
+        Eip8288Verifier? verifier;
+        lock (_gate) verifier = _verifier;
         (Verdict verdict, string? error) = await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token), cancellation)
             .ConfigureAwait(false);
-        Conclude(fetch, verdict, error);
+        Conclude(fetch, verdict, error, verifier);
     }
 
-    private void Conclude(WrapperFetch fetch, Verdict verdict, string? error)
+    /// <param name="verifier">The target fork's verifier when validation began; an invalid verdict reached across a verifier
+    /// change is not remembered.</param>
+    private void Conclude(WrapperFetch fetch, Verdict verdict, string? error, Eip8288Verifier? verifier = null)
     {
         switch (verdict)
         {
@@ -355,7 +359,8 @@ public sealed partial class ProofWrapperTransport
             // EIP-8437: a proof or dependency-rule failure discards the wrapper without penalizing the peer that served it.
             case Verdict.Invalid:
                 WrapperMetrics.Record(WrapperEvent.Invalid);
-                lock (_gate) _tombstones.Add(fetch.Announcement.Hash);
+                lock (_gate)
+                    if (verifier is not null && verifier == _verifier) _invalid.Add(fetch.Announcement.Hash);
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
                 break;
             case Verdict.Refused:

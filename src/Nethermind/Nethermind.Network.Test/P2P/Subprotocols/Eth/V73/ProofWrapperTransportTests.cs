@@ -506,6 +506,43 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // A wrapper invalid under one AGGREGATED_VK may be valid under the next, so invalid-proof tombstones end at a verifier
+    // change while malformed-encoding ones remain.
+    [Test]
+    public async Task Verifier_change_lifts_invalid_tombstones_but_keeps_malformed_ones()
+    {
+        using WrapperTestNode node = new(UpgradingChain());
+        node.SetHead(10, 100);
+        node.Wrappers.RefreshVerifier();
+        node.Verifier.Valid = false;
+        byte[] invalid = Wrapper(64, FrameTransaction(1));
+        Eth73RlpReader fields = new Eth73RlpReader(Wrapper(64, FrameTransaction(2))).ReadList();
+        fields.ReadItem();
+        byte[] malformed = Eth73Rlp.EncodeList(Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes([(byte)TxType.FrameTx, 0xc1, 0x01])),
+            [.. fields.ReadItem(), .. fields.ReadItem()]);
+        FakeWrapperLink link = new(), bad = new("bad");
+        WrapperPeer peer = node.Connect(link), badPeer = node.Connect(bad);
+        node.Transport.OnAnnounce(peer, new([Describe(invalid)]));
+        Answer(node, peer, link, invalid);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        node.Transport.OnAnnounce(badPeer, new([Describe(malformed)]));
+        Answer(node, badPeer, bad, malformed);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        Assert.That(node.Transport.IsTombstoned(Describe(invalid).Hash), Is.True);
+
+        CrossVerifierFork(node);
+        node.Verifier.Valid = true;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsTombstoned(Describe(invalid).Hash), Is.False);
+            Assert.That(node.Transport.IsTombstoned(Describe(malformed).Hash), Is.True);
+        }
+        node.Transport.OnAnnounce(peer, new([Describe(invalid)]));
+        Answer(node, peer, link, invalid);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        Assert.That(node.Transport.IsStored(Describe(invalid).Hash), Is.True, "fetched and accepted under the new verifier");
+    }
+
     // EIP-8437: until EIP-8288 is enabled for local mempool validation, no wrapper message is sent; a chain without a
     // scheduled EIP-8288 fork registers no peers at all.
     [Test]
