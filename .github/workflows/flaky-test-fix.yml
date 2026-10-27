@@ -172,12 +172,14 @@ jobs:
           project=$(sed -n 1p "$RUNNER_TEMP/fix/test.txt")
           filter=$(sed -n 2p "$RUNNER_TEMP/fix/test.txt")
           count_failures() {
-            dotnet build "$project" -c release >&2 || { echo "$RUNS"; return; }
-            local failed=0
+            dotnet build "$project" -c release >&2 || { echo "n/a (build failed)"; return; }
+            local failed=0 not_run=0 rc
             for _ in $(seq "$RUNS"); do
-              dotnet test --project "$project" -c release --no-build -- --filter "$filter" >&2 || failed=$((failed + 1))
+              rc=0
+              dotnet test --project "$project" -c release --no-build -- --filter "$filter" >&2 || rc=$?
+              if [ "$rc" -eq 8 ]; then not_run=$((not_run + 1)); elif [ "$rc" -ne 0 ]; then failed=$((failed + 1)); fi
             done
-            echo "$failed"
+            if [ "$not_run" -gt 0 ]; then echo "n/a (no matching test in $not_run runs)"; else echo "$failed"; fi
           }
           before=$(count_failures)
           git apply --binary "$RUNNER_TEMP/fix/fix.patch"
@@ -185,7 +187,7 @@ jobs:
           echo "before=$before" >> "$GITHUB_OUTPUT"
           echo "after=$after" >> "$GITHUB_OUTPUT"
           echo "Failed runs out of $RUNS: $before before the fix, $after after it"
-          [ "$after" -eq 0 ] || { echo "::error::The test still fails with the fix"; exit 1; }
+          [ "$after" = 0 ] || { echo "::error::The test still fails with the fix"; exit 1; }
 
   publish:
     needs: [fix, verify]
@@ -231,7 +233,7 @@ jobs:
           title=$(head -n 1 "$RUNNER_TEMP/fix/pr.md" | sed -E 's/^#+[[:space:]]*//; s/[[:space:]]+$//')
           [ -n "$title" ] || { echo "::error::pr.md has an empty title line"; exit 1; }
           tail -n +2 "$RUNNER_TEMP/fix/pr.md" > "$RUNNER_TEMP/body.md"
-          printf '\n## Verification\n\nA job without publishing credentials ran `%s` with the filter `%s` %s times before and after the fix. Failed runs: %s before, %s after.\n' \
+          printf '\n## Verification\n\nA job without publishing credentials ran `%s` with the filter `%s` %s times before and after the fix. Failed runs: before the fix %s, after it %s.\n' \
             "$(sed -n 1p "$RUNNER_TEMP/fix/test.txt")" "$(sed -n 2p "$RUNNER_TEMP/fix/test.txt")" "$RUNS" "$BEFORE" "$AFTER" >> "$RUNNER_TEMP/body.md"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
