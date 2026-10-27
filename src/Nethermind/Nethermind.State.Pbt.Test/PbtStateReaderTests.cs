@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
@@ -13,7 +12,6 @@ using Nethermind.Pbt;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;

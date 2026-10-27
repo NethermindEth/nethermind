@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Utils;
@@ -161,14 +160,6 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
 
     public bool TryGetStorageClear(in ValueHash256 addressHash) =>
         TryReadEntity(PbtPersistedKey.AddressEntity(addressHash, PbtPersistedKey.Clear), out _);
-
-    /// <summary>Returns one caller-owned group reference, a found null tombstone, or an absent descriptor.</summary>
-    public bool TryGetNodeGroup<TPath>(in TPath path, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
-    {
-        bool found = TryReadEntity(PbtPersistedKey.Group(path), out byte[]? bytes);
-        payload = bytes is null ? null : DecodeGroup(path, bytes);
-        return found;
-    }
 
     /// <summary>Passes the payload of the group at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
     /// <returns>Whether the snapshot has an entry for the group; a found tombstone sets <paramref name="tombstone"/> and passes nothing.</returns>

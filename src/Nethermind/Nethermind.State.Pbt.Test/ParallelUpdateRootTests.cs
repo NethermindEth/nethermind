@@ -376,11 +376,9 @@ public class ParallelUpdateRootTests
 
     [Test]
     public void Log_reference_folds_bypass_snapshot_probes_across_mutations(
-        [Values] bool native, [Values] bool splitEveryFrame, [Values] bool compressed)
+        [Values] bool splitEveryFrame, [Values] bool compressed)
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
-        using LoggedGroupStore store = new(memory);
+        using LoggedGroupStore store = new();
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed);
         Apply(entries);
@@ -402,7 +400,7 @@ public class ParallelUpdateRootTests
     [TestCase("0020", "0040")]
     public void Log_reference_folds_forward_descendants_through_created_and_removed_groups(string divergingKey, string absentKey)
     {
-        using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance);
+        using LoggedGroupStore store = new();
         using PbtTreeHarness expected = new();
         Apply((ZoneKey("000000"), Value(1)), (ZoneKey("000001"), Value(2)), (ZoneKey("000002"), Value(4)));
         string[] initial = store.Payloads().PhysicalRecords();
@@ -440,10 +438,9 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public void Empty_root_after_memory_deletions_does_not_fetch_the_old_persisted_tree([Values] bool native)
+    public void Empty_root_after_memory_deletions_does_not_fetch_the_old_persisted_tree()
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        using LoggedGroupStore store = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
+        using LoggedGroupStore store = new();
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: true);
         expected.ApplyBatch(entries);
@@ -457,7 +454,7 @@ public class ParallelUpdateRootTests
     [Test]
     public void Log_reference_folds_use_exact_store_fallback_for_unknown_or_retired_roots([Values] bool retired)
     {
-        using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance);
+        using LoggedGroupStore store = new();
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: true);
         expected.ApplyBatch(entries);
@@ -481,7 +478,7 @@ public class ParallelUpdateRootTests
     public void Log_reference_fold_failure_does_not_publish_partial_records(bool splitEveryFrame, bool failAfterWrite)
     {
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
-        using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance, buffer);
+        using LoggedGroupStore store = new(buffer);
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: false);
         expected.ApplyBatch(entries);
@@ -509,13 +506,11 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public async Task Log_reference_forks_resolve_unknown_or_retired_children_against_their_own_view([Values] bool native, [Values] bool unknownChildren)
+    public async Task Log_reference_forks_resolve_unknown_or_retired_children_against_their_own_view([Values] bool unknownChildren)
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
-        using LoggedGroupStore first = new(memory, buffer);
-        using LoggedGroupStore second = new(memory, buffer);
+        using LoggedGroupStore first = new(buffer);
+        using LoggedGroupStore second = new(buffer);
         using PbtTreeHarness firstExpected = new();
         using PbtTreeHarness secondExpected = new();
         (byte[] Key, byte[]? Value)[] firstEntries = ZoneEntries(3, compressed: true);
@@ -549,11 +544,7 @@ public class ParallelUpdateRootTests
         AssertFork(second, secondExpected, secondEntries, secondChanges, roots[1]);
         first.Dispose();
         second.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(buffer.PinCount(), Is.Zero);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
-        }
+        Assert.That(buffer.PinCount(), Is.Zero);
 
         static void AssertFork(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] entries,
             (byte[] Key, byte[]? Value)[] changes, ValueHash256 root)
@@ -575,7 +566,6 @@ public class ParallelUpdateRootTests
 
     private sealed class LoggedGroupStore : IPbtStore, IDisposable
     {
-        private readonly IRefCountingMemoryProvider _memory;
         private PbtSnapshotContent _content;
         private readonly bool _ownsBuffer;
         private PbtNodeGroupStore? _persisted;
@@ -588,9 +578,8 @@ public class ParallelUpdateRootTests
         // Groups the folds published, with None for removed ones, over the persisted groups.
         private readonly Dictionary<PbtStorageNodePath, ulong> _groups = [];
 
-        public LoggedGroupStore(IRefCountingMemoryProvider memory, PbtGroupRecordBuffer? buffer = null)
+        public LoggedGroupStore(PbtGroupRecordBuffer? buffer = null)
         {
-            _memory = memory;
             _ownsBuffer = buffer is null;
             Buffer = buffer ?? new PbtGroupRecordBuffer(0, 4096, 1);
             _content = NewContent();
@@ -600,7 +589,7 @@ public class ParallelUpdateRootTests
 
         private PbtSnapshotContent NewContent()
         {
-            PbtSnapshotContent content = new(_memory);
+            PbtSnapshotContent content = new();
             content.BeginNodeGroupWrites(Buffer);
             return content;
         }

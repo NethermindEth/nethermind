@@ -3,9 +3,7 @@
 
 using System.Buffers;
 using System.Diagnostics;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;

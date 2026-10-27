@@ -5,7 +5,6 @@ using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.State;

@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Trie;

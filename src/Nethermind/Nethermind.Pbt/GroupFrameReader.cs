@@ -4,7 +4,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt.NodeBuffer;
 

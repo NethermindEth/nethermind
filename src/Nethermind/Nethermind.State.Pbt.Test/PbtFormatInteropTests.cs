@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Buffers.Binary;
-using System.IO;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -176,9 +175,9 @@ public class PbtFormatInteropTests
         PbtSnapshot source = PersistedSource(content);
         PbtPersistedSnapshot persisted = store.Build(source);
         source.Dispose();
-        Assert.That(persisted.TryGetNodeGroup(groupKey, out RefCountingMemory? decoded), Is.EqualTo(!absent), "an absent group leaves no entry");
+        byte[]? decoded = PbtSnapshotTestExtensions.LoadPayload((action, groups) => persisted.TryLoadNodeGroup(groupKey, action, groups, out _));
         persisted.Dispose();
-        using (decoded) Assert.That(decoded?.GetSpan().ToArray(), Is.EqualTo(absent ? null : expected));
+        Assert.That(decoded, Is.EqualTo(absent ? null : expected), "an absent group leaves no entry");
         Assert.That(TrackingMemoryProvider.CountUnreleased(store.Memory.Rented), Is.Zero);
     }
 

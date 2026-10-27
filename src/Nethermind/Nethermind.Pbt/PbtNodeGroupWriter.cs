@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Buffers;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;

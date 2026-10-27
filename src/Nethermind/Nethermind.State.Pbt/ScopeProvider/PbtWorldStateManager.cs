@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Pbt;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
 

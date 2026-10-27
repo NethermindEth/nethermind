@@ -8,7 +8,6 @@ using System.Runtime.ExceptionServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;

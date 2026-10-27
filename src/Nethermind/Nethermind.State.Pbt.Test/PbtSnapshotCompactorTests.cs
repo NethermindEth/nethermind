@@ -60,14 +60,14 @@ public class PbtSnapshotCompactorTests
             expected = newerPayload.GetSpan().ToArray();
         }
         using PbtSnapshot compacted = Compact(older, newer);
-        bool found = compacted.Content.TryFindNodeGroup(compacted.RootGroupPointer, default, out RefCountingMemory? payload);
-        using RefCountingMemory? payloadLease = payload;
+        PbtGroupRecord record = default;
+        bool found = compacted.Content.GroupRecordBuffer?.TryFindGroup(compacted.RootGroupPointer, default, out record) == true;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
             Assert.That(compacted.Content.NodeGroups().Length, Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
             Assert.That(found, Is.EqualTo(!emptied));
-            Assert.That(payload?.Memory.ToArray(), Is.EqualTo(emptied ? null : expected));
+            Assert.That(found ? record.Payload.ToArray() : null, Is.EqualTo(emptied ? null : expected));
         }
 
         RefCountingMemory CreateStorageLeafGroup()
@@ -80,12 +80,10 @@ public class PbtSnapshotCompactorTests
     }
 
     [Test]
-    public void Compact_keeps_original_records_and_descendant_references_pinned([Values] bool native)
+    public void Compact_keeps_original_records_and_descendant_references_pinned()
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
-        PbtResourcePool pool = new(new PbtConfig(), memory);
+        PbtResourcePool pool = new(new PbtConfig());
         using PbtTreeHarness tree = new();
         tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>
         {
@@ -347,9 +345,8 @@ public class PbtSnapshotCompactorTests
         {
             using PbtPersistedSnapshot merged = MergePersisted(store, sources, out _);
             DisposeSources(sources);
-            Assert.That(merged.TryGetNodeGroup(group, out RefCountingMemory? payload), Is.True);
             // Nothing records a dropped group, so the older snapshot's copy survives the merge.
-            using (payload) Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expected));
+            Assert.That(PbtSnapshotTestExtensions.LoadPayload((action, groups) => merged.TryLoadNodeGroup(group, action, groups, out _)), Is.EqualTo(expected));
             using PbtPersistedScanner scanner = merged.Scan();
             while (scanner.MoveNext())
             {
@@ -389,8 +386,6 @@ public class PbtSnapshotCompactorTests
                 foreach (PbtPhysicalPayload group in tree.PhysicalPayloads)
                     foreach (PbtPersistedSnapshot snapshot in new[] { sources[0], merged })
                     {
-                        Assert.That(snapshot.TryGetNodeGroup(group.Key, out RefCountingMemory? payload), Is.True);
-                        using (payload) Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(group.Payload.ToArray()));
                         byte[]? loaded = null;
                         Assert.That(snapshot.TryLoadNodeGroup(group.Key, static (bytes, target) => target[0] = bytes.ToArray(), new Span<byte[]?>(ref loaded), out bool tombstone), Is.True);
                         Assert.That(tombstone, Is.False);

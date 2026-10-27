@@ -5,13 +5,10 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
@@ -25,8 +22,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// fold at a time, and reads concurrent with that are unsupported. Sealed content supports concurrent readers while its
 /// snapshot is leased. Reset requires exclusive ownership.
 /// </remarks>
-/// <param name="nodeGroupMemory">The group payload allocator; the pooled managed one when null.</param>
-public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemory = null) : IDisposable, IResettable
+public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
     public readonly ConcurrentDictionary<ValueHash256, PbtAccount?> Accounts = new();
     // Whole slot runs keyed by run key (see SlotRun.RunKey); this layer owns the runs. Header slots' runs are keyed
@@ -36,7 +32,6 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     public readonly ConcurrentDictionary<HashedKey<PbtStoragePath>, PackedSlotRun> Storages = new();
     public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
-    private readonly IRefCountingMemoryProvider _nodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
     private IPbtGroupRecordBufferPin? _nodeGroupPin;
     private long _nodeGroupBytes;
 
@@ -140,18 +135,6 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     /// </remarks>
     public bool TryReplaceRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey> =>
         Runs<TKey>().TryUpdate(runKey, run, expected);
-
-    /// <summary>Copies the group at <paramref name="groupKey"/> in the tree whose root group is at <paramref name="rootPointer"/> into an independent caller-owned payload.</summary>
-    /// <returns>False when the walk misses, which the persisted view must then resolve.</returns>
-    /// <remarks>The caller holds a <see cref="IPbtGroupRecordBuffer.PinAll"/> of the buffer, as a read-only bundle does.</remarks>
-    public bool TryFindNodeGroup(ulong rootPointer, PbtStorageNodePath groupKey, [NotNullWhen(true)] out RefCountingMemory? payload)
-    {
-        payload = null;
-        if (_nodeGroupPin is null || !_nodeGroupPin.Buffer.TryFindGroup(rootPointer, groupKey, out PbtGroupRecord record)) return false;
-        payload = _nodeGroupMemory.Rent(record.Payload.Length);
-        record.Payload.Span.CopyTo(payload.GetSpan());
-        return true;
-    }
 
     /// <summary>Takes over the generation range of <paramref name="source"/>, whose groups a merged layer covers.</summary>
     public void CopyNodeGroupsFrom(PbtSnapshotContent source)

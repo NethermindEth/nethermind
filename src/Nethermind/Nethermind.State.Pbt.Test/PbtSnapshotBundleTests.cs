@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -270,12 +269,10 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Log_backed_snapshot_readers_survive_pruning_and_payloads_survive_pool_return([Values] bool native)
+    public void Log_backed_snapshot_readers_survive_pruning_and_payloads_survive_pool_return()
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
-        PbtResourcePool pool = new(new PbtConfig(), memory);
+        PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtStorageNodePath path = default;
         byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
@@ -304,7 +301,6 @@ public class PbtSnapshotBundleTests
             Assert.That(buffer.PinCount(), Is.Zero);
             Assert.That(source.RootGroupPointer, Is.EqualTo(rootPointer), "the snapshot root hint is not read back from recycled content");
             Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "the disposed branch keeps no rental");
         }
     }
 
@@ -371,11 +367,10 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotContent_ReplacedTreesAndResetPreserveReadLeases([Values(1, 4)] int groupCount, [Values] bool removed)
+    public void SnapshotContent_ReplacedTreesStayReadableUntilReset([Values(1, 4)] int groupCount, [Values] bool removed)
     {
-        TrackingMemoryProvider memoryProvider = new();
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
-        using PbtSnapshotContent content = new(memoryProvider);
+        using PbtSnapshotContent content = new();
         for (int round = 0; round < 2; round++)
         {
             content.BeginNodeGroupWrites(buffer);
@@ -384,42 +379,29 @@ public class PbtSnapshotBundleTests
             byte[][] replacements = [.. paths.Select(path => Group(path, (byte)(round + 3)))];
             content.SetTree([.. paths.Select((path, index) => (path, (byte[]?)originals[index]))]);
             ulong originalRoot = content.RootGroupPointer;
-            RefCountingMemory?[] read = new RefCountingMemory?[groupCount];
-            try
+            content.SetTree([.. paths.Select((path, index) => (path, removed ? null : (byte[]?)replacements[index]))]);
+            using (Assert.EnterMultipleScope())
             {
-                for (int index = 0; index < groupCount; index++) Assert.That(content.TryFindNodeGroup(originalRoot, paths[index], out read[index]), Is.True);
-                content.SetTree([.. paths.Select((path, index) => (path, removed ? null : (byte[]?)replacements[index]))]);
-                using (Assert.EnterMultipleScope())
+                for (int index = 0; index < groupCount; index++)
                 {
-                    for (int index = 0; index < groupCount; index++)
-                    {
-                        Assert.That(content.TryFindNodeGroup(content.RootGroupPointer, paths[index], out RefCountingMemory? current), Is.EqualTo(!removed));
-                        using (current) Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(removed ? null : replacements[index]));
-                        Assert.That(content.TryFindNodeGroup(originalRoot, paths[index], out RefCountingMemory? replaced), Is.True);
-                        using (replaced) Assert.That(replaced!.GetSpan().ToArray(), Is.EqualTo(originals[index]), "the pin keeps a replaced tree readable until reset");
-                        Assert.That(read[index]!.GetSpan().ToArray(), Is.EqualTo(originals[index]));
-                    }
-                    Assert.That(buffer.WriteFrontier() >> 32, Is.GreaterThan(1));
+                    Assert.That(FindGroup(content.RootGroupPointer, paths[index]), Is.EqualTo(removed ? null : replacements[index]));
+                    Assert.That(FindGroup(originalRoot, paths[index]), Is.EqualTo(originals[index]), "the pin keeps a replaced tree readable until reset");
                 }
+                Assert.That(buffer.WriteFrontier() >> 32, Is.GreaterThan(1));
+            }
 
-                content.Reset();
-                content.Reset();
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(content.RootGroupPointer, Is.Zero);
-                    Assert.That(content.NodeGroupCount, Is.Zero);
-                    Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
-                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount), "reset releases every generation but not caller-owned reads");
-                    for (int index = 0; index < groupCount; index++)
-                        Assert.That(read[index]!.GetSpan().ToArray(), Is.EqualTo(originals[index]));
-                }
-            }
-            finally
+            content.Reset();
+            content.Reset();
+            using (Assert.EnterMultipleScope())
             {
-                foreach (RefCountingMemory? payload in read) ((IDisposable?)payload)?.Dispose();
+                Assert.That(content.RootGroupPointer, Is.Zero);
+                Assert.That(content.NodeGroupCount, Is.Zero);
+                Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             }
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
+
+        byte[]? FindGroup(ulong rootPointer, PbtStorageNodePath path) =>
+            buffer.TryFindGroup(rootPointer, path, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
 
         static byte[] Group(PbtStorageNodePath path, byte marker) =>
             PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(PbtTestPaths.PathOf(path, 0), BranchEncoding(marker))], default);
@@ -530,10 +512,9 @@ public class PbtSnapshotBundleTests
     [TestCase(3, true)]
     public void Node_group_newest_tree_replacement_stops_fallback_and_an_emptied_tree_falls_through(int newestTier, bool tombstone)
     {
-        TrackingMemoryProvider memoryProvider = new();
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath wideGroupKey = new([], 0);
-        PbtResourcePool pool = new(new PbtConfig(), nodeGroupMemory: memoryProvider);
+        PbtResourcePool pool = new(new PbtConfig());
         byte[] persisted = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
             new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 2).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
         byte[] shared = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))], default);
@@ -569,8 +550,6 @@ public class PbtSnapshotBundleTests
             Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
             Assert.That(reader.GroupReadCount, Is.EqualTo(answeringTier == 0 ? 1 : 0));
         }
-        bundle.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
     }
 
     [Test]

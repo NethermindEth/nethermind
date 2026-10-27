@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
@@ -48,9 +47,8 @@ public static class PbtPersistedSnapshotValidation
 
     private static void ValidateGroup(PbtPersistedSnapshot persisted, PbtStorageNodePath key, ReadOnlyMemory<byte> expected)
     {
-        if (!persisted.TryGetNodeGroup(key, out RefCountingMemory? actual)) throw Mismatch();
-        using (actual)
-            if (actual is null || !expected.Span.SequenceEqual(actual.GetSpan())) throw Mismatch();
+        if (!persisted.TryLoadNodeGroup(key, static (actual, expected) => { if (!actual.SequenceEqual(expected)) throw Mismatch(); }, expected.Span, out bool tombstone)
+            || tombstone) throw Mismatch();
     }
 
     private static InvalidDataException Mismatch() => new("Converted persisted PBT snapshot differs from its source.");

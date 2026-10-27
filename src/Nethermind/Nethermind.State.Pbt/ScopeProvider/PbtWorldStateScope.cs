@@ -3,9 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;

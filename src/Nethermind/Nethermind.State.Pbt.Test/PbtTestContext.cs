@@ -67,7 +67,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
         GroupRecordBuffer = groupRecordBuffer ?? new PbtGroupRecordBuffer(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
-        ResourcePool = new PbtResourcePool(Config, NodeGroupMemory);
+        ResourcePool = new PbtResourcePool(Config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,

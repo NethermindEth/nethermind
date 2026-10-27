@@ -4,11 +4,9 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 
