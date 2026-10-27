@@ -37,7 +37,7 @@ public class PersistedSnapshotTests
     public void SetUp()
     {
         _resourcePool = new ResourcePool(new FlatDbConfig());
-        _buffer = new NodeRecordBuffer(64 * 1024);
+        _buffer = new NodeRecordBuffer(0, 64 * 1024);
         _memArenaDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-arena-{Guid.NewGuid():N}");
         _memArena = TestFixtureHelpers.CreateArenaManager(_memArenaDir);
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-pstest-blobs-{Guid.NewGuid():N}");
