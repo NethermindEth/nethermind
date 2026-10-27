@@ -65,7 +65,9 @@ public static partial class KeccakCache
     [SkipLocalsInit]
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        ulong[]? memo = _memo;
+        // Airbender does not consult the memo: with its Keccak-f delegation run in place, a probe costs more than the
+        // hashing it saves.
+        ulong[]? memo = AirbenderFlag.IsActive ? null : _memo;
         if (memo is not null)
         {
             ref ulong memoRef = ref MemoryMarshal.GetArrayDataReference(memo);
