@@ -48,21 +48,21 @@ public class NativeBlockValidationTests
     }
 
     [Test]
-    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool oldEnvelope)
+    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool nonEmpty)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
         ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
-        // The native backend proves the empty set as the EIP-8288 empty stark_proof; the former 12-byte envelope is rejected.
-        byte[] proof = oldEnvelope
-            ? [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0]
+        // The native backend proves the empty set as the EIP-8288 empty stark_proof; any nonempty proof is rejected.
+        byte[] proof = nonEmpty
+            ? [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             : NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
         block.StarkProof = proof;
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
 
         bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(result, Is.EqualTo(!oldEnvelope), error);
+        Assert.That(result, Is.EqualTo(!nonEmpty), error);
     }
 
     private static (Block Block, BlockHeader Parent) BlockWithNativeProof(bool tamper)

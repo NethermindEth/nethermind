@@ -1056,8 +1056,7 @@ public class Eip8288BlockProductionTests
         [
             new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
                 stateGasLimit: stateGas, UInt256.Zero, default),
-            new(FrameMode.DepVerify, FrameFlags.None, null, dependency.Scheme == Eip8288Constants.LeanStarkScheme
-                ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas,
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency])),
             .. execution
         ];

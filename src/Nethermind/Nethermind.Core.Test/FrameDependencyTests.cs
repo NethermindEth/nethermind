@@ -208,7 +208,9 @@ public class FrameDependencyTests
     [Test]
     public void ComputeBlockDepsHash_covers_all_transaction_dependencies()
     {
-        Block block = Build.A.Block.WithTransactions(DepTx(Eip8288Constants.LeanSphincsScheme), DepTx(Eip8288Constants.LeanStarkScheme)).TestObject;
+        Transaction second = DepTx(Eip8288Constants.LeanSphincsScheme);
+        second.Nonce = 1;
+        Block block = Build.A.Block.WithTransactions(DepTx(Eip8288Constants.LeanSphincsScheme), second).TestObject;
 
         List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
 
@@ -220,8 +222,9 @@ public class FrameDependencyTests
     public void DependencyCommitment_is_sorted_and_deduplicated()
     {
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
-        FrameDependency second = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
-        List<FrameDependency> canonical = [first, second];
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakC.ValueHash256, TestItem.KeccakD.ValueHash256);
+        // Same scheme: ordered by data_hash.
+        List<FrameDependency> canonical = first.DataHash.Bytes.SequenceCompareTo(second.DataHash.Bytes) < 0 ? [first, second] : [second, first];
         List<FrameDependency> repeated = [second, first, second, first];
 
         using (Assert.EnterMultipleScope())
@@ -269,9 +272,9 @@ public class FrameDependencyTests
     }
 
     [Test]
-    public void Zero_data_hash_resolves_once_before_canonicalization_without_changing_the_frame([Values(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)] byte scheme)
+    public void Zero_data_hash_resolves_once_before_canonicalization_without_changing_the_frame()
     {
-        FrameDependency raw = new(scheme, default, TestItem.KeccakA.ValueHash256);
+        FrameDependency raw = new(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256);
         FrameDependency resolved = new(raw.Scheme, TestItem.KeccakB.ValueHash256, raw.VerificationKey);
         Transaction transaction = DepTx(raw.Scheme);
         byte[] data = Eip8288Dependencies.Serialize([raw, resolved, raw]);
@@ -325,7 +328,7 @@ public class FrameDependencyTests
     [Test]
     public void Explicit_data_hashes_do_not_compute_the_signature_hash()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanStarkScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         Transaction transaction = DepTx(dependency.Scheme);
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         static ValueHash256 UnexpectedHash(Transaction _) => throw new InvalidOperationException("explicit dependency must remain unchanged");
