@@ -66,7 +66,7 @@ public class ReadOnlySnapshotBundleBenchmark
     {
         FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
-        _nodeRecordBuffer = new NodeRecordBuffer(NodeRecordBuffer.DefaultGenerationBytes);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
         SnapshotCompactor compactor = new(

@@ -105,24 +105,33 @@ public class BloomFilterTests
     }
 
     [Test]
-    public void AddUnsynchronized_SetsTheSameBitsAsAdd([Values(1.0, 10.0, 14.0, 30.0)] double bitsPerKey)
+    public void AddUnsynchronized_and_batched_Add_set_the_same_bits_as_Add([Values(1.0, 10.0, 14.0, 30.0)] double bitsPerKey)
     {
         const int keys = 2_000;
         using BloomFilter atomic = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
         using BloomFilter plain = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+        using BloomFilter batched = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+        long[] batch = new long[keys];
 
         for (ulong i = 0; i < keys; i++)
         {
             atomic.Add(i * 0x9E3779B97F4A7C15UL);
             plain.AddUnsynchronized(i * 0x9E3779B97F4A7C15UL);
+            batch[i] = (long)(i * 0x9E3779B97F4A7C15UL);
         }
 
+        // Neither part is a whole number of lanes.
+        batched.Add(batch.AsSpan(0, 3));
+        batched.Add(batch.AsSpan(3));
+
         Assert.That(plain.Count, Is.EqualTo(keys));
+        Assert.That(batched.Count, Is.EqualTo(keys));
         // Same bits set means the same answer for every probe, members and non-members alike.
         for (ulong probe = 0; probe < 50_000; probe++)
         {
             ulong key = probe * 0xC2B2AE3D27D4EB4FUL;
             Assert.That(plain.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"probe {probe}");
+            Assert.That(batched.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"batched probe {probe}");
         }
     }
 

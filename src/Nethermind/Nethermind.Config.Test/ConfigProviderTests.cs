@@ -47,7 +47,7 @@ namespace Nethermind.Config.Test
         }
 
         [Test]
-        public void Can_read_obsolete_trie_cache_budget([Values] bool overrideLegacyBudget)
+        public void Can_read_obsolete_trie_cache_budget_without_changing_buffer_budget([Values] bool overrideLegacyBudget)
         {
             ConfigProvider provider = new();
             if (overrideLegacyBudget)
@@ -64,6 +64,7 @@ namespace Nethermind.Config.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(property.GetValue(config), Is.EqualTo(overrideLegacyBudget ? 1234UL : 512UL.MiB));
+                Assert.That(config.CompressedNodeRecordBufferMemoryBudget, Is.EqualTo(500UL.MiB));
                 Assert.That(property.GetCustomAttribute<ObsoleteAttribute>(), Is.Not.Null);
                 Assert.That(typeof(FlatDbConfig).GetProperty(property.Name)!.GetCustomAttribute<ObsoleteAttribute>(), Is.Not.Null);
                 Assert.That(property.GetCustomAttribute<ConfigItemAttribute>()!.HiddenFromDocs, Is.True);

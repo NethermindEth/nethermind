@@ -39,6 +39,7 @@ public static class PersistedSnapshotBuilder
     private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
     private const int NodeTableEntryUpperBound = 160;
+    private const int MinHashedNodeRlpLength = Hash256.Size;
 
     // Sorts slot entries by raw Address bytes then by slot value, so per-address slices are
     // contiguous and slot keys within a slice are in sorted big-endian order.
@@ -170,19 +171,35 @@ public static class PersistedSnapshotBuilder
     /// <see cref="Sorted.SortedTableBuilder{TWriter}"/> builds tables past 2 GiB and the arena is
     /// long-addressed.
     /// </summary>
+    /// <remarks>
+    /// Every node but a trie root is referenced by its hash, so its RLP is at least <see cref="MinHashedNodeRlpLength"/> bytes,
+    /// and <see cref="EstimateTotalRlpSize"/> bounds the node count without a traversal for a base snapshot.
+    /// </remarks>
     public static long EstimateSize(Snapshot snapshot) =>
         // The arena writer throws if the write overruns the extent sized from this estimate, so a mutable
         // snapshot must be measured live at persist time: Snapshot.EstimateMemory serves counts sealed at
         // first observation (for repository-ledger consistency), which may predate late content writes.
         checked((snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory())
-            + CountNodes(snapshot) * NodeTableEntryUpperBound + 4.KiB);
+            + (EstimateTotalRlpSize(snapshot) / MinHashedNodeRlpLength + RootCount(snapshot)) * NodeTableEntryUpperBound + 1.KiB);
 
-    private static long CountNodes(Snapshot snapshot)
+    private static long RootCount(Snapshot snapshot) =>
+        1 + (snapshot.IsSorted ? snapshot.SortedContent.StorageRoots.Count : snapshot.Content.StorageRoots.Count);
+
+    /// <summary>Estimates the trie-node RLP bytes <see cref="Build"/> writes to the blob arena, used to pick a blob arena with room for them.</summary>
+    /// <remarks>
+    /// In practice this is only called on base snapshots. A base snapshot's nodes are records between its pin and its state root,
+    /// which is published last, so those buffer bytes bound their RLP without a traversal; the slack covers the state root record.
+    /// A compacted snapshot's range spans every block it merged, including the nodes later blocks replaced, so its RLP is summed instead.
+    /// Neither counts the padding that keeps an RLP within one page.
+    /// </remarks>
+    public static long EstimateTotalRlpSize(Snapshot snapshot)
     {
-        long count = 0;
-        foreach ((TreePath Path, ulong Pointer, NodeRecord Record) _ in snapshot.StateNodes) count++;
-        foreach ((Hash256 Address, TreePath Path, ulong Pointer, NodeRecord Record) _ in snapshot.StorageNodes) count++;
-        return count;
+        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber == 1) return snapshot.EstimatePinnedNodeBytes() + 4.KiB;
+
+        long size = 0;
+        foreach ((TreePath Path, ulong Pointer, NodeRecord Record) node in snapshot.StateNodes) size += node.Record.Rlp.Length;
+        foreach ((Hash256 Address, TreePath Path, ulong Pointer, NodeRecord Record) node in snapshot.StorageNodes) size += node.Record.Rlp.Length;
+        return size;
     }
 
     private static void WritePerAddress<TWriter>(

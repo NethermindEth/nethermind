@@ -61,7 +61,7 @@ public sealed class MigrationGenesisBootstrap(
         Hash256 expectedHash = genesis.Hash!;
         chainSpec.Allocations = _allocations ?? chainSpec.Allocations
             ?? throw new InvalidDataException("Genesis bootstrap requires the genesis allocation; the genesis was built without this bootstrap.");
-        using NodeRecordBuffer nodeRecordBuffer = new(NodeRecordBuffer.DefaultGenerationBytes);
+        using NodeRecordBuffer nodeRecordBuffer = new(0, NodeRecordBuffer.DefaultGenerationBytes);
         GenesisScopeProvider provider = new(this, nodeRecordBuffer);
         using ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder =>
             builder.RegisterInstance(provider).As<IWorldStateScopeProvider>().ExternallyOwned());

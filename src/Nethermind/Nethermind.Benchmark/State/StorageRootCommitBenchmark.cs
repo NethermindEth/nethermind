@@ -62,7 +62,7 @@ public class StorageRootCommitBenchmark
 
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _nodeRecordBuffer = new NodeRecordBuffer(NodeRecordBuffer.DefaultGenerationBytes);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
 
