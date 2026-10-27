@@ -37,6 +37,14 @@ make run INPUT=<fixture>.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
 The CLI prints the output words as `Result:`. The run does not generate or verify
 a proof.
 
+For a fixture pinned in `Nethermind.Stateless.ZiskGuest/inputs.json`, `make verify`
+also checks the public digest and fails on a mismatch. Block `11962427.ssz`
+exercises an unaligned fused PUSH2 jump target, which must work on RV32:
+
+```bash
+make verify INPUT=11962427.ssz AIRBENDER_CLI=<zksync-airbender>/target/cli/cli
+```
+
 ## Notes
 
 - The image has no unwind tables. An exception goes to the shared `ZkvmThrow`

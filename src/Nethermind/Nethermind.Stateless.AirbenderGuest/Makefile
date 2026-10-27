@@ -56,9 +56,16 @@ run:
 	$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/nethermind.bin --text $(GUEST_DIR)/bin/nethermind.text \
 		--input-file $(GUEST_DIR)/bin/$(INPUT).hex --cycles $(AIRBENDER_CYCLES)
 
+verify:
+	@$(REQUIRE_INPUT)
+	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).hex
+	@expected=$$(python3 -c "import json,struct,sys; entries=json.load(open(sys.argv[1])); digest=next(e['digest'] for e in entries if e['input']==sys.argv[2]); print(*struct.unpack('<8I',bytes.fromhex(digest)), *([0]*8))" $(MAKEFILE_DIR)/../Nethermind.Stateless.ZiskGuest/inputs.json $(INPUT)) && \
+		$(AIRBENDER_CLI) run --bin $(GUEST_DIR)/bin/nethermind.bin --text $(GUEST_DIR)/bin/nethermind.text \
+		--input-file $(GUEST_DIR)/bin/$(INPUT).hex --cycles $(AIRBENDER_CYCLES) --expected-results $$expected
+
 # Airbender reads its input as hex words: the length in bytes, then the payload in
 # little-endian words, zero-padded.
 $(GUEST_DIR)/bin/%.hex: $(GUEST_DIR)/bin/%.raw
 	python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); n=len(d); d+=bytes(-n % 4); w=[n, *struct.unpack(f'<{len(d)//4}I', d)]; open(sys.argv[2],'w').write(''.join(f'{x:08x}' for x in w))" $< $@
 
-.PHONY: require-toolchain
+.PHONY: require-toolchain verify
