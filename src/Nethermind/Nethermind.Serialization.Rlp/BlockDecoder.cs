@@ -67,6 +67,9 @@ namespace Nethermind.Serialization.Rlp
             BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
             // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
+            // EIP-8288: only a header committing to a recursive STARK admits a trailing stark_proof body field.
+            if (body.StarkProof is not null && header.RecursiveStark is null)
+                throw new RlpException("Block carries a stark_proof without a recursive STARK commitment.");
 
             Block block = new(header, body)
             {
