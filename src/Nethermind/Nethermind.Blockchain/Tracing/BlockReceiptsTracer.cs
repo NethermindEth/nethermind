@@ -57,6 +57,8 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     /// <see cref="LastReceipt"/>, <see cref="TakeSnapshot"/>, <see cref="Restore"/> and <see cref="DiscardLastTx"/> are unsupported.</remarks>
     internal bool BuildsReceipts { get; set; } = true;
 
+    public bool IsCancelable => _currentTxTracer.IsCancelable;
+    public bool IsCancelled => _currentTxTracer.IsCancelled;
     public bool IsTracingReceipt => true;
     public bool IsTracingOutput => !IsTracingOnlyReceipts;
     public bool IsCollectingLogs => BuildsReceipts || _currentTxTracer.IsCollectingLogs || _otherTracer is ITxTracer { IsCollectingLogs: true };
