@@ -162,15 +162,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
       - name: Fetch the Groth16 sweep artifacts
         if: inputs.suite == 'cost'
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.groth16_artifacts_version }}
-        run: scripts/frame-verify-gas/fetch-artifacts.sh
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        run: dotnet run --file scripts/frame-verify-gas/fetch-artifacts.cs --
 
       - name: Run measurement harnesses
         id: measure
