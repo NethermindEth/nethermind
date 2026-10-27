@@ -118,6 +118,12 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static ulong FinalizeAddressSum(ulong addressSum) => FinalizeSum(addressSum);
 
+        /// <summary>A lane of a slot index, a <see cref="UInt256"/> and so word aligned.</summary>
+        /// <remarks>Airbender reads it as two plain words: an unaligned read there tests alignment per word.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong ReadIndexLane(ref byte lane) =>
+            AirbenderFlag.IsActive ? Unsafe.As<byte, ulong>(ref lane) : Unsafe.ReadUnaligned<ulong>(ref lane);
+
         /// <summary>Hashes a 32-byte slot index of the address whose <see cref="SumAddressWords"/> is given.</summary>
         /// <remarks>
         /// One NH sum over the address' three words and the index's four, so an address kept summed costs only its
@@ -126,10 +132,10 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static ulong MixSlot(ulong addressSum, ref byte index)
         {
-            ulong i0 = Unsafe.ReadUnaligned<ulong>(ref index);
-            ulong i1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 8));
-            ulong i2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 16));
-            ulong i3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 24));
+            ulong i0 = ReadIndexLane(ref index);
+            ulong i1 = ReadIndexLane(ref Unsafe.Add(ref index, 8));
+            ulong i2 = ReadIndexLane(ref Unsafe.Add(ref index, 16));
+            ulong i3 = ReadIndexLane(ref Unsafe.Add(ref index, 24));
             if (addressSum == LastSlotAddressSum && i0 == LastSlot0 && i1 == LastSlot1 && i2 == LastSlot2 && i3 == LastSlot3)
                 return LastSlotHash;
 
