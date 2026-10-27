@@ -305,11 +305,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong condition = TCondition.Evaluate(ref end) ? 1UL : 0UL;
                 // PUSH2, its two immediates and JUMPI; the first is the opcode an unfused comparison dispatches on.
                 ref byte opcode = ref ip;
-                uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 1));
+                ref byte after = ref Unsafe.Add(ref opcode, 1);
+                uint branch = CodeWord(ref after);
                 // The branch's PUSH2 overflows a stack the comparison leaves full, which only ISZERO can.
                 if (TCondition.Inputs > 1 || head < EvmStack.MaxStackSize - 1)
                 {
-                    if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
+                    if (CodeByte(branch, ref after, 0) == (byte)Instruction.PUSH2 && CodeByte(branch, ref after, 3) == (byte)Instruction.JUMPI)
                     {
                         // The fused step charges the comparison with every opcode after it in one test.
                         if (condition == 0)
@@ -325,7 +326,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                            nuint destination = ReadBigEndianUInt16(branch >> 8);
+                            nuint destination = CodeUInt16(branch, ref after, 1);
                             if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
@@ -345,10 +346,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
                     // An ISZERO between the comparison and the branch only inverts what the branch tests.
-                    else if ((byte)branch == (byte)Instruction.ISZERO)
+                    else if (CodeByte(branch, ref after, 0) == (byte)Instruction.ISZERO)
                     {
-                        uint inverted = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 2));
-                        if ((byte)inverted == (byte)Instruction.PUSH2 && inverted >> 24 == (byte)Instruction.JUMPI)
+                        ref byte afterInversion = ref Unsafe.Add(ref opcode, 2);
+                        uint inverted = CodeWord(ref afterInversion);
+                        if (CodeByte(inverted, ref afterInversion, 0) == (byte)Instruction.PUSH2 && CodeByte(inverted, ref afterInversion, 3) == (byte)Instruction.JUMPI)
                         {
                             if (condition != 0)
                             {
@@ -363,7 +365,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             else
                             {
                                 ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                                nuint destination = ReadBigEndianUInt16(inverted >> 8);
+                                nuint destination = CodeUInt16(inverted, ref afterInversion, 1);
                                 if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
                                 {
                                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
@@ -384,7 +386,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
                     // Code shorter than 256 bytes pushes its destinations with PUSH1.
-                    else if ((byte)branch == (byte)Instruction.PUSH1 && (byte)(branch >> 16) == (byte)Instruction.JUMPI)
+                    else if (CodeByte(branch, ref after, 0) == (byte)Instruction.PUSH1 && CodeByte(branch, ref after, 2) == (byte)Instruction.JUMPI)
                     {
                         if (condition == 0)
                         {
@@ -399,7 +401,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                            nuint destination = (byte)(branch >> 8);
+                            nuint destination = CodeByte(branch, ref after, 1);
                             if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!stack.IsAnalyzedJumpDestination(destination))
@@ -431,7 +433,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head -= TCondition.Inputs - 1;
                     sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = AlignedTable(handlers)[(ushort)branch];
+                    nint unfused = AlignedTable(handlers)[AirbenderFlag.IsActive ? PairAt(ref ip) : (ushort)branch];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 }
             }
@@ -455,6 +457,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
         }
+
+        /// <summary>The four code bytes at <paramref name="at"/> as one word, where <see cref="CodeByte"/> takes the bytes from it.</summary>
+        /// <remarks>
+        /// Airbender reads them one by one instead, and this is zero there: its strict alignment makes an unaligned word
+        /// an alignment test and a byte gather, and the bytes then cost shifts on top.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static uint CodeWord(ref byte at) => AirbenderFlag.IsActive ? 0 : Unsafe.ReadUnaligned<uint>(ref at);
+
+        /// <summary>The code byte <paramref name="index"/> bytes past <paramref name="at"/>, from <paramref name="word"/>, the <see cref="CodeWord"/> there.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte CodeByte(uint word, ref byte at, int index) =>
+            AirbenderFlag.IsActive ? Unsafe.Add(ref at, index) : (byte)(word >> (8 * index));
+
+        /// <summary>The big-endian 16-bit immediate <paramref name="index"/> bytes past <paramref name="at"/>, from <paramref name="word"/>, the <see cref="CodeWord"/> there.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static nuint CodeUInt16(uint word, ref byte at, int index) =>
+            AirbenderFlag.IsActive ? ReadBigEndianUInt16(ref Unsafe.Add(ref at, index)) : ReadBigEndianUInt16(word >> (8 * index));
 
         /// <summary>A comparison of the words on top of the stack, as <see cref="ExecuteCondition{TCondition}"/> runs it.</summary>
         internal interface IStackCondition
@@ -1001,8 +1021,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (following == (byte)Instruction.PUSH4 &&
                     Unsafe.Add(ref opcode, 6) == (byte)Instruction.EQ && head < EvmStack.MaxStackSize - 2)
                 {
-                    uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 7));
-                    if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
+                    ref byte after = ref Unsafe.Add(ref opcode, 7);
+                    uint branch = CodeWord(ref after);
+                    if (CodeByte(branch, ref after, 0) == (byte)Instruction.PUSH2 && CodeByte(branch, ref after, 3) == (byte)Instruction.JUMPI)
                     {
                         // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
                         // A 32-bit guest has no byte reversal and reads the four bytes in order.
@@ -1022,7 +1043,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         else
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-                            nuint destination = ReadBigEndianUInt16(branch >> 8);
+                            nuint destination = CodeUInt16(branch, ref after, 1);
                             if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 4 * VeryLowGasCost.GasCost + jumpGas))
                             {
                                 if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
