@@ -607,13 +607,12 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
-        if (headerError is not null)
+        BlockHeader? header = blockFinder.FindHeader(blockHash);
+        if (header is null)
         {
-            return headerError.ErrorCode == ErrorCodes.ResourceNotFound
-                && headerError.Result.Error == $"Cannot find header for block hash: {blockHash}"
-                ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary)
-                : headerError;
+            return GetFailureResult<IReadOnlyCollection<GethLikeTxTrace>, BlockHeader>(
+                new SearchResult<BlockHeader>($"block {blockHash} not found", ErrorCodes.ResourceNotFound),
+                debugBridge.HaveNotSyncedHeadersYet());
         }
 
         // HasBlock excludes cache-only bodies that FindBlock can still serve.
