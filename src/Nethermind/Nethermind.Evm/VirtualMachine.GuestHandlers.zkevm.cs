@@ -1492,12 +1492,53 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>MSTORE of a word that needs no new backing, growing the active memory over it when it has to.</summary>
         /// <remarks>
+        /// A word inside the active, initialized memory is stored here, frameless; growing the memory, which calls out,
+        /// runs <see cref="ExecuteMStoreGrowing"/>.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteMStoreInsideBacking(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            {
+                ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
+                {
+                    ref byte destination = ref state.Memory.GetActiveInitializedRange(offset, EvmStack.WordSize);
+                    if (!Unsafe.IsNullRef(ref destination))
+                    {
+                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
+                        head -= 2;
+                        sp = ref Moved(ref sp, -2);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    }
+                }
+
+                gas += (nuint)(VeryLowGasCost.GasCost);
+            }
+
+            nint growing = Entry(&ExecuteMStoreGrowing);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, growing);
+        }
+
+        /// <summary><see cref="ExecuteMStoreInsideBacking"/> where the word is outside the active or initialized memory.</summary>
+        /// <remarks>
         /// Every other case - short gas or stack, a word that outgrows the backing, an offset of 2^32 or more, which runs
         /// out of gas - runs the shared MSTORE handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal static EvmExceptionType ExecuteMStoreInsideBacking(
+        private static EvmExceptionType ExecuteMStoreGrowing(
             ref EvmStack stack,
             nuint gas,
             ref DispatchState state,

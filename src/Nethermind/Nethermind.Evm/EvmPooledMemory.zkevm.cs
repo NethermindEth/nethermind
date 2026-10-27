@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -19,11 +20,22 @@ public partial struct EvmPooledMemory
     /// </summary>
     /// <param name="offset">The start of the range, below 2^32.</param>
     /// <param name="length">The length of the range, below 2^32.</param>
-    /// <remarks>The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.</remarks>
+    /// <remarks>
+    /// The same caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref. A 32-bit guest tests in native
+    /// words: the sizes truncated to one can only be smaller, which fails the test rather than passing it wrongly.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ref byte GetActiveInitializedRange(ulong offset, ulong length)
     {
         Debug.Assert(offset <= uint.MaxValue && length <= uint.MaxValue);
+        if (IntPtr.Size == sizeof(uint))
+        {
+            nuint start = (nuint)offset;
+            nuint stop = start + (nuint)length;
+            if (stop < start || stop > (nuint)Size || stop > (nuint)_initializedSize) return ref Unsafe.NullRef<byte>();
+            return ref Unsafe.Add(ref GetBackingReference(), (nint)start);
+        }
+
         ulong end = offset + length;
         if (end > Size || end > _initializedSize) return ref Unsafe.NullRef<byte>();
         return ref Unsafe.Add(ref GetBackingReference(), (nint)offset);
