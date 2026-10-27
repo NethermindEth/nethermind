@@ -955,6 +955,45 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
+            // The selector comparison lives in its own handler, which needs a frame: a plain DUP1 keeps none.
+            if (Unsafe.Add(ref ip, 1) == (byte)Instruction.PUSH4 && Unsafe.Add(ref ip, 6) == (byte)Instruction.EQ)
+            {
+                nint selector = Entry(&ExecuteDup1Selector);
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, selector);
+            }
+
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            {
+                ref ulong top = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                ref ulong copy = ref Unsafe.Add(ref top, EvmStack.WordSize / sizeof(ulong));
+                copy = top;
+                Unsafe.Add(ref copy, 1) = Unsafe.Add(ref top, 1);
+                Unsafe.Add(ref copy, 2) = Unsafe.Add(ref top, 2);
+                Unsafe.Add(ref copy, 3) = Unsafe.Add(ref top, 3);
+                head++;
+                sp = ref Moved(ref sp, 1);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint unfused = AlignedTable(handlers)[ip];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<DupOpcode<EvmInstructions.Op1, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary><see cref="ExecuteDup1"/> followed by PUSH4 and EQ: the selector comparison, fused when PUSH2 and JUMPI follow.</summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecuteDup1Selector(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
             // One unsigned test bounds the depth on both sides: on an empty stack the difference wraps past the limit.
             if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2))
             {
@@ -969,7 +1008,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
                     {
                         // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
-                        ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32;
+                        // A 32-bit guest has no byte reversal and reads the four bytes in order.
+                        ulong selector = IntPtr.Size == sizeof(uint)
+                            ? ((uint)Unsafe.Add(ref opcode, 2) << 24) | ((uint)Unsafe.Add(ref opcode, 3) << 16) |
+                                ((uint)Unsafe.Add(ref opcode, 4) << 8) | Unsafe.Add(ref opcode, 5)
+                            : BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32;
                         // The fused step charges DUP1 with every opcode after it in one test.
                         if (((top ^ selector) | Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3)) != 0)
                         {
