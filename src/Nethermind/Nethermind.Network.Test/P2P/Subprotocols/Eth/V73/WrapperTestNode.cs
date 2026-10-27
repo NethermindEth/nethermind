@@ -166,9 +166,11 @@ internal static class WrapperTestObjects
 
     /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form
     /// EIP-8437 transports: commitments bound to its versioned hashes and cell proofs, no blob data.</summary>
-    public static Transaction BlobFrameTransaction(int seed, int blobs = 1)
+    public static Transaction BlobFrameTransaction(int seed, int blobs = 1, bool dependencyBearing = true)
     {
         Transaction transaction = FrameTransaction(seed);
+        if (!dependencyBearing)
+            transaction.Frames = [new(FrameMode.Sender, FrameFlags.None, Address.Zero, 21_000, UInt256.Zero, BitConverter.GetBytes(seed))];
         byte[][] commitments = [.. Enumerable.Range(0, blobs).Select(i => Enumerable.Repeat((byte)(seed + i + 1), 48).ToArray())];
         transaction.BlobVersionedHashes = [.. commitments.Select(static commitment =>
         {

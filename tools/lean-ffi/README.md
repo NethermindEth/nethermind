@@ -259,7 +259,10 @@ it waits, with its proof coverage pinned, for its cells. Cells announced for it 
 recorded but not fetched; after validation they are fetched and checked like type-3 cells, the pool
 admits the transaction, and its cells are announced through NewPooledTransactionHashes. Produced
 wrappers carry such transactions in the same elided form, and block production includes them like
-type-3 blob transactions. Blob-carrying frame transactions without dependencies still travel whole.
+type-3 blob transactions. On `eth/73` every blob-carrying frame transaction uses EIP-8070 cells: one
+without dependencies is announced with a cell mask, served elided through PooledTransactions and
+fetched like a type-3 one, though its cells are requested only once its body is known; on `eth/72`
+it still travels whole.
 
 Local policy follows the EIP-8437 recommended defaults: 30-second requests, at most three fetch
 sources per wrapper, 8 MiB/s served per peer, four announcements per second per peer and
