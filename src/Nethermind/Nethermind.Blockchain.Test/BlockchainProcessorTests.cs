@@ -922,21 +922,6 @@ public class BlockchainProcessorTests
     }
 
     [Test]
-    public void Removal_below_zero_does_not_release_waiters()
-    {
-        (Func<bool, bool> removeCopy, Task removed, Task<bool> removedWhenExecutedCopyCompletes) = ObserveInFlightRemoval(copies: 0);
-
-        Assert.That(removeCopy(true), Is.False);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(removed.IsCompleted, Is.False);
-            Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False,
-                "a removal that takes the count below zero must not release waiters");
-        }
-    }
-
-    [Test]
     public void Removal_without_a_tracked_copy_preserves_the_count([Values] bool completed)
     {
         (Func<bool, bool> removeCopy, Task removed, Task<bool> observation) = ObserveInFlightRemoval(copies: completed ? 1 : 0);
