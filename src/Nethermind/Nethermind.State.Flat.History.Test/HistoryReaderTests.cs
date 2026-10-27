@@ -66,6 +66,30 @@ public class HistoryReaderTests
     }
 
     [Test]
+    public void Cached_reads_return_the_same_account_and_do_not_allocate()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        Account? first = _reader.GetAccount(10, Address, null);
+        _reader.TryGetStorage(10, Address, Slot, out _);
+        _reader.GetAccount(10, Address, null);
+        _reader.TryGetStorage(10, Address, Slot, out _);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Account? cached = _reader.GetAccount(10, Address, null);
+        bool slotFound = _reader.TryGetStorage(10, Address, Slot, out UInt256 slot);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.Not.Null);
+            Assert.That(cached, Is.SameAs(first));
+            Assert.That(slotFound && slot == 0x11, Is.True);
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Storage_read_at_a_block_is_answered_once_and_other_slots_read_their_own_rows()
     {
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
