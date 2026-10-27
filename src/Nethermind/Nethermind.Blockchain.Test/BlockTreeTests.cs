@@ -43,6 +43,40 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test]
+    public void IsKnownBlock_requires_the_correct_canonical_head_number([Range(-1, 1)] int offset)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block head = tree.Head!;
+        ulong requestedNumber = (ulong)((long)head.Number + offset);
+        Assert.That(tree.IsKnownBlock(requestedNumber, head.Hash!), Is.EqualTo(offset == 0));
+    }
+
+    [Test]
+    public void IsKnownBlock_does_not_accept_an_unknown_hash_above_the_progress_bound()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Assert.That(tree.IsKnownBlock(tree.BestKnownNumber + 1, TestItem.KeccakA), Is.False);
+    }
+
+    [Test]
+    public void IsKnownBlock_does_not_accept_header_only_beacon_metadata([Values] bool aboveProgressBound)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block head = tree.Head!;
+        ulong number = head.Number + (aboveProgressBound ? 1UL : 0UL);
+        BlockHeader beacon = Build.A.BlockHeader.WithNumber(number)
+            .WithParentHash(aboveProgressBound ? head.Hash! : head.ParentHash!)
+            .WithExtraData([1])
+            .TestObject;
+        Assert.That(tree.Insert(beacon, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded), Is.EqualTo(AddBlockResult.Added));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsKnownBeaconBlock(number, beacon.Hash!), Is.True);
+            Assert.That(tree.IsKnownBlock(number, beacon.Hash!), Is.False);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
     {
@@ -523,6 +557,35 @@ public class BlockTreeTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
 
         AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void New_best_suggested_block_propagates_non_blocking_processing_option(bool nonBlockingProcessing)
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        BlockEventArgs? notification = null;
+        blockTree.NewBestSuggestedBlock += (_, args) => notification = args;
+
+        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess;
+        if (nonBlockingProcessing)
+        {
+            options |= BlockTreeSuggestOptions.NonBlockingProcessing;
+        }
+
+        AddBlockResult result = blockTree.SuggestBlock(block1, options);
+
+        Assert.That(notification, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(notification!.Block.Hash, Is.EqualTo(block1.Hash));
+            Assert.That(notification.NonBlockingProcessing, Is.EqualTo(nonBlockingProcessing));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2114,7 +2177,7 @@ public class BlockTreeTests
         {
             Assert.That(stored, Has.Length.EqualTo(1));
             Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
-            Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+            Assert.That(blockTree.FindHeader(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
             Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
                 "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
         }
@@ -2815,8 +2878,15 @@ public class BlockTreeTests
         }
     }
 
+    public enum DeletionOverlapLookup
+    {
+        Header,
+        Block,
+        BloomHeader
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup, [Values] bool invalidBlockDeletion)
+    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] DeletionOverlapLookup lookup, [Values] bool invalidBlockDeletion)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
         BlockTree blockTree = builder.TestObject;
@@ -2824,7 +2894,7 @@ public class BlockTreeTests
         Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
         ((IClearableCache)builder.BlockStore).ClearCache();
         ((IClearableCache)builder.HeaderStore).ClearCache();
-        TestMemDb db = (TestMemDb)(headerLookup ? builder.HeadersDb : builder.BlocksDb);
+        TestMemDb db = (TestMemDb)(lookup == DeletionOverlapLookup.Block ? builder.BlocksDb : builder.HeadersDb);
         // The lookup reads its value from the database, then the deletion runs before the lookup caches it.
         db.ReadFunc = key =>
         {
@@ -2835,9 +2905,12 @@ public class BlockTreeTests
             return value!;
         };
 
-        object? found = headerLookup
-            ? blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number)
-            : blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number);
+        object? found = lookup switch
+        {
+            DeletionOverlapLookup.Header => blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number),
+            DeletionOverlapLookup.Block => blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number),
+            _ => blockTree.FindCanonicalHeaderIfBloomMatches(deleted.Number, static _ => true, out _)
+        };
 
         using (Assert.EnterMultipleScope())
         {
@@ -3077,9 +3150,10 @@ public class BlockTreeTests
                 {
                     TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                 };
-                yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
+                // Only the header of an invalid block is kept, so its body is never found.
+                yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, false)
                 {
-                    TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
+                    TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_not_found"
                 };
             }
         }

@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -14,7 +15,6 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NSubstitute;
@@ -120,6 +120,10 @@ public sealed class FlatTestContainer : IDisposable
     }
 
     public T Resolve<T>() where T : notnull => Container.Resolve<T>();
+
+    /// <summary>A child scope of the built graph with the registrations of <paramref name="configure"/> on top, to
+    /// resolve a production component over this graph with some of its dependencies replaced. The caller disposes it.</summary>
+    public ILifetimeScope BeginScope(Action<ContainerBuilder> configure) => Container.BeginLifetimeScope(configure);
 
     public SnapshotRepository Repository => Resolve<SnapshotRepository>();
     public IPersistedSnapshotLoader Loader => Resolve<PersistedSnapshotLoader>();

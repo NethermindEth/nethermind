@@ -325,6 +325,10 @@ public class DebugBridge : IDebugBridge
 
     public GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
+
+    public GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        _tracer.Trace(blockHash, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
+
     public TxReceipt[] GetReceiptsForBlock(Block block) => _receiptFinder.Get(block);
 
     public Transaction? GetTransactionFromHash(Hash256 txHash) =>
@@ -372,6 +376,9 @@ public class DebugBridge : IDebugBridge
 
     public IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockIntermediateRoots(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public StorageRangeVisitor GetStorageRange(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken) =>
+        _tracer.StorageRangeAt(block, txIndex, address, startKey, limit, cancellationToken);
 
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {

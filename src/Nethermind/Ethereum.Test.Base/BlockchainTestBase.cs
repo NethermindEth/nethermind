@@ -147,6 +147,9 @@ public abstract class BlockchainTestBase
         // and a fire-and-forget background convert from one test can race another test's files. Long finality is
         // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
         flatDbConfig.EnableLongFinality = false;
+        // Every test builds its own container, so the default budget allocates a production-sized trie node
+        // cache on the large object heap per test.
+        flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarming = PreWarmMode.None;

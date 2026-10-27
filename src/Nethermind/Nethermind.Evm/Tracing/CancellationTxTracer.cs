@@ -125,6 +125,9 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingStack = value;
     }
 
+    // Pushes are also cancellation points while the inner tracer traces no instructions.
+    public bool IsTracingStackPushes => innerTracer.IsTracingInstructions ? innerTracer.IsTracingStackPushes : _isTracingInstructions;
+
     public bool IsTracingState
     {
         get => _isTracingState || innerTracer.IsTracingState;
@@ -432,6 +435,16 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionError(evmExceptionType);
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportActionErrorDetails(error);
         }
     }
 

@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -19,6 +20,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public interface IDebugBridge
 {
     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+
+    /// <summary>Traces a transaction whose canonical block the caller has already found, without looking it up again.</summary>
+    /// <remarks>The default looks the block up again, so out-of-tree implementations keep compiling.</remarks>
+    GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        GetTransactionTrace(transactionHash, cancellationToken, gethTraceOptions, writer, pipeWriter);
 
     /// <remarks>Retained for out-of-tree plugins; nothing in the repository calls it.</remarks>
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
@@ -31,6 +37,7 @@ public interface IDebugBridge
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    StorageRangeVisitor GetStorageRange(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken);
     Block? GetBlock(BlockParameter param);
     byte[] GetBlockRlp(BlockParameter param);
     byte[] GetDbValue(string dbName, byte[] key);

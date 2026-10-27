@@ -29,7 +29,7 @@ public static class TxPoolErrorMessages
     public const string DelegationAuthorityHasPendingTx = "delegation authority has pending transaction";
     public const string NodeIsSyncing = "node is syncing";
     public const string FrameTxExpired = "frame transaction expired";
-    public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_GAS";
+    public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds the node verification budget";
     public const string FrameTxVerifyStateGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_STATE_GAS";
     public const string KeyedNonceUnmet = "keyed nonce sequence not current";
     public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";
@@ -37,7 +37,7 @@ public static class TxPoolErrorMessages
     public const string FrameTxNoPayer = "frame transaction never approves a payer";
     public const string FrameSimulationFailed = "frame transaction validation-prefix simulation failed";
     public const string FrameSimulationDeferred = "frame transaction validation-prefix simulation deferred";
-    public const string FramePeerValidationBudgetSpent = "peer spent its frame transaction validation gas budget";
+    public const string FramePeerValidationBudgetSpent = "peer spent its share of the frame transaction validation time";
     public const string FrameSignatureVerificationDeferred = "frame transaction signature verification deferred";
     public const string FrameSimulationBudgetSpent = "validation-prefix simulation budget exhausted for this head";
     public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";

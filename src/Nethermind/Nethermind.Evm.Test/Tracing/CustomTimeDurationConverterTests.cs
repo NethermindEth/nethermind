@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -51,11 +54,97 @@ public class CustomTimeDurationConverterTests
         new TestCaseData("\"0.123456789s\"", TimeSpan.FromTicks(1234567)).SetName("nine_fractional_digits"),
         new TestCaseData("\"-1h30m\"", TimeSpan.FromMinutes(-90)).SetName("negative_multi_segment"),
         new TestCaseData("\"05s\"", TimeSpan.FromSeconds(5)).SetName("leading_zeros"),
+        new TestCaseData("\"9223372036854775807ns\"", TimeSpan.FromTicks(92233720368547758)).SetName("max_nanoseconds"),
+        new TestCaseData("\"-9223372036854775808ns\"", TimeSpan.FromTicks(-92233720368547758)).SetName("min_nanoseconds"),
+        new TestCaseData("\"2562047.788015215501944444h\"", TimeSpan.FromTicks(92233720368547758)).SetName("fractional_hour_below_positive_cap"),
+        new TestCaseData("\"-2562047.788015215502222222h\"", TimeSpan.FromTicks(-92233720368547758)).SetName("fractional_hour_at_negative_cap"),
+        new TestCaseData("\"0.999999999999999999h\"", TimeSpan.FromHours(1)).SetName("fractional_hour_rounds_to_tick"),
+        new TestCaseData("\"-0.999999999999999999h\"", TimeSpan.FromHours(-1)).SetName("negative_fractional_hour_rounds_to_tick"),
+        new TestCaseData("\"2562047.7880152155022221450h\"", TimeSpan.FromTicks(92233720368547758)).SetName("nineteen_digit_fraction_below_positive_cap"),
+        new TestCaseData("\"2562047.788015215502222145000000000h\"", TimeSpan.FromTicks(92233720368547758)).SetName("overflowing_fraction_retains_positive_cap"),
+        new TestCaseData("\"2562047h47m16.854775807s\"", TimeSpan.FromTicks(92233720368547758)).SetName("mixed_segments_at_positive_cap"),
+        new TestCaseData("\"-2562047h47m16.854775808s\"", TimeSpan.FromTicks(-92233720368547758)).SetName("mixed_segments_at_negative_cap"),
+        new TestCaseData("\"0.0000000000277777778h\"", TimeSpan.FromTicks(1)).SetName("leading_zero_fraction_rounds_to_tick"),
+        new TestCaseData("\"-0.0000000000277777778h\"", TimeSpan.FromTicks(-1)).SetName("negative_leading_zero_fraction_rounds_to_tick"),
+        new TestCaseData("\"0.000000000027777777800000000000000000h\"", TimeSpan.FromTicks(1)).SetName("long_leading_zero_fraction_rounds_to_tick"),
+        new TestCaseData("\"0.00000009999999999999999s\"", TimeSpan.FromTicks(1)).SetName("fraction_scale_matches_go_repeated_multiplication"),
+        new TestCaseData("\"0.00000000000000000000000000000000000000000001h\"", TimeSpan.Zero).SetName("fraction_scale_beyond_ulong"),
+        new TestCaseData("\"0.9223372036854775807h\"", TimeSpan.FromTicks(33204139332)).SetName("fraction_integer_below_cap"),
+        new TestCaseData("\"0.9223372036854775808h\"", TimeSpan.FromTicks(33204139332)).SetName("fraction_integer_at_cap"),
+        new TestCaseData("\"0.9223372036854775809h\"", TimeSpan.FromTicks(33204139332)).SetName("fraction_integer_above_cap"),
+        new TestCaseData("\"0.922337203685477580899999999999h\"", TimeSpan.FromTicks(33204139332)).SetName("fraction_overflow_consumes_remaining_digits"),
+        new TestCaseData("\"0.0000000000277777778h0.0000000000277777778h\"", TimeSpan.FromTicks(2)).SetName("mixed_fraction_segments_round_independently"),
     ];
 
+    private static IEnumerable<TestCaseData> FractionalUnitCases()
+    {
+        (string Unit, long Ticks)[] units = [("ns", 0), ("us", 10), ("µs", 10), ("μs", 10),
+            ("ms", 10_000), ("s", 10_000_000), ("m", 599_999_999), ("h", 36_000_000_000)];
+        foreach ((string unit, long ticks) in units)
+            foreach (int digits in new[] { 18, 19, 28 })
+                if (unit != "h" || digits != 18) // rounds to exactly 1h, covered by fractional_hour_rounds_to_tick
+                    yield return new TestCaseData($"\"0.{new string('9', digits)}{unit}\"", TimeSpan.FromTicks(ticks));
+    }
+
     [TestCaseSource(nameof(ValidGoDurationCases))]
+    [TestCaseSource(nameof(FractionalUnitCases))]
     public void read_go_duration_format_parses_correctly(string json, TimeSpan? expected) =>
         Assert.That(Deserialize(json), Is.EqualTo(expected));
+
+    [TestCase("0.1s", 100)]
+    [TestCase("1s", 1000)]
+    [TestCase("10s", 10_000)]
+    [TestCase("-1s", -1000)]
+    public void read_ignores_current_culture_number_format(string text, int milliseconds)
+    {
+        CultureInfo culture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        culture.NumberFormat.PositiveSign = "1";
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = culture;
+        try
+        {
+            Assert.That(Deserialize($"\"{text}\""), Is.EqualTo(TimeSpan.FromMilliseconds(milliseconds)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [TestCase("5s", 50_000_000L)]
+    [TestCase("\\u0035s", 50_000_000L)]
+    [TestCase("500µs", 5_000L)]
+    [TestCase("500\\u03bcs", 5_000L)]
+    [TestCase("bad", null)]
+    public void read_segmented_duration_matches_contiguous_reader(string text, long? ticks)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{text}\"");
+        JsonSegment first = new(json.AsMemory(0, 3));
+        JsonSegment last = new(json.AsMemory(3), first);
+        Utf8JsonReader reader = new(new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length));
+        Assert.That(reader.Read(), Is.True);
+
+        ParsedTraceDuration parsed = CustomTimeDurationConverter.ReadDuration(ref reader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed.Value?.Ticks, Is.EqualTo(ticks));
+            Assert.That(parsed.RawText, Is.EqualTo(ticks is null ? text : null));
+            Assert.That(parsed.Error is null, Is.EqualTo(ticks is not null));
+        }
+    }
+
+    private sealed class JsonSegment : ReadOnlySequenceSegment<byte>
+    {
+        public JsonSegment(ReadOnlyMemory<byte> memory, JsonSegment? previous = null)
+        {
+            Memory = memory;
+            if (previous is not null)
+            {
+                RunningIndex = previous.RunningIndex + previous.Memory.Length;
+                previous.Next = this;
+            }
+        }
+    }
 
     private static IEnumerable<TestCaseData> ValidCSharpTimeSpanCases() =>
     [
@@ -72,6 +161,13 @@ public class CustomTimeDurationConverterTests
     private static IEnumerable<TestCaseData> InvalidDurationCases() =>
     [
         new TestCaseData("\"abc\"").SetName("not_a_duration"),
+        new TestCaseData("\"9223372036854775808ns\"").SetName("above_max_nanoseconds"),
+        new TestCaseData("\"-9223372036854775809ns\"").SetName("below_min_nanoseconds"),
+        new TestCaseData("\"2562047.788015215502222222h\"").SetName("fractional_hour_rounds_past_positive_cap"),
+        new TestCaseData("\"2562047.788015215502222223h\"").SetName("fractional_hour_above_positive_cap"),
+        new TestCaseData("\"-2562047.7880152155025h\"").SetName("fractional_hour_below_negative_cap"),
+        new TestCaseData("\"2562047h47m16.854775808s\"").SetName("mixed_segments_above_positive_cap"),
+        new TestCaseData("\"-2562047h47m16.854775809s\"").SetName("mixed_segments_below_negative_cap"),
         new TestCaseData("\"5x\"").SetName("unknown_unit"),
         new TestCaseData("\"\"").SetName("empty_string"),
         new TestCaseData("\"-\"").SetName("sign_only_minus"),
@@ -92,6 +188,16 @@ public class CustomTimeDurationConverterTests
     {
         Action act = () => Deserialize(json);
         Assert.That(act, Throws.TypeOf<JsonException>());
+    }
+
+    [Test]
+    public void read_oversized_multibyte_duration_reports_byte_limit()
+    {
+        string json = $"\"{new string('é', 33)}\"";
+
+        JsonException exception = Assert.Throws<JsonException>(() => Deserialize(json))!;
+
+        Assert.That(exception.Message, Does.Contain("64 bytes"));
     }
 
     private static IEnumerable<TestCaseData> WriteCases() =>

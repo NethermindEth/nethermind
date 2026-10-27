@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -9,7 +10,6 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.History;
 using Nethermind.Init.Steps;
-using Nethermind.Monitoring.Config;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
@@ -36,6 +36,9 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryRowFormat>(ctx =>
                 HistoryRowFormat.Resolve(ctx.Resolve<HistoryAvailability>(), ctx.Resolve<IFlatDbConfig>()))
             .AddSingleton<HistoryReader>()
+            .AddSingleton<PivotHistoryImageWriter>()
+            .AddSingleton<IPivotStateSource, PersistedStateAccountSource>()
+            .AddStep(typeof(StartPivotHistoryImage))
             .AddSingleton<HistoryWriter>()
             .AddSingleton<HistoryScopeGate>()
             .AddSingleton<HistoryWindowPruner>()

@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
@@ -506,6 +507,108 @@ public partial class EngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
         IBadBlockStore badBlockStore = chain.Container.Resolve<IBadBlockStore>();
         Assert.That(badBlockStore.GetAll().Single().Number, Is.EqualTo(blockNumber));
+    }
+
+    [Test]
+    public async Task invalid_chain_response_waits_for_queued_ancestor([Values] bool invalidParent)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        Hash256 lastValid = chain.BlockTree.HeadHash!;
+        ExecutionPayload[] payloads = await CreateBlockRequestBranch(chain,
+            ExecutionPayload.Create(chain.BlockTree.Head!), Address.Zero, 2);
+        if (invalidParent) payloads[0].ReceiptsRoot = TestItem.KeccakA;
+        Block parent = payloads[0].TryGetBlock().Data!;
+        parent.Header.Hash = parent.Header.CalculateHash();
+        ExecutionPayload child = payloads[1];
+        child.ParentHash = parent.Hash!;
+        child.Timestamp = parent.Timestamp;
+        Block invalid = child.TryGetBlock().Data!;
+        child.BlockHash = invalid.Header.Hash = invalid.Header.CalculateHash();
+
+        IBlockProcessingPauseControl processing = chain.Container.Resolve<IBlockProcessingPauseControl>();
+        processing.Pause();
+        try
+        {
+            Assert.That(await chain.BlockTree.SuggestBlockAsync(parent), Is.EqualTo(AddBlockResult.Added));
+            Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+            Assert.That(chain.Container.Resolve<IBlockValidator>().ValidateSuggestedBlock(invalid, parent.Header, out _), Is.False);
+
+            await AssertResponse(PayloadStatus.Syncing, null);
+        }
+        finally
+        {
+            processing.Resume();
+        }
+
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).AsTask().WaitAsync(GateTimeout);
+        await AssertResponse(PayloadStatus.Invalid, invalidParent ? lastValid : parent.Hash);
+
+        async Task AssertResponse(string status, Hash256? expectedLastValid)
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(child.BlockHash, Keccak.Zero, Keccak.Zero));
+            ResultWrapper<PayloadStatusV1> payload = await rpc.engine_newPayloadV1(child);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(status));
+                Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.EqualTo(expectedLastValid));
+                Assert.That(payload.Data.Status, Is.EqualTo(status));
+                Assert.That(payload.Data.LatestValidHash, Is.EqualTo(expectedLastValid));
+            }
+        }
+    }
+
+    [Test, NonParallelizable]
+    public async Task known_invalid_payload_waits_for_its_valid_parent_to_commit([Values] bool commitWithinBudget)
+    {
+        const int budgetMs = 3_000;
+        ManualTimeProvider clock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            mergeConfig: new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = Sibling(chain.BlockTree.Head!);
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0)
+            .WithGasLimit(parent.GasLimit).WithGasUsed(parent.GasLimit + 1).TestObject;
+        ExecutionPayload payload = ExecutionPayload.Create(child);
+
+        ResultWrapper<PayloadStatusV1> orphanResult = await rpc.engine_newPayloadV1(payload);
+        Assert.That(orphanResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        using CommitGate parentCommit = new(chain.BranchProcessor, parent.Hash!);
+        ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+        Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await parentCommit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+
+        Task<ResultWrapper<PayloadStatusV1>> repeated = rpc.engine_newPayloadV1(payload);
+        ResultWrapper<PayloadStatusV1> result;
+        try
+        {
+            Assert.That(repeated.IsCompleted, Is.False);
+            if (commitWithinBudget)
+                parentCommit.Release();
+            else
+                clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+
+            result = await repeated.WaitAsync(GateTimeout);
+            if (!commitWithinBudget)
+                Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+        }
+        finally
+        {
+            parentCommit.Release();
+        }
+
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).AsTask().WaitAsync(GateTimeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(commitWithinBudget ? PayloadStatus.Invalid : PayloadStatus.Syncing));
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(commitWithinBudget ? parent.Hash : null));
+            Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.True);
+        }
     }
 
     [Test]
@@ -1234,8 +1337,7 @@ public partial class EngineModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-                Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!), Is.True,
-                    "processing is held until after the answer");
+                Assert.That(IsMarkedProcessed(), Is.False, "processing is held until after the answer");
             }
         }
         finally
@@ -1245,10 +1347,13 @@ public partial class EngineModuleTests
         }
 
         using CancellationTokenSource cts = new(GateTimeout);
-        while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
+        while (!IsMarkedProcessed())
         {
             await Task.Delay(10, cts.Token);
         }
+
+        // A suggest still in flight has already published the header, but not yet the chain level the flag is on.
+        bool IsMarkedProcessed() => blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
     }
 
     /// <summary>
@@ -2938,6 +3043,10 @@ public partial class EngineModuleTests
 
         IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
+        // The loop releases the forkchoice's wait for the commit before it leaves the block, and the rewind refuses
+        // until the loop is idle.
+        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.BlockTree.IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
+            "precondition: the paused processing loop has drained");
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)
             : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
@@ -3444,6 +3553,7 @@ public partial class EngineModuleTests
     [
         SszRestPaths.PostBlobsV4,
         SszRestPaths.PostPayloadsWitness,
+        SszRestPaths.GetPayloadsWitness,
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()

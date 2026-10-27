@@ -108,6 +108,35 @@ namespace Nethermind.Trie
             return ((v >> 4) & mNibble) | ((v & mNibble) << 8);
         }
 
+        /// <summary>Nibble <paramref name="index"/> of <paramref name="bytes"/>, high nibble first.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int NibbleAt(ReadOnlySpan<byte> bytes, int index) => (bytes[index >> 1] >> ((~index & 1) << 2)) & 0xF;
+
+        /// <summary>Length of the common prefix, at most <paramref name="count"/>, of the nibbles of <paramref name="left"/> from
+        /// nibble <paramref name="leftStart"/> and those of <paramref name="right"/> from nibble <paramref name="rightStart"/>.</summary>
+        /// <remarks>Starts of the same parity, as for a leaf and a key of equal length, compare whole bytes.</remarks>
+        internal static int CommonPrefixLength(ReadOnlySpan<byte> left, int leftStart, ReadOnlySpan<byte> right, int rightStart, int count)
+        {
+            int i = 0;
+            if (((leftStart ^ rightStart) & 1) == 0)
+            {
+                if ((leftStart & 1) != 0)
+                {
+                    if (count == 0 || ((left[leftStart >> 1] ^ right[rightStart >> 1]) & 0xF) != 0) return 0;
+                    i = 1;
+                }
+
+                int byteCount = (count - i) >> 1;
+                i += 2 * CommonPrefixLength(left.Slice((leftStart + i) >> 1, byteCount), right.Slice((rightStart + i) >> 1, byteCount));
+                // The high nibble of the first unequal byte, or of a last half byte, may still match.
+                if (i < count && ((left[(leftStart + i) >> 1] ^ right[(rightStart + i) >> 1]) & 0xF0) == 0) i++;
+                return i;
+            }
+
+            while (i < count && NibbleAt(left, leftStart + i) == NibbleAt(right, rightStart + i)) i++;
+            return i;
+        }
+
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         /// <remarks>Word-at-a-time: the BCL scalar fallback compares byte by byte, and no vector
         /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit,
@@ -126,6 +155,14 @@ namespace Nethermind.Trie
                 {
                     return (int)i + (BitOperations.TrailingZeroCount(diff) >> 3);
                 }
+            }
+
+            if (i < length && length >= sizeof(ulong))
+            {
+                // The tail as the last word, overlapping bytes already found equal, which XOR to zero.
+                nint last = length - sizeof(ulong);
+                ulong diff = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref l, last)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref r, last));
+                return diff == 0 ? (int)length : (int)last + (BitOperations.TrailingZeroCount(diff) >> 3);
             }
 
             for (; i < length; i++)

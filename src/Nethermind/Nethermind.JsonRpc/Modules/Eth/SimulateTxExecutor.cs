@@ -26,13 +26,14 @@ public class SimulateTxExecutor<TTrace>(
     ulong? secondsPerSlot = null,
     bool readLoneBlobFeeCapAsAbsent = true,
     bool callSemantics = false)
-    : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
-    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
+    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
+    private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
@@ -99,7 +100,7 @@ public class SimulateTxExecutor<TTrace>(
         };
     }
 
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -181,9 +182,9 @@ public class SimulateTxExecutor<TTrace>(
                 if (blockToSimulate.StateOverrides is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
-                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    foreach ((Address address, AccountOverride? accountOverride) in blockToSimulate.StateOverrides)
                     {
-                        if (accountOverride.MovePrecompileToAddress is null) continue;
+                        if (accountOverride?.MovePrecompileToAddress is null) continue;
 
                         if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
                             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -211,7 +212,7 @@ public class SimulateTxExecutor<TTrace>(
         }
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx,
         Dictionary<Address, AccountOverride>? stateOverride,
