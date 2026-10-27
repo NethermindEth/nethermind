@@ -171,7 +171,7 @@ public class BranchProcessor(
                 {
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                 }
-                catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
+                catch (BlockProcessor.BlockAccessListSequentialRetryException retry) when (
                     worldStateCloser is not null &&
                     !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))
                 {
@@ -182,6 +182,13 @@ public class BranchProcessor(
                     worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
+
+                    // A parallel rejection carries the failure that caused it, unlike the BAL catch-up fallback.
+                    if (retry.InnerException is InvalidBlockException parallelFailure)
+                    {
+                        Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
+                        if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} that sequential execution accepts: {parallelFailure.Message}");
+                    }
                 }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)

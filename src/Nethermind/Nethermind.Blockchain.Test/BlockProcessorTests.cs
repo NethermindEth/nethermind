@@ -2462,10 +2462,12 @@ public partial class BlockProcessorTests
             {
                 Assert.That(exception, Is.SameAs(parallelFailure));
             }
-            Assert.That(logger.LogList, Has.Exactly(balFailure ? 1 : 0).Contains("for its block access list"),
-                "a false positive on a valid block must be visible even when a sequential retry accepts it");
+            // A retried block is counted only once the retry accepts it, so an ordinary invalid block stays quiet.
+            bool reported = balFailure && !undeclaredAccess;
+            Assert.That(logger.LogList, Has.Exactly(reported ? 1 : 0).Contains("for its block access list"),
+                "a parallel BAL rejection has no sequential fallback, so it must be visible");
             // The metric is process-wide and other tests may bump it concurrently, so only growth is asserted.
-            if (balFailure) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
+            if (reported) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
         }
     }
 
@@ -2689,16 +2691,21 @@ public partial class BlockProcessorTests
             new CancellationToken(true)));
     }
 
-    [TestCase(true, 2)]
-    [TestCase(false, 1)]
-    public async Task BranchProcessor_retries_only_parallel_bal_failures(bool retryable, int expectedAttempts)
+    [TestCase(true, true, 2)]
+    [TestCase(true, false, 2)]
+    [TestCase(false, true, 1)]
+    public async Task BranchProcessor_retries_only_parallel_bal_failures(bool retryable, bool parallelFailure, int expectedAttempts)
     {
-        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder =>
-            builder.AddDecorator<IBlockProcessor>((context, inner) =>
-                new BalFailureBlockProcessor(inner, context.Resolve<IWorldState>(), retryable)));
+        TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new(logger)))
+            .AddDecorator<IBlockProcessor>((context, inner) =>
+                new BalFailureBlockProcessor(inner, context.Resolve<IWorldState>(), retryable, parallelFailure)));
         BalFailureBlockProcessor processor = (BalFailureBlockProcessor)chain.BlockProcessor;
         Block parent = chain.BlockTree.Head!;
         Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
+
+        long rejectionsBefore = Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections);
 
         if (retryable)
         {
@@ -2718,7 +2725,14 @@ public partial class BlockProcessorTests
                     NullBlockTracer.Instance));
         }
 
-        Assert.That(processor.Attempts, Is.EqualTo(expectedAttempts));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processor.Attempts, Is.EqualTo(expectedAttempts));
+            // Only a parallel rejection that the retry overturns is a false positive; the BAL catch-up fallback is not.
+            Assert.That(logger.LogList, Has.Exactly(retryable && parallelFailure ? 1 : 0).Contains("that sequential execution accepts"));
+            // The metric is process-wide and other tests may bump it concurrently, so only growth is asserted.
+            if (retryable && parallelFailure) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
+        }
     }
 
     [Test]
@@ -4696,7 +4710,8 @@ public partial class BlockProcessorTests
     private sealed class BalFailureBlockProcessor(
         IBlockProcessor inner,
         IWorldState worldState,
-        bool retryable)
+        bool retryable,
+        bool parallelFailure)
         : IBlockProcessor
     {
         private static readonly Address TransientAddress = TestItem.AddressF;
@@ -4732,7 +4747,7 @@ public partial class BlockProcessorTests
                     new(suggestedBlock.Header, "invalid BAL");
                 if (retryable)
                 {
-                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure.InvalidBlock, failure.Message, failure);
+                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure.InvalidBlock, failure.Message, parallelFailure ? failure : null);
                 }
 
                 throw failure;

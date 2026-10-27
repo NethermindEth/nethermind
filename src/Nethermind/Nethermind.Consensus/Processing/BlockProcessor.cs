@@ -93,11 +93,17 @@ public partial class BlockProcessor(
         }
         catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
         {
+            // An ordinary invalid block lands here too, so the sequential retry decides whether this was a false positive.
+            if (IsUndeclaredAccess(ex))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Retrying block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} sequentially after an access its block access list does not declare: {ex.Message}");
+                throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
+            }
+
             // Some checks run only on the parallel path, so a false positive on a valid block must stand out from
-            // ordinary invalid blocks, even when a sequential retry later accepts it.
+            // ordinary invalid blocks.
             Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
             if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
-            if (IsUndeclaredAccess(ex)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
             throw;
         }
         finally

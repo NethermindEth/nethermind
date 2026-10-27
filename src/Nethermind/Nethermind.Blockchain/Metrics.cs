@@ -170,7 +170,7 @@ public static class Metrics
     public static long BadBlocksByNethermindNodes;
 
     [CounterMetric]
-    [Description("Number of blocks rejected for their block access list by parallel validation.")]
+    [Description("Number of blocks rejected for their block access list by parallel validation, excluding blocks a sequential retry also rejects.")]
     public static long ParallelBlockAccessListRejections;
 
     [GaugeMetric]
