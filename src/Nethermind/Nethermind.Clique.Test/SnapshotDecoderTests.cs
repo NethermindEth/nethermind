@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Clique.Test
