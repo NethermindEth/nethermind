@@ -38,7 +38,7 @@ runCommand name
     }
 
     rpc() {
-      curl -fsS -m 30 -X POST -H 'Content-Type: application/json' --data "$1" http://127.0.0.1:${toString rpcPort}
+      curl -fsS -m "''${2:-30}" -X POST -H 'Content-Type: application/json' --data "$1" http://127.0.0.1:${toString rpcPort}
     }
 
     ${setup}
@@ -50,7 +50,7 @@ runCommand name
     response=""
     for _ in $(seq 1 180); do
       kill -0 "$pid" 2>/dev/null || fail "node exited before JSON-RPC came up"
-      if response=$(rpc '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 2>/dev/null); then
+      if response=$(rpc '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' 5 2>/dev/null); then
         break
       fi
       sleep 1
