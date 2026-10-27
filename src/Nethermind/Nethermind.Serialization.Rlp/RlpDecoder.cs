@@ -32,7 +32,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// </remarks>
     public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
     {
-        LengthStack lengths = new(stackalloc int[stackSize]);
+        LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
         try
         {
             byte[] bytes = GC.AllocateUninitializedArray<byte>(PopulateLength(item, ref lengths, rlpBehaviors));
@@ -192,7 +192,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             return nullBuffer;
         }
 
-        LengthStack lengths = new(stackalloc int[stackSize]);
+        LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
         try
         {
             CappedArray<byte> buffer = bufferPool.SafeRent(PopulateLength(item, ref lengths, rlpBehaviors));

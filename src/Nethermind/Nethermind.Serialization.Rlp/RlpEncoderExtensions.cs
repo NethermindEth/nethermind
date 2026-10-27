@@ -63,7 +63,7 @@ public static class RlpEncoderExtensions
 
         public int GetEncodedLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[stackSize]);
+            LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
             try
             {
                 return decoder.PopulateLength(item, ref lengths, rlpBehaviors);
@@ -79,7 +79,7 @@ public static class RlpEncoderExtensions
         /// <summary>The Keccak hash of the encoding of <paramref name="item"/>, computed without materialising the bytes.</summary>
         public ValueHash256 CalculateValueHash(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[stackSize]);
+            LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
             scoped KeccakRlpWriter writer = new();
             try
             {

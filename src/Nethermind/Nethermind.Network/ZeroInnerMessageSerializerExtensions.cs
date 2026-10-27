@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
@@ -14,7 +15,7 @@ public static class ZeroInnerMessageSerializerExtensions
         /// <summary>Measures <paramref name="message"/> once, then appends it to <paramref name="byteBuffer"/>.</summary>
         public void SerializeWithLengths(IByteBuffer byteBuffer, T message, int stackSize = LengthStack.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[stackSize]);
+            LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
             try
             {
                 byteBuffer.EnsureWritable(serializer.PopulateLength(message, ref lengths));
@@ -29,7 +30,7 @@ public static class ZeroInnerMessageSerializerExtensions
 
         public int GetLength(T message, int stackSize = LengthStack.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[stackSize]);
+            LengthStack lengths = new(stackalloc int[Math.Min(stackSize, LengthStack.MaxStackallocLength)]);
             try
             {
                 return serializer.PopulateLength(message, ref lengths);
