@@ -948,15 +948,8 @@ public static class FrameTxValidation
 
         if (!IsWellFormedDependencyData(frame.Data.Span, out error)) return false;
 
-        ReadOnlySpan<byte> data = frame.Data.Span;
-        int count = data.Length / Eip8288Constants.DependencyTripleLength;
-        ulong expectedGas = 0;
-        for (int i = 0; i < count; i++)
-        {
-            expectedGas += data[i * Eip8288Constants.DependencyTripleLength + 31] == Eip8288Constants.LeanStarkScheme
-                ? Eip8288Constants.LeanStarkVerificationGas
-                : Eip8288Constants.LeanSphincsVerificationGas;
-        }
+        // Every triple is leanSPHINCS, the only accepted scheme (checked above), so each costs LEANSPHINCS_VERIFICATION_GAS.
+        ulong expectedGas = (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength) * Eip8288Constants.LeanSphincsVerificationGas;
 
         if (frame.StateGasLimit != 0 || frame.ExecutionGasLimit != expectedGas)
         {

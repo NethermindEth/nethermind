@@ -116,9 +116,7 @@ public static class WrapperBodies
                 || !Eip8288Dependencies.IsAcceptedScheme(dependency[31])) throw new RlpException("Invalid dependency");
             if (i > 0 && previous.SequenceCompareTo(dependency) >= 0) throw new RlpException("Dependencies are not canonical");
             previous = dependency;
-            work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
-                ? Eip8288Constants.LeanStarkVerificationGas
-                : Eip8288Constants.LeanSphincsVerificationGas);
+            work += (long)Eip8288Constants.LeanSphincsVerificationGas;
         }
         if (mode == 0)
         {
@@ -129,8 +127,8 @@ public static class WrapperBodies
         else
         {
             ReadOnlySpan<byte> proof = content.ReadBytes();
-            // EIP-8288 applies MAX_AGGREGATE_PROOF_BYTES to every aggregate proof before decoding or verification.
-            if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof is empty or exceeds MAX_AGGREGATE_PROOF_BYTES");
+            // The local pinned-prover bound applies to every aggregate proof before decoding or verification.
+            if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof is empty or exceeds the local proof size bound");
             verificationBytes = proof.Length;
             work = (long)Eip8288Constants.LeanStarkVerificationGas;
         }
