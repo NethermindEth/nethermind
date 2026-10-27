@@ -123,7 +123,8 @@ public class LightTransaction : Transaction
         UInt256[]? nonceKeys,
         Address? payerAddress,
         UInt256? payerExposure,
-        Address? paymaster)
+        Address? paymaster,
+        bool? dependencyBearing = null)
     {
         Type = type;
         Hash = hash;
@@ -149,6 +150,7 @@ public class LightTransaction : Transaction
         PayerExposure = payerExposure;
         // The slot this record already holds against its sponsor, so the cap keeps counting it after a reload.
         PersistedPaymaster = paymaster;
+        PersistedDependencyBearing = dependencyBearing;
         _size = size;
     }
 
