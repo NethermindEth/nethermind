@@ -660,6 +660,14 @@ namespace Nethermind.Core.Test
             Assert.That(first, Is.EqualTo(expected));
         }
 
+        // Hosts take a SIMD branch of Or for spans of 16 bytes or more, so the four-word loop runs only here.
+        [TestCaseSource(nameof(OrTests))]
+        public void OrScalar(byte[] first, byte[] second, byte[] expected)
+        {
+            Bytes.OrScalar(first, second);
+            Assert.That(first, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(XorTests))]
         public void Xor(byte[] first, byte[] second, byte[] expected)
         {

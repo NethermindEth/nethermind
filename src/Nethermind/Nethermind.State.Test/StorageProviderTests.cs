@@ -1726,9 +1726,10 @@ public partial class StorageProviderTests(bool useFlat)
     /// <summary>The originals-probe memo must not answer across caching rounds.</summary>
     /// <remarks>tx1 memoizes (cell, v1) while writing v2; after commit the next transaction's original for
     /// the same cell is v2. A memo without the round in its key silently returns v1, which mis-meters every
-    /// EIP-2200 SSTORE of tx2 without failing anything.</remarks>
+    /// EIP-2200 SSTORE of tx2 without failing anything. Without root commits the cell stays in the block's
+    /// changes, which still hold the pre-block value as <c>Before</c>.</remarks>
     [Test]
-    public void Get_original_after_commit_is_the_new_rounds_original()
+    public void Get_original_after_commit_is_the_new_rounds_original([Values] bool commitRoots)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
@@ -1751,7 +1752,7 @@ public partial class StorageProviderTests(bool useFlat)
             provider.GetOriginal(in cell, out UInt256 firstTxOriginal);
             Assert.That(firstTxOriginal, Is.EqualTo((UInt256)1), "tx1 original is the committed value");
 
-            provider.Commit(Frontier.Instance);
+            provider.Commit(Frontier.Instance, commitRoots: commitRoots);
 
             provider.Get(in cell, out _);
             provider.GetOriginal(in cell, out UInt256 secondTxOriginal);

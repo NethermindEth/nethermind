@@ -223,7 +223,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
-        if (_callLogStarts is not null && _callLogStarts.TryPop(out _) && _callLogStarts.Count == 0)
+        if (_callLogStarts is not null && _callLogStarts.TryPop(out _) && _callLogStarts.Count == 0 && _tx.SupportsFrames)
             _frameOutput = output.ToArray();
     }
 
@@ -252,7 +252,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (_callLogStarts is null || !_callLogStarts.TryPop(out int logStart)) return;
 
         TruncateLogs(logStart);
-        if (_callLogStarts.Count == 0)
+        if (_callLogStarts.Count == 0 && _tx.SupportsFrames)
         {
             _frameOutput = output.ToArray();
         }

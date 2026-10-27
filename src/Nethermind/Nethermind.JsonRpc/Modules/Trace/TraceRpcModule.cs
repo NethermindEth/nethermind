@@ -118,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (IsPending(blockParameter))
                 return PendingNotSupported<ParityTxTraceFromReplay>();
 
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
+            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
             }
 
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
+            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
@@ -411,7 +411,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (blockSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(blockSearch);
@@ -481,7 +481,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
                 // Collect the whole range first so search errors (e.g. from > to) take precedence over state checks.
                 List<(BlockHeader Header, BlockHeader? Parent)> blocks = [];
-                foreach (SearchResult<BlockHeader> blockSearch in blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock))
+                foreach (SearchResult<BlockHeader> blockSearch in blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (blockSearch.IsError)
@@ -589,7 +589,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (blockSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);

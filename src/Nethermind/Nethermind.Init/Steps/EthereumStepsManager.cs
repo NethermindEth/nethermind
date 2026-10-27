@@ -163,14 +163,14 @@ namespace Nethermind.Init.Steps
             foreach ((Type stepBaseType, StepWrapper stepWrapper) in stepInfoMap)
             {
                 Task stepTask = Array.IndexOf(skippedSteps, stepBaseType) >= 0
-                    ? Task.CompletedTask : ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                    ? Task.CompletedTask : ExecuteStep(stepWrapper, stepInfoMap, stepBaseType == target, cancellationToken);
                 allRequiredSteps.Add(stepTask);
                 if (stepBaseType == target) targetTask = stepTask;
             }
             return (allRequiredSteps, targetTask);
         }
 
-        private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)
+        private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, bool isTarget, CancellationToken cancellationToken)
         {
             long startTime = Stopwatch.GetTimestamp();
             try
@@ -193,7 +193,8 @@ namespace Nethermind.Init.Steps
             }
             catch (Exception exception) when (exception is not TaskCanceledException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
             {
-                if (stepWrapper.Step.MustInitialize)
+                // A selected target is the whole job of the run, so its failure is fatal even for an optional step.
+                if (isTarget || stepWrapper.Step.MustInitialize)
                 {
                     if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
                     throw;

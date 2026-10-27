@@ -263,17 +263,19 @@ namespace Nethermind.Serialization.Rlp
             // produced after padding with 0xff.
             if (value >= 0) return Encode((long)value);
 
-            byte[] bytes = new byte[sizeof(int)];
-            BinaryPrimitives.WriteInt32BigEndian(bytes, value);
-            return Encode(bytes);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(1 + sizeof(int));
+            bytes[0] = EmptyByteArrayByte + sizeof(int);
+            BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(1), value);
+            return new Rlp(bytes);
         }
 
         // The eight-byte two's complement, which is what the BigInteger path produced after padding.
         private static Rlp EncodeNegative(long value)
         {
-            byte[] bytes = new byte[sizeof(long)];
-            BinaryPrimitives.WriteInt64BigEndian(bytes, value);
-            return Encode(bytes);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(1 + sizeof(long));
+            bytes[0] = EmptyByteArrayByte + sizeof(long);
+            BinaryPrimitives.WriteInt64BigEndian(bytes.AsSpan(1), value);
+            return new Rlp(bytes);
         }
 
         public static Rlp Encode(long value) => value switch

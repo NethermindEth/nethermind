@@ -377,6 +377,9 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<Hash256> GetBlockIntermediateRoots(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockIntermediateRoots(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
+    public StorageRangeVisitor GetStorageRange(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken) =>
+        _tracer.StorageRangeAt(block, txIndex, address, startKey, limit, cancellationToken);
+
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
         if (parameter.BlockNumber is ulong number)

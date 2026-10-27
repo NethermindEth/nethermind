@@ -33,7 +33,7 @@ namespace Nethermind.Evm.State;
 /// so cheap frequent calls cannot starve expensive-to-compute results.
 /// The surviving tier is shared, so it gives no such guarantee.
 /// </remarks>
-public sealed class PrecompileCaches
+public sealed partial class PrecompileCaches
 {
     /// <summary> Accounting weight charged per entry, on top of its key and output bytes, as a container cost estimate. </summary>
     internal const int EntryOverheadBytes = 160;
@@ -62,20 +62,20 @@ public sealed class PrecompileCaches
 
     /// <summary> Byte-exact budget, bypassing <see cref="IBlocksConfig.PrecompileCacheMaxKilobytes"/>. </summary>
     internal PrecompileCaches(IPrecompileProvider precompileProvider, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
-        : this(maxBytes > 0 ? CacheableAddresses(precompileProvider) : [], config, maxBytes, logManager) { }
+        : this(maxBytes > 0 ? CacheablePrecompiles(precompileProvider) : [], config, maxBytes, logManager) { }
 
-    private PrecompileCaches(List<AddressAsKey> addresses, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
+    private PrecompileCaches(List<CacheablePrecompile> precompiles, PreBlockCachesConfig config, long maxBytes, ILogManager? logManager = null)
     {
         // equal shares per precompile for now
-        long partitionSize = addresses.Count == 0 ? 0 : maxBytes / addresses.Count;
-        int survivingMaxEntries = addresses.Count == 0 ? 0 : config.SurvivingPrecompileCacheMaxEntries;
+        long partitionSize = precompiles.Count == 0 ? 0 : maxBytes / precompiles.Count;
+        int survivingMaxEntries = precompiles.Count == 0 ? 0 : config.SurvivingPrecompileCacheMaxEntries;
         _survivingCache = new ClockCache<Key, Result<byte[]>>(survivingMaxEntries, comparer: EqualityComparer<Key>.Default);
 
-        _partitions = addresses.ToFrozenDictionary(
-            static address => address,
-            _ => new Partition(partitionSize, _survivingCache));
+        _partitions = precompiles.ToFrozenDictionary(
+            static precompile => precompile.Address,
+            precompile => new Partition(precompile.Name, partitionSize, _survivingCache));
 
-        LogCacheBudget(addresses.Count, partitionSize, maxBytes, logManager);
+        LogCacheBudget(precompiles.Count, partitionSize, maxBytes, logManager);
     }
 
     private static void LogCacheBudget(int partitionCount, long partitionSize, long maxBytes, ILogManager? logManager)
@@ -125,32 +125,44 @@ public sealed class PrecompileCaches
     }
 
     /// <summary> Empties the per-block tier. Callers must join any concurrent warming first. </summary>
-    public void ClearBlockCache()
+    /// <param name="publishMetrics">
+    /// Whether to publish the tier's metrics before it is emptied. Pass <see langword="false"/> for a reset that does
+    /// not end a block, so the gauges keep reporting the last block instead of an already emptied cache.
+    /// </param>
+    public void ClearBlockCache(bool publishMetrics = true)
     {
+        // published before clearing, so the occupancy gauges report each block's high point
+        if (publishMetrics) PublishMetrics();
+
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
             partition.Value.Clear();
     }
 
-    private static List<AddressAsKey> CacheableAddresses(IPrecompileProvider precompileProvider)
+    private static List<CacheablePrecompile> CacheablePrecompiles(IPrecompileProvider precompileProvider)
     {
         FrozenDictionary<AddressAsKey, CodeInfo> precompiles = precompileProvider.GetPrecompiles();
 
-        List<AddressAsKey> addresses = [with(precompiles.Count)];
+        List<CacheablePrecompile> cacheable = [with(precompiles.Count)];
         foreach (KeyValuePair<AddressAsKey, CodeInfo> precompile in precompiles)
         {
             if (precompile.Value.Precompile?.SupportsCaching == true)
-                addresses.Add(precompile.Key);
+                cacheable.Add(new CacheablePrecompile(precompile.Key, precompile.Value.Precompile.Name));
         }
 
-        return addresses;
+        return cacheable;
     }
+
+    private readonly record struct CacheablePrecompile(AddressAsKey Address, string Name);
+
+    // Host-only; the zkEVM guest publishes no metrics, so the call compiles away.
+    partial void PublishMetrics();
 
     /// <summary> One precompile's share of the per-block tier, bounded in bytes. </summary>
     /// <remarks>
     /// Admission stops at the limit instead of evicting: once a partition is full, the per-block tier stops
     /// helping for the rest of the block and lookups fall back to the surviving tier.
     /// </remarks>
-    public sealed class Partition
+    public sealed partial class Partition
     {
         private readonly ConcurrentDictionary<Key, Result<byte[]>> _entries;
 
@@ -168,7 +180,7 @@ public sealed class PrecompileCaches
         /// </remarks>
         internal long UsedBytes => Volatile.Read(ref _bytes);
 
-        internal Partition(long maxBytes, ClockCache<Key, Result<byte[]>> survivingCache)
+        internal Partition(string name, long maxBytes, ClockCache<Key, Result<byte[]>> survivingCache)
         {
             // prefer partition to never resize - resizing takes locks on the whole dictionary
             int maxEntries = (int)Math.Min(maxBytes / EntryOverheadBytes, MaxPartitionCapacity);
@@ -176,11 +188,27 @@ public sealed class PrecompileCaches
             _entries = new ConcurrentDictionary<Key, Result<byte[]>>(CollectionExtensions.LockPartitions, maxEntries);
             MaxBytes = maxBytes;
             _survivingCache = survivingCache;
+            InitMetrics(name);
         }
 
         /// <summary> Looks <paramref name="key"/> up in this partition, then in the surviving tier. </summary>
-        public bool TryGet(in Key key, out Result<byte[]> result) =>
-            _entries.TryGetValue(key, out result) || _survivingCache.TryGet(key, out result);
+        public bool TryGet(in Key key, out Result<byte[]> result)
+        {
+            if (_entries.TryGetValue(key, out result))
+            {
+                CountBlockHit();
+                return true;
+            }
+
+            if (_survivingCache.TryGet(key, out result))
+            {
+                CountSurvivingHit();
+                return true;
+            }
+
+            CountMiss();
+            return false;
+        }
 
         /// <summary> Stores <paramref name="result"/> under a data-owning copy of <paramref name="key"/> </summary>
         /// <returns> Whether data was saved to the per-block cache. </returns>
@@ -191,7 +219,11 @@ public sealed class PrecompileCaches
             long reservation = entryBytes + EntryOverheadBytes;
 
             bool tier1 = Interlocked.Add(ref _bytes, reservation) <= MaxBytes;
-            if (!tier1) Interlocked.Add(ref _bytes, -reservation);
+            if (!tier1)
+            {
+                Interlocked.Add(ref _bytes, -reservation);
+                CountRejectedFull();
+            }
 
             bool tier2 = entryBytes <= MaxSurvivingEntryBytes;
             if (!tier1 && !tier2) return false;
@@ -206,6 +238,8 @@ public sealed class PrecompileCaches
                 tier1 = false;
             }
 
+            if (tier1) CountAdmitted();
+
             if (tier2)
             {
                 _survivingCache.Set(copiedKey, result);
@@ -218,7 +252,17 @@ public sealed class PrecompileCaches
         {
             _entries.NoLockClear();
             Volatile.Write(ref _bytes, 0);
+            ResetAdmitted();
         }
+
+        // Host-only metric hooks; the zkEVM guest implements none, so its calls compile away.
+        partial void InitMetrics(string name);
+        partial void CountBlockHit();
+        partial void CountSurvivingHit();
+        partial void CountMiss();
+        partial void CountRejectedFull();
+        partial void CountAdmitted();
+        partial void ResetAdmitted();
     }
 
     /// <summary> Key combining precompile address, its effective input, and the fork it ran under. </summary>

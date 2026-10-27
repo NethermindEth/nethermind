@@ -53,7 +53,7 @@ namespace Nethermind.Core.Collections
             if (_set.Add(item))
             {
                 // we use dictionary in order to track item positions
-                _items.Add(item);
+                AddItem(in item);
                 return true;
             }
 
@@ -62,6 +62,7 @@ namespace Nethermind.Core.Collections
 
         public partial void Clear();
         private partial void Truncate(int count);
+        private partial void AddItem(in T item);
 
         /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
         public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();

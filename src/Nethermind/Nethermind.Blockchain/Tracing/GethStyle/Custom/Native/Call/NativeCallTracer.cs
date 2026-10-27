@@ -190,6 +190,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     }
 
     /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
+    {
+        if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
+            _callStack[^1].Error = error;
+    }
+
+    /// <inheritdoc/>
     /// <remarks>An exceptional halt consumes all of the frame's gas, so its <c>gasUsed</c> equals its <c>gas</c>.</remarks>
     public override void ReportActionError(EvmExceptionType evmExceptionType) => OnError(0, evmExceptionType);
 
@@ -512,7 +519,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error = error.GetEvmExceptionDescription();
+        callFrame.Error ??= error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;

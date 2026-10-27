@@ -89,6 +89,8 @@ public class GuestNibblesTests
     [TestCase(20, 15)]
     [TestCase(20, 16)]
     [TestCase(20, 19)]
+    [TestCase(28, 24)]
+    [TestCase(28, 27)]
     [TestCase(7, 0)]
     [TestCase(7, 6)]
     [TestCase(8, 7)]

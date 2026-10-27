@@ -17,7 +17,7 @@ COPY ./nuget.config ./nuget.config
 COPY ./tools/Directory.Build.props ./tools/Directory.Build.props
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-  dotnet publish tools/SendBlobs/SendBlobs.csproj -c $BUILD_CONFIG -r $TARGETOS-$arch -o /out --sc true \
+  dotnet publish tools/SendBlobs/SendBlobs/SendBlobs.csproj -c $BUILD_CONFIG -r $TARGETOS-$arch -o /out --sc true \
   -p:DebugType=None \
   -p:DebugSymbols=false
 

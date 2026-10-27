@@ -303,6 +303,7 @@ public partial class TrieStoreScopeProvider(
             _storages.Clear();
         }
 
+        [SkipLocalsInit]
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out StorageTree? storageTree))
