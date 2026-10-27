@@ -461,7 +461,6 @@ public class ProofWrapperServiceTests
         public ValueHash256? RejectedStatement { get; set; }
         public void EnsureAvailable() { }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             VerifiedStatements.Add(depsHash);
@@ -518,11 +517,11 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public void Retained_large_mixed_roots_remain_eligible_for_gossip([Values] bool sameParent)
+    public void Retained_large_roots_remain_eligible_for_gossip([Values] bool sameParent)
     {
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([
             new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-signature"), default),
-            new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-root-stark"), default)]);
+            new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-second"), default)]);
         byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         if (sameParent) store.AddVerified(dependencies, null, proof);
@@ -541,7 +540,7 @@ public class ProofWrapperServiceTests
             ChainId = 1,
             SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
-                Eip8288Constants.LeanSphincsVerificationGas + Eip8288Constants.LeanStarkVerificationGas,
+                2 * Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
         };
         transaction.Hash = transaction.CalculateHash();
@@ -663,12 +662,11 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
-        // Enough near-maximum rejected witnesses to exceed the shared store several times over if they were retained.
-        byte[] rejectedWitness = new byte[LeanProofStore.MaxWrapperBytes - 16 * 1024];
+        byte[] rejectedWitness = new byte[Eip8288Constants.LeanSphincsWitnessBytes];
         for (int i = 0; i < 40; i++)
         {
             FrameDependency accepted = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"accepted:{i}"), default);
-            FrameDependency rejected = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"rejected:{i}"), default);
+            FrameDependency rejected = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"rejected:{i}"), default);
             static Transaction Transaction(FrameDependency dependency, ulong nonce) => new()
             {
                 Type = TxType.FrameTx,
@@ -676,16 +674,14 @@ public class ProofWrapperServiceTests
                 ChainId = 1,
                 SenderAddress = Address.Zero,
                 Nonce = nonce,
-                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
-                    dependency.Scheme == Eip8288Constants.LeanSphincsScheme
-                        ? Eip8288Constants.LeanSphincsVerificationGas : Eip8288Constants.LeanStarkVerificationGas,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
             };
             Transaction first = Transaction(accepted, 0), later = Transaction(rejected, 1);
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
                 Transactions = [.. new[] { first, later }.OrderBy(static tx => tx.CalculateHash().ToString()).Select(static tx => new WrapperTransaction(tx))],
-                Deps = [accepted, rejected],
+                Deps = Eip8288Dependencies.Canonicalize([accepted, rejected]),
                 Mode = MempoolWrapper.ModeDirect,
                 Proofs = [new byte[Eip8288Constants.LeanSphincsWitnessBytes], rejectedWitness]
             }).Bytes;
@@ -924,16 +920,12 @@ public class ProofWrapperServiceTests
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }
 
-    // EIPs#12473: an aggregate within EIP-8288's limits that the local verifier cannot check is refused locally, not
-    // invalid, including more leanSTARKs than the local proof envelope since mode 1 has no scheme sublimit.
-    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0)]
-    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1)]
-    [TestCase(64, 32)]
-    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification(int count, int leanStark)
+    // EIPs#12473: an aggregate within EIP-8288's limits that the local verifier cannot check is refused locally, not invalid.
+    [Test]
+    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification()
     {
-        FrameDependency[] deps = [.. Enumerable.Range(0, count)
-            .Select(i => new FrameDependency(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
-                Keccak.Compute(i.ToString()).ValueHash256, default))];
+        FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, Keccak.Compute(i.ToString()).ValueHash256, default))];
         List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {

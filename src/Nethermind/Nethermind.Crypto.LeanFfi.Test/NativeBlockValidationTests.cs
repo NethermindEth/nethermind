@@ -25,7 +25,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockValidationTests
 {
     [OneTimeSetUp]
-    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(7u));
+    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(8u));
 
     [Test]
     public void BlockValidator_with_native_verifier_accepts_produced_recursive_stark()
@@ -69,7 +69,7 @@ public class NativeBlockValidationTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
-            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")]);
+            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("second")]);
         ulong gas = 0;
         foreach (FrameDependency dependency in dependencies) gas += dependency.VerificationGas;
         Transaction transaction = new()

@@ -164,7 +164,7 @@ public class NativeProofWrapperTransportTests
         target.Handler.Init();
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(source.Chain);
         source.Chain.Container.Resolve<LeanProofStore>().AddVerified(
-            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")], null, proof);
+            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("second")], null, proof);
         Assert.That(source.Chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         await using ProofWrapperGossip gossip = source.Chain.Container.Resolve<ProofWrapperGossip>();
         gossip.Start();

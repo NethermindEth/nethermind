@@ -20,23 +20,21 @@ public static class Eip8288Constants
 
     public const int MaxDependenciesPerFrame = 256;
 
-    /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
+    /// <summary>Maximum distinct dependencies covered by one proof of the pinned native backend.</summary>
     /// <remarks>Below <see cref="MaxDepsPerAggregateWrapper"/>: a local proving and verification bound, not a consensus or FOCIL omission
     /// bound. EIP-8288 has no block dependency quota; wrappers within its limits but above this envelope are refused locally,
     /// never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
 
-    public const int MaxGenericStarkProofs = 16;
-    public const int MaxLeanStarkInstructions = 2048;
-
-    /// <summary>Maximum encoded native direct witness, such as a mode-0 leanSTARK proof.</summary>
+    /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>EIP-8288 <c>MAX_AGGREGATE_PROOF_BYTES</c> (1.25 MiB): the bound on every serialized recursive aggregate proof,
-    /// including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding or
-    /// verification.</summary>
-    /// <remarks>Provisional: the activating fork fixes it with its <c>AGGREGATED_VK</c>, and it must let a mode-1 wrapper at the
-    /// list ceilings fit <see cref="MaxWrapperBytes"/>.</remarks>
+    /// <summary>Local bound (1.25 MiB) on every serialized recursive aggregate proof of the pinned <see cref="AggregatedVk"/>
+    /// guest, including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding
+    /// or verification.</summary>
+    /// <remarks>Not an EIP-8288 constant: the EIP no longer bounds <c>stark_proof</c> and leaves its size to the proof system.
+    /// This is a pinned-prover limit with margin above the guest's measured 265–300 KB root proofs; a guest or key change
+    /// must revisit it.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
     /// <summary>EIP-8288 <c>MAX_IL_PROOF_BYTES</c> (1.25 MiB): the bound on an inclusion list's serialized SSZ
@@ -55,12 +53,10 @@ public static class Eip8288Constants
     public const int LeanSphincsWitnessBytes = 32 + 6176;
 
     public const byte LeanSphincsScheme = 0x10;
-    public const byte LeanStarkScheme = 0x11;
 
-    /// <summary>Whether <see cref="LeanStarkScheme"/> is in the EIP-8288 <c>ENABLED_SCHEMES</c>, with <see cref="LeanSphincsScheme"/>.</summary>
-    /// <remarks><c>ENABLED_SCHEMES</c> is a per-fork constant that the <see cref="AggregatedVk"/> circuit must accept exactly, so it
-    /// changes only with the key. The pinned circuit enables leanSTARK under its generic CPU-proof verification parameters.</remarks>
-    public const bool LeanStarkSchemeEnabled = true;
+    /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>: reserved. A dependency frame that uses it is invalid until <c>get_deps_hash</c>
+    /// is defined for it.</summary>
+    public const byte LeanStarkScheme = 0x11;
 
     public const ulong LeanSphincsVerificationGas = 3_000;
     public const ulong LeanStarkVerificationGas = 30_000;
@@ -93,5 +89,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("6b99f3872b5dc2347ca13a348f1f297192fab75a92d362697544745f4a981166");
 }

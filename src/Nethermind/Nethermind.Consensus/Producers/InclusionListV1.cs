@@ -22,8 +22,41 @@ public sealed class RecursiveStarkV1
     /// <summary>The proof's dependencies, each a 96-byte dependency encoding, exactly as signed.</summary>
     public byte[][]? ProofDeps { get; set; }
 
+<<<<<<< HEAD
     /// <summary>The serialized size of the SSZ <c>InclusionListProof</c> container: two offsets and both fields.</summary>
     internal long SszLength => 2 * sizeof(uint) + (StarkProof?.Length ?? 0) + (long)(ProofDeps?.Length ?? 0) * Eip8288Constants.DependencyTripleLength;
+=======
+    /// <summary>Decodes the fields, requiring only that each <c>proofDeps</c> entry is 96 bytes (<c>bytes96</c>).</summary>
+    /// <remarks>Size, order and scheme bounds are not schema constraints (execution-apis#945): the methods answer a proof
+    /// violating them <c>INVALID</c>, and <c>get_deps_hash</c> is taken over the entries exactly as given.</remarks>
+    /// <returns>The schema violation, or <c>null</c>.</returns>
+    public string? TryDecode(out InclusionListProof? ilProof)
+    {
+        ilProof = null;
+        if (StarkProof is null || ProofDeps is not { } encoded) return "ilProof must set starkProof and proofDeps";
+        // Check every entry before allocating the concatenation, so a malformed list costs no copy.
+        foreach (byte[]? entry in encoded)
+            if (entry is not { Length: Eip8288Constants.DependencyTripleLength })
+                return "ilProof proofDeps entries must be 96-byte dependency encodings";
+        byte[] concatenated = new byte[(long)encoded.Length * Eip8288Constants.DependencyTripleLength];
+        bool wideScheme = false;
+        for (int i = 0; i < encoded.Length; i++)
+        {
+            byte[] dependency = encoded[i];
+            wideScheme |= !dependency.AsSpan(0, 31).IsZero();
+            dependency.CopyTo(concatenated, i * Eip8288Constants.DependencyTripleLength);
+        }
+        ilProof = new InclusionListProof(StarkProof, Eip8288Dependencies.Parse(concatenated), Eip8288Dependencies.ComputeListDepsHash(concatenated), wideScheme);
+        return null;
+    }
+
+    public static InclusionListProofV1 From(InclusionListProof ilProof)
+    {
+        byte[][] proofDeps = new byte[ilProof.ProofDeps.Count][];
+        for (int i = 0; i < proofDeps.Length; i++) proofDeps[i] = Eip8288Dependencies.Serialize([ilProof.ProofDeps[i]]);
+        return new InclusionListProofV1 { StarkProof = ilProof.StarkProof, ProofDeps = proofDeps };
+    }
+>>>>>>> wip/8288-native
 }
 
 /// <summary>

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-use nethermind_lean::{aggregated_vk, keccak, prove_stark};
+use nethermind_lean::{aggregated_vk, keccak};
 fn main() {
     let directory = std::env::args().nth(1).expect("fixture output directory");
     if directory == "--sign-message" {
@@ -54,14 +54,6 @@ fn main() {
         multi_keys.extend_from_slice(&sphincs::sign(&sk, &message).to_bytes());
     }
     save("sphincs-multi-keys.bin", &multi_keys);
-    let source = "from snark_lib import *\ndef main():\n    p = GEN ** 0\n    p[1] = 7\n    p[GEN] = 9\n    return\n";
-    let mut public_input = [0; 32];
-    public_input[0] = 7;
-    public_input[16] = 9;
-    let (proof, key) = prove_stark(source, &public_input).unwrap();
-    save("stark-key.bin", &key);
-    save("stark-message.bin", &public_input);
-    save("stark-proof.bin", &proof);
     let key = aggregated_vk();
     save("aggregated-key.bin", &key);
     println!(

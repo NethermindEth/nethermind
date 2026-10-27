@@ -64,16 +64,11 @@ public sealed class ProofVerdictCache
     }
 
     /// <summary>Verifies a mode-0 direct witness for its single dependency under <paramref name="forkVerifier"/>'s parameters for the
-    /// dependency's scheme.</summary>
+    /// dependency's scheme. Only leanSPHINCS is enabled; any other scheme is rejected.</summary>
     public static bool VerifyDirect(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, FrameDependency dependency, byte[] witness)
     {
-        Func<bool>? check = dependency.Scheme switch
-        {
-            Eip8288Constants.LeanSphincsScheme => () => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, witness),
-            Eip8288Constants.LeanStarkScheme => () => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, witness),
-            _ => null
-        };
-        if (check is null) return false;
+        if (dependency.Scheme != Eip8288Constants.LeanSphincsScheme) return false;
+        Func<bool> check = () => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, witness);
         ProofVerdictCache cache = For(verifier);
         ValueHash256 witnessHash = ValueKeccak.Compute(witness);
         return cache.Verify(cache._direct, new DirectKey(dependency, witnessHash, forkVerifier.SchemeParams(dependency.Scheme)), witness, witnessHash, check);

@@ -173,18 +173,42 @@ public static class Eip8288Dependencies
         return dependencies;
     }
 
-    /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against.</summary>
-    /// <remarks><c>DEPS_HASH</c> is BLAKE2s-256 over the canonical dependencies' 96-byte encodings, scheme included.</remarks>
+    /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
+    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || verification_key_hash</c> entries.</summary>
+    /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses BLAKE2s-256, the hash the pinned aggregation circuit uses for its
+    /// dependency digest. The digest omits the scheme, so it is defined only for leanSPHINCS lists (see
+    /// <see cref="IsAcceptedScheme"/>).</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
-        => Blake2s.Compute(Serialize(Canonicalize(dependencies)));
+        => ComputeListDepsHash(Canonicalize(dependencies));
 
-    /// <summary>Whether a dependency scheme is in the EIP-8288 <c>ENABLED_SCHEMES</c>.</summary>
-    /// <remarks>The per-fork constant the <c>AGGREGATED_VK</c> circuit accepts exactly; the pinned circuit fixes it.</remarks>
-    public static bool IsAcceptedScheme(byte scheme) =>
-        scheme == Eip8288Constants.LeanSphincsScheme
-        || (Eip8288Constants.LeanStarkSchemeEnabled && scheme == Eip8288Constants.LeanStarkScheme);
+    /// <summary><c>get_deps_hash</c> over <paramref name="dependencies"/> exactly as given, without sorting or deduplication.</summary>
+    public static ValueHash256 ComputeListDepsHash(IReadOnlyList<FrameDependency> dependencies)
+    {
+        Blake2s hash = Blake2s.Create();
+        for (int i = 0; i < dependencies.Count; i++)
+        {
+            hash.Update(dependencies[i].DataHash.Bytes);
+            hash.Update(dependencies[i].VerificationKey.Bytes);
+        }
 
-    /// <summary>Whether every dependency's scheme is in the EIP-8288 <c>ENABLED_SCHEMES</c>.</summary>
+        return hash.Finish();
+    }
+
+    /// <summary><c>get_deps_hash</c> over a <c>96·k</c>-byte concatenation of encoded dependencies exactly as given.</summary>
+    public static ValueHash256 ComputeListDepsHash(ReadOnlySpan<byte> encoded)
+    {
+        Blake2s hash = Blake2s.Create();
+        for (int offset = 0; offset + Eip8288Constants.DependencyTripleLength <= encoded.Length; offset += Eip8288Constants.DependencyTripleLength)
+            hash.Update(encoded.Slice(offset + 32, 64));
+
+        return hash.Finish();
+    }
+
+    /// <summary>Whether a dependency scheme is enabled: leanSPHINCS only. EIP-8288 reserves leanSTARK, so a frame, wrapper,
+    /// inclusion-list proof or aggregation input carrying it is invalid.</summary>
+    public static bool IsAcceptedScheme(byte scheme) => scheme == Eip8288Constants.LeanSphincsScheme;
+
+    /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
     {
         for (int i = 0; i < dependencies.Count; i++)

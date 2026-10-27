@@ -124,14 +124,13 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Background_aggregate_is_reused_by_fresh_production_scopes([Values] bool mixed)
+    public async Task Background_aggregate_is_reused_by_fresh_production_scopes()
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
         FrameDependency firstDependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("background-first"), default);
-        FrameDependency secondDependency = new(mixed ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
-            ValueKeccak.Compute("background-second"), default);
+        FrameDependency secondDependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("background-second"), default);
         Transaction first = CreateTransaction(chain, firstDependency, [1]);
         Transaction second = CreateTransaction(chain, secondDependency, [2]);
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
@@ -1123,7 +1122,6 @@ public class Eip8288BlockProductionTests
             VerificationCalls++;
             return true;
         }
-        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             RecursiveVerificationCalls++;

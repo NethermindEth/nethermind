@@ -33,7 +33,7 @@ public class MempoolWrapperTests
         {
             Transactions = ByHash(Keccak.Compute("tx1"), Keccak.Compute("tx2")),
             Mode = MempoolWrapper.ModeDirect,
-            Deps = [Sphincs("a"), Stark("b")],
+            Deps = [Sphincs("a"), Sphincs("b")],
             Proofs = [[1, 2], [3, 4]],
         };
 
@@ -73,7 +73,7 @@ public class MempoolWrapperTests
         {
             Transactions = [new WrapperTransaction(Keccak.Compute("tx"))],
             Mode = MempoolWrapper.ModeDirect,
-            Deps = [Sphincs("a"), Stark("b")],
+            Deps = [Sphincs("a"), Sphincs("b")],
             Proofs = [new byte[5 * 1024 * 1024], new byte[5 * 1024 * 1024]]
         };
         Assert.Throws<RlpException>(() => MempoolWrapperDecoder.Instance.GetLength(wrapper, RlpBehaviors.None));
@@ -105,7 +105,7 @@ public class MempoolWrapperTests
         {
             Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
             Mode = MempoolWrapper.ModeDirect,
-            Deps = [Sphincs("a"), Stark("b")],
+            Deps = [Sphincs("a"), Sphincs("b")],
             Proofs = [[1], [2]],
         };
 
@@ -134,7 +134,7 @@ public class MempoolWrapperTests
         {
             Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
             Mode = MempoolWrapper.ModeDirect,
-            Deps = [Sphincs("a"), Stark("b")],
+            Deps = [Sphincs("a"), Sphincs("b")],
             Proofs = [[1]],
         };
 
@@ -174,9 +174,9 @@ public class MempoolWrapperTests
     }
 
     [Test]
-    public void Wrapper_rejects_too_many_stark_deps()
+    public void Wrapper_rejects_reserved_leanstark_deps()
     {
-        List<FrameDependency> deps = [Stark("a"), Stark("b")];
+        List<FrameDependency> deps = [Stark("a")];
         MempoolWrapper wrapper = new()
         {
             Transactions = [new WrapperTransaction(Keccak.Compute("tx1"))],
@@ -186,7 +186,7 @@ public class MempoolWrapperTests
         };
 
         Assert.That(ValidateResolved(wrapper, Accepting, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo("transaction exceeds EIP-8288 dependency limits"));
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.MalformedDependencyFrame));
     }
 
     // A deps blob of 96k + r decoded to the same wrapper as the 96k one, so two wire encodings mapped
@@ -424,15 +424,14 @@ public class MempoolWrapperTests
         }
     }
 
-    // EIPs#12473: mode 1 bounds dependencies by MAX_DEPS_PER_AGGREGATE_WRAPPER alone, whatever their schemes. Sets above the
-    // local proof envelope are valid wrappers that this node refuses locally.
-    [TestCase(Eip8288Constants.MaxGenericStarkProofs, false)]
-    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, true)]
-    [TestCase(64, true)]
-    public void Aggregate_has_no_leanstark_sublimit(int count, bool exceedsLocalVerifier)
+    // EIPs#12473: mode 1 bounds dependencies by MAX_DEPS_PER_AGGREGATE_WRAPPER alone. Sets above the local proof envelope are
+    // valid wrappers that this node refuses locally.
+    [TestCase(Eip8288Constants.MaxProofDependencies / 2, false)]
+    [TestCase(Eip8288Constants.MaxProofDependencies / 2 + 1, true)]
+    public void Aggregate_above_the_local_envelope_is_valid_but_refused_locally(int count, bool exceedsLocalVerifier)
     {
         (MempoolWrapper wrapper, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive,
-            [.. Enumerable.Range(0, count).Select(i => (IReadOnlyList<FrameDependency>)[Stark($"s{i}"), Sphincs($"p{i}")])]);
+            [.. Enumerable.Range(0, count).Select(i => (IReadOnlyList<FrameDependency>)[Sphincs($"s{i}"), Sphincs($"p{i}")])]);
         FakeLeanProofVerifier verifier = new(true);
         bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error, resolve);
         using (Assert.EnterMultipleScope())
@@ -599,9 +598,9 @@ public class MempoolWrapperTests
     // EIPs#12518: a zero data_hash stands for the containing transaction's signature hash for every scheme, so a mode-0
     // witness is checked against the signature hash, not the zero placeholder.
     [Test]
-    public void Direct_witness_for_a_zero_leanstark_data_hash_verifies_against_the_signature_hash()
+    public void Direct_witness_for_a_zero_data_hash_verifies_against_the_signature_hash()
     {
-        Transaction transaction = DepTx([new FrameDependency(Eip8288Constants.LeanStarkScheme, default, TestItem.KeccakA.ValueHash256)]);
+        Transaction transaction = DepTx([new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256)]);
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         Hash256 hash = Keccak.Compute("zero-data-hash");
         MempoolWrapper wrapper = new()
@@ -622,14 +621,13 @@ public class MempoolWrapperTests
         }
     }
 
-    /// <summary>Accepts every leanSTARK witness, reporting the statement it was checked against.</summary>
-    private sealed class DataHashVerifier(Action<ValueHash256> onLeanStark) : ILeanProofVerifier
+    /// <summary>Accepts every leanSPHINCS witness, reporting the statement it was checked against.</summary>
+    private sealed class DataHashVerifier(Action<ValueHash256> onVerify) : ILeanProofVerifier
     {
         public void EnsureAvailable() { }
-        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
-        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
         {
-            onLeanStark(dataHash);
+            onVerify(dataHash);
             return true;
         }
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => false;

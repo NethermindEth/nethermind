@@ -90,30 +90,31 @@ public class FrameDependencyTests
     private static readonly FrameDependency VectorA = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x07, 0);
     private static readonly FrameDependency VectorB = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x07, 1);
     private static readonly FrameDependency VectorC = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x01, 0, 0xFF);
-    private static readonly FrameDependency VectorG1 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x07, 0);
-    private static readonly FrameDependency VectorG2 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0xA5, 0, 0x5A);
+    private static readonly FrameDependency VectorD = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0xA5, 0, 0x5A);
 
     // Expected digests computed in Python from the EIP-8288 get_deps_hash pseudocode with hashlib.blake2s;
     // the pinned recursive guest and tools/lean-ffi assert the same vectors.
     private static IEnumerable<TestCaseData> DepsHashVectors()
     {
         yield return new TestCaseData(Array.Empty<FrameDependency>(), "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9").SetName("empty");
-        yield return new TestCaseData(new[] { VectorA }, "aef5a1c0fbd299e930670837a1d8525a37ebfbb3139edfa972cb84788484afe6").SetName("one");
-        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "db319771cd52a8a6eadb4273e07df5fbf2a405592e956e3fe6f3121f9cb3b897").SetName("three_with_duplicate");
-        yield return new TestCaseData(new[] { VectorG1 }, "2eacc579313017124720641cf33287809cb02437e8f381c427e0f5aa8162db93").SetName("stark_only");
-        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "2523de87398f08d0bb08e78b1ff651b0452a1c12fe8dbae806a4c8ffe7fbaf31").SetName("mixed");
+        yield return new TestCaseData(new[] { VectorA }, "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6").SetName("one");
+        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13").SetName("three_with_duplicate");
+        yield return new TestCaseData(new[] { VectorD, VectorA, VectorC, VectorB }, "830b7c9edb9a816e25929dbae987d3fcf2e900fa009d930c60eddacb0d479ed8").SetName("four");
     }
 
     [TestCaseSource(nameof(DepsHashVectors))]
     public void ComputeDepsHash_matches_eip_pseudocode_vectors(FrameDependency[] dependencies, string expected) =>
         Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies).ToString(withZeroX: false), Is.EqualTo(expected));
 
+    // get_deps_hash hashes 64-byte data_hash || verification_key_hash entries: the scheme is not bound, which is why only
+    // leanSPHINCS is enabled.
     [Test]
-    public void Same_data_and_key_under_another_scheme_is_another_digest() =>
-        Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG1]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorA])));
+    public void Deps_hash_omits_the_scheme() =>
+        Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorDependency(Eip8288Constants.LeanStarkScheme, 0x07, 0)]),
+            Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorA])));
 
     [TestCase(Eip8288Constants.LeanSphincsScheme, true)]
-    [TestCase(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkSchemeEnabled)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, false)]
     [TestCase((byte)0x00, false)]
     [TestCase((byte)0x12, false)]
     [TestCase((byte)0xFF, false)]
@@ -241,7 +242,7 @@ public class FrameDependencyTests
         FrameDependency[] expected = dependencies.OrderBy(dep => Convert.ToHexString(Eip8288Dependencies.Serialize([dep])), StringComparer.Ordinal).ToArray();
         List<FrameDependency> reversed = [.. expected.Reverse(), .. expected];
         Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
-        byte[] entries = Eip8288Dependencies.Serialize(expected);
+        byte[] entries = [.. expected.SelectMany(static dep => dep.DataHash.ToByteArray().Concat(dep.VerificationKey.ToByteArray()))];
         Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(Blake2s.Compute(entries)));
     }
 
