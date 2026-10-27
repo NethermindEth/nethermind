@@ -65,8 +65,8 @@ public static partial class KeccakCache
     [SkipLocalsInit]
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        // Airbender does not consult the memo: with its Keccak-f delegation run in place, a probe costs more than the
-        // hashing it saves.
+        // Airbender skips the fixed-length probes, which hold the key in registers on a 64-bit guest but take a frame on
+        // its 32-bit one; ComputeToAnyLength memoizes these lengths too.
         ulong[]? memo = AirbenderFlag.IsActive ? null : _memo;
         if (memo is not null)
         {
