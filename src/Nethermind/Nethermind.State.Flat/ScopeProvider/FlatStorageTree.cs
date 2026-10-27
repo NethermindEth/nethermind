@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -22,7 +23,7 @@ public sealed class FlatStorageTree(
     IFlatDbConfig config,
     Hash256 storageRoot,
     Address address,
-    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer, IStorageTreePrefetcher
 {
     private readonly Address _address = address;
     private readonly IFlatDbConfig _config = config;
@@ -329,10 +330,42 @@ public sealed class FlatStorageTree(
         // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
         // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
-            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
+            commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel,
+            prefetcher: estimatedEntries >= _scope.StorageRootPrefetchMinChanges ? this : null);
         return earlyApplied is null
             ? new StorageTreeBulkWriteBatch(trieBatch, this)
             : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
+    }
+
+    // Called by the write batch, with the tree at the root its bulk write starts from.
+    public void Prefetch(StorageTree tree, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        // The estimate that passed the batch here counts slots the block left unchanged.
+        if (entries.Length < _scope.StorageRootPrefetchMinChanges || tree.RootRef is not { } root || !_bundle.TryLeaseReadOnlyBundle()) return;
+
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            (int loads, int rounds, int failures) = StorageRootPrefetch.Run(root, new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), entries, _scope.ReadPool);
+            _scope.CountStorageRootPrefetch(loads, rounds, Stopwatch.GetTimestamp() - start);
+            if (failures != 0) LogPrefetchFailure($"{failures} nodes could not be resolved");
+        }
+        // A prefetch only loads nodes: the write reads whatever it left, and meets a real error itself.
+        catch (Exception e)
+        {
+            LogPrefetchFailure(e.Message);
+        }
+        finally
+        {
+            _bundle.ReleaseReadOnlyBundleLease();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogPrefetchFailure(string reason)
+    {
+        ILogger logger = _logManager.GetClassLogger<FlatStorageTree>();
+        if (logger.IsDebug) logger.Debug($"Storage root prefetch of {_address} incomplete: {reason}");
     }
 
     // For a tree that already holds the early writes: unchanged slots only update the flat overlay.

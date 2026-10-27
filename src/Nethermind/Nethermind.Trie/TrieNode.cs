@@ -746,7 +746,12 @@ namespace Nethermind.Trie
         /// <param name="ignoredChild">A child left out of the count, as if it were already null; <c>-1</c> counts every child.</param>
         /// <returns>The index; <c>-1</c> when the branch has no child; <see cref="SeveralChildren"/> when it has more than one.</returns>
         /// <remarks>One walk over the RLP, where asking <see cref="IsChildNull"/> per child seeks each from the start.</remarks>
-        internal int FindOnlyChild(int ignoredChild = -1)
+        internal int FindOnlyChild(int ignoredChild = -1) => FindOnlyChildOutside(ignoredChild < 0 ? 0 : 1 << ignoredChild);
+
+        /// <summary>The index of this branch's only non-null child outside <paramref name="ignoredChildren"/>.</summary>
+        /// <param name="ignoredChildren">A mask of children left out of the count, bit <c>i</c> for child <c>i</c>.</param>
+        /// <returns>As <see cref="FindOnlyChild"/> returns.</returns>
+        internal int FindOnlyChildOutside(int ignoredChildren)
         {
             if (!IsBranch)
             {
@@ -773,7 +778,7 @@ namespace Nethermind.Trie
                     isNull = data is null || ReferenceEquals(data, _nullNode);
                 }
 
-                if (isNull || i == ignoredChild) continue;
+                if (isNull || (ignoredChildren & (1 << i)) != 0) continue;
                 if (onlyChild != -1) return SeveralChildren;
                 onlyChild = i;
             }
