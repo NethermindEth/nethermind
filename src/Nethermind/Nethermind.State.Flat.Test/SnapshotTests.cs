@@ -149,6 +149,44 @@ public class SnapshotTests
         }
     }
 
+    [Test]
+    public void FilteredLookupsFindEveryWrittenKeyAndNoOthers()
+    {
+        const int Count = 1_000;
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
+        {
+            for (int i = 0; i < Count; i++)
+            {
+                (Address address, Hash256 hash, TreePath path) = Key(i);
+                content.Accounts[new(address)] = new((ulong)i, 1);
+                content.Storages[new((address, (UInt256)i))] = (UInt256)i;
+                content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
+            }
+        });
+
+        snapshot.BuildFilters();
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 2 * Count; i++)
+            {
+                bool written = i < Count;
+                (Address address, Hash256 hash, TreePath path) = Key(i);
+                Assert.That(snapshot.TryGetAccount(new(address), out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorage(new((address, (UInt256)i)), out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStateNode(new(path), out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(new((hash, path)), out _), Is.EqualTo(written));
+            }
+        }
+
+        static (Address, Hash256, TreePath) Key(int i)
+        {
+            Hash256 hash = Keccak.Compute(i.ToString());
+            return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes));
+        }
+    }
+
     [TestCase(256)]
     [TestCase(8_192)]
     public void AddressNodesResetForPoolingKeepsSmallCapacityAndDropsLargeCapacity(int requestedCapacity)

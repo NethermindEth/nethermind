@@ -36,6 +36,7 @@ public class Snapshot : RefCountingDisposable
     // construct-then-populate contract working: population always precedes the first count observation.
     // Boxed so publication is a single reference CAS.
     private StrongBox<SnapshotContentCounts>? _sealedCounts;
+    private SnapshotContentFilters? _filters;
 
     public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
     {
@@ -102,13 +103,13 @@ public class Snapshot : RefCountingDisposable
     internal SortedSnapshotContent SortedContent => _sorted!;
 
     public bool TryGetAccount(HashedKey<Address> key, out Account? acc)
-        => _isSorted ? _sorted!.TryGetAccount(key, out acc) : _mutable!.Accounts.TryGetValue(key, out acc);
+        => _isSorted ? _sorted!.TryGetAccount(key, out acc) : (MayContain(_filters?.Accounts, key) ? _mutable!.Accounts.TryGetValue(key, out acc) : NotFound(out acc));
 
     public bool HasSelfDestruct(HashedKey<Address> key)
         => _isSorted ? _sorted!.HasSelfDestruct(key) : _mutable!.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
 
     public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value)
-        => _isSorted ? _sorted!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
+        => _isSorted ? _sorted!.TryGetStorage(key, out value) : (MayContain(_filters?.Storages, key) ? _mutable!.Storages.TryGetValue(key, out value) : NotFound(out value));
 
     /// <summary>The key a storage key is filed under in a slot filter built by <see cref="AddStorageKeysTo"/>.</summary>
     /// <remarks>The hash the dictionaries already bucket on, so a probe hashes nothing new.</remarks>
@@ -140,10 +141,30 @@ public class Snapshot : RefCountingDisposable
     }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
+        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : (MayContain(_filters?.StateNodes, key) ? _mutable!.StateNodes.TryGetValue(key, out node!) : NotFound(out node));
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : (MayContain(_filters?.StorageNodes, key) ? _mutable!.StorageNodes.TryGetValue(key, out node!) : NotFound(out node));
+
+    /// <summary>Builds key filters over the mutable content, so lookups of absent keys skip its dictionaries.</summary>
+    /// <remarks>
+    /// Call once the content is final and before the snapshot is shared. A reader that still sees no filters
+    /// probes the dictionaries directly.
+    /// </remarks>
+    internal void BuildFilters()
+    {
+        if (!_isSorted) Volatile.Write(ref _filters, new SnapshotContentFilters(_mutable!, Counts));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool MayContain<T>(SplitBlockFilter? filter, in HashedKey<T> key) where T : IEquatable<T>
+        => filter is null || filter.MightContain((uint)key.GetHashCode());
+
+    private static bool NotFound<T>(out T value)
+    {
+        value = default!;
+        return false;
+    }
 
     protected override void CleanUp()
     {
