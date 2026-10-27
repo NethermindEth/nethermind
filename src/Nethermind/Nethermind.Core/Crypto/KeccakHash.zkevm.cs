@@ -824,8 +824,12 @@ public sealed partial class KeccakHash
         {
             // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
             // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
-            // seventeen explicit lane writes cost a load and a store each.
-            Unsafe.CopyBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), ref *data, HASH_DATA_AREA);
+            // seventeen explicit lane writes cost a load and a store each. Airbender's libc copies a
+            // misaligned block by words.
+            if (AirbenderFlag.IsActive)
+                Bytes.Memmove(Unsafe.AsPointer(ref lane), data, HASH_DATA_AREA);
+            else
+                Unsafe.CopyBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), ref *data, HASH_DATA_AREA);
             return;
         }
 
