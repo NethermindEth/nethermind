@@ -671,8 +671,9 @@
   },
   {
     "pname": "Nethermind.Crypto.SecP256r1",
-    "version": "1.1.0",
-    "hash": "sha256-uYoEClXc5fxeszUzafzeJim5noSqo120nIAlMZ8umHE="
+    "version": "1.2.1-local.1",
+    "hash": "sha256-xy88hID+CsvDvcsFgvwH8qV4o5g8q/NYubgKhVNvxwI=",
+    "url": "https://raw.githubusercontent.com/NethermindEth/nethermind/bench/nix-repro-2.2.2/nix/local-nupkgs/nethermind.crypto.secp256r1.1.2.1-local.1.nupkg"
   },
   {
     "pname": "Nethermind.DotNetty.Buffers",
