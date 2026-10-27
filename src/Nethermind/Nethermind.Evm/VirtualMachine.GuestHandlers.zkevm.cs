@@ -463,7 +463,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             static abstract nint SharedHandler { get; }
 
             /// <summary>Evaluates the comparison on the words below <paramref name="end"/>, the limb above the top word.</summary>
-            /// <remarks>Every limb is addressed off <paramref name="end"/> itself, so each access folds its constant into its own offset.</remarks>
+            /// <remarks>Every limb is addressed off <paramref name="end"/> itself, so each access folds its constant into its own offset.
+            /// The inputs may be left changed: every caller pops them or overwrites them with the result, and the shared handler
+            /// it falls back to on too little gas faults before it reads them.</remarks>
             static abstract bool Evaluate(ref ulong end);
         }
 
@@ -503,7 +505,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpLt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => IsBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
+            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+                ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), signed: false)
+                : IsBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
         }
 
         /// <summary>GT: whether the top word is above the one under it, unsigned.</summary>
@@ -515,7 +519,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpGt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => IsBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
+            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+                ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), signed: false)
+                : IsBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
         }
 
         /// <summary>SLT: whether the top word is below the one under it, both as two's complement.</summary>
@@ -527,7 +533,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpSLt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => IsSignedBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
+            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+                ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), signed: true)
+                : IsSignedBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
         }
 
         /// <summary>SGT: whether the top word is above the one under it, both as two's complement.</summary>
@@ -539,7 +547,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpSGt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => IsSignedBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
+            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+                ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), signed: true)
+                : IsSignedBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
         }
 
         /// <summary>A fixed-cost operation on the top two words, with both addressed off the head.</summary>

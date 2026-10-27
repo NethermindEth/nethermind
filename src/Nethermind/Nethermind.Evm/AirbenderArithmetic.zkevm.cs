@@ -17,6 +17,7 @@ namespace Nethermind.Evm;
 /// </remarks>
 internal static unsafe class AirbenderArithmetic
 {
+    private const uint SubtractOp = 1u << 1;
     private const uint MultiplyLowOp = 1u << 3;
     private const uint MultiplyHighOp = 1u << 4;
 
@@ -64,6 +65,21 @@ internal static unsafe class AirbenderArithmetic
         ShiftRight(value, scratch, bits);
         if (negative)
             Complement(limbs);
+    }
+
+    /// <summary>Whether <paramref name="left"/> is below <paramref name="right"/>, overwriting <paramref name="left"/>.</summary>
+    /// <remarks>The borrow out of <c>left - right</c>; signed, both sign bits are flipped first, which orders two's
+    /// complement words as unsigned ones.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsBelowConsuming(void* left, void* right, bool signed)
+    {
+        Debug.Assert((((nuint)left | (nuint)right) & 31) == 0);
+        if (signed)
+        {
+            ((uint*)left)[7] ^= 0x80000000u;
+            ((uint*)right)[7] ^= 0x80000000u;
+        }
+        return airbender_u256_op(left, right, SubtractOp) != 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
