@@ -153,6 +153,81 @@ public class WrappedBlobRegistryTests
         Assert.That(announcedPin.Disposed, Is.True);
     }
 
+    // Before the body is known, a type-3 claim opens retrieval only from the peers that made it.
+    [Test]
+    public void Type3_claim_opens_cell_retrieval_only_from_its_claimant()
+    {
+        Peer framePeer = Connect(0), blobPeer = Connect(1);
+        Hash256 hash = BlobFrameTransaction(1).Hash!;
+        _registry.RecordAnnouncement(framePeer, hash, BlobCellMask.Full, TxType.FrameTx);
+        _registry.RecordAnnouncement(blobPeer, hash, BlobCellMask.Full, TxType.Blob);
+
+        Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, framePeer.Id), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobPeer.CellRequests, Is.EqualTo(new[] { hash }));
+            Assert.That(framePeer.CellRequests, Is.Empty, "not even as the last resort");
+        }
+    }
+
+    // A dependency-bearing body refused for lacking its wrapper still settles the type: the type-3 claimant is disconnected and
+    // cell retrieval closes until the wrapper validates.
+    [Test]
+    public void Refused_dependency_bearing_body_closes_retrieval_opened_by_a_type3_claim()
+    {
+        Peer framePeer = Connect(0), blobPeer = Connect(1);
+        Transaction blob = BlobFrameTransaction(1);
+        _registry.RecordAnnouncement(framePeer, blob.Hash!, BlobCellMask.Full, TxType.FrameTx);
+        _registry.RecordAnnouncement(blobPeer, blob.Hash!, BlobCellMask.Full, TxType.Blob);
+
+        Assert.That(_registry.RecordTransaction(framePeer, blob), Is.EqualTo(AcceptTxResult.MissingDependencyProof));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobPeer.Disconnects, Has.Count.EqualTo(1));
+            Assert.That(_registry.TryRequestCells(blob.Hash!, BlobCellMask.Full, framePeer.Id), Is.False);
+        }
+    }
+
+    // A body supplied by several peers' wrappers survives the disconnect of the one it was first charged to.
+    [Test]
+    public void Wrapped_body_lives_while_any_source_remains()
+    {
+        Peer first = Connect(0), second = Connect(1);
+        Transaction blob = BlobFrameTransaction(1);
+        Pin pin = new(), duplicate = new();
+        _registry.Admit(blob, first, pin);
+        Assert.That(_registry.Admit(blob, second, duplicate), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(duplicate.Disposed, Is.True, "the first pin already holds the coverage");
+
+        _registry.RemovePeer(first);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pin.Disposed, Is.False);
+            Assert.That(_registry.IsAwaitingCells(blob.Hash!), Is.True);
+        }
+        _registry.RemovePeer(second);
+        Assert.That(pin.Disposed, Is.True);
+    }
+
+    // A source disconnecting while its body is being added does not leave the body behind.
+    [Test]
+    public void Source_disconnecting_during_admission_drops_the_body()
+    {
+        Peer source = Connect(0);
+        _pool.ValidateTxForBlobSampling(Arg.Any<Transaction>()).Returns(_ =>
+        {
+            _registry.RemovePeer(source);
+            return AcceptTxResult.Accepted;
+        });
+        Pin pin = new();
+        _registry.Admit(BlobFrameTransaction(1), source, pin);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pin.Disposed, Is.True);
+            Assert.That(_registry.WrappedCount, Is.Zero);
+        }
+    }
+
     private static Pin Track(List<Pin> pins)
     {
         Pin pin = new();
@@ -171,7 +246,14 @@ public class WrappedBlobRegistryTests
         public PublicKey Id { get; } = id;
         public bool IsClosing { get; private set; }
         public List<(DisconnectReason Reason, string Details)> Disconnects { get; } = [];
-        public bool TrySendGetCells(Hash256 hash, BlobCellMask requestMask) => true;
+        public List<Hash256> CellRequests { get; } = [];
+
+        public bool TrySendGetCells(Hash256 hash, BlobCellMask requestMask)
+        {
+            CellRequests.Add(hash);
+            return true;
+        }
+
         public bool TrySendPooledTransactionRequest(Hash256 hash) => true;
         public void MaintainSparseBlobState(DateTimeOffset now) { }
 

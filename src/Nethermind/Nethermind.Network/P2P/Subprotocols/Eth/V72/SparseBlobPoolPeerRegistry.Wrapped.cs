@@ -47,10 +47,17 @@ public sealed partial class SparseBlobPoolPeerRegistry
             return AcceptTxResult.Invalid.WithMessage("Not a blob-carrying frame transaction in its elided network form.");
         }
 
-        if (_wrapped.ContainsKey(hash.ValueHash256))
+        ISparseBlobPoolPeer? peer = source as ISparseBlobPoolPeer;
+        PublicKey? sourceId = peer is not null && IsActivePeer(peer) ? peer.Id : null;
+        if (_wrapped.TryGetValue(hash.ValueHash256, out WrappedBlobTx? existing))
         {
-            // Already awaiting its cells under an earlier wrapper.
+            // Already awaiting its cells under an earlier wrapper: this source keeps it alive too.
             proofPin.Dispose();
+            if (sourceId is not null && existing.AddSource(sourceId))
+            {
+                DropIfGone(hash.ValueHash256, existing, peer!);
+            }
+
             return AcceptTxResult.Accepted;
         }
 
@@ -61,8 +68,6 @@ public sealed partial class SparseBlobPoolPeerRegistry
             return valid;
         }
 
-        ISparseBlobPoolPeer? peer = source as ISparseBlobPoolPeer;
-        PublicKey? sourceId = peer is not null && IsActivePeer(peer) ? peer.Id : null;
         int bytes = transaction.GetLength();
         if (_wrapped.Count >= MaxWrappedTransactions || !TryReserveWrapped(sourceId, transaction.SenderAddress, hash.ValueHash256, bytes))
         {
@@ -77,11 +82,29 @@ public sealed partial class SparseBlobPoolPeerRegistry
         {
             ReleaseWrapped(entry, hash.ValueHash256);
             proofPin.Dispose();
+            return Admit(transaction, source, NoPin.Instance);
+        }
+
+        // The source may have disconnected while this was added, after its bodies were dropped.
+        if (peer is not null && sourceId is not null && DropIfGone(hash.ValueHash256, entry, peer))
+        {
             return AcceptTxResult.Accepted;
         }
 
         RecordWrapped(hash, entry, peer);
         return AcceptTxResult.Accepted;
+    }
+
+    /// <summary>Drops <paramref name="peer"/> as a source of <paramref name="entry"/> if it has disconnected.</summary>
+    private bool DropIfGone(in ValueHash256 hash, WrappedBlobTx entry, ISparseBlobPoolPeer peer)
+    {
+        if (IsActivePeer(peer))
+        {
+            return false;
+        }
+
+        DropSource(hash, entry, peer.Id);
+        return true;
     }
 
     /// <summary>Records the wrapped body for cell admission, attributed to <paramref name="preferred"/> when it is an active
@@ -148,10 +171,12 @@ public sealed partial class SparseBlobPoolPeerRegistry
     }
 
     /// <summary>Whether cells may be requested. Once the body is known its type decides: a dependency-bearing frame transaction
-    /// needs its validated covering wrapper. Before that, cells announced as a frame transaction's wait for its body, so only
-    /// a type-3 announcement allows early cell retrieval; one peer's claimed type never gates another's.</summary>
-    private bool MayRequestCells(Hash256 hash, TrackedSparseBlobTx state)
+    /// needs its validated covering wrapper. Before that, cells announced as a frame transaction's wait for its body, and a peer's
+    /// type-3 claim opens retrieval only from peers that made that claim; one peer's claimed type never gates another's.</summary>
+    /// <param name="typeThreeClaimersOnly">Whether only announcers that claimed a type-3 transaction may serve the cells.</param>
+    private bool MayRequestCells(Hash256 hash, TrackedSparseBlobTx state, out bool typeThreeClaimersOnly)
     {
+        typeThreeClaimersOnly = false;
         if (_wrapped.ContainsKey(hash.ValueHash256) || _txPool.TryGetPendingBlobCellMask(hash, out _))
         {
             return true;
@@ -164,6 +189,12 @@ public sealed partial class SparseBlobPoolPeerRegistry
                 return bodyType != TxType.FrameTx || !state.BodyDependencyBearing;
             }
 
+            if (state.Announcements.Count == 0)
+            {
+                return true;
+            }
+
+            typeThreeClaimersOnly = true;
             foreach (PublicKey announcer in state.Announcements.Keys)
             {
                 if (ClaimedType(state, announcer) != TxType.FrameTx)
@@ -172,7 +203,19 @@ public sealed partial class SparseBlobPoolPeerRegistry
                 }
             }
 
-            return state.Announcements.Count == 0;
+            return false;
+        }
+    }
+
+    /// <summary>Under <c>state.Lock</c>, adds the announcers that claimed a frame transaction to <paramref name="excluded"/>.</summary>
+    private static void ExcludeFrameClaimers(TrackedSparseBlobTx state, ref HashSet<PublicKey>? excluded)
+    {
+        foreach (PublicKey announcer in state.Announcements.Keys)
+        {
+            if (ClaimedType(state, announcer) == TxType.FrameTx)
+            {
+                (excluded ??= []).Add(announcer);
+            }
         }
     }
 
@@ -260,24 +303,10 @@ public sealed partial class SparseBlobPoolPeerRegistry
         lock (_accountingLock)
         {
             if (_trackedTransactionBytes + bytes > MaxTrackedTransactionBytes
-                || _wrappedPerSender.GetValueOrDefault(sender) >= MaxWrappedTransactionsPerSender)
+                || _wrappedPerSender.GetValueOrDefault(sender) >= MaxWrappedTransactionsPerSender
+                || peerId is not null && !TryChargePeerLocked(peerId, hash, bytes))
             {
                 return false;
-            }
-
-            if (peerId is not null)
-            {
-                PeerUsage usage = GetPeerUsage(peerId);
-                if (usage.TransactionBytes + bytes > MaxTrackedTransactionBytesPerPeer
-                    || _wrappedPerPeer.GetValueOrDefault(peerId) >= MaxWrappedTransactionsPerPeer)
-                {
-                    RemovePeerUsageIfEmpty(peerId, usage);
-                    return false;
-                }
-
-                usage.TransactionBytes += bytes;
-                AddTrackedHashReference(usage, hash);
-                _wrappedPerPeer[peerId] = _wrappedPerPeer.GetValueOrDefault(peerId) + 1;
             }
 
             _trackedTransactionBytes += bytes;
@@ -286,41 +315,100 @@ public sealed partial class SparseBlobPoolPeerRegistry
         }
     }
 
-    private void ReleaseWrapped(WrappedBlobTx entry, in ValueHash256 hash)
+    /// <summary>Charges a held body to <paramref name="peerId"/>'s byte budget and wrapped-body count; under the accounting lock.</summary>
+    private bool TryChargePeerLocked(PublicKey peerId, in ValueHash256 hash, int bytes)
     {
-        lock (_accountingLock)
+        PeerUsage usage = GetPeerUsage(peerId);
+        if (usage.TransactionBytes + bytes > MaxTrackedTransactionBytesPerPeer
+            || _wrappedPerPeer.GetValueOrDefault(peerId) >= MaxWrappedTransactionsPerPeer)
         {
-            _trackedTransactionBytes -= entry.Bytes;
-            Decrement(_wrappedPerSender, entry.Sender);
-            if (entry.Source is { } peerId)
-            {
-                Decrement(_wrappedPerPeer, peerId);
-                if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
-                {
-                    usage.TransactionBytes -= entry.Bytes;
-                    ReleaseTrackedHashReference(usage, hash);
-                    RemovePeerUsageIfEmpty(peerId, usage);
-                }
-            }
+            RemovePeerUsageIfEmpty(peerId, usage);
+            return false;
         }
 
-        static void Decrement<TKey>(Dictionary<TKey, int> counts, TKey key) where TKey : notnull
+        usage.TransactionBytes += bytes;
+        AddTrackedHashReference(usage, hash);
+        _wrappedPerPeer[peerId] = _wrappedPerPeer.GetValueOrDefault(peerId) + 1;
+        return true;
+    }
+
+    private void ReleasePeerChargeLocked(PublicKey peerId, in ValueHash256 hash, int bytes)
+    {
+        Decrement(_wrappedPerPeer, peerId);
+        if (_peerUsage.TryGetValue(peerId, out PeerUsage? usage))
         {
-            int count = counts.GetValueOrDefault(key) - 1;
-            if (count <= 0) counts.Remove(key);
-            else counts[key] = count;
+            usage.TransactionBytes -= bytes;
+            ReleaseTrackedHashReference(usage, hash);
+            RemovePeerUsageIfEmpty(peerId, usage);
         }
     }
 
-    /// <summary>Drops the bodies a disconnected peer's wrappers supplied.</summary>
+    private void ReleaseWrapped(WrappedBlobTx entry, in ValueHash256 hash)
+    {
+        lock (entry)
+        {
+            lock (_accountingLock)
+            {
+                _trackedTransactionBytes -= entry.Bytes;
+                Decrement(_wrappedPerSender, entry.Sender);
+                if (entry.ChargedPeer is { } peerId)
+                {
+                    ReleasePeerChargeLocked(peerId, hash, entry.Bytes);
+                    entry.ChargedPeer = null;
+                }
+            }
+        }
+    }
+
+    private static void Decrement<TKey>(Dictionary<TKey, int> counts, TKey key) where TKey : notnull
+    {
+        int count = counts.GetValueOrDefault(key) - 1;
+        if (count <= 0) counts.Remove(key);
+        else counts[key] = count;
+    }
+
+    /// <summary>Removes a disconnected peer as a source of the bodies its wrappers supplied; a body is dropped once no source
+    /// remains, and its charge moves to a remaining source.</summary>
     private void DropWrapped(PublicKey peerId)
     {
         foreach (KeyValuePair<ValueHash256, WrappedBlobTx> entry in _wrapped)
         {
-            if (entry.Value.Source == peerId)
+            DropSource(entry.Key, entry.Value, peerId);
+        }
+    }
+
+    private void DropSource(in ValueHash256 hash, WrappedBlobTx entry, PublicKey peerId)
+    {
+        bool remove;
+        lock (entry)
+        {
+            if (!entry.Sources.Remove(peerId))
             {
-                RemoveWrapped(entry.Key);
+                return;
             }
+
+            remove = entry.Sources.Count == 0;
+            if (!remove && entry.ChargedPeer == peerId)
+            {
+                lock (_accountingLock)
+                {
+                    ReleasePeerChargeLocked(peerId, hash, entry.Bytes);
+                    entry.ChargedPeer = null;
+                    foreach (PublicKey remaining in entry.Sources)
+                    {
+                        if (TryChargePeerLocked(remaining, hash, entry.Bytes))
+                        {
+                            entry.ChargedPeer = remaining;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (remove && _wrapped.TryGetValue(hash, out WrappedBlobTx? current) && ReferenceEquals(current, entry))
+        {
+            RemoveWrapped(hash);
         }
     }
 
@@ -343,16 +431,30 @@ public sealed partial class SparseBlobPoolPeerRegistry
         }
     }
 
-    /// <summary>A body from a validated wrapper, its pinned proof coverage, its charges and its deadlines.</summary>
+    /// <summary>A body from a validated wrapper, its pinned proof coverage, the connections that supplied it, its charges and
+    /// its deadlines. Sources and the charged peer are guarded by the entry itself.</summary>
     private sealed class WrappedBlobTx(Transaction body, ShardBlobNetworkWrapper wrapper, IDisposable proofPin, PublicKey? source, Address sender,
         int bytes, DateTimeOffset expiresAt, DateTimeOffset unannouncedExpiresAt)
     {
         private int _announced;
 
         public IDisposable ProofPin { get; } = proofPin;
-        public PublicKey? Source { get; } = source;
         public Address Sender { get; } = sender;
         public int Bytes { get; } = bytes;
+
+        /// <summary>Peers whose validated wrappers supplied the body; empty for a local one, which no disconnect drops.</summary>
+        public HashSet<PublicKey> Sources { get; } = source is null ? [] : [source];
+
+        /// <summary>The source whose budgets the body is charged to, if any.</summary>
+        public PublicKey? ChargedPeer { get; set; } = source;
+
+        public bool AddSource(PublicKey peerId)
+        {
+            lock (this)
+            {
+                return Sources.Count != 0 && Sources.Add(peerId);
+            }
+        }
 
         public void MarkAnnounced() => Volatile.Write(ref _announced, 1);
 
@@ -367,5 +469,11 @@ public sealed partial class SparseBlobPoolPeerRegistry
             copy.ClearLengthCache();
             return copy;
         }
+    }
+
+    private sealed class NoPin : IDisposable
+    {
+        public static readonly NoPin Instance = new();
+        public void Dispose() { }
     }
 }

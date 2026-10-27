@@ -632,7 +632,7 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
     public bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey lastResortPeerId)
     {
         if (requestMask.IsEmpty || !_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state)
-            || !MayRequestCells(hash, state))
+            || !MayRequestCells(hash, state, out bool typeThreeClaimersOnly))
         {
             return false;
         }
@@ -674,6 +674,11 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
             {
                 // Everything is already held locally or being fetched.
                 return true;
+            }
+
+            if (typeThreeClaimersOnly)
+            {
+                ExcludeFrameClaimers(state, ref capacityLimitedPeers);
             }
 
             // Requests are trimmed per peer, so keep selecting until the whole mask is placed or
@@ -993,9 +998,15 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
             return SubmitTransaction(peer, transaction);
         }
 
-        // EIP-8437: a dependency-bearing body is held only once its covering wrapper validated.
+        // EIP-8437: a dependency-bearing body is held only once its covering wrapper validated. The body still settles the
+        // announced type, closing cell retrieval opened by type-3 claims.
         if (Eip8288Dependencies.IsDependencyBearing(transaction) && !IsAwaitingCells(hash))
         {
+            if (_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? announced))
+            {
+                RecordBodyType(hash, announced, transaction);
+            }
+
             return AcceptTxResult.MissingDependencyProof;
         }
 
