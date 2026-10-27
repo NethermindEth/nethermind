@@ -41,6 +41,7 @@ public class ConfigureMemoryAllocatorsTests
             Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
             Assert.That(((PooledByteBufferAllocator)NethermindBuffers.RlpxAllocator).Metric.ChunkSize, Is.EqualTo(expectedChunkSize));
             Assert.That(((PooledByteBufferAllocator)NethermindBuffers.Default).Metric.HeapArenas().Count, Is.EqualTo(1));
+            Assert.That(System.Environment.GetEnvironmentVariable("io.netty.allocator.pageSize"), Is.EqualTo("4096"));
         }
     }
 }
