@@ -51,25 +51,26 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         return new TxFrameSignature(scheme, signer, msg, signature);
     }
 
-    public override void PopulateLength(TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int contentLength = GetContentLength(item, elideCanonicalSignatureBytes: false);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(lengths.Pop());
         EncodeContent(ref writer, item, elide: false);
     }
 
-    /// <summary>Pushes the content length of the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>
-    public int PopulateArrayLength(TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
+    private static void EncodeContent<TWriter>(ref TWriter writer, TxFrameSignature item, bool elide)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int contentLength = items is null ? 0 : GetArrayContentLength(items, elideCanonicalSignatureBytes);
-        lengths.Push(contentLength);
-        return Rlp.LengthOfSequence(contentLength);
+        writer.Encode((ulong)item.Scheme);
+        writer.Encode(item.Signer);
+        writer.Encode(item.Msg);
+        if (elide)
+        {
+            writer.Encode(Bytes.Empty);
+        }
+        else
+        {
+            writer.Encode(item.Signature);
+        }
     }
 
     /// <summary>Writes a sequence populated by <see cref="PopulateArrayLength"/>.</summary>
@@ -88,20 +89,19 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         }
     }
 
-    private static void EncodeContent<TWriter>(ref TWriter writer, TxFrameSignature item, bool elide)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    public override void PopulateLength(TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.Encode((ulong)item.Scheme);
-        writer.Encode(item.Signer);
-        writer.Encode(item.Msg);
-        if (elide)
-        {
-            writer.Encode(Bytes.Empty);
-        }
-        else
-        {
-            writer.Encode(item.Signature);
-        }
+        int contentLength = GetContentLength(item, elideCanonicalSignatureBytes: false);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    /// <summary>Pushes the content length of the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>
+    public int PopulateArrayLength(TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
+    {
+        int contentLength = items is null ? 0 : GetArrayContentLength(items, elideCanonicalSignatureBytes);
+        lengths.Push(contentLength);
+        return Rlp.LengthOfSequence(contentLength);
     }
 
     private static int GetArrayContentLength(TxFrameSignature[] items, bool elideCanonicalSignatureBytes)

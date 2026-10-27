@@ -28,13 +28,13 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
 
     private static bool IncludeSigChainIdHack(bool isEip155Enabled, ulong chainId) => isEip155Enabled && chainId != 0;
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        PopulateTransactionLength(transaction, ref lengths, forSigning, isEip155Enabled, chainId);
-
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, ref lengths, forSigning, isEip155Enabled, chainId);
+
+    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        PopulateTransactionLength(transaction, ref lengths, forSigning, isEip155Enabled, chainId);
 
     internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
     {

@@ -13,19 +13,6 @@ namespace Nethermind.Serialization.Rlp
     {
         public static BlockInfoDecoder Instance { get; } = new();
 
-        public override void PopulateLength(BlockInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
-            }
-
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
         public override void Encode<TWriter>(ref TWriter writer, BlockInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -43,6 +30,19 @@ namespace Nethermind.Serialization.Rlp
             {
                 writer.Encode((int)item.Metadata);
             }
+        }
+
+        public override void PopulateLength(BlockInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         private static int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

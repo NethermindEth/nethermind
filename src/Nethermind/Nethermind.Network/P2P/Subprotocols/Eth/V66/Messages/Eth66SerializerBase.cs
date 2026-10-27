@@ -14,14 +14,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, TMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void PopulateLength(TMessage message, ref LengthStack lengths)
-        {
-            PopulateLengthInternal(message, ref lengths);
-            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Pop();
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
         public void Serialize(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
@@ -51,11 +43,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
         }
 
-        /// <summary>Pushes the lengths <see cref="SerializeInternal"/> needs, then the length of the payload after the request id.</summary>
-        protected abstract void PopulateLengthInternal(TMessage message, ref LengthStack lengths);
+        public void PopulateLength(TMessage message, ref LengthStack lengths)
+        {
+            PopulateLengthInternal(message, ref lengths);
+            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Pop();
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
 
         /// <summary>Pops the lengths <see cref="PopulateLengthInternal"/> pushed under the payload length, which is already popped, and writes the payload.</summary>
         protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
+
+        /// <summary>Pushes the lengths <see cref="SerializeInternal"/> needs, then the length of the payload after the request id.</summary>
+        protected abstract void PopulateLengthInternal(TMessage message, ref LengthStack lengths);
     }
 }

@@ -135,19 +135,6 @@ namespace Nethermind.Serialization.Rlp
         protected virtual int GetSealLength(BlockHeader header) =>
             Rlp.LengthOf(header.MixHash ?? Keccak.Zero) + Rlp.LengthOfNonce(header.Nonce);
 
-        public override void PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
-            }
-
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
         public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
@@ -244,6 +231,19 @@ namespace Nethermind.Serialization.Rlp
             {
                 requiredItems[i] |= requiredItems[i + 1];
             }
+        }
+
+        public override void PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
     }
 }

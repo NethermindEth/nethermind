@@ -9,9 +9,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     public abstract class SnapSerializerBase<T> : IZeroInnerMessageSerializer<T> where T : MessageBase
     {
         public void Serialize(IByteBuffer byteBuffer, T message) => this.SerializeWithLengths(byteBuffer, message);
-        public abstract void PopulateLength(T message, ref LengthStack lengths);
         public abstract void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths);
         protected abstract T Deserialize(ref RlpReader ctx);
+
+        public abstract void PopulateLength(T message, ref LengthStack lengths);
 
         /// <summary>Pops the content length pushed under the total by <see cref="PopulateLength"/> and starts the message sequence.</summary>
         protected static ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, ref LengthStack lengths)

@@ -40,19 +40,6 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public override void PopulateLength(QuorumCertificate item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
-        }
-
-        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, QuorumCertificate item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -82,6 +69,19 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
         }
 
         writer.Encode(item.GapNumber);
+    }
+
+    public override void PopulateLength(QuorumCertificate item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     private int PopulateContentLength(QuorumCertificate item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)

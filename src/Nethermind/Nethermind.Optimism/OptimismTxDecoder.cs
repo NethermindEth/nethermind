@@ -16,10 +16,6 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
 
-    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        PushTypedTransactionLength(GetContentLength(transaction), ref lengths, rlpBehaviors);
-
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
@@ -33,6 +29,10 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         writer.Encode(transaction.IsOPSystemTransaction);
         writer.Encode(transaction.Data);
     }
+
+    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        PushTypedTransactionLength(GetContentLength(transaction), ref lengths, rlpBehaviors);
 
     private static int GetContentLength(Transaction transaction) =>
         Rlp.LengthOf(transaction.SourceHash)

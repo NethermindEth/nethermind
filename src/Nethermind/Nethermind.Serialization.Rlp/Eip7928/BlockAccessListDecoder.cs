@@ -23,12 +23,6 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         AccountChangesDecoder.Instance.PopulateSequenceLength(item.AccountChanges.AsSpan(), ref lengths, rlpBehaviors);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        AccountChangesDecoder.Instance.EncodeSequence(ref writer, item.AccountChanges.AsSpan(), ref lengths, rlpBehaviors);
-    }
-
     protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
         // Capture the BAL's RLP slice so the wire hash can be cached on the returned instance;
@@ -109,6 +103,12 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
     public static byte[] EncodeToBytes(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => Instance.EncodeAsBytes(item, rlpBehaviors);
+
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        AccountChangesDecoder.Instance.EncodeSequence(ref writer, item.AccountChanges.AsSpan(), ref lengths, rlpBehaviors);
+    }
 
     private static void PopulateLength(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {

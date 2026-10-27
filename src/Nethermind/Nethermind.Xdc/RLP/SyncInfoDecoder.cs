@@ -33,19 +33,6 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public override void PopulateLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
-        }
-
-        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -57,6 +44,19 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         writer.StartSequence(lengths.Pop());
         _quorumCertificateDecoder.Encode(ref writer, item.HighestQuorumCert, ref lengths, rlpBehaviors);
         _timeoutCertificateDecoder.Encode(ref writer, item.HighestTimeoutCert, ref lengths, rlpBehaviors);
+    }
+
+    public override void PopulateLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     private int PopulateContentLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)

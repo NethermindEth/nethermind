@@ -26,19 +26,6 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
         return createSnapshot(number, hash256, candidates);
     }
 
-    public override void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
-        }
-
-        int contentLength = GetContentLength(item, rlpBehaviors);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -61,6 +48,19 @@ internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapsho
             writer.StartSequence(0);
         else
             XdcRlpHelpers.EncodeAddressSequence(ref writer, item.NextEpochCandidates);
+    }
+
+    public override void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = GetContentLength(item, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     protected virtual int GetContentLength(T item, RlpBehaviors rlpBehaviors)

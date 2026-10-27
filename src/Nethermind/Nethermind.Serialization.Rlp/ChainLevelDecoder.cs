@@ -12,32 +12,6 @@ namespace Nethermind.Serialization.Rlp
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
     public sealed class ChainLevelDecoder() : RlpDecoder<ChainLevelInfo>
     {
-        public override void PopulateLength(ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
-            }
-
-            foreach (BlockInfo? blockInfo in item.BlockInfos)
-            {
-                if (blockInfo is null)
-                {
-                    ThrowHasNull();
-                }
-            }
-
-            int contentLength = Rlp.LengthOf(item.HasBlockOnMainChain)
-                + BlockInfoDecoder.Instance.PopulateSequenceAndPop(item.BlockInfos, ref lengths);
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
-
-            [StackTraceHidden, DoesNotReturn]
-            static void ThrowHasNull()
-                => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
-        }
-
         public override void Encode<TWriter>(ref TWriter writer, ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -79,6 +53,32 @@ namespace Nethermind.Serialization.Rlp
 
             ChainLevelInfo info = new(hasMainChainBlock, blockInfos.ToArray());
             return info;
+        }
+
+        public override void PopulateLength(ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
+            }
+
+            foreach (BlockInfo? blockInfo in item.BlockInfos)
+            {
+                if (blockInfo is null)
+                {
+                    ThrowHasNull();
+                }
+            }
+
+            int contentLength = Rlp.LengthOf(item.HasBlockOnMainChain)
+                + BlockInfoDecoder.Instance.PopulateSequenceAndPop(item.BlockInfos, ref lengths);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+
+            [StackTraceHidden, DoesNotReturn]
+            static void ThrowHasNull()
+                => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
         }
 
     }

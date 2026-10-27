@@ -43,19 +43,6 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
 
-    public override void PopulateLength(L1Origin? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            lengths.Push(1);
-            return;
-        }
-
-        int contentLength = GetContentLength(item, rlpBehaviors);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, L1Origin item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(lengths.Pop());
@@ -105,6 +92,19 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
 
             writer.Encode(item.Signature);
         }
+    }
+
+    public override void PopulateLength(L1Origin? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+        {
+            lengths.Push(1);
+            return;
+        }
+
+        int contentLength = GetContentLength(item, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)

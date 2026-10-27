@@ -12,13 +12,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-        public void PopulateLength(NewBlockMessage message, ref LengthStack lengths)
-        {
-            int contentLength = _blockDecoder.PopulateAndPop(message.Block, ref lengths) + Rlp.LengthOf(message.TotalDifficulty);
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message, ref LengthStack lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
@@ -29,6 +22,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public NewBlockMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
+
+        public void PopulateLength(NewBlockMessage message, ref LengthStack lengths)
+        {
+            int contentLength = _blockDecoder.PopulateAndPop(message.Block, ref lengths) + Rlp.LengthOf(message.TotalDifficulty);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
 
         private NewBlockMessage Deserialize(ref RlpReader ctx)
         {

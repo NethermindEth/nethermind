@@ -187,6 +187,9 @@ public class OptimismCompactReceiptStorageDecoder :
         }
     }
 
+    private static LogEntry[] GetLogs(TxReceipt item)
+        => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
     public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -223,7 +226,4 @@ public class OptimismCompactReceiptStorageDecoder :
         lengths.Push(contentLength);
         lengths.Push(LengthOfSequence(contentLength));
     }
-
-    private static LogEntry[] GetLogs(TxReceipt item)
-        => item.Logs ?? throw new RlpException("Receipt logs are null.");
 }

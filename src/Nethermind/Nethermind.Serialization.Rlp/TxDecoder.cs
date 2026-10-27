@@ -215,9 +215,6 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         }
     }
 
-    public override void PopulateLength(T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-
     public override void Encode<TWriter>(ref TWriter writer, T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => EncodeTx(ref writer, item, ref lengths, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
@@ -242,6 +239,9 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         RlpWriter writer = new(destination);
         EncodeTx(ref writer, item, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId);
     }
+
+    public override void PopulateLength(T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718

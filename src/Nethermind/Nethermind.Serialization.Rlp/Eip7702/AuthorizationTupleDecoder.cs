@@ -33,13 +33,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public override void PopulateLength(AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int contentLength = GetContentLength(item ?? throw new ArgumentNullException(nameof(item)));
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
@@ -67,6 +60,13 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
     {
         writer.WriteByte(Eip7702Constants.Magic);
         EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
+    }
+
+    public override void PopulateLength(AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        int contentLength = GetContentLength(item ?? throw new ArgumentNullException(nameof(item)));
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     private static int GetContentLength(AuthorizationTuple tuple) =>

@@ -13,23 +13,6 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 {
     public static BlockDiffRecordDecoder Instance { get; } = new();
 
-    public override void PopulateLength(BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            lengths.Push(Rlp.OfEmptyList.Length);
-            return;
-        }
-
-        int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
-        int slotChangesContent = GetSlotCountChangesContentLength(item.SlotCountChanges);
-        int contentLength = GetContentLength(item, codeChangesContent, slotChangesContent);
-        lengths.Push(slotChangesContent);
-        lengths.Push(codeChangesContent);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -68,6 +51,23 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         stream.Encode(item.AccountTrieBytesDelta);
         stream.Encode(item.StorageTrieBytesDelta);
         stream.Encode(item.AccountsAddedDelta);
+    }
+
+    public override void PopulateLength(BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
+        int slotChangesContent = GetSlotCountChangesContentLength(item.SlotCountChanges);
+        int contentLength = GetContentLength(item, codeChangesContent, slotChangesContent);
+        lengths.Push(slotChangesContent);
+        lengths.Push(codeChangesContent);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

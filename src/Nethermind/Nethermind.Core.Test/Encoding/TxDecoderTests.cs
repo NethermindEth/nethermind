@@ -452,13 +452,13 @@ namespace Nethermind.Core.Test.Encoding
                 decoderContext.Position = txSequenceStart + transactionSequence.Length;
             }
 
-            public void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) => lengths.Push(Encoding.Length);
-
             public void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
                 bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
                 where TWriter : struct, IRlpWriteBackend, allows ref struct
                 => writer.Write(Encoding);
+
+            public void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) => lengths.Push(Encoding.Length);
         }
 
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()

@@ -30,6 +30,17 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
+        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            writer.StartSequence(lengths.Pop());
+            writer.Encode(item.Number);
+            writer.Encode(item.Hash);
+            EncodeSigners(ref writer, item.Signers, lengths.Pop());
+            EncodeVotes(ref writer, item.Votes, lengths.Pop());
+            EncodeTally(ref writer, item.Tally, lengths.Pop());
+
+        }
+
         public override void PopulateLength(Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int signersLength = GetSignersContentLength(item.Signers);
@@ -47,17 +58,6 @@ namespace Nethermind.Consensus.Clique
             lengths.Push(signersLength);
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
-        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            writer.StartSequence(lengths.Pop());
-            writer.Encode(item.Number);
-            writer.Encode(item.Hash);
-            EncodeSigners(ref writer, item.Signers, lengths.Pop());
-            EncodeVotes(ref writer, item.Votes, lengths.Pop());
-            EncodeTally(ref writer, item.Tally, lengths.Pop());
-
         }
 
         private static SortedList<Address, ulong> DecodeSigners(ref RlpReader decoderContext)

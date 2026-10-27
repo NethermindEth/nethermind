@@ -187,6 +187,9 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        private static LogEntry[] GetLogs(TxReceipt item)
+            => item.Logs ?? throw new RlpException("Receipt logs are null.");
+
         public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -219,8 +222,5 @@ namespace Nethermind.Serialization.Rlp
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
-
-        private static LogEntry[] GetLogs(TxReceipt item)
-            => item.Logs ?? throw new RlpException("Receipt logs are null.");
     }
 }

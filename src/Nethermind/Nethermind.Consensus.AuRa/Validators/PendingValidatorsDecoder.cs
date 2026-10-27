@@ -43,20 +43,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public override void PopulateLength(PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                lengths.Push(1);
-                return;
-            }
-
-            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-            lengths.Push(addressesLength);
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
         public override void Encode<TWriter>(ref TWriter writer, PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -74,6 +60,20 @@ namespace Nethermind.Consensus.AuRa.Validators
                 writer.Encode(item.Addresses[i]);
             }
             writer.Encode(item.AreFinalized);
+        }
+
+        public override void PopulateLength(PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                lengths.Push(1);
+                return;
+            }
+
+            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
+            lengths.Push(addressesLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)

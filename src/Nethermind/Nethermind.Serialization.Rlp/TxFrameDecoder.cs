@@ -49,13 +49,6 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         return new TxFrame((FrameMode)mode, (FrameFlags)flags, target, executionGasLimit, stateGasLimit, value, data);
     }
 
-    public override void PopulateLength(TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int contentLength = GetContentLength(item);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
     public override void Encode<TWriter>(ref TWriter writer, TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(lengths.Pop());
@@ -67,6 +60,13 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         writer.Encode(item.StateGasLimit);
         writer.Encode(item.Value);
         writer.Encode(item.Data);
+    }
+
+    public override void PopulateLength(TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        int contentLength = GetContentLength(item);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     private static int GetContentLength(TxFrame item) =>
