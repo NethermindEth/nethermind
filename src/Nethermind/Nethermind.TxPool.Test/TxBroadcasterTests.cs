@@ -1024,9 +1024,15 @@ public class TxBroadcasterTests
             }
         });
 
-        Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
-
-        cts.Cancel();
+        try
+        {
+            Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
+        }
+        finally
+        {
+            // A failed broadcast must not leave the ticker spinning a core for the rest of the run.
+            cts.Cancel();
+        }
         await ticker;
         // Final flush of whatever was still accumulated after the adders finished.
         timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Rlp
             rlp.ReadSequenceLength(ref position, out _);
             decoderContext.Position = position;
 
-            List<BlockInfo> blockInfos = [];
+            using ArrayPoolListRef<BlockInfo> blockInfos = new(0);
             while (decoderContext.Position < lastCheck)
             {
                 // block info can be null for corrupted states (also cases where block hash is null from the old DBs)

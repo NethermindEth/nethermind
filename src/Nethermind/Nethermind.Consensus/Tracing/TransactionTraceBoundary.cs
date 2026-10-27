@@ -31,6 +31,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal IPrefixStateSeedSource? Seeds => _seeds;
     internal bool IsExecutionRequired { get; set; }
     internal bool HasExecuted { get; set; }
+    private bool CompletesBeforeTransactions { get; init; }
 
     /// <summary>No transaction is traced: a seed can replace the whole block, or a refused seed can replay it
     /// silently before tracing rewards.</summary>
@@ -48,6 +49,13 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
     /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
     public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsExecutionRequired = true };
+
+    /// <summary>Wraps a tracer that does not trace rewards so that the replay completes just before transaction
+    /// <paramref name="index"/>; for index 0 that is after the pre-execution system calls.</summary>
+    internal static TransactionTraceBoundary BeforeTransaction(IBlockTracer tracer, Block block, int index) =>
+        index == 0
+            ? new(tracer, null, null) { CompletesBeforeTransactions = true }
+            : new(tracer, block.Transactions[index - 1].Hash, null);
 
     internal int IndexOf(Block block)
     {
@@ -76,7 +84,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     public void StartNewBlockTrace(Block block)
     {
-        IsComplete = false;
+        IsComplete = CompletesBeforeTransactions;
         HasExecuted = false;
         _isTarget = false;
         _suppressed = false;

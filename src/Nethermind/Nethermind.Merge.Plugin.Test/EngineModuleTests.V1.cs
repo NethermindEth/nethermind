@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
@@ -557,6 +558,57 @@ public partial class EngineModuleTests
                 Assert.That(payload.Data.Status, Is.EqualTo(status));
                 Assert.That(payload.Data.LatestValidHash, Is.EqualTo(expectedLastValid));
             }
+        }
+    }
+
+    [Test, NonParallelizable]
+    public async Task known_invalid_payload_waits_for_its_valid_parent_to_commit([Values] bool commitWithinBudget)
+    {
+        const int budgetMs = 3_000;
+        ManualTimeProvider clock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            mergeConfig: new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = Sibling(chain.BlockTree.Head!);
+        Block child = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent).WithNonce(0).WithDifficulty(0)
+            .WithGasLimit(parent.GasLimit).WithGasUsed(parent.GasLimit + 1).TestObject;
+        ExecutionPayload payload = ExecutionPayload.Create(child);
+
+        ResultWrapper<PayloadStatusV1> orphanResult = await rpc.engine_newPayloadV1(payload);
+        Assert.That(orphanResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+
+        using CommitGate parentCommit = new(chain.BranchProcessor, parent.Hash!);
+        ResultWrapper<PayloadStatusV1> parentResult = await rpc.engine_newPayloadV1(ExecutionPayload.Create(parent));
+        Assert.That(parentResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await parentCommit.VerdictGiven.WaitAsync(GateTimeout);
+        Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+
+        Task<ResultWrapper<PayloadStatusV1>> repeated = rpc.engine_newPayloadV1(payload);
+        ResultWrapper<PayloadStatusV1> result;
+        try
+        {
+            Assert.That(repeated.IsCompleted, Is.False);
+            if (commitWithinBudget)
+                parentCommit.Release();
+            else
+                clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+
+            result = await repeated.WaitAsync(GateTimeout);
+            if (!commitWithinBudget)
+                Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+        }
+        finally
+        {
+            parentCommit.Release();
+        }
+
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).AsTask().WaitAsync(GateTimeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(commitWithinBudget ? PayloadStatus.Invalid : PayloadStatus.Syncing));
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(commitWithinBudget ? parent.Hash : null));
+            Assert.That(chain.BlockTree.WasProcessed(parent.Number, parent.Hash!), Is.True);
         }
     }
 
@@ -1286,8 +1338,7 @@ public partial class EngineModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-                Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!), Is.True,
-                    "processing is held until after the answer");
+                Assert.That(IsMarkedProcessed(), Is.False, "processing is held until after the answer");
             }
         }
         finally
@@ -1297,10 +1348,13 @@ public partial class EngineModuleTests
         }
 
         using CancellationTokenSource cts = new(GateTimeout);
-        while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
+        while (!IsMarkedProcessed())
         {
             await Task.Delay(10, cts.Token);
         }
+
+        // A suggest still in flight has already published the header, but not yet the chain level the flag is on.
+        bool IsMarkedProcessed() => blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
     }
 
     /// <summary>
@@ -2990,6 +3044,10 @@ public partial class EngineModuleTests
 
         IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
+        // The loop releases the forkchoice's wait for the commit before it leaves the block, and the rewind refuses
+        // until the loop is idle.
+        Assert.That(() => chain.BlockProcessingQueue.IsEmpty && !chain.BlockTree.IsProcessingBlock, Is.True.After((int)GateTimeout.TotalMilliseconds, 10),
+            "precondition: the paused processing loop has drained");
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)
             : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));

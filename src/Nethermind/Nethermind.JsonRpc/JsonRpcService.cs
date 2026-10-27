@@ -15,8 +15,10 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -303,7 +305,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = [];
         if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(0), null, in request.IdRef);
         }
 
         return null;
@@ -363,7 +365,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
             // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
             if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string message = GetSafePublicMessage(e) ?? "Invalid params";
+            string? reason = GetSafePublicMessage(e);
+            string message = e switch
+            {
+                // Geth compares data with input inside the call rather than while decoding, so its text has no argument prefix.
+                InvalidArgumentException { InnerException: DataAndInputDifferException conflict } => conflict.Message,
+                InvalidArgumentException { Index: int index } when reason is not null => $"invalid argument {index}: {reason}",
+                InvalidArgumentException { Index: int index } => $"invalid argument {index}",
+                _ => reason ?? "Invalid params"
+            };
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
@@ -550,7 +560,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // over-long request has to be rejected here rather than indexing past the end.
         if (providedParametersLength > expectedParameters.Length || missingParamsCount < 0)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in requestId);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(expectedParameters.Length), null, in requestId);
         }
 
         if (missingRequiredParameterIndex >= 0)
@@ -639,6 +649,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
+
+            TraceDurationFormatException when isStreaming =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, null, in request.IdRef, returnAction),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
@@ -994,7 +1007,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             }
             catch (Exception e)
             {
-                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(e);
+                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(new InvalidArgumentException(providedParametersLength, e));
                 reader.Skip();
             }
 
@@ -1052,7 +1065,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     ThrowMissingParameterBytes();
                 }
 
-                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                object? parameter;
+                try
+                {
+                    parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                }
+                catch (Exception e)
+                {
+                    throw new InvalidArgumentException(i, e);
+                }
+
                 executionParameters[i] = parameter;
                 i++;
             }
@@ -1064,6 +1086,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMissingParameterBytes() =>
             throw new JsonException("Missing JSON-RPC parameter bytes.");
+    }
+
+    // Geth's wording, so clients can match the -32602 messages of either client.
+    private static string TooManyArguments(int expectedCount) => $"too many arguments, want at most {expectedCount}";
+
+    /// <summary>A parameter that failed to bind, with its zero-based position in the request.</summary>
+    private sealed class InvalidArgumentException(int index, Exception innerException) : Exception(null, innerException)
+    {
+        public int Index { get; } = index;
     }
 
     private static string? GetSafePublicMessage(Exception e)

@@ -45,9 +45,9 @@ namespace Nethermind.Blockchain
         private readonly IBadBlockStore _badBlockStore;
         private readonly IBlockAccessListStore _balStore;
 
-        private readonly LruCache<ValueHash256, Block> _invalidBlocks =
-            new(128, 128, "invalid blocks");
-        private InvalidProofCache? _invalidProofs;
+        // Headers only: a rejected block body can be large (e.g. its block access list) and nothing reads it back.
+        private readonly LruCache<ValueHash256, BlockHeader> _invalidHeaders =
+            new(128, 128, "invalid headers");
 
         protected readonly ILogger Logger;
         protected readonly ISpecProvider SpecProvider;
@@ -428,7 +428,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.Contains(header.Hash) || Volatile.Read(ref _invalidProofs)?.Contains(header.Hash.ValueHash256) == true)
+            if (_invalidHeaders.Contains(header.Hash))
             {
                 return AddBlockResult.InvalidBlock;
             }
@@ -591,6 +591,7 @@ namespace Nethermind.Blockchain
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
+            long deletions = Volatile.Read(ref _deletions);
             bool shouldCache = ShouldCache(blockNumber);
             ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
             if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
@@ -604,7 +605,11 @@ namespace Nethermind.Blockchain
             {
                 header.Hash ??= blockInfo.BlockHash;
                 SetTotalDifficultyFromBlockInfo(header, blockInfo);
-                if (shouldCache) _headerStore.Cache(header);
+                if (shouldCache)
+                {
+                    _headerStore.Cache(header);
+                    if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return header;
@@ -629,7 +634,7 @@ namespace Nethermind.Blockchain
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
                 if (allowInvalid)
                 {
-                    header = FindInvalidBlock(blockHash)?.Header;
+                    _invalidHeaders.TryGet(blockHash, out header);
                 }
 
                 return header;
@@ -855,18 +860,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            if (InvalidProofCache.ProofBytes(badBlock) > BlockStore.MaxCachedProofBytes)
-            {
-                _invalidBlocks.Delete(badBlock.Hash);
-                InvalidProofCache cache = Volatile.Read(ref _invalidProofs) ??
-                    Interlocked.CompareExchange(ref _invalidProofs, new InvalidProofCache(), null) ?? _invalidProofs!;
-                cache.Set(badBlock);
-            }
-            else
-            {
-                Volatile.Read(ref _invalidProofs)?.Delete(badBlock.Hash.ValueHash256);
-                _invalidBlocks.Set(badBlock.Hash, badBlock);
-            }
+            _invalidHeaders.Set(badBlock.Hash, badBlock.Header);
             _badBlockStore.Insert(badBlock);
         }
 
@@ -1772,13 +1766,7 @@ namespace Nethermind.Blockchain
 
             if (block is null)
             {
-                bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                if (allowInvalid)
-                {
-                    block = FindInvalidBlock(blockHash);
-                }
-
-                return block;
+                return null;
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==

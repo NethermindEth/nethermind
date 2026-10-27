@@ -2177,7 +2177,7 @@ public class BlockTreeTests
         {
             Assert.That(stored, Has.Length.EqualTo(1));
             Assert.That(stored[0].Hash, Is.EqualTo(bad.Hash!));
-            Assert.That(blockTree.FindBlock(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
+            Assert.That(blockTree.FindHeader(bad.Hash!, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
             Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(originalSuggested),
                 "ReportBadBlock must not roll back BestSuggested the way DeleteInvalidBlock does");
         }
@@ -2878,8 +2878,15 @@ public class BlockTreeTests
         }
     }
 
+    public enum DeletionOverlapLookup
+    {
+        Header,
+        Block,
+        BloomHeader
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup, [Values] bool invalidBlockDeletion)
+    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] DeletionOverlapLookup lookup, [Values] bool invalidBlockDeletion)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
         BlockTree blockTree = builder.TestObject;
@@ -2887,7 +2894,7 @@ public class BlockTreeTests
         Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
         ((IClearableCache)builder.BlockStore).ClearCache();
         ((IClearableCache)builder.HeaderStore).ClearCache();
-        TestMemDb db = (TestMemDb)(headerLookup ? builder.HeadersDb : builder.BlocksDb);
+        TestMemDb db = (TestMemDb)(lookup == DeletionOverlapLookup.Block ? builder.BlocksDb : builder.HeadersDb);
         // The lookup reads its value from the database, then the deletion runs before the lookup caches it.
         db.ReadFunc = key =>
         {
@@ -2898,9 +2905,12 @@ public class BlockTreeTests
             return value!;
         };
 
-        object? found = headerLookup
-            ? blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number)
-            : blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number);
+        object? found = lookup switch
+        {
+            DeletionOverlapLookup.Header => blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number),
+            DeletionOverlapLookup.Block => blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number),
+            _ => blockTree.FindCanonicalHeaderIfBloomMatches(deleted.Number, static _ => true, out _)
+        };
 
         using (Assert.EnterMultipleScope())
         {
@@ -3140,9 +3150,10 @@ public class BlockTreeTests
                 {
                     TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                 };
-                yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
+                // Only the header of an invalid block is kept, so its body is never found.
+                yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, false)
                 {
-                    TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
+                    TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_not_found"
                 };
             }
         }
@@ -3156,50 +3167,6 @@ public class BlockTreeTests
         blockTree.SuggestBlock(invalidBlock);
         blockTree.DeleteInvalidBlock(invalidBlock);
         Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
-    }
-
-    [Test, NonParallelizable]
-    public void Large_invalid_proofs_are_byte_bounded_and_remain_private([Values] bool withInclusionProof)
-    {
-        BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
-        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
-        proof[0] = 7;
-        // Inclusion lists carry only commitments, so the body proof is the only charged buffer.
-        int bytesPerBlock = proof.Length;
-        int capacity = Math.Min(BlockTree.MaxLargeInvalidBlocks, BlockTree.MaxInvalidProofCacheBytes / bytesPerBlock);
-        Block[] invalid = new Block[capacity + 3];
-        for (int i = 0; i < invalid.Length; i++)
-        {
-            invalid[i] = Build.A.Block.WithParent(tree.Head!).WithNumber((ulong)i + 4).TestObject;
-            invalid[i].StarkProof = proof;
-            invalid[i].Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid[i].StarkProof), TestItem.KeccakA);
-            if (withInclusionProof)
-            {
-                Transaction[] listTransactions = [Build.A.Transaction.TestObject];
-                invalid[i].InclusionLists = [new CommitteeInclusionList(3, listTransactions,
-                    new InclusionListCommitment(ValueKeccak.Compute(proof), TestItem.KeccakB.ValueHash256))];
-                invalid[i].InclusionListTransactions = listTransactions;
-            }
-            if (i == capacity) Assert.That(tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
-            tree.ReportBadBlock(invalid[i]);
-        }
-        proof[0] = 255;
-
-        Assert.That(tree.FindBlock(invalid[1].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
-        Assert.That(tree.FindHeader(invalid[1].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
-        Assert.That(tree.SuggestBlock(invalid[1]), Is.EqualTo(AddBlockResult.InvalidBlock), "evicting proof bytes must not forget the invalid hash");
-        Block returned = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
-        Assert.That(returned.StarkProof![0], Is.EqualTo(7));
-        returned.StarkProof![0] = 99;
-        if (withInclusionProof)
-        {
-            Assert.That(returned.InclusionListTransactions, Is.SameAs(invalid[0].InclusionListTransactions));
-            Assert.That(returned.InclusionLists![0].CommitteeIndex, Is.EqualTo(3));
-            Assert.That(returned.InclusionLists[0].Commitment!.Value.DepsHash, Is.EqualTo(TestItem.KeccakB.ValueHash256));
-        }
-        Block again = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
-        Assert.That(again.StarkProof![0], Is.EqualTo(7));
-        Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(again.StarkProof!)));
     }
 
     [Test]

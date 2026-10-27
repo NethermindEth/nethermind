@@ -29,7 +29,7 @@ public static class TxPoolErrorMessages
     public const string DelegationAuthorityHasPendingTx = "delegation authority has pending transaction";
     public const string NodeIsSyncing = "node is syncing";
     public const string FrameTxExpired = "frame transaction expired";
-    public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_GAS";
+    public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds the node verification budget";
     public const string FrameTxVerifyStateGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_STATE_GAS";
     public const string KeyedNonceUnmet = "keyed nonce sequence not current";
     public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";

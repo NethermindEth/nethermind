@@ -377,9 +377,9 @@ internal static partial class PerformanceCores
         }
     }
 
-    [DllImport("libc")]
-    private static extern int sched_getaffinity(int pid, nint cpusetsize, out CpuMask mask);
+    [LibraryImport("libc")]
+    private static partial int sched_getaffinity(int pid, nint cpusetsize, out CpuMask mask);
 
-    [DllImport("libc")]
-    private static extern int sched_setaffinity(int pid, nint cpusetsize, ref CpuMask mask);
+    [LibraryImport("libc")]
+    private static partial int sched_setaffinity(int pid, nint cpusetsize, ref CpuMask mask);
 }

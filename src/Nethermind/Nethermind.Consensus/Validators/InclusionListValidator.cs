@@ -119,7 +119,7 @@ public static class InclusionListValidator
         if (!cached) state.TryGetAccount(tx.SenderAddress, out account);
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
-        if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;
+        if (account.HasCode && !state.IsDelegatedCode(account.CodeHash)) return false;
 
         // Overflow-checked like TransactionProcessor.BuyGas: an adversarial MaxFeePerGas must not wrap the cost.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)

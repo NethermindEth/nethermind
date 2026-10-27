@@ -357,6 +357,18 @@ public class BlockValidatorTests
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
+    [Test]
+    public void Keeps_the_encoded_size_it_computes()
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(header).TestObject;
+        BlockValidator validator = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Osaka.Instance)), LimboLogs.Instance, Substitute.For<ILeanProofVerifier>());
+
+        validator.ValidateSuggestedBlock(block, header, out _);
+
+        Assert.That(block.EncodedSize, Is.EqualTo(new BlockDecoder().GetLength(block, RlpBehaviors.None)));
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_uncles_than_allowed_returns_false()
     {

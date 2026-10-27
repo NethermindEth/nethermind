@@ -779,8 +779,8 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
 - A relative `ChainSpecPath` resolves against the executable's directory, so either drop the chainspec into
   the build output's `chainspec/` folder or give an absolute path. Embedded chainspecs are probed before the
   filesystem — even for an absolute path — so give the file a name that doesn't collide with a shipped one
-  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` needs a path
-  (`./file.json`); a bare name is looked up among the built-in configs.
+  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` takes a path
+  to a file (`./file.json`); a value that is not an existing file is looked up among the built-in configs.
 - `Mining.Enabled` gates both block production and the signer — without it the node follows the chain but
   never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore; startup fails
   if that key cannot be loaded. When the account is unset, the node key is used, which

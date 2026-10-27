@@ -51,6 +51,52 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.SlotReads, Is.EqualTo(expectedSlotReads));
     }
 
+    // The plan sees only the samples this cache cannot serve, and the inner reader's plan is returned unchanged.
+    [Test]
+    public async Task PlanPrefetch_ForwardsOnlyTheSamplesTheCacheCannotServe([Values(IPersistence.PrefetchColumns.None,
+        IPersistence.PrefetchColumns.Accounts, IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        FakePersistence inner = new() { Plan = plan };
+        await using CarryForwardCachingPersistence cache = new(inner);
+        UInt256 value = default;
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+        {
+            reader.GetAccount(TestItem.AddressA);
+            reader.TryGetSlot(TestItem.AddressA, 1, ref value);
+        }
+
+        IPersistence.PrefetchColumns planned;
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+        {
+            planned = ((IPersistence.IPrefetchingReader)reader).PlanPrefetch([TestItem.AddressA, TestItem.AddressB],
+                [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1)]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(planned, Is.EqualTo(plan));
+            Assert.That(inner.PlannedAccounts, Is.EqualTo(new[] { TestItem.AddressB }));
+            Assert.That(inner.PlannedSlots, Is.EqualTo(new[] { new StorageCell(TestItem.AddressB, 1) }));
+        }
+    }
+
+    [Test]
+    public async Task Prefetch_PassesOnlyThePlannedColumnsDown([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts, IPersistence.PrefetchColumns.Slots)] IPersistence.PrefetchColumns columns)
+    {
+        FakePersistence inner = new();
+        await using CarryForwardCachingPersistence cache = new(inner);
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+        {
+            ((IPersistence.IPrefetchingReader)reader).Prefetch(columns, [TestItem.AddressB], [new StorageCell(TestItem.AddressB, 1)], CancellationToken.None);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.PrefetchedAccounts, columns == IPersistence.PrefetchColumns.Accounts ? Has.Count.EqualTo(1) : Is.Empty);
+            Assert.That(inner.PrefetchedSlots, columns == IPersistence.PrefetchColumns.Slots ? Has.Count.EqualTo(1) : Is.Empty);
+        }
+    }
+
     [Test]
     public async Task Prefetch_ForwardsOnlyTheKeysTheCacheCannotServe()
     {
@@ -65,7 +111,7 @@ public class CarryForwardCachingPersistenceTests
 
         using (IPersistence.IPersistenceReader reader = cache.CreateReader())
         {
-            ((IPersistence.IPrefetchingReader)reader).Prefetch([TestItem.AddressA, TestItem.AddressB],
+            ((IPersistence.IPrefetchingReader)reader).Prefetch(IPersistence.PrefetchColumns.All, [TestItem.AddressA, TestItem.AddressB],
                 [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1)],
                 CancellationToken.None);
         }
@@ -1010,6 +1056,15 @@ public class CarryForwardCachingPersistenceTests
             public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
                 RemoveSlots(model._addressesByHash[addressHash], fromPath, toPath, all: toPath == ValueKeccak.Zero);
 
+            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+            {
+                foreach (Address address in model._addresses)
+                {
+                    ValueHash256 hash = HashOf(address);
+                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0) RemoveSlots(address, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
+                }
+            }
+
             public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
@@ -1038,6 +1093,9 @@ public class CarryForwardCachingPersistenceTests
         public bool ThrowOnReaderDispose;
         public readonly List<Address> PrefetchedAccounts = [];
         public readonly List<StorageCell> PrefetchedSlots = [];
+        public readonly List<Address> PlannedAccounts = [];
+        public readonly List<StorageCell> PlannedSlots = [];
+        public IPersistence.PrefetchColumns Plan = IPersistence.PrefetchColumns.All;
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
@@ -1069,7 +1127,16 @@ public class CarryForwardCachingPersistenceTests
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;
 
-            public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+            public bool SupportsPrefetch => true;
+
+            public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+            {
+                parent.PlannedAccounts.AddRange(accountSamples);
+                parent.PlannedSlots.AddRange(slotSamples);
+                return parent.Plan;
+            }
+
+            public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
             {
                 parent.PrefetchedAccounts.AddRange(accounts);
                 parent.PrefetchedSlots.AddRange(slots);

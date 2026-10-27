@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="BenchmarkDotNet" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+      <ProjectReference Include="..\Nethermind.Experimental.Abi\Nethermind.Experimental.Abi.csproj" />
+    </ItemGroup>
+
+</Project>

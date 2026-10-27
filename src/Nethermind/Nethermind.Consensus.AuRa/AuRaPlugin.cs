@@ -111,7 +111,7 @@ namespace Nethermind.Consensus.AuRa
                 .AddScoped<ITransactionProcessor, AuRaEthereumTransactionProcessor>()
                 .AddSingleton<ITransactionProcessorFactory, AuRaTransactionProcessorFactory>()
 
-                .AddSingleton<IRewardCalculatorSource, AuRaRewardCalculator.AuRaRewardCalculatorSource>()
+                .AddScoped<IRewardCalculator, AuRaRewardCalculator>()
                 .AddSingleton<IValidSealerStrategy, ValidSealerStrategy>()
                 .AddSingleton<IAuRaStepCalculator, AuRaChainSpecEngineParameters, ITimestamper, ILogManager>((param, timestamper, logManager)
                     => new AuRaStepCalculator(param.StepDuration, timestamper, logManager))
