@@ -635,6 +635,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
             {
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Add(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -4)));
+                    return;
+                }
+
                 ulong left = Unsafe.Add(ref end, -8);
                 ulong sum = left + Unsafe.Add(ref end, -4);
                 Unsafe.Add(ref end, -8) = sum;
@@ -690,6 +696,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
             {
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.SubtractFrom(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -4)));
+                    return;
+                }
+
                 ulong minuend = Unsafe.Add(ref end, -4);
                 ulong subtrahend = Unsafe.Add(ref end, -8);
                 ulong borrow = minuend < subtrahend ? 1UL : 0UL;

@@ -1361,6 +1361,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref ulong word = ref Unsafe.Subtract(ref end, LimbsPerWord);
                 ref ulong copied = ref Unsafe.Subtract(ref end, depth * LimbsPerWord);
+                // The delegation takes two distinct words, which a DUP1's copy is not.
+                if (AirbenderFlag.IsActive && depth > 1 &&
+                    (typeof(TOperation) == typeof(AddOperation) || typeof(TOperation) == typeof(SubtractOperation)))
+                {
+                    if (typeof(TOperation) == typeof(AddOperation))
+                        AirbenderArithmetic.Add(Unsafe.AsPointer(ref word), Unsafe.AsPointer(ref copied));
+                    else
+                        AirbenderArithmetic.SubtractFrom(Unsafe.AsPointer(ref word), Unsafe.AsPointer(ref copied));
+                    return;
+                }
+
                 if (typeof(TOperation) == typeof(AddOperation))
                 {
                     ulong left = word;

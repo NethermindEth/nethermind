@@ -17,7 +17,9 @@ namespace Nethermind.Evm;
 /// </remarks>
 internal static unsafe class AirbenderArithmetic
 {
+    private const uint AddOp = 1u << 0;
     private const uint SubtractOp = 1u << 1;
+    private const uint SubtractAndNegateOp = 1u << 2;
     private const uint MultiplyLowOp = 1u << 3;
     private const uint MultiplyHighOp = 1u << 4;
     private const uint CopyOp = 1u << 7;
@@ -55,6 +57,22 @@ internal static unsafe class AirbenderArithmetic
         Copy(scratch, a);
         Copy(a, b);
         Copy(b, scratch);
+    }
+
+    /// <summary>Adds <paramref name="right"/> to <paramref name="left"/>, modulo 2^256.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Add(void* left, void* right)
+    {
+        Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
+        airbender_u256_op(left, right, AddOp);
+    }
+
+    /// <summary>Replaces <paramref name="subtrahend"/> with <paramref name="minuend"/> minus it, modulo 2^256.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SubtractFrom(void* subtrahend, void* minuend)
+    {
+        Debug.Assert((((nuint)subtrahend | (nuint)minuend) & 31) == 0 && subtrahend != minuend);
+        airbender_u256_op(subtrahend, minuend, SubtractAndNegateOp);
     }
 
     /// <summary>Replaces <paramref name="left"/> with the low 256 bits of <paramref name="left"/> times <paramref name="right"/>.</summary>
