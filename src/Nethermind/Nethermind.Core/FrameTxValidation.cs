@@ -612,6 +612,9 @@ public static class FrameTxValidation
     /// EIP-8141 bounds only the sum of the frame gas limits by <c>2^64 - 1</c>, and the intrinsic gas added to it can
     /// carry the budget past that. Such a budget saturates rather than failing, so the transaction is judged as the
     /// specification judges it: its execution gas by the EIP-7825 cap, its state gas by the block's gas limit.
+    /// From a saturated budget, the gas part of the maximum cost (<c>TXPARAM(0x06)</c>, the payer's escrow) is
+    /// <c>(2^64 - 1) * max_fee_per_gas</c>, below the unbounded value; the blob part is unaffected. No valid block
+    /// holds such a transaction; only a simulation skipping both checks sees it, e.g. <c>eth_call</c> with no RPC gas cap.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec the pricing is taken at; it also keys the memo.</param>
