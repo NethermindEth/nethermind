@@ -568,6 +568,12 @@
         "resolved": "0.2.0",
         "contentHash": "+RvLuNHOLW7cxzgDe9yHLoayBgjsuH2/gJtJnuVMxweKrxxYT6TwQNAmt06SFWpjwk68aRcwwD4FfMMA6tZvVA=="
       },
+      "nethermind.abi": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.api": {
         "type": "Project",
         "dependencies": {
@@ -600,11 +606,11 @@
           "Microsoft.ClearScript.V8.Native.osx-x64": "[7.5.1.1, )",
           "Microsoft.ClearScript.V8.Native.win-arm64": "[7.5.1.1, )",
           "Microsoft.ClearScript.V8.Native.win-x64": "[7.5.1.1, )",
+          "Nethermind.Abi": "[2.3.0-preview, )",
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Db": "[2.3.0-preview, )",
           "Nethermind.Evm": "[2.3.0-preview, )",
           "Nethermind.Evm.Precompiles": "[2.3.0-preview, )",
-          "Nethermind.Experimental.Abi": "[2.3.0-preview, )",
           "Nethermind.Network.Stats": "[2.3.0-preview, )",
           "Nethermind.Specs": "[2.3.0-preview, )",
           "Nethermind.State": "[2.3.0-preview, )",
@@ -814,12 +820,6 @@
           "Nethermind.MclBindings": "[4.30.0.119, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "Nethermind.Specs": "[2.3.0-preview, )"
-        }
-      },
-      "nethermind.experimental.abi": {
-        "type": "Project",
-        "dependencies": {
-          "Nethermind.Core": "[2.3.0-preview, )"
         }
       },
       "nethermind.externalsigner.plugin": {

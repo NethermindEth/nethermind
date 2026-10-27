@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
-namespace Nethermind.Experimental.Abi;
+namespace Nethermind.Abi;
 
 /// <summary>Reads from a scoped reader; see <see cref="BinarySpanReader.Scoped{T, TCtx}"/>.</summary>
 public delegate T BinarySpanReaderFunc<out T, in TCtx>(TCtx ctx, ref BinarySpanReader r);

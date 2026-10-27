@@ -7,6 +7,7 @@
     <File Path="Nethermind.Stateless.Guest/substitutions.xml" />
   </Folder>
   <Folder Name="/Nethermind/">
+    <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
     <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
     <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
@@ -17,7 +18,6 @@
     <Project Path="Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
-    <Project Path="Nethermind.Experimental.Abi/Nethermind.Experimental.Abi.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />

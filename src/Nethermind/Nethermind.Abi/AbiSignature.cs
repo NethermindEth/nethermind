@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Experimental.Abi;
+namespace Nethermind.Abi;
 
 /// <summary>Function name from which typed signatures are built with <c>With</c>.</summary>
 /// <param name="name">

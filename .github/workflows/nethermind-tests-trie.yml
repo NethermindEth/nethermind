@@ -73,6 +73,7 @@ jobs:
               Nethermind.State.Test
           - name: Nethermind tests 3
             list: >-
+              Nethermind.Abi.Test
               Nethermind.Analyzers.Test
               Nethermind.Api.Test
               Nethermind.BalRecorder.Test

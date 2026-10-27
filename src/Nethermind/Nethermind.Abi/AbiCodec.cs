@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Experimental.Abi;
+namespace Nethermind.Abi;
 
 /// <summary>Thrown when a value cannot be encoded, or when an input is not the canonical encoding under a signature.</summary>
 public class AbiException(Exception? innerException = null) : Exception(null, innerException);

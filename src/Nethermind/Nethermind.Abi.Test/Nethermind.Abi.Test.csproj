@@ -3,7 +3,7 @@
   <Import Project="../tests.props" />
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Experimental.Abi\Nethermind.Experimental.Abi.csproj" />
+    <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
   </ItemGroup>
 
 </Project>

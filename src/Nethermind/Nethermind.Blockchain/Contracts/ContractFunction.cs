@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Experimental.Abi;
+using Nethermind.Abi;
 
 namespace Nethermind.Blockchain.Contracts;
 

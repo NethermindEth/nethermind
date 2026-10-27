@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Experimental.Abi;
+namespace Nethermind.Abi;
 
 /// <summary>Reads a value at the reader's position and advances past its encoding.</summary>
 public delegate T AbiReadFunc<out T>(ref BinarySpanReader r);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Processing;
@@ -10,7 +11,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
-using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using System;
 using System.Runtime.CompilerServices;

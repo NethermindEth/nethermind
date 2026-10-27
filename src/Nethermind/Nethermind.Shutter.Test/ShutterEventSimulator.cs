@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Abi;
 using Nethermind.Int256;
 using System.Linq;
 using Google.Protobuf;
@@ -13,7 +14,6 @@ using System.Collections.Generic;
 using Nethermind.Shutter.Dto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Experimental.Abi;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;

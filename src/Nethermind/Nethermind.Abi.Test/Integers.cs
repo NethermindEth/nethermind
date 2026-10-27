@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
-namespace Nethermind.Experimental.Abi.Test;
+namespace Nethermind.Abi.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class Integers

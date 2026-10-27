@@ -9,7 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
 
-namespace Nethermind.Experimental.Abi.Test;
+namespace Nethermind.Abi.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class UserErrors

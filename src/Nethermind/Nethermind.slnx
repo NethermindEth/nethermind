@@ -65,6 +65,7 @@
     <File Path="tests.props" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
     <Project Path="Nethermind.Analyzers.Test/Nethermind.Analyzers.Test.csproj" />
     <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="Nethermind.Api.Test/Nethermind.Api.Test.csproj" />
@@ -80,7 +81,6 @@
     <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
     <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
-    <Project Path="Nethermind.Experimental.Abi.Test/Nethermind.Experimental.Abi.Test.csproj" />
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
     <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
@@ -119,6 +119,7 @@
   <Folder Name="/Tools/">
     <Project Path="../../tools/StatelessInputGen/StatelessInputGen.csproj" />
   </Folder>
+  <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
   <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
   <Project Path="Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
@@ -140,7 +141,6 @@
   <Project Path="Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
   <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
-  <Project Path="Nethermind.Experimental.Abi/Nethermind.Experimental.Abi.csproj" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="Nethermind.History/Nethermind.History.csproj" />

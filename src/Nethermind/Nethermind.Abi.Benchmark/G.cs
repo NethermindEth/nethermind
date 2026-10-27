@@ -4,7 +4,6 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using Nethermind.Int256;
-using Exp = Nethermind.Experimental.Abi;
 
 namespace Nethermind.Abi.Benchmark;
 
@@ -14,29 +13,29 @@ namespace Nethermind.Abi.Benchmark;
 [CategoriesColumn]
 public class G
 {
-    private static readonly Exp.AbiSignature<(UInt256[][], string[])> ExperimentalSignature = new Exp.AbiSignature("g")
+    private static readonly AbiSignature<(UInt256[][], string[])> Signature = new AbiSignature("g")
         .With(
-            Exp.AbiType.Array(Exp.AbiType.Array(Exp.AbiType.UInt256)),
-            Exp.AbiType.Array(Exp.AbiType.String));
+            AbiType.Array(AbiType.Array(AbiType.UInt256)),
+            AbiType.Array(AbiType.String));
 
     private static readonly (UInt256[][], string[]) Arguments = ([[1, 2], [3]], ["one", "two", "three"]);
 
-    private static readonly byte[] Encoded = Exp.AbiCodec.Encode(ExperimentalSignature, Arguments);
+    private static readonly byte[] Encoded = AbiCodec.Encode(Signature, Arguments);
 
     private static readonly byte[] Buffer = new byte[Encoded.Length];
 
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("Encode")]
-    public byte[] ExperimentalEncode() =>
-        Exp.AbiCodec.Encode(ExperimentalSignature, Arguments);
+    public byte[] Encode() =>
+        AbiCodec.Encode(Signature, Arguments);
 
     [Benchmark]
     [BenchmarkCategory("Encode")]
-    public int ExperimentalEncodeIntoBuffer() =>
-        Exp.AbiCodec.Encode(ExperimentalSignature, Arguments, Buffer);
+    public int EncodeIntoBuffer() =>
+        AbiCodec.Encode(Signature, Arguments, Buffer);
 
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("Decode")]
-    public (UInt256[][], string[]) ExperimentalDecode() =>
-        Exp.AbiCodec.Decode(ExperimentalSignature, Encoded);
+    public (UInt256[][], string[]) Decode() =>
+        AbiCodec.Decode(Signature, Encoded);
 }

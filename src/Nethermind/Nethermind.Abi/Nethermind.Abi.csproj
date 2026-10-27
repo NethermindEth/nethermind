@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Nethermind.Experimental.Abi.Test" />
+    <InternalsVisibleTo Include="Nethermind.Abi.Test" />
   </ItemGroup>
 
   <ItemGroup>

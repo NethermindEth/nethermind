@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -28,7 +29,6 @@ using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using System.Text;
-using Nethermind.Experimental.Abi;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;

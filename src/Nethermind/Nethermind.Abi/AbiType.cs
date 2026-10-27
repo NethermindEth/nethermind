@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Experimental.Abi;
+namespace Nethermind.Abi;
 
 /// <summary>Codecs for the standard ABI types.</summary>
 /// <remarks>See the <see href="https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding">ABI encoding specification</see>.</remarks>

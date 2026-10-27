@@ -72,9 +72,9 @@ jobs:
               Nethermind.Taiko.Test
           - name: Nethermind tests 2
             list: >-
+              Nethermind.Abi.Test
               Nethermind.AuRa.Test
               Nethermind.Ethash.Test
-              Nethermind.Experimental.Abi.Test
               Nethermind.SendPolicy.Plugin.Test
               Nethermind.Specs.Test
               Nethermind.State.Test
