@@ -44,7 +44,7 @@ public class Eip8437ClientCaseTests
         Assert.That(node.Transport.PublishWrapper(w3), Is.True);
         Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(w3).Hash }), "W1 and W2 came from the peer; W3 halves its verifications");
 
-        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, true, [Describe(w3).Hash]));
+        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, false, [Describe(w3).Hash]));
         Assert.That(link.Sent<ProofWrappersMessage>().Single().Entries.Select(static e => e.Wrapper), Is.EqualTo(new[] { w3 }));
         node.Tick(TimeSpan.FromSeconds(1));
         Assert.That(node.Transport.PublishWrapper(w4), Is.True);
@@ -136,10 +136,9 @@ public class Eip8437ClientCaseTests
         }).Bytes;
     }
 
-    // Omission caches are optional: this client never omits encodings, serves a full = 0 request in full and always requests
-    // full wrappers, so a compact reply never reaches reconstruction.
+    // This client never omits encodings: it serves a compact = 1 request in full and requests with compact = 0.
     [Test]
-    public void Requests_are_full_and_full_zero_requests_are_served_in_full()
+    public void Requests_are_full_and_compact_requests_are_served_in_full()
     {
         Transaction a = FrameTransaction(1);
         byte[] wrapper = Wrapper(64, a);
@@ -147,8 +146,8 @@ public class Eip8437ClientCaseTests
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
         Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
-        node.Transport.OnGetProofWrappers(peer, new(1, false, [Describe(wrapper).Hash]));
-        node.Transport.OnGetProofWrappers(peer, new(2, false, [Describe(wrapper).Hash]));
+        node.Transport.OnGetProofWrappers(peer, new(1, true, [Describe(wrapper).Hash]));
+        node.Transport.OnGetProofWrappers(peer, new(2, true, [Describe(wrapper).Hash]));
         using WrapperTestNode requester = new();
         FakeWrapperLink source = new();
         requester.Transport.OnAnnounce(requester.Connect(source), new([Describe(wrapper)]));
@@ -156,7 +155,7 @@ public class Eip8437ClientCaseTests
         {
             Assert.That(link.Sent<ProofWrappersMessage>().Select(static m => m.Entries.Single().Wrapper), Is.EqualTo(new[] { wrapper, wrapper }),
                 "an encoding sent before is sent in full again");
-            Assert.That(source.Sent<GetProofWrappersMessage>().Single().Full, Is.True);
+            Assert.That(source.Sent<GetProofWrappersMessage>().Single().Compact, Is.False);
         }
     }
 

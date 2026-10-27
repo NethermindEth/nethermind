@@ -23,13 +23,14 @@ public sealed class NewProofWrapperHashesMessage(WrapperAnnouncement[] announcem
     public WrapperAnnouncement[] Announcements { get; } = announcements;
 }
 
-/// <summary><c>GetProofWrappers (0x17) = [request-id, full, [hash, ...]]</c>: 1 to 32 distinct hashes.</summary>
-/// <param name="full">Whether every transaction encoding must be sent in full; <c>false</c> permits hash references.</param>
-public sealed class GetProofWrappersMessage(long requestId, bool full, ValueHash256[] hashes) : Eth73Message
+/// <summary><c>GetProofWrappers (0x17) = [request-id, compact, [hash, ...]]</c>: 1 to 32 distinct hashes.</summary>
+/// <param name="compact">Whether the responder may replace transaction encodings it previously sent in full on the connection
+/// with hash references; <c>false</c> requires complete encodings.</param>
+public sealed class GetProofWrappersMessage(long requestId, bool compact, ValueHash256[] hashes) : Eth73Message
 {
     public override int PacketType => Eth73MessageCode.GetProofWrappers;
     public long RequestId { get; } = requestId;
-    public bool Full { get; } = full;
+    public bool Compact { get; } = compact;
     public ValueHash256[] Hashes { get; } = hashes;
 }
 
@@ -116,15 +117,15 @@ public sealed class GetProofWrappersMessageSerializer() : Eth73MessageSerializer
     {
         byte[][] ids = new byte[message.Hashes.Length][];
         for (int i = 0; i < ids.Length; i++) ids[i] = Eth73Rlp.EncodeBytes(message.Hashes[i].Bytes);
-        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)message.RequestId), Eth73Rlp.EncodeUInt(message.Full ? 1UL : 0UL),
+        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)message.RequestId), Eth73Rlp.EncodeUInt(message.Compact ? 1UL : 0UL),
             Eth73Rlp.EncodeList(ids));
     }
 
     protected override GetProofWrappersMessage Decode(ref Eth73RlpReader fields)
     {
         long requestId = ReadRequestId(ref fields);
-        ulong full = fields.ReadUInt64();
-        if (full > 1) throw new RlpException("The full flag must be 0 or 1");
+        ulong compact = fields.ReadUInt64();
+        if (compact > 1) throw new RlpException("The compact flag must be 0 or 1");
         Eth73RlpReader list = fields.ReadList();
         int count = list.CountRemaining(Eth73Protocol.MaxWrappersPerRequest);
         if (count == 0) throw new RlpException("Empty wrapper request");
@@ -133,7 +134,7 @@ public sealed class GetProofWrappersMessageSerializer() : Eth73MessageSerializer
         for (int i = 0; i < count; i++)
             if (!distinct.Add(ids[i] = list.ReadHash())) throw new RlpException("Requested hashes are not distinct");
         list.End();
-        return new(requestId, full == 1, ids);
+        return new(requestId, compact == 1, ids);
     }
 }
 

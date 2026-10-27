@@ -477,7 +477,6 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// <summary>Returns the requested wrappers this node offers and announced to <paramref name="peer"/>, in request order, each
     /// in full, adding none once the response reaches the soft response limit; the last one added may take it past the limit
     /// (EIP-8437).</summary>
-    /// <remarks>This client keeps no omission cache, so it serves complete wrappers whatever the request's <c>full</c> flag.</remarks>
     internal void OnGetProofWrappers(WrapperPeer peer, GetProofWrappersMessage request)
     {
         Outbox outbox = new();

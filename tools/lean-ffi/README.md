@@ -237,7 +237,7 @@ encoding, at most `MAX_WRAPPER_BYTES` (2 MiB).
 An announcement entry is `[mode, length, hash]`; a returned wrapper must match the responding
 peer's announced mode and length as well as the hash. NewProofWrapperHashes and GetProofWrappers
 are bounded before decompression at their largest valid sizes, 2,499 and 1,072 bytes. This client
-always requests and serves full wrappers (`full = 1`) without hash-reference omission. Responses
+requests complete wrappers (`compact = 0`) and serves them without hash-reference omission. Responses
 carry whole wrappers under the 2 MiB `eth` soft response limit, always including the first one.
 A wrapper is announced to every `eth/73` peer once validated, except a hash already announced or
 sent on that connection, or one whose transactions the peer's exchanged wrappers already cover

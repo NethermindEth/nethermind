@@ -127,8 +127,7 @@ public sealed partial class ProofWrapperTransport
         }
         WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch]);
         peer.Requests.Add(request.Id, request);
-        // This client keeps no omission cache, so it always asks for complete wrappers.
-        outbox.Send(peer, new GetProofWrappersMessage(request.Id, true, ids));
+        outbox.Send(peer, new GetProofWrappersMessage(request.Id, false, ids));
         WrapperMetrics.Record(WrapperEvent.Requested, ids.Length);
         return true;
     }

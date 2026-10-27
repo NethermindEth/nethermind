@@ -133,7 +133,7 @@ public class Eth73ProtocolHandlerTests
         using NewProofWrapperHashesMessage announce = new([Describe(wrapper)]);
         Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
         GetProofWrappersMessage wrapperRequest = Delivered<GetProofWrappersMessage>().Single();
-        Assert.That(wrapperRequest.Full, Is.True);
+        Assert.That(wrapperRequest.Compact, Is.False);
         using ProofWrappersMessage wrapperResponse = new(wrapperRequest.RequestId, [Entry(wrapper)]);
         Handle(wrapperResponse, Eth73MessageCode.ProofWrappers);
 
