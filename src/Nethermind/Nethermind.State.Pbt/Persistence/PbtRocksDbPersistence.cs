@@ -30,7 +30,7 @@ public class PbtRocksDbPersistence(
     /// a group's bytes but not its hash, and the node-group caches key on the hash, so a database written with another
     /// omission can serve a group whose size no longer matches the one its ancestors recorded.
     /// </remarks>
-    private const int SchemaEpoch = 26;
+    private const int SchemaEpoch = 24;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = EnsureSchema(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
