@@ -235,6 +235,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8246Enabled { get; set; }
     public bool IsEip8347Enabled { get; set; }
     public bool IsEip8253Enabled { get; set; }
+    public IReadOnlyList<Address> Eip8253Accounts { get => IsEip8253Enabled ? field : []; set; } = [];
     public bool IsEip2780Enabled { get; set; }
     public bool IsEip5920Enabled { get; set; }
     public bool IsEip8360Enabled { get; set; }
@@ -242,6 +243,7 @@ public class ReleaseSpec : IReleaseSpec
 
     public bool IsEip7805Enabled { get; set; }
     public bool IsEip8298Enabled { get; set; }
+    public bool IsEip4758Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

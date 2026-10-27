@@ -192,6 +192,7 @@ public class ChainParameters
     /// <summary>EIP-8347 activation Unix timestamp in seconds; null disables activation.</summary>
     public ulong? Eip8347TransitionTimestamp { get; set; }
     public ulong? Eip8253TransitionTimestamp { get; set; }
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
     public ulong? Eip7709TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
@@ -213,4 +214,6 @@ public class ChainParameters
     public ulong? Eip8279TransitionTimestamp { get; set; }
     public ulong? Eip7805TransitionTimestamp { get; set; }
     public ulong? Eip8298TransitionTimestamp { get; set; }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758TransitionTimestamp { get; set; }
 }

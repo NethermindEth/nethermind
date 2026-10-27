@@ -24,8 +24,11 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Path to the canonical EIP-8347 PBT snapshot. The PBT state is built from the snapshot alone; with MigrationPreimagesPath it is also verified against the anchor's MPT state root.", DefaultValue = "null")]
     string? MigrationSnapshotPath { get; set; }
 
-    /// <summary>Path to canonical EIP-8347 preimages verifying MigrationSnapshotPath against the anchor's MPT state root. Defaults to null.</summary>
-    [ConfigItem(Description = "Path to canonical EIP-8347 preimages. They only verify the imported MigrationSnapshotPath against the anchor's MPT state root, so they require it.", DefaultValue = "null")]
+    /// <summary>Path to canonical EIP-8347 preimages of the MigrationAnchor state. Defaults to null.</summary>
+    /// <remarks>With MigrationSnapshotPath they verify the snapshot against the anchor's MPT state root. Without it the
+    /// PBT state is imported from this node's own persisted flat state, whose keys the preimages resolve, together with
+    /// the BALs of the blocks after the anchor for the keys written since.</remarks>
+    [ConfigItem(Description = "Path to canonical EIP-8347 preimages of the MigrationAnchor state. With MigrationSnapshotPath they verify the snapshot against the anchor's MPT state root. Without it the PBT state is imported from this node's own persisted hash-keyed flat state, whose keys are resolved through the preimages and, for the keys written after the anchor, through the BALs of the blocks since.", DefaultValue = "null")]
     string? MigrationPreimagesPath { get; set; }
 
     /// <summary>Whether to generate a separate offline source from the MPT genesis allocation. Defaults to false.</summary>

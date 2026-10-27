@@ -5,7 +5,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Config;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.NodeBuffer;

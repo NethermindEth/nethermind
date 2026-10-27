@@ -18,7 +18,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;

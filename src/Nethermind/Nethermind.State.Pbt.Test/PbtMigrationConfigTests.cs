@@ -92,7 +92,7 @@ public class PbtMigrationConfigTests
     }
 
     [Test]
-    public void Accepts_distinct_sources([Values("genesis", "snapshot", "snapshot+preimages", "none")] string source)
+    public void Accepts_distinct_sources([Values("genesis", "snapshot", "snapshot+preimages", "preimages", "none")] string source)
     {
         PbtConfig config = Config();
         if (source != "genesis")
@@ -100,16 +100,16 @@ public class PbtMigrationConfigTests
             config.MigrationGenesisBootstrap = false;
             config.MigrationAnchor = 25;
             if (source is "snapshot" or "snapshot+preimages") config.MigrationSnapshotPath = "source/snapshot.pbt";
-            if (source is "snapshot+preimages") config.MigrationPreimagesPath = "source/preimages.bin";
+            if (source is "snapshot+preimages" or "preimages") config.MigrationPreimagesPath = "source/preimages.bin";
         }
-        FlatDbConfig flat = new() { Enabled = true, Layout = FlatLayout.PreimageFlat };
+        FlatDbConfig flat = new() { Enabled = true, Layout = source == "preimages" ? FlatLayout.Flat : FlatLayout.PreimageFlat };
         Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, flat, Chain(), "target"));
     }
 
     [Test]
     public void Rejects_invalid_configuration([Values(
         "fake", "import", "scan", "flat-disabled",
-        "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "mixed", "preimages-alone", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
+        "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "mixed", "preimages-mixed", "preimages-preimage-layout", "preimages-no-anchor", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
         FlatDbConfig flat = Flat();
@@ -127,7 +127,12 @@ public class PbtMigrationConfigTests
             case "no-deletion": chain.Parameters.Eip6780TransitionTimestamp = null; break;
             case "late-deletion": chain.Parameters.Eip6780TransitionTimestamp = 100; break;
             case "mixed": config.MigrationSnapshotPath = "source/snapshot.pbt"; break;
-            case "preimages-alone": config.MigrationGenesisBootstrap = false; config.MigrationAnchor = 25; config.MigrationPreimagesPath = "source/preimages.bin"; break;
+            case "preimages-mixed": config.MigrationAnchor = 25; config.MigrationPreimagesPath = "source/preimages.bin"; break;
+            case "preimages-preimage-layout":
+                config.MigrationGenesisBootstrap = false; config.MigrationAnchor = 25; config.MigrationPreimagesPath = "source/preimages.bin";
+                flat.Layout = FlatLayout.PreimageFlat;
+                break;
+            case "preimages-no-anchor": config.MigrationGenesisBootstrap = false; config.MigrationPreimagesPath = "source/preimages.bin"; break;
             case "no-anchor": config.MigrationGenesisBootstrap = false; config.MigrationSnapshotPath = "source/snapshot.pbt"; break;
             case "negative-anchor": config.MigrationAnchor = -1; break;
             case "overlap": config.MigrationSnapshotPath = "target/source"; config.MigrationAnchor = 25; config.MigrationGenesisBootstrap = false; break;

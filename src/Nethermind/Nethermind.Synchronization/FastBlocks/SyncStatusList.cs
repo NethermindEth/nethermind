@@ -180,6 +180,8 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
+        public bool IsInserted(ulong blockNumber) => _statuses[blockNumber] == FastBlockStatus.Inserted;
+
         public void MarkInserted(ulong blockNumber)
         {
             if (_statuses.TrySet(blockNumber, FastBlockStatus.Inserted))

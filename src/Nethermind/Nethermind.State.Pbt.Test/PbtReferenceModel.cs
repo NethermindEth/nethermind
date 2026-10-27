@@ -9,11 +9,26 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Pbt.Test;
 
 internal static class PbtReferenceModel
 {
+    /// <summary>Writes <paramref name="account"/> to a flat source and the model alike.</summary>
+    public static void SetAccount(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, Account account, byte[]? code)
+    {
+        SetAccount(model, address, (ulong)account.Nonce, account.Balance, code);
+        batch.SetAccount(address, code is null ? account : account.WithChangedCodeHash(Keccak.Compute(code)));
+    }
+
+    /// <summary>Writes a slot to a flat source and the model alike.</summary>
+    public static void SetSlot(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, in UInt256 slot, in UInt256 value)
+    {
+        SetSlot(model, address, slot, value);
+        batch.SetStorage(address, slot, value);
+    }
+
     public static void SetAccount(Dictionary<string, byte[]> model, Address address, ulong nonce, in UInt256 balance, byte[]? code = null)
     {
         byte[] basicData = new byte[32];

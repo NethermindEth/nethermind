@@ -315,9 +315,7 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(12, HoodiSpecProvider.BPO1Timestamp)) { TestName = "BPO1" };
             yield return new TestCaseData(new ForkActivation(13, HoodiSpecProvider.BPO2Timestamp - 1)) { TestName = "Before BPO2" };
             yield return new TestCaseData(new ForkActivation(14, HoodiSpecProvider.BPO2Timestamp)) { TestName = "BPO2" };
-            yield return new TestCaseData(new ForkActivation(15, HoodiSpecProvider.AmsterdamTimestamp - 1)) { TestName = "Before Amsterdam" };
-            yield return new TestCaseData(new ForkActivation(16, HoodiSpecProvider.AmsterdamTimestamp)) { TestName = "Amsterdam" };
-            yield return new TestCaseData(new ForkActivation(17, HoodiSpecProvider.AmsterdamTimestamp + 100000000)) { TestName = "Future Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(15, HoodiSpecProvider.BPO2Timestamp + 100000000)) { TestName = "Future BPO2" };
         }
     }
 
@@ -1051,13 +1049,19 @@ public class ChainSpecBasedSpecProviderTests
     [TestCase(100ul, true)]
     public void Eip8253_activates_at_its_transition_timestamp(ulong timestamp, bool expected)
     {
+        Address listed = new("0x0000000000000000000000000000000000008253");
         ChainSpec chainSpec = new()
         {
-            Parameters = new ChainParameters { Eip8253TransitionTimestamp = 100 },
+            Parameters = new ChainParameters { Eip8253TransitionTimestamp = 100, ZeroNonceStorageAccounts = [listed] },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
-        Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8253Enabled, Is.EqualTo(expected));
+        IReleaseSpec spec = new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8253Enabled, Is.EqualTo(expected));
+            Assert.That(spec.Eip8253Accounts, Is.EqualTo(expected ? new[] { listed } : Array.Empty<Address>()));
+        }
     }
 
     [TestCase(99ul, false)]
@@ -1086,6 +1090,26 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp - 1)).IsEip7979Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Eip4758_activates_only_at_its_transition_timestamp()
+    {
+        const ulong eip4758Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip4758TransitionTimestamp = eip4758Timestamp },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp - 1)).IsEip4758Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp)).IsEip4758Enabled, Is.True);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip4758Timestamp)).GasCosts.DestroyRefund, Is.Zero);
         }
     }
 

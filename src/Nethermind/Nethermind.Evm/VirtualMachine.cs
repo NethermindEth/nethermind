@@ -269,13 +269,18 @@ public partial class VirtualMachine<TGasPolicy>(
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both the dispatch table
-    // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit.
+    // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit,
+    // and IsTracingOperationGasCost and IsTracingOperationStart avoid walking it per traced opcode. _stackPushTracer,
+    // null when no tracer observes stack pushes, saves resolving that for each frame's stack.
     private VmTracerFlags _tracerFlags;
     internal bool IsTracingActions => _tracerFlags.IsTracingActions;
     internal bool IsTracingRefunds => _tracerFlags.IsTracingRefunds;
     internal bool IsTracingAccess => _tracerFlags.IsTracingAccess;
     internal bool IsTracingOpLevelStorage => _tracerFlags.IsTracingOpLevelStorage;
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
+    private bool IsTracingOperationGasCost { get => DispatchFlags.Tracing(field); set; }
+    internal bool IsTracingOperationStart { get => DispatchFlags.Tracing(field); private set; }
+    private ITxTracer? _stackPushTracer;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -345,6 +350,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
+    [SkipLocalsInit]
     public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
 
         VmState<TGasPolicy> vmState,
@@ -356,6 +362,9 @@ public partial class VirtualMachine<TGasPolicy>(
         _txTracer = txTracer;
         _tracerFlags = new(txTracer);
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        IsTracingOperationGasCost = TTracingInst.IsActive && txTracer.Any<ITraceOperationGasCost>(static tracer => tracer.IsTracingInstructions);
+        IsTracingOperationStart = TTracingInst.IsActive && txTracer.Any<ITraceOperationStart>(static tracer => tracer.IsTracingInstructions);
+        _stackPushTracer = txTracer.IsTracingStackPushes ? txTracer : null;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -737,6 +746,7 @@ public partial class VirtualMachine<TGasPolicy>(
             executionDepositCost, stateDepositCost, invalidCode, callResult.Output);
     }
 
+    [SkipLocalsInit]
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
     {
         if (callResult.ShouldRevert)
@@ -1419,6 +1429,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
+    [SkipLocalsInit]
     private CallResult RunPrecompile<Eip158, Eip8360>(VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
         where Eip8360 : struct, IFlag
@@ -1527,21 +1538,23 @@ public partial class VirtualMachine<TGasPolicy>(
     private static bool IsEip8151EcRecover(IPrecompile precompile, IReleaseSpec spec) =>
         spec.IsEip8151Enabled && precompile.Name == EcRecoverPrecompileName;
 
-    /// <summary>Zeroes ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
-    /// <remarks>Runs after <see cref="IPrecompile.Run"/> so the result cache never holds a code-dependent answer, and
-    /// charges the access cost and meters the EIP-8279 address bytes before reading the account so running out of gas
-    /// leaves it cold and out of the BAL.</remarks>
-    /// <returns><c>false</c> when the frame cannot pay the access cost or the floor cannot take the address bytes.</returns>
+    /// <summary>Withholds ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
+    /// <remarks>Runs after <see cref="IPrecompile.Run"/> so the result cache never holds a code-dependent answer. A
+    /// recovered address pays the account access plus a warm code read, whatever its code, and the EIP-8279 address
+    /// bytes, all before the account is read so running out of gas leaves it cold and out of the BAL. A failed recovery
+    /// pays neither. Withheld and failed recoveries both return empty output, so <c>RETURNDATASIZE</c> cannot tell them
+    /// apart.</remarks>
+    /// <returns><c>false</c> when the frame cannot pay the access and code read or the floor cannot take the address bytes.</returns>
     private bool TryRestrictEcRecoverOutput(VmState<TGasPolicy> state, IReleaseSpec spec, ref byte[] output)
     {
         if (output.Length == 0)
         {
-            output = Bytes.Zero32;
             return true;
         }
 
         Address recovered = new(output.AsSpan(output.Length - Address.Size));
         if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered)
+            || !TGasPolicy.UpdateGas(ref state.Gas, GasCostOf.WarmStateRead)
             || (spec.IsEip8279Enabled && !TryMeterBalAddress(recovered)))
         {
             return false;
@@ -1552,7 +1565,7 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlySpan<byte> code = _codeInfoRepository.GetCachedCodeInfo(recovered, followDelegation: false, spec, out _).CodeSpan;
         if (!code.IsEmpty && !Eip7702Constants.IsDelegatedCode(code))
         {
-            output = Bytes.Zero32;
+            output = [];
         }
 
         return true;
@@ -1644,11 +1657,11 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmStack stack;
         if (vmState.IsContinuation)
         {
-            vmState.RestoreStack<TTracingInst>(_txTracer, codeSpan, out stack);
+            vmState.RestoreStack<TTracingInst>(_stackPushTracer, codeSpan, out stack);
         }
         else if (TTracingInst.IsActive)
         {
-            vmState.InitializeStacks(_txTracer, codeSpan, out stack);
+            vmState.InitializeStacks(_stackPushTracer, codeSpan, out stack);
         }
         else
         {
@@ -1711,11 +1724,12 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Read from the value pinned at transaction start, which is also what chose the dispatch table.
-        return DispatchFlags.Cancelable(_tracerFlags.IsCancelable) switch
-        {
-            false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
-            true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
-        };
+        // Each arm returns its call directly, so the result is written into this method's return buffer rather than
+        // into a temporary the switch expression's value would be copied from.
+        if (DispatchFlags.Cancelable(_tracerFlags.IsCancelable))
+            return RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas);
+
+        return RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas);
 
     Empty:
         // Return an empty CallResult if there is no machine code to execute.
@@ -1834,7 +1848,7 @@ public partial class VirtualMachine<TGasPolicy>(
         VmState<TGasPolicy> vmState = VmState;
         _isInstructionTraceActive = true;
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
-        if (gasCost is ulong cost)
+        if (gasCost is ulong cost && IsTracingOperationStart)
             tracer.ForEach<ITraceOperationStart, (ulong Cost, int Head, int Inputs, int Growth)>(
                 static inner => inner.IsTracingInstructions, (cost, stackHead, stackInputs, stackGrowth),
                 static (inner, operation) => inner.ReportOperationStart(operation.Cost, operation.Head, operation.Inputs, operation.Growth));
@@ -1895,7 +1909,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationGasCost(ulong gasCost)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && IsTracingOperationGasCost)
             TraceOperationGasCostCore(gasCost);
     }
 
@@ -1908,7 +1922,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceMemoryOperationGasCost(in UInt256 position, in UInt256 length, ulong additionalGas = 0)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && (IsTracingOperationGasCost || IsTracingOperationStart))
             TraceMemoryOperationGasCostCore(in position, in length, additionalGas);
     }
 
@@ -1928,7 +1942,7 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationReady(ulong gasCost, string? error = null)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+        if (DispatchFlags.ConstTracing && IsTracingOperationStart)
             TraceOperationReadyCore(gasCost, error);
     }
 

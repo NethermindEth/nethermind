@@ -73,7 +73,7 @@ jobs:
                 all(.[]; type == "object" and
                   (.input | test("^[0-9]+\\.ssz$")) and
                   (.hash | test("^[0-9a-f]{64}$")) and
-                  (.output | test("^[0-9a-f]{64}$"))) and
+                  (.output | test("^[0-9a-f]{86}$"))) and
                 (map(.input) | unique | length) == length) catch false)
               then true else error("invalid pinned block set") end
             ' "$1"
@@ -85,7 +85,7 @@ jobs:
             git fetch --depth=1 --filter=blob:none origin "$BASE_SHA" 2>/dev/null || true
           fi
           if [[ -n "$BASE_SHA" ]] && \
-            git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
+            git cat-file -e "$BASE_SHA:scripts/zisk-bench/Report.cs" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
             git show "$BASE_SHA:$GUEST_DIR/inputs.json" > "$RUNNER_TEMP/base-inputs.json"
             if validate_inputs "$RUNNER_TEMP/base-inputs.json" > /dev/null; then
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           jq -r '.[] | "\(.input) \(.hash)"' "$BENCH_DEFINITIONS/$GUEST_DIR/inputs.json" | while read -r input hash; do
-            curl --retry 3 -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260930/${input}" -o "bin/${input}"
+            curl --retry 3 -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20261021/${input}" -o "bin/${input}"
             echo "${hash}  bin/${input}" | sha256sum --status -c - \
               || { echo "::error::Checksum failed for ${input}"; exit 1; }
           done
@@ -157,23 +157,21 @@ jobs:
       # One ziskemu run per block yields the output hash, the step count and the cost model, so
       # correctness and cost come from the same execution and cannot describe different builds.
       #
-      # A block of ~400M steps emulates in about 45 s here, so the nine of them plus the image pull
-      # land near eight minutes; the cap below is headroom for a slower runner, not a budget.
+      # The run time scales with the pinned blocks' total steps; the cap below is headroom for a slower
+      # runner, not a budget, so revisit it when the pinned set grows.
       - name: Measure
         id: measure
         working-directory: ${{ env.GUEST_DIR }}
         timeout-minutes: 30
         run: |
           set -euo pipefail
-          # ziskemu prints the guest's output hash followed by its own fixed trailer.
-          suffix=0101000000000000000100
           echo '[]' > "$RUNNER_TEMP/current.json"
           jq -r '.[] | "\(.input) \(.output)"' "$BENCH_DEFINITIONS/$GUEST_DIR/inputs.json" | while read -r input output; do
             echo "::group::${input}"
             make stats INPUT="${input}" 2>&1 | tee "$RUNNER_TEMP/stats.log"
             echo "::endgroup::"
 
-            grep -Fxq "${output}${suffix}" "$RUNNER_TEMP/stats.log" \
+            grep -Fxq "${output}" "$RUNNER_TEMP/stats.log" \
               || { echo "::error::${input}: output mismatch — cost figures would describe a broken run"; exit 1; }
 
             # A guest that threw or rejected the block can still exit zero and print the right hash;
@@ -183,7 +181,7 @@ jobs:
               exit 1
             fi
 
-            python3 "$BENCH_DEFINITIONS/scripts/zisk-bench/parse-stats.py" \
+            dotnet run --file "$BENCH_DEFINITIONS/scripts/zisk-bench/ParseStats.cs" -- \
               --input "${input}" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
           done
 
@@ -206,7 +204,7 @@ jobs:
           baseline="$RUNNER_TEMP/zisk-bench-baseline/baseline.json"
           [[ -f "$baseline" ]] || baseline=""
           [[ "$TRUSTED_DEFINITIONS" == true ]] || baseline=""
-          python3 "$BENCH_DEFINITIONS/scripts/zisk-bench/report.py" \
+          dotnet run --file "$BENCH_DEFINITIONS/scripts/zisk-bench/Report.cs" -- \
             --current "$RUNNER_TEMP/current.json" \
             ${baseline:+--baseline "$baseline"} \
             --commit "${{ github.sha }}" \

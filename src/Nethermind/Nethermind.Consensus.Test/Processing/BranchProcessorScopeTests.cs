@@ -15,6 +15,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,7 +48,7 @@ public class BranchProcessorScopeTests
             ((ForkActivation)0, Prague.Instance),
             (ForkActivation.TimestampOnly(Activation), new OverridableReleaseSpec(Prague.Instance) { IsEip8347Enabled = true }));
         BranchProcessor processor = new(blockProcessor, specProvider, worldState, Substitute.For<IBlockhashProvider>(),
-            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance);
+            Substitute.For<IInclusionListSatisfactionChecker>(), LimboLogs.Instance, Substitute.For<IWorldStateManager>());
 
         Block parent = Build.A.Block.Genesis.WithTimestamp(0).TestObject;
         Block[] blocks = new Block[blockCount];

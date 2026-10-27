@@ -989,7 +989,7 @@ public class PbtSnapshotCompactorTests
         StateId head = new((ulong)layersOldestFirst.Length, default);
         ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
         schedule.GetCompactSize(head.BlockNumber).Returns(head.BlockNumber);
-        using PbtSnapshotRepository repository = new(new Nethermind.Monitoring.Config.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
+        using PbtSnapshotRepository repository = new(new Nethermind.Api.Monitoring.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         for (int i = 0; i < layersOldestFirst.Length; i++)
             repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], pool, PbtResourcePool.Usage.MainBlockProcessing));
         Assert.That(new PbtSnapshotCompactor(pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);

@@ -70,7 +70,7 @@ public partial class BlockProcessor(
     public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
         : InvalidBlockException(block, message, innerException);
 
-    public event Action? TransactionsExecuted;
+    public event Action<Block>? TransactionsExecuted;
 
     public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
@@ -93,10 +93,11 @@ public partial class BlockProcessor(
         }
         catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
         {
-            // Some checks run only on the parallel path, and no sequential re-execution backs them up, so a false
-            // positive on a valid block must stand out from ordinary invalid blocks.
+            // Some checks run only on the parallel path, so a false positive on a valid block must stand out from
+            // ordinary invalid blocks, even when a sequential retry later accepts it.
             Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
             if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
             throw;
         }
         finally
@@ -111,6 +112,16 @@ public partial class BlockProcessor(
         }
 
         return (block, receipts);
+    }
+
+    private static bool HasFrameTransaction(Block block)
+    {
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.FrameTx) return true;
+        }
+
+        return false;
     }
 
     private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
@@ -215,7 +226,7 @@ public partial class BlockProcessor(
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
-        TransactionsExecuted?.Invoke();
+        TransactionsExecuted?.Invoke(block);
 
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
     }

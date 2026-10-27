@@ -30,7 +30,7 @@ namespace Nethermind.State.Pbt.Image;
 public static class PbtOfflineSource
 {
     /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
-    private const int PreimageKeyLength = 65;
+    public const int PreimageKeyLength = 65;
 
     /// <summary>Address ranges per worker, so an uneven spread of storage still balances out.</summary>
     private const int PartitionsPerWorker = 16;
@@ -211,6 +211,33 @@ public static class PbtOfflineSource
         return totals;
     }
 
+    /// <summary>Spools the account-zone and code leaves of <paramref name="account"/>, with its code read from <paramref name="codeSource"/>.</summary>
+    /// <param name="addressKeyHash">The EIP-8297 address hash of the account.</param>
+    /// <returns>The number of leaves spooled.</returns>
+    public static int SpoolAccount(SortedSpool.Writer leaves, IReadOnlyKeyValueStore codeSource, in ValueHash256 addressKeyHash, Account account)
+    {
+        CodeInfo? code = null;
+        if (account.HasCode)
+        {
+            byte[] bytes = codeSource.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException("Missing source code.");
+            if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Source code hash mismatch.");
+            code = new CodeInfo(bytes);
+        }
+        using ArrayPoolList<KeyValuePair<PbtPath, ValueHash256>> accountLeaves = PbtStateKey.AccountLeaves(addressKeyHash, account, code);
+        foreach ((PbtPath key, ValueHash256 value) in accountLeaves)
+            leaves.Add(key.Bytes, value.Bytes);
+        return accountLeaves.Count;
+    }
+
+    /// <summary>Spools the leaf of the nonzero storage <paramref name="slot"/> of <paramref name="address"/>.</summary>
+    /// <remarks>Leaf keys are prefix-free (34 bytes in zone 0/1, 66 in zone 255), so their raw order is total.</remarks>
+    /// <param name="addressKeyHash">The EIP-8297 address hash of <paramref name="address"/>.</param>
+    public static void SpoolSlot(SortedSpool.Writer leaves, Address address, in ValueHash256 addressKeyHash, in UInt256 slot, in UInt256 value)
+    {
+        if (value.IsZero) throw new InvalidDataException("Source contains a zero storage slot.");
+        leaves.Add(Eip8297KeyDerivation.SlotKey(address.ToHash().Bytes, addressKeyHash, slot).Bytes, value.ToValueHash().Bytes);
+    }
+
     /// <summary>The scan's shared record counts, published by the workers and read by the progress format.</summary>
     public sealed class ScanTotals
     {
@@ -265,19 +292,8 @@ public static class PbtOfflineSource
             CancellationToken cancellationToken)
         {
             Address address = new(accountKey.Bytes[..Address.Size]);
-            CodeInfo? code = null;
-            if (account.HasCode)
-            {
-                byte[] bytes = codeSource.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException("Missing source code.");
-                if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Source code hash mismatch.");
-                code = new CodeInfo(bytes);
-            }
             ValueHash256 addressKeyHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
-            using (ArrayPoolList<KeyValuePair<PbtPath, ValueHash256>> accountLeaves = PbtStateKey.AccountLeaves(addressKeyHash, account, code))
-            {
-                foreach ((PbtPath key, ValueHash256 value) in accountLeaves)
-                    AddLeaf((PbtVariableTreeKey)key, value);
-            }
+            _pendingLeaves += SpoolAccount(leaves, codeSource, addressKeyHash, account);
 
             ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
             uint count = 0;
@@ -287,9 +303,8 @@ public static class PbtOfflineSource
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     ValueHash256 slot = slots.CurrentKey;
-                    UInt256 value = new(slots.CurrentValue, isBigEndian: true);
-                    if (value.IsZero) throw new InvalidDataException("Source contains a zero storage slot.");
-                    AddLeaf(Eip8297KeyDerivation.SlotKey(address.ToHash().Bytes, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), value.ToValueHash());
+                    SpoolSlot(leaves, address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true), new UInt256(slots.CurrentValue, isBigEndian: true));
+                    _pendingLeaves++;
                     if (rawKeys is not null)
                     {
                         addressHash.Bytes.CopyTo(_preimageKey);
@@ -325,13 +340,6 @@ public static class PbtOfflineSource
             _pendingSlots = 0;
             _pendingLeaves = 0;
             progress.Update((ulong)accounts);
-        }
-
-        // Leaf keys are prefix-free (34 bytes in zone 0/1, 66 in zone 255), so their raw order is total.
-        private void AddLeaf(in PbtVariableTreeKey key, ValueHash256 value)
-        {
-            leaves.Add(key.Bytes, value.Bytes);
-            _pendingLeaves++;
         }
     }
 }

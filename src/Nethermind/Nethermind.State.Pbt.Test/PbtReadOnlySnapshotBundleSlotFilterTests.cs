@@ -15,7 +15,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
+using Nethermind.Api.Monitoring;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
