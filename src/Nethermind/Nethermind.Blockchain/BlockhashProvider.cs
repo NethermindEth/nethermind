@@ -41,8 +41,8 @@ namespace Nethermind.Blockchain
             return depth switch
             {
                 1UL => currentBlock.ParentHash,
-                // A previous block's prefetch can publish after this block's prefetch cleared the array; its ancestors
-                // are one block off, so serve the array only when it starts at this block's parent.
+                // The array holds the ancestors of the last prefetched block, which need not be this one,
+                // so serve it only when it starts at this block's parent.
                 _ => hashes is not null && hashes[0] == currentBlock.ParentHash
                     ? hashes[(int)(depth - 1)]
                     : blockhashCache.GetHash(currentBlock, depth)
@@ -58,8 +58,13 @@ namespace Nethermind.Blockchain
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
-            long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
-            Volatile.Write(ref _hashes, null);
+            long prefetchVersion;
+            // Under the same lock as the publish below, so a previous block's prefetch cannot publish after this clear.
+            lock (_prefetchLock)
+            {
+                prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
+                Volatile.Write(ref _hashes, null);
+            }
             Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
 
             // This leverages that branch processing is single threaded
