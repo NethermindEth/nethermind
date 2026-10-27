@@ -31,6 +31,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly FrameResult _result = new();
     private readonly CancellationTokenSource? _cts;
     private readonly GethTraceDeadline? _deadline;
+    private readonly bool _ownsDeadline;
+    private readonly CancellationToken _external;
     private readonly CancellationTokenRegistration _ctsRegistration;
     private bool _disposed;
     private readonly bool _captureErrors;
@@ -107,9 +109,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (options.EnforceExecutionDeadline)
             {
-                _deadline = new(clock: options.DeadlineClock);
-                _ctsRegistration = _deadline.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
-                _deadline.Start(timeout);
+                _ownsDeadline = options.DeadlineScope is null;
+                _external = options.DeadlineScope?.External ?? default;
+                _deadline = _ownsDeadline ? new(clock: options.DeadlineClock) : options.DeadlineScope!.Current;
+                _ctsRegistration = (_deadline?.Token ?? _external).Register(static e => ((Engine)e!).Interrupt(), engine);
+                if (_ownsDeadline) _deadline!.Start(timeout);
             }
             else
             {
@@ -122,7 +126,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         catch
         {
             _ctsRegistration.Dispose();
-            _deadline?.Dispose();
+            if (_ownsDeadline) _deadline?.Dispose();
             _cts?.Dispose();
             DisposeCallbacks();
             throw;
@@ -148,8 +152,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(value) };
             CheckDeadline();
         }
-        catch (Exception exception) when (IsOwnDeadlineInterruption(exception))
+        catch (Exception exception) when (IsDeadlineInterruption(exception))
         {
+            _external.ThrowIfCancellationRequested();
             throw new GethTraceDeadlineException();
         }
         catch (Exception exception) when (JavaScriptTraceFailure.IsRecoverable(exception))
@@ -495,7 +500,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             base.Dispose();
             _ctsRegistration.Dispose();
             _cts?.Dispose();
-            _deadline?.Dispose();
+            if (_ownsDeadline) _deadline?.Dispose();
         }
         finally
         {
@@ -513,12 +518,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
     private void CheckDeadline()
     {
+        _external.ThrowIfCancellationRequested();
         if (_deadline?.Expired == true) throw new GethTraceDeadlineException();
     }
 
-    private bool IsOwnDeadlineInterruption(Exception exception)
+    private bool IsDeadlineInterruption(Exception exception)
     {
-        if (_deadline?.Expired != true) return false;
+        if (_deadline?.Expired != true && !_external.IsCancellationRequested) return false;
         while (true)
         {
             switch (exception)
@@ -577,8 +583,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 _ => throw new ArgumentOutOfRangeException(nameof(function))
             };
         }
-        catch (Exception exception) when (IsOwnDeadlineInterruption(exception))
+        catch (Exception exception) when (IsDeadlineInterruption(exception))
         {
+            _external.ThrowIfCancellationRequested();
             throw new GethTraceDeadlineException();
         }
         catch (Exception exception) when (_captureErrors

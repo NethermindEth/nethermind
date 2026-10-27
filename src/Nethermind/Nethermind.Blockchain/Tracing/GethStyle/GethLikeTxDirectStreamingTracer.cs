@@ -41,6 +41,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
+    private readonly GethTraceDeadlineScope? _deadlineScope;
     private Transaction? _transaction;
     private readonly int _flushThresholdBytes;
 
@@ -94,6 +95,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
+        _deadlineScope = options.DeadlineScope;
         _flushThresholdBytes = flushThresholdBytes;
         _flushedBytes = writer.BytesCommitted;
         IsTracingMemory = IsTracingFullMemory;
@@ -412,7 +414,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     {
         if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < _flushThresholdBytes) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
+        _pipeWriter.FlushAsync(_deadlineScope?.Current?.Token ?? _cancellationToken).SafeWait();
         _flushedBytes = _writer.BytesCommitted;
     }
 

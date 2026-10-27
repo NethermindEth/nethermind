@@ -350,16 +350,19 @@ public class DebugRpcModule(
         }
         BlockParameter blockParameter = new(header.Hash!);
         return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
-            (writer, pipeWriter, token) => debugBridge.GetBlockTrace(blockParameter, token, effective, writer, pipeWriter)));
+            (writer, pipeWriter, token) => debugBridge.GetBlockTrace(blockParameter, token, effective, writer, pipeWriter), effective.EnforceExecutionDeadline));
     }
 
     private GethLikeTxTraceStreamingBlockResult BuildStreamingBlockResult(
-        Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runBlockTrace)
+        Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runBlockTrace, bool propagateExecutionTimeout = false)
     {
         CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
         try
         {
-            return new GethLikeTxTraceStreamingBlockResult(runBlockTrace, timeoutCts, _logger);
+            return new GethLikeTxTraceStreamingBlockResult(runBlockTrace, timeoutCts, _logger)
+            {
+                PropagateExecutionTimeout = propagateExecutionTimeout
+            };
         }
         catch
         {
@@ -597,7 +600,7 @@ public class DebugRpcModule(
 
         // A malformed native duration must reach the real constructor before it can fail.
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
-            return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
+            return StreamBlockTrace(header, (options ?? GethTraceOptions.Default) with { EnforceExecutionDeadline = true }, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
             return MissingTraceBlock($"block #{blockNumber.BlockNumber} not found", header.Number);
@@ -658,7 +661,7 @@ public class DebugRpcModule(
 
         options = WithOpcodeStepLimit(options);
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
-            return StreamBlockTrace(header, options, validateStructLogTimeout: true);
+            return StreamBlockTrace(header, (options ?? GethTraceOptions.Default) with { EnforceExecutionDeadline = true }, validateStructLogTimeout: true);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
