@@ -221,7 +221,8 @@ pending transactions left without coverage are evicted, and nothing validated un
 verifier is announced or served. Development chains schedule such a fork with the chainspec
 parameters `eip8288AggregatedVkTransitionTimestamp` / `eip8288AggregatedVk`, or the geth genesis
 keys `eip8288AggregatedVkTimestamp` / `eip8288AggregatedVk`; the pinned backend verifies only its
-own key, so proofs under any other key fail.
+own key, so proofs under any other key fail. These options are devnet-only: EIP-8288 treats
+`AGGREGATED_VK` as fixed at the protocol level, and no production network overrides it.
 
 ## eth/73 proof wrapper propagation
 
