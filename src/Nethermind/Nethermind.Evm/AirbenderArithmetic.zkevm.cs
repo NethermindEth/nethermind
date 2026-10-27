@@ -22,6 +22,23 @@ internal static unsafe class AirbenderArithmetic
     private const uint MultiplyHighOp = 1u << 4;
     private const uint CopyOp = 1u << 7;
 
+    // 2^i as the i-th of 256 words, in RAM where the delegation reads its operands.
+    private static uint* s_powersOfTwo;
+
+    /// <summary>Prepares the shifts' constants; every handler table that reaches them calls this first.</summary>
+    public static void Initialize()
+    {
+        if (s_powersOfTwo is not null)
+            return;
+
+        const int Words = 32 / sizeof(uint);
+        uint* table = (uint*)NativeMemory.AlignedAlloc(256 * 32, 32);
+        NativeMemory.Clear(table, 256 * 32);
+        for (int exponent = 0; exponent < 256; exponent++)
+            table[exponent * Words + (exponent >> 5)] = 1u << exponent;
+        s_powersOfTwo = table;
+    }
+
     /// <summary>Copies the word at <paramref name="source"/> to <paramref name="destination"/>.</summary>
     /// <remarks>One delegation in place of eight loads and eight stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -48,40 +65,38 @@ internal static unsafe class AirbenderArithmetic
         airbender_u256_op(left, right, MultiplyLowOp);
     }
 
-    /// <summary>Shifts <paramref name="value"/> left by <paramref name="bits"/>, below 256, overwriting the free word <paramref name="scratch"/>.</summary>
+    /// <summary>Shifts <paramref name="value"/> left by <paramref name="bits"/>, below 256.</summary>
     /// <remarks><c>value &lt;&lt; bits</c> is the low 256 bits of <c>value * 2^bits</c>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ShiftLeft(void* value, void* scratch, int bits)
+    public static void ShiftLeft(void* value, int bits)
     {
         Debug.Assert((uint)bits < 256);
-        SetPowerOfTwo((uint*)scratch, bits);
-        MultiplyLow(value, scratch);
+        MultiplyLow(value, PowerOfTwo(bits));
     }
 
-    /// <summary>Shifts <paramref name="value"/> right by <paramref name="bits"/>, below 256, overwriting the free word <paramref name="scratch"/>.</summary>
+    /// <summary>Shifts <paramref name="value"/> right by <paramref name="bits"/>, below 256.</summary>
     /// <remarks>For a nonzero shift, <c>value &gt;&gt; bits</c> is the high 256 bits of <c>value * 2^(256 - bits)</c>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ShiftRight(void* value, void* scratch, int bits)
+    public static void ShiftRight(void* value, int bits)
     {
         Debug.Assert((uint)bits < 256);
-        Debug.Assert((((nuint)value | (nuint)scratch) & 31) == 0);
+        Debug.Assert(((nuint)value & 31) == 0);
         if (bits == 0)
             return;
 
-        SetPowerOfTwo((uint*)scratch, 256 - bits);
-        airbender_u256_op(value, scratch, MultiplyHighOp);
+        airbender_u256_op(value, PowerOfTwo(256 - bits), MultiplyHighOp);
     }
 
-    /// <summary>Shifts <paramref name="value"/> right by <paramref name="bits"/>, below 256, filling with its sign, overwriting the free word <paramref name="scratch"/>.</summary>
+    /// <summary>Shifts <paramref name="value"/> right by <paramref name="bits"/>, below 256, filling with its sign.</summary>
     /// <remarks>A negative value shifts as <c>~(~value &gt;&gt; bits)</c>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ShiftRightArithmetic(void* value, void* scratch, int bits)
+    public static void ShiftRightArithmetic(void* value, int bits)
     {
         ulong* limbs = (ulong*)value;
         bool negative = (long)limbs[3] < 0;
         if (negative)
             Complement(limbs);
-        ShiftRight(value, scratch, bits);
+        ShiftRight(value, bits);
         if (negative)
             Complement(limbs);
     }
@@ -110,15 +125,12 @@ internal static unsafe class AirbenderArithmetic
         limbs[3] = ~limbs[3];
     }
 
+    /// <summary>The word 2^<paramref name="exponent"/>, for an exponent below 256.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SetPowerOfTwo(uint* word, int exponent)
+    private static uint* PowerOfTwo(int exponent)
     {
-        ulong* limbs = (ulong*)word;
-        limbs[0] = 0;
-        limbs[1] = 0;
-        limbs[2] = 0;
-        limbs[3] = 0;
-        word[exponent >> 5] = 1u << exponent;
+        Debug.Assert(s_powersOfTwo is not null, "Initialize runs before any handler that shifts");
+        return s_powersOfTwo + exponent * (32 / sizeof(uint));
     }
 
     // Named as its entry point, which is the name the JIT matches.

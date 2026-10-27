@@ -48,6 +48,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         if (TTracingInst.IsActive || TCancelable.IsActive || typeof(TGasPolicy) != typeof(EthereumGasPolicy)) return;
 
+        if (AirbenderFlag.IsActive)
+            AirbenderArithmetic.Initialize();
+
         lookup[(int)Instruction.PUSH1] = AsTableEntry(&RawCalliHelper.ExecutePush1);
         lookup[(int)Instruction.DUP1] = AsTableEntry(&RawCalliHelper.ExecuteDup1);
         lookup[(int)Instruction.POP] = AsTableEntry(&RawCalliHelper.ExecutePop);
@@ -768,9 +771,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong bits = Unsafe.Add(ref end, -4);
                 if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1) | (bits >> 8)) == 0)
                 {
-                    // The shift's slot is consumed.
                     if (AirbenderFlag.IsActive)
-                        AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -4)), (int)bits);
+                        AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), (int)bits);
                     else
                         ShiftRight(ref Unsafe.Add(ref end, -8), (int)bits, arithmetic: true);
                     return;
