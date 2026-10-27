@@ -171,7 +171,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
-        // The structural check bounds the frame gas sum alone; the budget it feeds can still overflow.
+        // Fails only on a frame gas sum past 2^64 - 1, which IsWellFormed above already rejects; a larger budget saturates.
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit, estimateSignatureBytes: allowEmptySignatures))
         {
             WorldState.Restore(txSnapshot);

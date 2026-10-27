@@ -1611,6 +1611,34 @@ public class FrameTxStructuralAdmissionTests
         }
     }
 
+    // EIP-8141 bounds the frame gas sum by 2^64 - 1 and nothing more: the intrinsic gas may carry the budget past
+    // it, and the transaction is then left to the block, whose gas limit its state gas exceeds.
+    [TestCase(0ul, true, TestName = "a frame gas sum of 2^64 - 1 is admitted")]
+    [TestCase(1ul, false, TestName = "a frame gas sum of 2^64 is rejected as an overflow")]
+    public void IsWellFormed_BoundsTheFrameGasSumAlone(ulong overshoot, bool expected)
+    {
+        Transaction tx = OnChain(SelfVerify(10_000),
+            new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 10_000, ulong.MaxValue - 20_000 + overshoot, UInt256.Zero, default));
+
+        ValidationResult result = Validate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expected), result.Error);
+            Assert.That(result.Error, expected ? Is.Null : Is.EqualTo(FrameTxValidation.FrameGasOverflow));
+        }
+    }
+
+    [Test]
+    public void IsWellFormed_ExecutionGasAtTheMaximum_IsRejectedByTheTransactionGasCap()
+    {
+        ulong cap = Eip7825Constants.DefaultTxGasLimitCap;
+
+        ValidationResult result = Validate(OnChain(SelfVerify(ulong.MaxValue)));
+
+        Assert.That(result.Error, Is.EqualTo(FrameTxValidation.FrameExecutionGasExceedsCap(ulong.MaxValue, cap)));
+    }
+
     /// <summary>The execution gas a single-frame transaction may budget before its reservation reaches <paramref name="cap"/>.</summary>
     private static ulong FrameExecutionHeadroom(ulong cap)
     {

@@ -609,13 +609,18 @@ public static class FrameTxValidation
     /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
     /// caller from the unmeasured reading. The EIP-8250 nonce keys are covered by the same statistics: their measured
     /// calldata is never empty, so a transaction that gains keys never matches a memo taken without them.
+    /// EIP-8141 bounds only the sum of the frame gas limits by <c>2^64 - 1</c>, and the intrinsic gas added to it can
+    /// carry the budget past that. Such a budget saturates rather than failing, so the transaction is judged as the
+    /// specification judges it: its execution gas by the EIP-7825 cap, its state gas by the block's gas limit.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec the pricing is taken at; it also keys the memo.</param>
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
-    /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
-    /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or the budget overflows <see cref="ulong"/>.</returns>
+    /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit, saturating at
+    /// <see cref="ulong.MaxValue"/>.</param>
+    /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or its frame gas limits sum past
+    /// <see cref="ulong.MaxValue"/>.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
@@ -759,17 +764,8 @@ public static class FrameTxValidation
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
 
-        ulong standardGas = intrinsicGas + totalFrameGas;
-        if (standardGas < intrinsicGas)
-        {
-            return false;
-        }
-
-        ulong floorReservation = floorGas + totalStateGas;
-        if (floorReservation < floorGas)
-        {
-            return false;
-        }
+        ulong standardGas = intrinsicGas.SaturatingAdd(totalFrameGas);
+        ulong floorReservation = floorGas.SaturatingAdd(totalStateGas);
 
         maxGas = Math.Max(standardGas, floorReservation);
         return true;
@@ -822,11 +818,7 @@ public static class FrameTxValidation
             stateReservation = nextState;
         }
 
-        ulong standardExecution = intrinsicGas + frameExecution;
-        if (standardExecution < intrinsicGas)
-        {
-            return false;
-        }
+        ulong standardExecution = intrinsicGas.SaturatingAdd(frameExecution);
 
         executionReservation = Math.Max(standardExecution, floorGas);
         return true;
