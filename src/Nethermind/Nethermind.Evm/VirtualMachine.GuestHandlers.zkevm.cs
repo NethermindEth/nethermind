@@ -261,7 +261,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? ((nuint)bytes << 8) | Unsafe.Add(ref bytes, 1)
             : ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref bytes));
 
-        /// <summary>The four code bytes from <paramref name="start"/> past <paramref name="opcode"/>, read as one word where <see cref="StrictAlignmentFlag"/> is off and not read there.</summary>
+        /// <summary>The four code bytes from <paramref name="start"/> past <paramref name="opcode"/>, read as one word, or <c>0</c> where <see cref="StrictAlignmentFlag"/> is on, which <see cref="CodeByte"/> and <see cref="CodeUInt16"/> then ignore.</summary>
         /// <remarks>
         /// A fused handler tests a few bytes past its opcode. Where the JIT tests alignment, a misaligned word read assembles all
         /// four bytes behind a guard, so <see cref="CodeByte"/> reads only the bytes a test needs.
