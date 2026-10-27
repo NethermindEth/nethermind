@@ -357,7 +357,12 @@ try
         Equal(result["status"]!.ToString(), "failed");
         if (!result["failure_reasons"]!.ToJsonString().Contains("campaign cancellation requested", StringComparison.Ordinal)) throw new Exception("Cancellation reason missing");
         if (OperatingSystem.IsLinux()) Equal(result["metrics"]!["cleanup"]!.GetValue<bool>(), mode == "cancel");
-        try { using var child = Process.GetProcessById(pid); Equal(child.HasExited, true); }
+        try
+        {
+            using var child = Process.GetProcessById(pid);
+            await child.WaitForExitAsync(timeout.Token);
+            Equal(child.HasExited, true);
+        }
         catch (ArgumentException) { }
     });
     Console.WriteLine($"Passed {tests} tests.");

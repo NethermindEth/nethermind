@@ -477,10 +477,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
-        if (_emptyBlockPreparations.TryGetValue(payloadId, out EmptyBlockPreparation? preparation)) await preparation.Prepared.Task;
+        await WaitForPreparation(payloadId);
 
         if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
         {
+            // No payload has been handed out yet; leave the build available for a later request.
+            if (!skipCancel && blockContext.Best.CurrentBestBlock is null) return null;
+
             try
             {
                 if (skipCancel && blockContext.Best.CurrentBestBlock is null or { Transactions.Length: 0 })
@@ -502,6 +505,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
         return null;
     }
+
+    internal Task WaitForPreparation(string payloadId) =>
+        _emptyBlockPreparations.TryGetValue(payloadId, out EmptyBlockPreparation? preparation) ? preparation.Prepared.Task : Task.CompletedTask;
 
     /// <summary>
     /// Keeps the retrieved context as the stored one, disposing a replacement published while it was being retrieved.

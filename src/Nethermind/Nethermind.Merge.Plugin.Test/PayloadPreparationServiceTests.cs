@@ -288,7 +288,7 @@ public class PayloadPreparationServiceTests
         Build.A.Block.WithNumber(1).WithGasUsed(21000).WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
     /// <summary>A service whose empty block is <paramref name="empty"/> and whose improvement build finishes with <paramref name="build"/>.</summary>
-    private static TestPayloadPreparationService CreateLateBuildService(bool boost, Block empty, Task<Block?> build, IBoostRelay relay)
+    private static TestPayloadPreparationService CreateLateBuildService(bool boost, Block? empty, Task<Block?> build, IBoostRelay relay)
     {
         IBlockProducer producer = Substitute.For<IBlockProducer>();
         producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.PrepareEmptyBlock, Arg.Any<CancellationToken>())
@@ -505,7 +505,7 @@ public class PayloadPreparationServiceTests
         TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using TestPayloadPreparationService service = CreateLateBuildService(false, empty, build.Task, Substitute.For<IBoostRelay>());
         string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
-        Assert.That(() => service.Stored(payloadId)?.Best.CurrentBestBlock, Is.SameAs(empty).After(5000, 10));
+        await service.WaitForPreparation(payloadId).WaitAsync(WaitTimeout);
         IBlockImprovementContext context = service.Stored(payloadId)!;
 
         ValueTask<IBlockProductionContext?> payload = service.GetPayload(payloadId);
@@ -522,24 +522,36 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
-    public async Task GetPayload_does_not_wait_for_the_improvement_when_there_is_no_empty_block()
+    public async Task GetPayload_leaves_a_missing_block_available_for_a_later_request([Values] bool boost)
     {
-        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
         TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool disposed = false;
-        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
-        context.Best.Returns(new BlockProductionSnapshot(null, UInt256.Zero));
-        context.ImprovementTask.Returns(improvement.Task);
-        context.When(c => c.DisposeAndCancelOngoingImprovements()).Do(_ => disposed = true);
-        service.Store("payload", context);
+        using TestPayloadPreparationService service = CreateLateBuildService(boost, null, improvement.Task, Substitute.For<IBoostRelay>());
+        string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
+        await service.WaitForPreparation(payloadId).WaitAsync(WaitTimeout);
+        IBlockImprovementContext context = service.Stored(payloadId)!;
 
-        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload");
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload(payloadId);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payload.IsCompleted, Is.True);
-            Assert.That((await payload)?.CurrentBestBlock, Is.Null);
-            Assert.That(disposed, Is.True);
+            Assert.That(await payload, Is.Null);
+            Assert.That(context.Disposed, Is.False);
+        }
+
+        Block improved = FullBlock();
+        improvement.SetResult(improved);
+        await context.ImprovementTask.WaitAsync(WaitTimeout);
+        string retriedId = service.StartPreparingPayload(ParentHeader, Attributes);
+        IBlockProductionContext? retrieved = await service.GetPayload(retriedId);
+        IBlockProductionContext? again = await service.GetPayload(retriedId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retriedId, Is.EqualTo(payloadId));
+            Assert.That(retrieved?.CurrentBestBlock, Is.SameAs(improved));
+            Assert.That(again?.CurrentBestBlock, Is.SameAs(improved));
+            Assert.That(context.Disposed, Is.True);
         }
     }
 
