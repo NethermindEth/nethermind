@@ -26,13 +26,14 @@ internal sealed class GethLikeBlockDeadlineTracer(
     internal bool Expired => _deadline?.Expired == true;
     public bool IsTracingRewards => inner.IsTracingRewards;
 
+    /// <remarks>Other native tracers retain caller-token cancellation without an owned execution deadline.</remarks>
     internal static IBlockTracer<GethLikeTxTrace> Wrap(IBlockTracer<GethLikeTxTrace> tracer, GethTraceOptions options, CancellationToken external) =>
         options.EnforceExecutionDeadline && options.Tracer is null or "" or NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer
             ? new GethLikeBlockDeadlineTracer(tracer, options, external)
             : tracer;
 
     // A second cancellation wrapper would hide the transaction's IsCancelled from VM dispatch.
-    internal static IBlockTracer WithCancellation(IBlockTracer<GethLikeTxTrace> tracer, CancellationToken external)
+    internal static IBlockTracer WithCancellation(IBlockTracer tracer, CancellationToken external)
     {
         if (tracer is not GethLikeBlockDeadlineTracer deadline) return tracer.WithCancellation(external);
         deadline._external = external;
