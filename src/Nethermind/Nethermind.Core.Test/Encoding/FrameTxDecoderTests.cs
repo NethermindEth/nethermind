@@ -281,13 +281,14 @@ public class FrameTxDecoderTests
     /// Encodes the well-formed type-6 payload body that the hand-built payload tests start from.
     /// </summary>
     /// <param name="chainId">Replaces the chain_id field; defaults to <see cref="TestBlockchainIds.ChainId"/>.</param>
+    /// <param name="nonce">Replaces the nonce field; defaults to zero.</param>
     /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
     /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, params Rlp[] trailing) =>
+    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? nonce = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, params Rlp[] trailing) =>
         Rlp.Encode([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
-            Rlp.Encode(0L),                                 // nonce
+            nonce ?? Rlp.Encode(0L),                        // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
             frames ?? Rlp.Encode(Array.Empty<Rlp>()),       // frames
             signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
@@ -372,6 +373,10 @@ public class FrameTxDecoderTests
             new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, FilledBytes(32, 0xab), FilledBytes(TxFrameSignature.Secp256k1SignatureLength, 0x22)),
             new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
         ])).SetName("Roundtrip_AllSignatureSchemes");
+
+        Transaction largestNonce = CreateFrameTx();
+        largestNonce.Nonce = ulong.MaxValue;
+        yield return new TestCaseData(largestNonce).SetName("Roundtrip_LargestNonce");
 
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [UInt256.Zero];
@@ -640,6 +645,16 @@ public class FrameTxDecoderTests
 
         Assert.That(() => DecodeConsensusPayload(payload),
             Throws.InstanceOf<RlpException>().With.Message.Contains("Unexpected length of integer"));
+    }
+
+    // EIP-8141 requires nonce < 2^64. A wider nonce gets the NonceTooWide error the other transaction types report.
+    [Test]
+    public void Decode_NonceAtTwoToThe64_ThrowsNonceTooWide()
+    {
+        byte[] payload = TypedPayload(FrameTxBody(nonce: Rlp.Encode((UInt256)ulong.MaxValue + 1)));
+
+        Assert.That(() => DecodeConsensusPayload(payload),
+            Throws.InstanceOf<RlpException>().With.Message.Contains("NonceTooWide"));
     }
 
     [TestCase(FrameDataDecodeCap, false)]

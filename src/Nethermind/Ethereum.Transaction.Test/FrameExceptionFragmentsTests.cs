@@ -153,6 +153,45 @@ public class FrameExceptionFragmentsTests
         }
     }
 
+    /// <summary>One frame, <c>[mode, flags, target, limits, value, data]</c>, with the encoded items the caller supplies.</summary>
+    private static Rlp OneFrame(Rlp mode = null, Rlp limits = null, Rlp data = null) =>
+        Rlp.Encode(new Rlp[]
+        {
+            Rlp.Encode(
+                mode ?? Rlp.Encode(1L),
+                Rlp.Encode(0L),                                     // flags
+                Rlp.Encode(TestItem.AddressB.Bytes),                // target
+                limits ?? Rlp.Encode(Rlp.Encode(21_000L), Rlp.Encode(0L)),
+                Rlp.Encode(0L),                                     // value
+                data ?? Rlp.Encode(Array.Empty<byte>())),
+        });
+
+    private static IEnumerable<TestCaseData> MalformedFrameCases()
+    {
+        // 0x81 0x01 is the byte 0x01 under a one-byte string header; RLP encodes a byte below 0x80 as itself.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x81, 0x01])), "Non-canonical integer")
+            .SetName("Decode covers a frame mode under a needless string header");
+        yield return new TestCaseData(OneFrame(data: new Rlp([0x81, 0x01])), "Non-canonical integer")
+            .SetName("Decode covers one byte of frame data under a needless string header");
+        // The mode 1 with a leading zero is the two-byte string 0x82 0x00 0x01, a prefix a one-byte field rejects.
+        yield return new TestCaseData(OneFrame(mode: new Rlp([0x82, 0x00, 0x01])), "Unexpected byte value")
+            .SetName("Decode covers a frame mode with a leading zero");
+        // A long-form string header (0xb8, then the length) is for strings of 56 bytes or more.
+        yield return new TestCaseData(OneFrame(data: new Rlp([0xb8, 0x02, 0x01, 0x02])), "Expected length greater than or equal to 56")
+            .SetName("Decode covers short frame data under a long-form header");
+        yield return new TestCaseData(OneFrame(limits: Rlp.Encode(new Rlp[] { Rlp.Encode(21_000L) })), "Data checkpoint failed")
+            .SetName("Decode covers frame limits missing an element");
+    }
+
+    [TestCaseSource(nameof(MalformedFrameCases))]
+    public void Decode_CoversAMalformedFrame(Rlp frames, string wording)
+    {
+        string message = DecodeFailureMessage(EncodePayload(frames, Rlp.Encode(0L)));
+
+        Assert.That(message, Does.Contain(wording));
+        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+    }
+
     private static IEnumerable<TestCaseData> DisjointnessCases()
     {
         (string Name, string[] Set)[] sets =

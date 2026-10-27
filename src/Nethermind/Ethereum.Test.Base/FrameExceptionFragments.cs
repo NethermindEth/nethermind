@@ -110,8 +110,9 @@ public static class FrameExceptionFragments
     ];
 
     /// <summary>
-    /// Decode-time rejections of a frame field too wide or too long for its type, which the fixtures
-    /// also name as format failures. Reported before any rule runs, so they name no rule.
+    /// Decode-time rejections of a frame transaction's encoding — a field too wide or too long for its type, a field
+    /// not encoded canonically, or a list whose header does not match its elements — which the fixtures also name as
+    /// format failures. Reported before any rule runs, so they name no rule.
     /// </summary>
     public static readonly string[] Decode =
     [
@@ -121,6 +122,14 @@ public static class FrameExceptionFragments
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
         "frame transaction payload is incomplete",
+        // A field not encoded canonically: an integer or one-byte string with a leading zero or a header it does
+        // not need, a one-byte field (mode, flags) under a string or list prefix, and a long-form length on a string
+        // shorter than 56 bytes.
+        "Non-canonical integer",
+        "Unexpected byte value",
+        "Expected length greater than or equal to 56",
+        // A list header that does not match the bytes its elements take up, e.g. a frame's limits missing one.
+        "Data checkpoint failed",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",

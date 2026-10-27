@@ -118,7 +118,8 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64, the codebase-wide ChainId width.
         transaction.ChainId = decoderContext.DecodeULong();
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
-        transaction.Nonce = decoderContext.DecodeULong();
+        decoderContext.Position = DecodeNonce(new LiteRlpReader(decoderContext.Data), decoderContext.Position, out ulong nonce);
+        transaction.Nonce = nonce;
         transaction.SenderAddress = decoderContext.DecodeAddress();
         transaction.Frames = decoderContext.DecodeNonNullArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
         transaction.FrameSignatures = decoderContext.DecodeNonNullArray(TxFrameSignatureDecoder.Instance,

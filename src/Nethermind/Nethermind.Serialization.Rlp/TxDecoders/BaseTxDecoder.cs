@@ -109,7 +109,9 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    private static int DecodeNonce(LiteRlpReader rlp, int position, out ulong nonce)
+    /// <summary>Decodes a nonce, reporting one wider than 64 bits as <c>NonceTooWide</c> rather than as a generic
+    /// integer-width error.</summary>
+    private protected static int DecodeNonce(LiteRlpReader rlp, int position, out ulong nonce)
     {
         (_, int contentLength) = rlp.PeekPrefixAndContentLength(position);
         if (contentLength <= sizeof(ulong))
