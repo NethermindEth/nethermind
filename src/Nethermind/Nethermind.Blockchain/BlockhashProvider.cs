@@ -41,7 +41,9 @@ namespace Nethermind.Blockchain
             return depth switch
             {
                 1UL => currentBlock.ParentHash,
-                _ => hashes is not null
+                // A previous block's prefetch can publish after this block's prefetch cleared the array; its ancestors
+                // are one block off, so serve the array only when it starts at this block's parent.
+                _ => hashes is not null && hashes[0] == currentBlock.ParentHash
                     ? hashes[(int)(depth - 1)]
                     : blockhashCache.GetHash(currentBlock, depth)
                       ?? _unresolvedBlockhashPolicy.Resolve(currentBlock, number)

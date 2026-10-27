@@ -526,6 +526,29 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(expected.Hash));
     }
 
+    /// <summary>
+    /// The parent's prefetch publishing after the child's prefetch cleared the array leaves the parent's ancestors in
+    /// place; the child must not read them.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Ignores_ancestors_prefetched_for_previous_block([Values(2ul, 3ul, 256ul)] ulong depth)
+    {
+        const int chainLength = 300;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
+        BlockTree tree = blockTreeBuilder.TestObject;
+        BlockHeader parent = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader current = Build.A.Block.WithParent(parent).TestObject.Header;
+        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
+
+        await provider.Prefetch(parent, CancellationToken.None);
+
+        ulong number = current.Number - depth;
+        Hash256? result = provider.GetBlockhash(current, number, Frontier.Instance);
+        Assert.That(result, Is.EqualTo(tree.FindHeader(number, BlockTreeLookupOptions.None)!.Hash));
+    }
+
     /// <summary>Reads a hash straight out of the EIP-2935 ring buffer.</summary>
     private static Hash256? ReadRingBuffer(IWorldState worldState, ulong blockNumber, IReleaseSpec spec)
     {
