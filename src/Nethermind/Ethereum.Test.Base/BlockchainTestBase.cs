@@ -467,7 +467,7 @@ public abstract class BlockchainTestBase
                 && validationError is null;
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
-            IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
+            IEnumerable<string> paramsRaw = NewPayloadParams(enginePayload.Params, paramCount, newPayloadVersion);
             string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
@@ -536,6 +536,21 @@ public abstract class BlockchainTestBase
         return lastValidationError is null
             ? Result<string>.Success(lastStatus)
             : Result<string>.Fail(lastValidationError, lastStatus);
+    }
+
+    internal static IEnumerable<string> NewPayloadParams(JsonElement[] parameters, int paramCount, int payloadVersion)
+    {
+        if (payloadVersion < 6 || parameters.Length < 5 || parameters[4].ValueKind != JsonValueKind.Array
+            || parameters[4].EnumerateArray().Any(static t => t.ValueKind != JsonValueKind.String))
+            return parameters.Take(paramCount).Select(static p => p.GetRawText());
+
+        List<string>[] lists = [.. Enumerable.Range(0, Eip7805Constants.InclusionListCommitteeSize).Select(static _ => new List<string>())];
+        int position = 0;
+        foreach (JsonElement transaction in parameters[4].EnumerateArray())
+            lists[position++ % lists.Length].Add(transaction.GetRawText());
+
+        string inclusionLists = "[" + string.Join(",", lists.Select(static l => "[" + string.Join(",", l) + "]")) + "]";
+        return [.. parameters.Take(4).Select(static p => p.GetRawText()), inclusionLists, "[]"];
     }
 
     private static NewPayloadWithWitnessV1Result GetWitnessResult(JsonRpcResponse response, int payloadVersion) =>

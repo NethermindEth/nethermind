@@ -589,16 +589,19 @@ jobs:
               # lane carried for ethereum/execution-specs#3582, #3406, the EIP-7610 collision scenario
               # and the EIP-7928 boundary at test_tx_gas_limit are no longer needed.
               #
-              # What remains is the aggregate inclusion-list size cap, which is ours rather than the
-              # spec's: these cases carry an ~131 KB initcode or calldata payload, 16x the per-list
-              # MAX_BYTES_PER_INCLUSION_LIST of EIP-7805, so engine_newPayloadV6 answers -32602 before
-              # validating and the fixture cannot demonstrate the rejection it expects.
+              # What remains is the inclusion-list size cap: these cases carry a single transaction over
+              # the per-list MAX_BYTES_PER_INCLUSION_LIST of EIP-7805, which fits no committee position,
+              # so engine_newPayloadV6 answers -32602 before validating and the fixture cannot
+              # demonstrate the rejection it expects.
               'test_contract_creating_tx.*inclusion_list'
               'test_tx_gas_limit_cap_contract_creation.*inclusion_list'
               'test_oversized_initcode_tx_no_state_gas.*inclusion_list'
               'test_max_initcode_size.*inclusion_list'
               'test_calldata_floor_exceeding_tx_gas_limit_cap.*inclusion_list'
               'test_tx_gas_limit_cap_authorized_tx.*inclusion_list'
+              'test_transaction_validity_type_.*inclusion_list.*multiple_access_lists_multiple_storage_keys'
+              'TestCreateTxGasBoundary::test_create_tx_gas_boundary.*inclusion_list'
+              'test_intrinsic_execution_gas_exceeds_cap.*inclusion_list'
               # The inclusion-list variant keeps rlp_modifier while clearing header_verify, so header
               # blob-gas fields are never recomputed. Fix pending as ethereum/execution-specs#3406.
               'test_invalid_block_blob_count.*inclusion_list'
