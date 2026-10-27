@@ -32,8 +32,16 @@ namespace Nethermind.Consensus.Clique
 
         public override void PopulateLength(Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            (int contentLength, int signersLength, int votesLength, int tallyLength) =
-                GetContentLength(item, rlpBehaviors);
+            int signersLength = GetSignersContentLength(item.Signers);
+            int votesLength = GetVotesContentLength(item.Votes);
+            int tallyLength = GetTallyContentLength(item.Tally);
+
+            int contentLength = Rlp.LengthOf((UInt256)item.Number);
+            contentLength += Rlp.LengthOf(item.Hash);
+            contentLength += Rlp.LengthOfSequence(signersLength);
+            contentLength += Rlp.LengthOfSequence(votesLength);
+            contentLength += Rlp.LengthOfSequence(tallyLength);
+
             lengths.Push(tallyLength);
             lengths.Push(votesLength);
             lengths.Push(signersLength);
@@ -50,22 +58,6 @@ namespace Nethermind.Consensus.Clique
             EncodeVotes(ref writer, item.Votes, lengths.Pop());
             EncodeTally(ref writer, item.Tally, lengths.Pop());
 
-        }
-
-        private static (int contentLength, int signersLength, int votesLength, int tallyLength) GetContentLength(Snapshot item,
-            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int signersLength = GetSignersContentLength(item.Signers);
-            int votesLength = GetVotesContentLength(item.Votes);
-            int tallyLength = GetTallyContentLength(item.Tally);
-
-            int contentLength = Rlp.LengthOf((UInt256)item.Number);
-            contentLength += Rlp.LengthOf(item.Hash);
-            contentLength += Rlp.LengthOfSequence(signersLength);
-            contentLength += Rlp.LengthOfSequence(votesLength);
-            contentLength += Rlp.LengthOfSequence(tallyLength);
-
-            return (contentLength, signersLength, votesLength, tallyLength);
         }
 
         private static SortedList<Address, ulong> DecodeSigners(ref RlpReader decoderContext)
