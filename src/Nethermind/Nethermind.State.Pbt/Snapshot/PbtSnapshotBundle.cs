@@ -185,7 +185,7 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Copies the group at <paramref name="path"/> from the persisted snapshots or persistence into the warmed groups, for this block's folds.</summary>
     /// <remarks>
-    /// Checks neither the group record buffer nor the warmed groups first, so a group either holds is read and warmed again.
+    /// A group already warmed is not read again. The group record buffer is not checked, so a group it holds is read and warmed.
     /// The transient resource holding the warmed groups is leased for the read, so it cannot be recycled until the read ends.
     /// Does nothing once the bundle is being torn down.
     /// </remarks>
@@ -197,7 +197,11 @@ public sealed class PbtSnapshotBundle(
 
         try
         {
-            readOnlyBundle.TryLoadPersistedNodeGroup(path, WarmGroupState.Write, new WarmGroupState(transientResource.WarmedGroupBuffer, in path, descendantBytes));
+            PbtWarmedGroupBuffer warmed = transientResource.WarmedGroupBuffer;
+            if (!warmed.TryGet(path, out PbtGroupRecord record))
+                readOnlyBundle.TryLoadPersistedNodeGroup(path, WarmGroupState.Write, new WarmGroupState(warmed, in path, descendantBytes));
+            else if (!descendantBytes.IsEmpty)
+                PbtNodeGroupCodec.ReadDescendantBytes(record.Payload.Span, descendantBytes);
         }
         finally
         {

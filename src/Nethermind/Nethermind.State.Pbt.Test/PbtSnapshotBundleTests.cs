@@ -315,6 +315,7 @@ public class PbtSnapshotBundleTests
         byte[]?[] loads = [Load(), Load()];
         int loadReads = reader.GroupReadCount;
         bundle.WarmUp(path, []);
+        bundle.WarmUp(path, []);
         byte[]? warmedLoad = Load();
         int warmUpReads = reader.GroupReadCount;
         (PbtSnapshot snapshot, PbtTransientResource retired) = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
@@ -329,7 +330,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(new[] { loads[0], loads[1], warmedLoad, loadAfterCollect }, Is.All.EqualTo(encoding));
             Assert.That(loadReads, Is.EqualTo(2), "a loaded group is not warmed");
-            Assert.That(warmUpReads, Is.EqualTo(3), "the warm-up reads the group once and then answers loads");
+            Assert.That(warmUpReads, Is.EqualTo(3), "the warm-up reads the group once, then finds it warmed and answers loads");
             Assert.That(retiredGroups, Is.EqualTo(1), "collect hands out the resource that warmed the group");
             Assert.That(readsAfterCollect, Is.EqualTo(4), "the next block reads a fresh resource");
             Assert.That(reader.GroupReadCount, Is.EqualTo(readsAfterCollect), "a disposed bundle warms nothing");
