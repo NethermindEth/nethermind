@@ -229,7 +229,7 @@ try
             else if (change == "add") candidate.Add((JsonNode)new JsonObject { ["input"] = "9.ssz", ["hash"] = new string('0', 64), ["output"] = new string('1', 86) });
             else if (change == "remove") candidate.RemoveAt(candidate.Count - 1);
             else if (change == "duplicate") candidate.Add(candidate[0]!.DeepClone());
-            else if (change == "malformed") candidate = [42];
+            else if (change == "malformed") candidate = [(JsonNode)42];
             else if (change == "empty") candidate.Clear();
             File.WriteAllText(manifest, candidate.ToJsonString());
             Git("add", "."); Git("commit", "-m", "candidate");
