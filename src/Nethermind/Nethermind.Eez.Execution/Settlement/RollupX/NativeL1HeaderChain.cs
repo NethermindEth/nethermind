@@ -16,6 +16,7 @@ internal sealed class NativeL1HeaderChain
     private readonly List<NativeL1Header> _headers;
     private readonly int _limit;
     internal int Count => _headers.Count;
+    internal ulong FirstNumber => Count != 0 ? _headers[0].Number : throw NativeL1Header.Invalid("missing headers");
     internal NativeL1Header Endpoint => Count != 0 ? _headers[^1] : throw NativeL1Header.Invalid("missing headers");
 
     internal NativeL1HeaderChain(int limit = MaxHeaders)
@@ -35,12 +36,38 @@ internal sealed class NativeL1HeaderChain
         for (int index = 0; index < segment.Count; index++)
         {
             NativeL1Header header = NativeL1Header.Decode(segment[index].Span, in rules);
-            if (previous is not null && (previous.Number == ulong.MaxValue || header.Number != previous.Number + 1 ||
-                header.ParentHash != previous.Hash || header.Timestamp <= previous.Timestamp)) throw NativeL1Header.Invalid("nonconsecutive ancestry");
+            EnsureNext(previous, header);
             checkedHeaders.Add(header);
             previous = header;
         }
         _headers.AddRange(checkedHeaders.AsSpan());
+    }
+
+    internal void AppendChecked(ReadOnlySpan<NativeL1Header> segment)
+    {
+        if (segment.Length > _limit - Count) throw NativeL1Header.Invalid("header count limit");
+        NativeL1Header? previous = Count == 0 ? null : _headers[^1];
+        foreach (NativeL1Header header in segment)
+        {
+            EnsureNext(previous, header);
+            previous = header;
+        }
+        _headers.AddRange(segment);
+    }
+
+    internal NativeL1HeaderChain Range(ulong firstNumber, ulong lastNumber)
+    {
+        _ = At(firstNumber);
+        _ = At(lastNumber);
+        if (lastNumber < firstNumber) throw NativeL1Header.Invalid("reversed history range");
+        int offset = checked((int)(firstNumber - FirstNumber));
+        return new NativeL1HeaderChain(_headers.GetRange(offset, checked((int)(lastNumber - firstNumber + 1))), _limit);
+    }
+
+    private static void EnsureNext(NativeL1Header? previous, NativeL1Header header)
+    {
+        if (previous is not null && (previous.Number == ulong.MaxValue || header.Number != previous.Number + 1 ||
+            header.ParentHash != previous.Hash || header.Timestamp <= previous.Timestamp)) throw NativeL1Header.Invalid("nonconsecutive ancestry");
     }
 
     internal NativeL1Header At(ulong number)
