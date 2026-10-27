@@ -37,6 +37,7 @@ public class Snapshot : RefCountingDisposable
     // Boxed so publication is a single reference CAS.
     private StrongBox<SnapshotContentCounts>? _sealedCounts;
     private SnapshotContentFilters? _filters;
+    private int _filterBuildStarted;
 
     public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
     {
@@ -148,11 +149,11 @@ public class Snapshot : RefCountingDisposable
 
     /// <summary>Builds key filters over the mutable content, so lookups of absent keys skip its dictionaries.</summary>
     /// <remarks>
-    /// Call once the content is final. A reader that still sees no filters probes the dictionaries directly.
+    /// Call after the content is final. Only the first caller builds filters; readers probe the dictionaries until publication.
     /// </remarks>
     internal void BuildFilters()
     {
-        if (_isSorted) return;
+        if (_isSorted || Interlocked.CompareExchange(ref _filterBuildStarted, 1, 0) != 0) return;
 
         SnapshotContentFilters filters = _mutable!.Filters;
         filters.Build(_mutable, Counts);

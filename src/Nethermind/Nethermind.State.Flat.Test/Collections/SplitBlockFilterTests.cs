@@ -10,8 +10,10 @@ namespace Nethermind.State.Flat.Test.Collections;
 [TestFixture]
 public class SplitBlockFilterTests
 {
+    private static readonly int[] Counts = [0, 1, 25, 26, 51, 52, 76, 77, 102, 103, 127, 128, 1_000, 100_000];
+
     [Test]
-    public void Contains_every_added_hash_and_rejects_most_others([Values] bool sequentialHashes, [Values(1, 1_000, 100_000)] int count)
+    public void Contains_every_added_hash_and_rejects_most_others([Values] bool sequentialHashes, [ValueSource(nameof(Counts))] int count)
     {
         SplitBlockFilter filter = new();
         filter.Reset(count);
@@ -30,7 +32,7 @@ public class SplitBlockFilterTests
         for (int i = 0; i < Probes; i++)
         {
             uint absent = sequentialHashes ? (uint)(count + i) : (uint)random.Next() | 0x8000_0000u;
-            if (Array.IndexOf(added, absent) < 0 && filter.MightContain(absent)) falsePositives++;
+            if (filter.MightContain(absent)) falsePositives++;
         }
 
         Assert.That(falsePositives, Is.LessThan(Probes * 2 / 100));
@@ -52,7 +54,10 @@ public class SplitBlockFilterTests
             if (filter.MightContain(i)) stale++;
         }
 
-        Assert.That(filter.MightContain(5), Is.True);
-        Assert.That(stale, Is.LessThan(10_000 * 5 / 100));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.MightContain(5), Is.True);
+            Assert.That(stale, Is.LessThan(10_000 * 5 / 100));
+        }
     }
 }

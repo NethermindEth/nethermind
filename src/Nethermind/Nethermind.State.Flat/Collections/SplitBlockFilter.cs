@@ -38,7 +38,7 @@ internal sealed unsafe class SplitBlockFilter
     /// <summary>Clears the filter and sizes it for <paramref name="count"/> keys.</summary>
     public void Reset(int count)
     {
-        int blocks = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, (int)((long)count * BitsPerKey / BitsPerBlock)));
+        int blocks = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, (int)(((long)count * BitsPerKey + BitsPerBlock - 1) / BitsPerBlock)));
         int length = blocks * WordsPerBlock;
         if (_words.Length < length + AlignmentWords)
         {

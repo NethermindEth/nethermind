@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -158,8 +160,14 @@ public class SnapshotTests
         {
             // An earlier, larger build over the keys asserted absent below: its filter arrays are reused, not reallocated.
             Populate(Count, 4 * Count);
-            new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing).BuildFilters();
-            content.Reset();
+            using (Snapshot previous = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing))
+            {
+                previous.BuildFilters();
+            }
+
+            SnapshotContent reused = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+            Assert.That(reused, Is.SameAs(content));
+            content = reused;
         }
 
         Populate(0, Count);
@@ -196,6 +204,49 @@ public class SnapshotTests
             Hash256 hash = Keccak.Compute(i.ToString());
             return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes));
         }
+    }
+
+    [Test]
+    public void RebuildingFiltersDoesNotHidePublishedStorageNodes()
+    {
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing);
+        HashedKey<(Hash256, TreePath)> key = new((TestItem.KeccakA, TreePath.Empty));
+        snapshot.Content.StorageNodes[key] = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
+        snapshot.BuildFilters();
+
+        // A stale queued compaction job can resolve to a snapshot whose filters are already published.
+        // Observe a lookup exactly between clearing the storage filter and adding its first key if it rebuilds.
+        FieldInfo field = typeof(AddressStorageNodeDictionary).GetField("_cachedAddressEnumerator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>> original =
+            (IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>)field.GetValue(snapshot.Content.StorageNodes)!;
+        field.SetValue(snapshot.Content.StorageNodes,
+            new LookupCheckingEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>(original, () =>
+                Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True, "published filters must never hide a written key")));
+
+        try
+        {
+            snapshot.BuildFilters();
+            Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True);
+        }
+        finally
+        {
+            field.SetValue(snapshot.Content.StorageNodes, original);
+        }
+    }
+
+    private sealed class LookupCheckingEnumerator<T>(IEnumerator<T> inner, Action checkLookup) : IEnumerator<T>
+    {
+        public T Current => inner.Current;
+        object IEnumerator.Current => Current!;
+
+        public bool MoveNext()
+        {
+            checkLookup();
+            return inner.MoveNext();
+        }
+
+        public void Reset() => inner.Reset();
+        public void Dispose() => inner.Dispose();
     }
 
     [TestCase(256)]
