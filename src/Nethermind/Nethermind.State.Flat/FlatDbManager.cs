@@ -145,7 +145,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        // Built here, off the commit path; readers probe the dictionaries until the filters are published.
+        // Built in the compactor job; readers probe the dictionaries until the filters are published.
         if (_snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? snapshot))
         {
             using Snapshot _ = snapshot;
