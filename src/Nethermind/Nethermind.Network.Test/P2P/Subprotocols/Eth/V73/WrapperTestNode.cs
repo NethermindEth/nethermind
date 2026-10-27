@@ -145,9 +145,12 @@ internal sealed class WrapperTestNode : IDisposable
 internal static class WrapperTestObjects
 {
     /// <summary>A frame transaction with one leanSPHINCS dependency.</summary>
-    public static Transaction FrameTransaction(int seed)
+    public static Transaction FrameTransaction(int seed) => FrameTransaction(seed, Eip8288Constants.LeanSphincsScheme);
+
+    /// <summary>A frame transaction with one dependency under <paramref name="scheme"/>.</summary>
+    public static Transaction FrameTransaction(int seed, byte scheme)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
+        FrameDependency dependency = new(scheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,

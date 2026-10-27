@@ -1201,6 +1201,20 @@ public class ProofWrapperServiceTests
         }).Bytes;
     }
 
+    // EIP-8437: a dependency under the reserved leanSTARK scheme is a fork-dependent EIP-8288 rule failure, discarded without
+    // penalty; a scheme EIP-8288 does not define is malformed encoding.
+    [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Malformed)]
+    public async Task Reserved_dependency_scheme_is_invalid_and_an_undefined_one_malformed(byte scheme, ProofWrapperAcceptanceStatus expected)
+    {
+        Transaction transaction = CreateTransaction(new(scheme, TestItem.KeccakA.ValueHash256, default), TestItem.KeccakA);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true));
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(transaction));
+
+        Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
+    }
+
     // EIP-8437: a blob-carrying dependency-bearing transaction arrives with its blob data elided. Once the wrapper validates it is
     // handed to EIP-8070 cell retrieval, with its coverage pinned, instead of the pool; the wrapper is relayed.
     [Test]

@@ -112,11 +112,13 @@ public static class WrapperBodies
         for (int i = 0; i < dependencyCount; i++)
         {
             ReadOnlySpan<byte> dependency = dependencies.ReadBytes();
+            // A reserved scheme is well-formed here; validation rejects it as a dependency-rule failure, without penalty.
             if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()
-                || !Eip8288Dependencies.IsAcceptedScheme(dependency[31])) throw new RlpException("Invalid dependency");
+                || !Eip8288Dependencies.IsKnownScheme(dependency[31])) throw new RlpException("Invalid dependency");
             if (i > 0 && previous.SequenceCompareTo(dependency) >= 0) throw new RlpException("Dependencies are not canonical");
             previous = dependency;
-            work += (long)Eip8288Constants.LeanSphincsVerificationGas;
+            work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas);
         }
         if (mode == 0)
         {

@@ -196,6 +196,10 @@ public static class Eip8288Dependencies
     /// inclusion-list proof or aggregation input carrying it is invalid.</summary>
     public static bool IsAcceptedScheme(byte scheme) => scheme == Eip8288Constants.LeanSphincsScheme;
 
+    /// <summary>Whether a dependency scheme is one EIP-8288 defines, enabled or reserved. Wrapper decoding accepts every known
+    /// scheme, so a reserved one fails validation as a dependency-rule violation rather than as malformed encoding.</summary>
+    public static bool IsKnownScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
+
     /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
     {

@@ -98,10 +98,13 @@ public class Eip8437ClientCaseTests
     // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change).
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
+    [TestCase("reserved scheme", false)]
     [TestCase("announced hash", true)]
     public async Task Proof_and_dependency_failures_are_discarded_without_penalty(string scenario, bool penalized)
     {
-        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        // EIP-8288 reserves the leanSTARK scheme: a dependency under it fails the fork's rules, it is not malformed transport.
+        Transaction a = scenario == "reserved scheme" ? FrameTransaction(1, Eip8288Constants.LeanStarkScheme) : FrameTransaction(1),
+            b = FrameTransaction(2);
         byte[] wrapper = scenario == "dependency union" ? MismatchedUnion(a, b) : Wrapper(64, a, b);
         using WrapperTestNode node = new();
         node.Verifier.Valid = scenario != "proof";
