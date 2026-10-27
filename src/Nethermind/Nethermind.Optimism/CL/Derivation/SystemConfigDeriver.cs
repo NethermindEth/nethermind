@@ -28,6 +28,10 @@ public class SystemConfigDeriver(
     Address systemConfigProxy
 ) : ISystemConfigDeriver
 {
+    private static readonly AbiSignature<(ulong, ulong, Address)> BatcherData = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.Address);
+    private static readonly AbiSignature<(ulong, ulong, byte[])> Bytes32Data = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.BytesM(32));
+    private static readonly AbiSignature<(ulong, ulong, ulong)> UInt64Data = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
+
     public SystemConfig SystemConfigFromL2BlockInfo(ReadOnlySpan<byte> data, ReadOnlySpan<byte> extraData, ulong gasLimit)
     {
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL2DepositTxDataAndExtraData(data, extraData);
@@ -74,8 +78,7 @@ public class SystemConfigDeriver(
 
         if (updateType == SystemConfigUpdate.Batcher)
         {
-            AbiSignature<(ulong, ulong, Address)> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.Address);
-            (ulong pointer, ulong length, Address address) = AbiCodec.Decode(signature, log.Data);
+            (ulong pointer, ulong length, Address address) = AbiCodec.Decode(BatcherData, log.Data);
 
             if (pointer != 32) throw new FormatException("Invalid pointer field");
             if (length != 32) throw new FormatException("Invalid length field");
@@ -87,8 +90,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
-            AbiSignature<(ulong, ulong, byte[])> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.BytesM(32));
-            (ulong pointer, ulong length, byte[] data) = AbiCodec.Decode(signature, log.Data);
+            (ulong pointer, ulong length, byte[] data) = AbiCodec.Decode(Bytes32Data, log.Data);
 
             if (pointer != 32) throw new FormatException("Invalid pointer field");
             if (length != 32) throw new FormatException("Invalid length field");
@@ -101,8 +103,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
-            AbiSignature<(ulong, ulong, ulong)> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
-            (ulong pointer, ulong length, ulong gasLimit) = AbiCodec.Decode(signature, log.Data);
+            (ulong pointer, ulong length, ulong gasLimit) = AbiCodec.Decode(UInt64Data, log.Data);
 
             if (pointer != 32) throw new FormatException("Invalid pointer field");
             if (length != 32) throw new FormatException("Invalid length field");
@@ -114,8 +115,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.EIP1559Params)
         {
-            AbiSignature<(ulong, ulong, byte[])> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.BytesM(32));
-            (ulong pointer, ulong length, byte[] eip1559Params) = AbiCodec.Decode(signature, log.Data);
+            (ulong pointer, ulong length, byte[] eip1559Params) = AbiCodec.Decode(Bytes32Data, log.Data);
 
             if (pointer != 32) throw new FormatException("Invalid pointer field");
             if (length != 32) throw new FormatException("Invalid length field");
