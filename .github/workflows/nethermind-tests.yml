@@ -69,15 +69,16 @@ jobs:
           ^tools/lean-ffi/
           ^src/Nethermind/Nethermind\.Crypto\.LeanFfi\.Test/
           ^src/Nethermind/.*(/|^)(ProofAggregation|[^/]*Eip8288[^/]*|I?Lean[^/]*|NativeLean[^/]*|[^/]*FrameTx[^/]*)(/|\.cs$)
-          ^src/Nethermind/Nethermind\.Core/(Block(Header|Body)?|Transaction[^/]*|TxFrame|FrameMode|FrameFlags|PayloadAttributes|RecursiveStark)\.cs$
+          ^src/Nethermind/Nethermind\.Core/(Block(Header|Body)?|Transaction[^/]*|TxFrame|FrameMode|FrameFlags|RecursiveStark(Commitment)?)\.cs$
           ^src/Nethermind/Nethermind\.Core/(Crypto/(AggregationInput|Keccak|ValueHash256)|Specs/IReleaseSpec)\.cs$
           ^src/Nethermind/Nethermind\.Crypto/(NativeLeanProofVerifier|Keccak|EthereumEcdsa)\.cs$
           ^src/Nethermind/Nethermind\.Consensus/(Processing|Producers|Transactions|Validators|Scheduler)/
-          ^src/Nethermind/Nethermind\.Consensus/(Decoders/InclusionListDecoder|Stateless/StatelessExecutor)\.cs$
+          ^src/Nethermind/Nethermind\.Consensus/Decoders/InclusionListDecoder\.cs$
+          ^src/Nethermind/Nethermind\.Stateless\.Executor/StatelessExecutor\.cs$
           ^src/Nethermind/Nethermind\.Evm/(TransactionProcessing/|VirtualMachine[^/]*\.cs$|VmState[^/]*\.cs$)
           ^src/Nethermind/Nethermind\.TxPool/(Filters/|Collections/|TxPool[^/]*\.cs$|TxFilteringState\.cs$|PendingTransactionsView\.cs$|.*PrefixSimulator.*\.cs$)
-          ^src/Nethermind/Nethermind\.Blockchain/(BlockTree[^/]*|BlockStore|HeaderStore)\.cs$
-          ^src/Nethermind/Nethermind\.Network/(Rlpx/|P2P/(PacketSender|Session|ProtocolManager)\.cs$|P2P/ProtocolHandlers/|P2P/Subprotocols/Eth/V73/|P2P/Subprotocols/(ProtocolValidator|Capability)\.cs$|ProtocolsManager\.cs$)
+          ^src/Nethermind/Nethermind\.Blockchain/(BlockTree[^/]*|Blocks/BlockStore|Headers/HeaderStore)\.cs$
+          ^src/Nethermind/Nethermind\.Network/(Rlpx/|P2P/(PacketSender|Session)\.cs$|P2P/ProtocolHandlers/|P2P/Subprotocols/Eth/V73/|P2P/Subprotocols/(ProtocolValidator|Capability)\.cs$|ProtocolsManager\.cs$)
           ^src/Nethermind/Nethermind\.Serialization\.Rlp/(Block[^/]*Decoder|HeaderDecoder|Tx[^/]*Decoder|Rlp[^/]*|ValueDecoderContext|RlpStream)\.cs$
           ^src/Nethermind/Nethermind\.Serialization\.Rlp/TxDecoders/
           ^src/Nethermind/Nethermind\.Specs/(ReleaseSpec\.cs$|SpecProvider\.cs$|ChainSpecStyle/)
