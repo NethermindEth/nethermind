@@ -349,6 +349,7 @@ public sealed class FlatStorageTree(
             (int loads, int rounds, int misses, int failures) = StorageRootPrefetch.Run(root, new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), entries, _scope.ReadPool);
             _scope.CountStorageRootPrefetch(loads, rounds, misses, Stopwatch.GetTimestamp() - start);
             if (misses != 0 || failures != 0) LogPrefetchFailure($"{misses} nodes not resolved, {failures} failed");
+            XpCiLog.Ran(entries.Length, loads, rounds, misses, failures);
         }
         // A prefetch only loads nodes: the write reads whatever it left, and meets a real error itself.
         catch (Exception e)
@@ -445,5 +446,24 @@ public sealed class FlatStorageTree(
         public void Clear() => storageTree.ClearStorage();
 
         public void Dispose() { }
+    }
+
+    // CI variant only: shows in the job log that the prefetch ran, at the 1st, 10th, 100th... prefetch and at exit, with
+    // the nodes its store did not resolve.
+    private static class XpCiLog
+    {
+        private static int _count;
+        private static int _misses;
+
+        static XpCiLog() => AppDomain.CurrentDomain.ProcessExit += static (_, _) =>
+            Console.Error.WriteLine($"XP1-CI storage root prefetch total: {Volatile.Read(ref _count)} misses: {Volatile.Read(ref _misses)}");
+
+        public static void Ran(int entries, int loads, int rounds, int misses, int failures)
+        {
+            Interlocked.Add(ref _misses, misses);
+            int count = Interlocked.Increment(ref _count);
+            if (count is 1 or 10 or 100 or 1_000 or 10_000 or 100_000)
+                Console.Error.WriteLine($"XP1-CI storage root prefetch #{count}: entries={entries} loads={loads} rounds={rounds} misses={misses} failures={failures}");
+        }
     }
 }
