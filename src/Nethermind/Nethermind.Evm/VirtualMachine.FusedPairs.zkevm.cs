@@ -741,7 +741,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (TConditional.IsActive)
                 {
                     ref ulong condition = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                    if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
+                    if (IsZeroWord(ref condition))
                     {
                         if (TryCharge(ref gas, VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
                         {

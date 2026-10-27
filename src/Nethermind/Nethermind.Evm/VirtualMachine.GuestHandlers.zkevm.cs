@@ -198,6 +198,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return false;
         }
 
+        /// <summary>Whether the word at <paramref name="word"/>, in limb layout, is zero.</summary>
+        /// <remarks>
+        /// A 32-bit guest ORs its eight words in turn, two registers live, where the limb expression keeps four: a branch
+        /// handler holding all its arguments has no more temporaries than that.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsZeroWord(ref ulong word)
+        {
+            if (IntPtr.Size == sizeof(uint))
+            {
+                ref uint w = ref Unsafe.As<ulong, uint>(ref word);
+                uint any = w;
+                any |= Unsafe.Add(ref w, 1);
+                any |= Unsafe.Add(ref w, 2);
+                any |= Unsafe.Add(ref w, 3);
+                any |= Unsafe.Add(ref w, 4);
+                any |= Unsafe.Add(ref w, 5);
+                any |= Unsafe.Add(ref w, 6);
+                any |= Unsafe.Add(ref w, 7);
+                return any == 0;
+            }
+
+            return (word | Unsafe.Add(ref word, 1) | Unsafe.Add(ref word, 2) | Unsafe.Add(ref word, 3)) == 0;
+        }
+
         /// <summary>The slot at <paramref name="index"/>, counted up from <paramref name="bottom"/>, for callers that have bounded the index.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref AlignedSlot(ref bottom), index * EvmStack.WordSize);
@@ -1468,7 +1493,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     goto Shared;
 
                 ref ulong condition = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
+                if (IsZeroWord(ref condition))
                 {
                     if (!TryCharge(ref gas, pushGas + JumpIGasCost.GasCost))
                         goto Shared;
@@ -2492,7 +2517,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 ref ulong condition = ref Unsafe.Subtract(ref destination, EvmStack.WordSize / sizeof(ulong));
-                if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
+                if (IsZeroWord(ref condition))
                 {
                     head -= 2;
                     sp = ref Moved(ref sp, -2);
