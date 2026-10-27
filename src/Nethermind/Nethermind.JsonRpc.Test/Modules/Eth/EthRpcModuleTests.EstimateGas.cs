@@ -433,6 +433,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_CallMethods_VerifyAtTheCallBudget([Values("eth_call", "eth_estimateGas")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 2;
+        request.MaxPriorityFeePerGas = 1_000_000;
+        request.MaxFeePerBlobGas = 100;
+        request.BlobVersionedHashes = [Bytes.FromHexString("0x0100000000000000000000000000000000000000000000000000000000000000")];
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xf00000"},"{{{request.Frames![1].Target}}}":{"code":"0x612ee05b600190038060035700"}}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0","blobBaseFee":"0x1"}""")!;
+
+        string response = await ctx.Test.TestEthRpc(method, request, "latest", overrides, blockOverride);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_FillsAnExpensiveVerifierAtAnAffordableBudget([Values] bool explicitLimits)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
