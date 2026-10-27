@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using NUnit.Framework;
 using Nethermind.Logging;
 
@@ -87,6 +90,68 @@ public class HistoryStoreTests
         Span<byte> buffer = stackalloc byte[64];
         Assert.That(_store.TryGetAt(block, KeyA, buffer, out ulong foundAtBlock), Is.GreaterThan(0));
         Assert.That(foundAtBlock, Is.EqualTo(expectedFoundAt));
+    }
+
+    // Backward and cross-key seeks are where a tailing iterator re-seeks; the reused snapshot must agree with it.
+    [Test]
+    public void Reads_at_a_generation_match_tailing_reads_in_any_order([Values] bool flush)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
+        HistoryStore store = new(db, LimboLogs.Instance.GetClassLogger<HistoryStore>());
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            store.RecordChange(5, KeyA, [0xAA], batch);
+            store.RecordChange(20, KeyA, [0xBB, 0xCC], batch);
+            store.RecordChange(30, KeyA, ReadOnlySpan<byte>.Empty, batch);
+            store.RecordChange(10, KeyB, [0x0B], batch);
+        }
+        if (flush) db.Flush();
+
+        (ulong Block, byte[] Key, int Length, ulong FoundAt)[] reads =
+        [
+            (35, KeyA, 0, 30), (3, KeyA, -1, 0), (25, KeyB, 1, 10), (9, KeyB, -1, 0),
+            (20, KeyA, 2, 20), (5, KeyA, 1, 5), (10, KeyB, 1, 10), (19, KeyA, 1, 5),
+        ];
+
+        Span<byte> atGeneration = stackalloc byte[64];
+        Span<byte> tailing = stackalloc byte[64];
+        foreach ((ulong block, byte[] key, int length, ulong foundAt) in reads)
+        {
+            int expected = store.TryGetAt(block, key, tailing, out ulong expectedAt);
+            int actual = store.TryGetAt(block, key, atGeneration, out ulong actualAt, captureGeneration: 7);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(expected, Is.EqualTo(length), $"tailing length at {block}");
+                Assert.That(actual, Is.EqualTo(length), $"generation length at {block}");
+                Assert.That(expectedAt, Is.EqualTo(foundAt), $"tailing block at {block}");
+                Assert.That(actualAt, Is.EqualTo(foundAt), $"generation block at {block}");
+                if (length > 0) Assert.That(atGeneration[..actual].ToArray(), Is.EqualTo(tailing[..expected].ToArray()));
+            }
+        }
+    }
+
+    [Test]
+    public void A_new_generation_observes_rows_captured_after_the_previous_read([Values] bool flush)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
+        HistoryStore store = new(db, LimboLogs.Instance.GetClassLogger<HistoryStore>());
+        using (IWriteBatch batch = db.StartWriteBatch()) store.RecordChange(5, KeyA, [0xAA], batch);
+        if (flush) db.Flush();
+
+        Span<byte> buffer = stackalloc byte[64];
+        Assert.That(store.TryGetAt(30, KeyB, buffer, out _, captureGeneration: 1), Is.EqualTo(-1));
+
+        using (IWriteBatch batch = db.StartWriteBatch()) store.RecordChange(20, KeyB, [0xBB], batch);
+        if (flush) db.Flush();
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The capture that wrote block 20 publishes a new generation before any reader may ask for block 20.
+            Assert.That(store.TryGetAt(30, KeyB, buffer, out ulong foundAt, captureGeneration: 2), Is.EqualTo(1), "new generation sees the row");
+            Assert.That(foundAt, Is.EqualTo(20UL));
+        }
     }
 
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> value)

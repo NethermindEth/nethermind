@@ -96,7 +96,7 @@ public sealed class HistoryReader
         Span<byte> valueBuffer = stackalloc byte[AccountValueBufferSize];
         int written = _isV3
             ? TryGetAccountV3(block, flatKey, valueBuffer, scope)
-            : _accountHistory!.TryGetAt(block, flatKey, valueBuffer);
+            : _accountHistory!.TryGetAt(block, flatKey, valueBuffer, out _, _availability.CaptureGeneration);
         if (written <= 0) // -1 = no such row; 0 = deletion tombstone, or a live-column miss under v3
         {
             account = default;
@@ -184,7 +184,7 @@ public sealed class HistoryReader
             return true;
         }
 
-        int v2Written = _storageHistory!.TryGetAt(block, flatKey, valueBuffer, out ulong changedAtBlock);
+        int v2Written = _storageHistory!.TryGetAt(block, flatKey, valueBuffer, out ulong changedAtBlock, _availability.CaptureGeneration);
         if (v2Written <= 0) // -1 = never changed at/before block, 0 = cleared tombstone
         {
             value = default;

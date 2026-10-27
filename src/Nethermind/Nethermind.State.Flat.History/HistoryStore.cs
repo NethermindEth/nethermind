@@ -63,8 +63,11 @@ internal sealed class HistoryStore
     /// Same as <see cref="TryGetAt(ulong, ReadOnlySpan{byte}, Span{byte})"/>, additionally reporting the block of
     /// the resolved change in <paramref name="foundAtBlock"/> (0 when nothing was found).
     /// </summary>
+    /// <param name="captureGeneration">The capture generation sampled before the read. Lets the store reuse a
+    /// per-thread snapshot iterator until a capture publishes new rows; without it the read seeks a pooled tailing
+    /// iterator, which re-seeks every immutable child whenever a seek goes backwards.</param>
     [SkipLocalsInit]
-    public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong foundAtBlock)
+    public int TryGetAt(ulong block, scoped ReadOnlySpan<byte> flatKey, Span<byte> outBuffer, out ulong foundAtBlock, long? captureGeneration = null)
     {
         foundAtBlock = 0;
 
@@ -80,7 +83,10 @@ internal sealed class HistoryStore
         upperBound[^1] = 0x00;
 
         Span<byte> foundKey = stackalloc byte[keyLen];
-        if (!_history.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLen, outBuffer, out int valueLength) || foundKeyLen != keyLen)
+        bool found = captureGeneration is { } generation && _history is IEpochSortedKeyValueStore epochHistory
+            ? epochHistory.TryGetCeilingAtEpoch(seekKey, upperBound, generation, foundKey, out int foundKeyLen, outBuffer, out int valueLength)
+            : _history.TryGetCeiling(seekKey, upperBound, foundKey, out foundKeyLen, outBuffer, out valueLength);
+        if (!found || foundKeyLen != keyLen)
             return -1;
 
         foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
