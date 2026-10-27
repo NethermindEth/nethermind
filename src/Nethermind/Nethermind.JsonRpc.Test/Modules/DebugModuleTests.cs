@@ -94,6 +94,7 @@ public class DebugModuleTests
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(new Block(header));
         _blockFinder.FindHeader(header.Hash!).Returns(header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
         _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
