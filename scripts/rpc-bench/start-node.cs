@@ -128,8 +128,7 @@ try
     var docker = new List<string> { "run", "-d", "--name", container, "--restart", "no", "--stop-signal", "SIGINT", "-p", $"127.0.0.1:{rpcPort}:8545", "-v", $"{source}:{target}:{mountOption}" };
     if (armScratch.Length > 0) docker.AddRange(["--mount", $"type=bind,source={armScratch},target={armScratch}"]);
     foreach (var value in NodeConfiguration.SplitFlags(Get("NODE_ENV_VARS"))) docker.AddRange(["-e", value]);
-    // Frame-pointer unwinding drops the caller of each JIT method that has no RBP frame.
-    var perfEnvironment = new[] { "DOTNET_PerfMapEnabled=1", "DOTNET_PerfMapShowOptimizationTiers=1", "DOTNET_JitFramed=1", "DOTNET_EnableWriteXorExecute=0" };
+    var perfEnvironment = new[] { "DOTNET_PerfMapEnabled=1", "DOTNET_PerfMapShowOptimizationTiers=1", "DOTNET_EnableWriteXorExecute=0" };
     if (perf == "true")
     {
         await Reset(Path.Combine(diag, "perf"));

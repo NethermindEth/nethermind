@@ -879,11 +879,9 @@ dotnet run --file scripts/perf-report.cs -- top perf.folded 30
 dotnet run --file scripts/perf-report.cs -- compare before.folded after.folded 30
 ```
 
-The node runs with `DOTNET_JitFramed=1`. This flag forces an RBP frame in each
-JIT method, so frame-pointer unwinding keeps every JIT-compiled caller in the
-stack. Precompiled ReadyToRun code gets no frame until tiering recompiles it.
-It changes the code a small amount, so do not compare latencies of a `perf`
-run with latencies of a run without `perf`.
+Small optimized methods (a leaf, or a method with one call) can have no RBP
+frame, so frame-pointer stacks skip their caller. `DOTNET_JitFramed=1` does not
+change this on .NET 10: Tier1 code keeps its RSP-based frames.
 
 ### Annotated assembly (manual)
 
@@ -892,7 +890,7 @@ the node on a Linux host outside Docker. The runtime then writes its jitdump to
 a path that host `perf inject` can open.
 
 ```bash
-export DOTNET_PerfMapEnabled=1 DOTNET_JitFramed=1 DOTNET_EnableWriteXorExecute=0
+export DOTNET_PerfMapEnabled=1 DOTNET_EnableWriteXorExecute=0
 ./nethermind <flags> &
 # Wait for the warm-up to complete, then record the steady state.
 perf record -k 1 -g -F 3999 -p "$!" -o perf.data -- sleep 30
@@ -904,6 +902,9 @@ perf annotate --stdio2 -i perfjit.data --percent-limit 1 -M intel > perf.asm
 - `-k 1` sets the monotonic clock. `perf inject --jit` needs it to match the
   samples with the jitdump records.
 - `-M intel` is for x64 only. Remove it on arm64.
+- If `perf inject` writes no `/tmp/jitted-<pid>-*.so`, the runtime wrote an
+  incomplete jitdump, and `perf annotate` has no JIT code. Runtime 10.0.12 has
+  this problem. Runtime 10.0.14 (the node image's runtime) works.
 - Samples often land one or two instructions after the instruction that stalls
   (skid). Examine the instructions before the hot one, for example a slow load
   or a division.
