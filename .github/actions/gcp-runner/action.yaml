@@ -199,7 +199,7 @@ runs:
         NETWORK_TAG: ${{ inputs.network_tag }}
         IMAGE_FAMILY: ${{ inputs.image_family }}
         IMAGE_PROJECT: ${{ inputs.image_project }}
-      run: dotnet run --file "${GITHUB_ACTION_PATH}/Create.cs"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/create.cs"
 
     - name: Destroy runner
       id: destroy
@@ -212,4 +212,4 @@ runs:
         ZONES: ${{ inputs.zones }}
         PROJECT_ID: ${{ inputs.project_id }}
         EXPECT_INSTANCE: ${{ inputs.expect_instance }}
-      run: dotnet run --file "${GITHUB_ACTION_PATH}/Destroy.cs" -p:NuGetAudit=false -p:RestoreSources="${GITHUB_ACTION_PATH}"
+      run: dotnet run --file "${GITHUB_ACTION_PATH}/destroy.cs" -p:NuGetAudit=false -p:RestoreSources="${GITHUB_ACTION_PATH}"

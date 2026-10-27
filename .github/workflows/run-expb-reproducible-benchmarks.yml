@@ -150,7 +150,7 @@ on:
           resolves both managed frames (via the runtime's perf map) and native frames (via the
           container's shared objects), so time inside RocksDB, the allocator and the GC is attributed
           instead of collapsing into dotTrace's single '[Native or optimized code]' node. Produces
-          a folded-stack perf.folded readable with scripts/PerfReport.cs.
+          a folded-stack perf.folded readable with scripts/perf-report.cs.
           Independent of the dottrace input; enabling both samples the process twice, which perturbs
           timings - use perf runs for attribution, not for A/B numbers.
         required: false
@@ -786,7 +786,7 @@ jobs:
             echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
             exit 1
           fi
-          dotnet run --file scripts/WaitForWorkflow.cs
+          dotnet run --file scripts/wait-for-workflow.cs
           publish_head_sha=$(curl -sf \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: token ${GITHUB_TOKEN}" \
@@ -1345,7 +1345,7 @@ jobs:
           # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
           # actions/checkout, which arm-runner-maintenance.yml must
           # not depend on - it is the workflow you dispatch when the disk is full.
-          # scripts/ci/TestReapStaleOverlays.cs asserts the three copies are byte-identical and drives
+          # scripts/ci/test-reap-stale-overlays.cs asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
           # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
           # script path, so only that test can point this at a table it wrote.
@@ -1842,7 +1842,7 @@ jobs:
             request_count="${request_count//[[:space:]]/}"
             # The prefix pairing holds only while the feed is complete or lacks just its last record; any
             # other gap sits mid-run and would shear every value after it. Same rule as collect_metrics in
-            # scripts/expb/SequentialDriver.cs.
+            # scripts/expb/sequential-driver.cs.
             if (( paired_count == request_count || paired_count == request_count - 1 )); then
               emit_mgas_s "" "${client_ms}" "${paired_count}"
               emit_mgas_s "TTFB_" "${ttfb_ms}" "${paired_count}"
@@ -2025,7 +2025,7 @@ jobs:
             mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
             valid_folded_profiles=()
             for folded_profile in "${folded_profiles[@]}"; do
-              if dotnet run --file expb-ci-tools/scripts/ValidateFoldedProfile.cs -- "${folded_profile}"; then
+              if dotnet run --file expb-ci-tools/scripts/validate-folded-profile.cs -- "${folded_profile}"; then
                 valid_folded_profiles+=("${folded_profile}")
               else
                 echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
@@ -2926,7 +2926,7 @@ jobs:
           # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
           # actions/checkout, which arm-runner-maintenance.yml must
           # not depend on - it is the workflow you dispatch when the disk is full.
-          # scripts/ci/TestReapStaleOverlays.cs asserts the three copies are byte-identical and drives
+          # scripts/ci/test-reap-stale-overlays.cs asserts the three copies are byte-identical and drives
           # this body against synthetic mount tables.
           # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
           # script path, so only that test can point this at a table it wrote.
@@ -3124,7 +3124,7 @@ jobs:
           if [[ -n "${CLIENT_SNAPSHOT_DIR}" ]]; then echo "Client snapshot: ${CLIENT_SNAPSHOT_DIR} (mount ${SNAPSHOT_MOUNT_PATH})"; fi
           mkdir -p "${EXPB_CAMPAIGN_DIR}"
           touch "${RUNNER_TEMP}/.expb-run-marker"
-          dotnet run --file "${GITHUB_WORKSPACE}/scripts/expb/SequentialDriver.cs"
+          dotnet run --file "${GITHUB_WORKSPACE}/scripts/expb/sequential-driver.cs"
       - name: Upload campaign artifact
         id: upload-campaign
         if: always()
@@ -3222,7 +3222,7 @@ jobs:
               profile_ok=false
               mapfile -t folded_profiles < <(find "${perf_dir}" -type f -name perf.folded -newer "${MARKER}" 2>/dev/null)
               for folded_profile in "${folded_profiles[@]}"; do
-                if dotnet run --file scripts/ValidateFoldedProfile.cs -- "${folded_profile}"; then
+                if dotnet run --file scripts/validate-folded-profile.cs -- "${folded_profile}"; then
                   profile_ok=true
                   break
                 fi
