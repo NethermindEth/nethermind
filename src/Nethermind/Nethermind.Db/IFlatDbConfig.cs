@@ -136,7 +136,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie warmer worker count (-1 for the larger of 3/4 of the processor count and 1.5 per processor up to 12, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
-    [ConfigItem(Description = "Pending storage writes from which a contract's storage-root commit first resolves the trie paths of all its writes level by level, each level's reads in parallel on the dedicated reader threads (FlatDb.WarmReadConcurrency), instead of one dependent read at a time inside the commit. Reads only: the root and what is written do not change. 256 when on; 0 to disable.", DefaultValue = "0")]
+    [ConfigItem(Description = "Pending storage writes from which a contract's storage-root commit in main block processing first resolves the trie paths of all its writes level by level, each level's reads in parallel on the dedicated reader threads (FlatDb.WarmReadConcurrency), instead of one dependent read at a time inside the commit. Reads only: the root and what is written do not change. 256 when on; 0 to disable.", DefaultValue = "0")]
     int StorageRootPrefetchMinChanges { get; set; }
 
     [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]

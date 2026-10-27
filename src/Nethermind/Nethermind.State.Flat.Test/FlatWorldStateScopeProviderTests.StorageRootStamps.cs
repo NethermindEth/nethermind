@@ -150,6 +150,7 @@ public partial class FlatWorldStateScopeProviderTests
             Assert.That(diag.Get(BlockDiag.C.SrPrefetchRounds), Is.EqualTo(diag.Get(BlockDiag.C.SrItem0PrefetchRounds)), $"{label}: its rounds");
             Assert.That(prefetchLoads, Is.GreaterThan(0), $"{label}: the prefetch read the cold trie");
             Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchRounds), Is.GreaterThan(0), $"{label}: rounds");
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchMisses), Is.Zero, $"{label}: no misses from a store holding every node");
             // Every load of the large contract's trie: the prefetch's, and what the commit still read on its own.
             Assert.That(prefetchLoads + ownReads + nestedReads, Is.EqualTo(largeLoadsOn), $"{label}: loads attributed");
             Assert.That(ownReads + nestedReads, Is.LessThanOrEqualTo(4), $"{label}: the commit read almost nothing");
@@ -170,13 +171,13 @@ public partial class FlatWorldStateScopeProviderTests
         BlockDiag.Current = diag;
         try
         {
-            BlockDiag.BeginPrefetch().End(5, 1);
+            BlockDiag.BeginPrefetch().End(5, 1, 6);
 
             using (BlockDiag.EnterStorageItem(diag, 0, firstLoop: true))
             {
                 BlockDiag.Prefetch prefetch = BlockDiag.BeginPrefetch();
                 Assert.That(BlockDiag.TrieReadStart(), Is.Zero, "a prefetch read is not the item's");
-                prefetch.End(7, 2);
+                prefetch.End(7, 2, 1);
                 long start = BlockDiag.TrieReadStart();
                 Assert.That(start, Is.Not.Zero, "the item's reads count again after its prefetch");
                 BlockDiag.TrieReadEnd(start);
@@ -184,7 +185,7 @@ public partial class FlatWorldStateScopeProviderTests
 
             using (BlockDiag.EnterStorageItem(diag, 1, firstLoop: true))
             {
-                BlockDiag.BeginPrefetch().End(11, 3);
+                BlockDiag.BeginPrefetch().End(11, 3, 4);
             }
         }
         finally
@@ -199,6 +200,8 @@ public partial class FlatWorldStateScopeProviderTests
             Assert.That(diag.Get(BlockDiag.C.SrPrefetchRounds), Is.EqualTo(5));
             Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchLoads), Is.EqualTo(7));
             Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchRounds), Is.EqualTo(2));
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchMisses), Is.EqualTo(5));
+            Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchMisses), Is.EqualTo(1));
             Assert.That(diag.Get(BlockDiag.C.SrItem0ReadsOwn), Is.EqualTo(1), "only the read after the prefetch");
             Assert.That(diag.Get(BlockDiag.F.SrItem0AfterPrefetch).WallTicks, Is.GreaterThan(0));
             Assert.That(diag.Get(BlockDiag.F.SrPrefetchMain).WallTicks, Is.GreaterThanOrEqualTo(diag.Get(BlockDiag.F.SrItem0Prefetch).WallTicks));
@@ -312,6 +315,7 @@ public partial class FlatWorldStateScopeProviderTests
                          "sr_item0_est", "sr_item0_writes", "sr_item0_deletes", "sr_item0_skipped", "sr_item0_main",
                          "sr_item0_vcsw", "sr_item0_ivcsw", "sr_item0_majflt", "sr_item0_inblock", "sr_item0_reads_own", "sr_item0_reads_nested",
                          "sr_prefetch_contracts", "sr_prefetch_loads", "sr_prefetch_rounds", "sr_item0_prefetch_loads", "sr_item0_prefetch_rounds",
+                         "sr_prefetch_misses", "sr_item0_prefetch_misses",
                      })
             {
                 Assert.That(cnt.TryGetProperty(name, out _), Is.True, name);

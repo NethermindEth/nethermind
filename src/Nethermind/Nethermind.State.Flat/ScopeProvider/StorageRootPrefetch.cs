@@ -31,6 +31,7 @@ internal sealed class StorageRootPrefetch
     private Level _current;
     private Level _next;
     private int _loads;
+    private int _misses;
     private int _failures;
 
     private readonly record struct Item(TrieNode Node, TreePath Path, int Start, int End, TrieNode? Parent, int ChildIndex);
@@ -72,15 +73,18 @@ internal sealed class StorageRootPrefetch
 
     /// <summary>Resolves the nodes the write of <paramref name="entries"/> into the tree at <paramref name="root"/> reads.</summary>
     /// <param name="pool">Runs each level's reads; without one they run on the worker budget of the calling thread.</param>
-    /// <returns>The nodes read from the store, the levels that read any, and the nodes that failed to resolve.</returns>
-    public static (int Loads, int Rounds, int Failures) Run(TrieNode root, ITrieNodeResolver store,
+    /// <returns>
+    /// The nodes read from the store, the levels that read any, the nodes the store did not resolve (missing, bytes of
+    /// another node, or undecodable), and the nodes whose processing threw.
+    /// </returns>
+    public static (int Loads, int Rounds, int Misses, int Failures) Run(TrieNode root, ITrieNodeResolver store,
         ReadOnlySpan<PatriciaTree.BulkSetEntry> entries, WarmReadPool? pool)
     {
         StorageRootPrefetch prefetch = new(store, entries);
         try
         {
             int rounds = prefetch.Walk(root, entries.Length, pool);
-            return (prefetch._loads, rounds, prefetch._failures);
+            return (prefetch._loads, rounds, prefetch._misses, prefetch._failures);
         }
         finally
         {
@@ -128,7 +132,12 @@ internal sealed class StorageRootPrefetch
                 // A node the warmer is still loading is the same object: reading it again costs no wait, as the
                 // level's other reads are in flight anyway, and the resolver keeps whichever decode lands first.
                 bool load = !node.HasRlp;
-                if (!node.TryResolveNode(_store, ref path)) return;
+                if (!node.TryResolveNode(_store, ref path))
+                {
+                    Interlocked.Increment(ref _misses);
+                    return;
+                }
+
                 if (load) Interlocked.Increment(ref _loads);
                 // An unresolved warmer node is kept out of its parent's slot, so it is linked now that it is resolved:
                 // the per-block cache that also holds it may evict it before the write gets there.

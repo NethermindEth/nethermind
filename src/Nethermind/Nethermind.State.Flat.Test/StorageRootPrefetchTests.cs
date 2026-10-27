@@ -88,6 +88,7 @@ public class StorageRootPrefetchTests
         {
             Assert.That(on.Root, Is.EqualTo(off.Root));
             Assert.That(on.CommitLoads, Is.LessThanOrEqualTo(CommitLoadAllowance), "the commit read nodes the prefetch should have loaded");
+            Assert.That(on.Misses, Is.Zero, "a store holding every node refused one");
             Assert.That(on.PrefetchLoads, Is.InRange(off.CommitLoads * 9 / 10, off.CommitLoads * 11 / 10 + 16), "the prefetch should read about what the commit reads without it");
         }
     }
@@ -199,7 +200,7 @@ public class StorageRootPrefetchTests
 
     private static void Report(string label, int changes, BlockResult r) =>
         TestContext.Out.WriteLine($"XP1 {label} changes={changes} batch_loads={r.BatchLoads} prefetch_loads={r.PrefetchLoads} " +
-                                  $"commit_loads={r.CommitLoads} rounds={r.Rounds} contracts={r.Contracts} warmup_loads={r.WarmupLoads} " +
+                                  $"commit_loads={r.CommitLoads} rounds={r.Rounds} misses={r.Misses} contracts={r.Contracts} warmup_loads={r.WarmupLoads} " +
                                   $"commit_ms={r.CommitMs:F1} prefetch_ms={r.PrefetchTicks * 1000.0 / Stopwatch.Frequency:F1}");
 
     private static UInt256 Slot(int index) => new(Keccak.Compute(BitConverter.GetBytes(index)).Bytes, isBigEndian: true);
@@ -228,6 +229,7 @@ public class StorageRootPrefetchTests
         long CommitLoads,
         int Contracts,
         int Rounds,
+        int Misses,
         long PrefetchTicks,
         double CommitMs,
         (int Applied, int Reused, int Restored, int Abandoned) EarlyCounts);
@@ -447,7 +449,7 @@ public class StorageRootPrefetchTests
                 }
 
                 long batchLoads = reader.Loads - beforeBatch;
-                (int contracts, int prefetchLoads, int rounds, long ticks) = scope.StorageRootPrefetchCounts;
+                (int contracts, int prefetchLoads, int rounds, int misses, long ticks) = scope.StorageRootPrefetchCounts;
                 (int Applied, int Reused, int Restored, int Abandoned) early = scope.EarlyApplyCounts;
                 scope.Commit(1);
 
@@ -460,6 +462,7 @@ public class StorageRootPrefetchTests
                     batchLoads - prefetchLoads,
                     contracts,
                     rounds,
+                    misses,
                     ticks,
                     commitMs,
                     early);

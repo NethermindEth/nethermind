@@ -87,6 +87,9 @@ public sealed class BlockDiag
         // Storage-root prefetches inside storage-root items: contracts prefetched, trie nodes they read from the store and
         // levels that read any, summed; and item 0's own.
         SrPrefetchContracts, SrPrefetchLoads, SrPrefetchRounds, SrItem0PrefetchLoads, SrItem0PrefetchRounds,
+        // The trie nodes those prefetches' store did not resolve (missing, bytes of another node, or undecodable), which
+        // the commit then read itself, summed; and item 0's.
+        SrPrefetchMisses, SrItem0PrefetchMisses,
         Count
     }
 
@@ -137,6 +140,7 @@ public sealed class BlockDiag
         "sr_item0_est", "sr_item0_writes", "sr_item0_deletes", "sr_item0_skipped", "sr_item0_main",
         "sr_item0_vcsw", "sr_item0_ivcsw", "sr_item0_majflt", "sr_item0_inblock", "sr_item0_reads_own", "sr_item0_reads_nested",
         "sr_prefetch_contracts", "sr_prefetch_loads", "sr_prefetch_rounds", "sr_item0_prefetch_loads", "sr_item0_prefetch_rounds",
+        "sr_prefetch_misses", "sr_item0_prefetch_misses",
     ];
 
     private readonly long[] _t = new long[(int)P.Count];
@@ -462,7 +466,8 @@ public sealed class BlockDiag
 
         /// <param name="loads">The trie nodes the prefetch read from the store.</param>
         /// <param name="rounds">Its levels that read any.</param>
-        public void End(int loads, int rounds)
+        /// <param name="misses">The trie nodes its store did not resolve.</param>
+        public void End(int loads, int rounds, int misses)
         {
             if (_diag is not { } diag) return;
             long now = Stopwatch.GetTimestamp();
@@ -470,6 +475,8 @@ public sealed class BlockDiag
             Interlocked.Increment(ref diag._c[(int)C.SrPrefetchContracts]);
             Interlocked.Add(ref diag._c[(int)C.SrPrefetchLoads], loads);
             Interlocked.Add(ref diag._c[(int)C.SrPrefetchRounds], rounds);
+            // Rare, so the usual prefetch pays no fourth atomic.
+            if (misses != 0) Interlocked.Add(ref diag._c[(int)C.SrPrefetchMisses], misses);
             // Each section has one writer: the block-processing thread, the thread of item 0.
             if (_main) diag.AddSection(F.SrPrefetchMain, now - _start, cpu);
             if (!_largest) return;
@@ -480,6 +487,7 @@ public sealed class BlockDiag
             diag.AddSection(F.SrItem0Prefetch, now - _start, cpu);
             diag._c[(int)C.SrItem0PrefetchLoads] = loads;
             diag._c[(int)C.SrItem0PrefetchRounds] = rounds;
+            diag._c[(int)C.SrItem0PrefetchMisses] = misses;
         }
     }
 
