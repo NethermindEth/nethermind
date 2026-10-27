@@ -861,7 +861,6 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
             NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
         };
 
@@ -879,7 +878,6 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
         };
         Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
 
@@ -1086,9 +1084,9 @@ public class TxBroadcasterTests
             Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
             FrameSignatures = [],
             BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
-            MaxFeePerBlobGas = carriesBlobs ? 1 : null,
             GasLimit = 100_000,
             GasPrice = 1.GWei,
+            MaxFee = (UInt256)100_000 * 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
         };
         tx.Hash = tx.CalculateHash();
