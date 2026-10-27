@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -106,6 +109,17 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         ArgumentNullException.ThrowIfNull(input);
         byte[] witness = SerializeInput(input);
         if (aggregatedVk.Length != 32 || AbiVersion != ExpectedAbiVersion) throw new InvalidOperationException("Incompatible Lean verifier ABI or key");
+        ValueHash256 hash = depsHash;
+        byte[] vk = aggregatedVk.ToArray();
+        return ProverThread.Run(() => ProveNative(hash, vk, witness));
+    }
+
+    /// <summary>The managed thread that ran the most recent native proof.</summary>
+    internal static int LastProverThreadId { get; private set; }
+
+    private static byte[] ProveNative(in ValueHash256 depsHash, byte[] aggregatedVk, byte[] witness)
+    {
+        LastProverThreadId = Environment.CurrentManagedThreadId;
         byte* proof = null;
         nuint length = 0;
         try
@@ -121,6 +135,44 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         finally
         {
             if (proof != null) nlean_free(proof, length);
+        }
+    }
+
+    /// <summary>Runs every native proof on one long-lived thread.</summary>
+    /// <remarks>leanVM's proving arena gives each thread that allocates during a proof its own slab and never returns a slab's
+    /// touched pages, so proofs called from changing thread-pool threads each leave another proof's peak resident (about
+    /// 1.5 GB for four witnesses) until the process runs out of memory. The native prover lock serializes proofs anyway.</remarks>
+    private static class ProverThread
+    {
+        private static readonly BlockingCollection<Action> Queue = [];
+        private static readonly Thread Worker = Start();
+
+        private static Thread Start()
+        {
+            Thread thread = new(() =>
+            {
+                foreach (Action work in Queue.GetConsumingEnumerable()) work();
+            })
+            { IsBackground = true, Name = "Lean prover" };
+            thread.Start();
+            return thread;
+        }
+
+        public static byte[] Run(Func<byte[]> prove)
+        {
+            if (Thread.CurrentThread == Worker) return prove();
+            byte[]? result = null;
+            ExceptionDispatchInfo? failure = null;
+            using ManualResetEventSlim done = new();
+            Queue.Add(() =>
+            {
+                try { result = prove(); }
+                catch (Exception exception) { failure = ExceptionDispatchInfo.Capture(exception); }
+                finally { done.Set(); }
+            });
+            done.Wait();
+            failure?.Throw();
+            return result!;
         }
     }
 

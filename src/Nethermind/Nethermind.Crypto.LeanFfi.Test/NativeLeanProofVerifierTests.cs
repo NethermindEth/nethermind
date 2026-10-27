@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -96,6 +97,32 @@ public class NativeLeanProofVerifierTests
         Assert.That(Native.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
         deps[^1] = deps[0];
         Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.AggregatedVk, proof), Is.False);
+    }
+
+    [Test]
+    public void Proofs_from_different_threads_run_on_one_prover_thread()
+    {
+        // leanVM's arena keeps a slab resident per thread that ever proved, so every caller must share one thread.
+        FrameDependency dep = Dependency("sphincs");
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dep]);
+        AggregationInput input = new() { Deps = [dep], Witnesses = [Witness("sphincs")] };
+        int[] provers = new int[2];
+        int[] callers = new int[2];
+        for (int i = 0; i < provers.Length; i++)
+        {
+            int index = i;
+            Thread caller = new(() =>
+            {
+                callers[index] = Environment.CurrentManagedThreadId;
+                Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input);
+                provers[index] = NativeLeanProofVerifier.LastProverThreadId;
+            });
+            caller.Start();
+            caller.Join();
+        }
+        Assert.That(callers[0], Is.Not.EqualTo(callers[1]));
+        Assert.That(provers[1], Is.EqualTo(provers[0]));
+        Assert.That(provers[0], Is.Not.EqualTo(callers[0]).And.Not.EqualTo(callers[1]));
     }
 
     [Test]
