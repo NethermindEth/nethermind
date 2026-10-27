@@ -10,7 +10,7 @@ env:
   PACKAGE_DIR: guests
   # Provers use ere-server, so the verification keys come from it. Bump together with the
   # ere_digests
-  ERE_VERSION: 0.19.3
+  ERE_VERSION: 0.19.5
 
 jobs:
   # The tested binaries are what gets released, so nothing unexecuted is ever signed
@@ -70,8 +70,8 @@ jobs:
           declare -A names=([zisk]=ZisK [sp1]=SP1 [openvm]=OpenVM)
           declare -A guests=([zisk]=Zisk [sp1]=Sp1 [openvm]=OpenVM)
           declare -A ere_digests=(
-            [zisk]=sha256:039a8927e870e131601caed52f456b6ad199187576a51207e7e23e75adb2a00f
-            [sp1]=sha256:3776341c362dd30c473376fd25c75d17e19e12e4473410aa15c5964bc461c301
+            [zisk]=sha256:569468bab192afc020c652011e68a6b06028917977d6a7567def27606d8ea96c
+            [sp1]=sha256:82e0b809148a08f82f86ff2ddee9d352cf399a17f145754b417ecf2634578cc0
           )
           mtime=$(git log -1 --format=%ct)
           assets=()

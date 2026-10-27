@@ -558,6 +558,14 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
+        // HasBlock excludes cache-only bodies that FindBlock can still serve.
+        if (blockNumber.Type == BlockParameterType.BlockNumber
+            && !blockFinder.HasBlock(header.Number, header.Hash!)
+            && blockFinder.FindBlock(header.Hash!, header.Number) is null)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
+        }
+
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header);
         if (stateError is not null)
         {
