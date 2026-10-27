@@ -90,6 +90,32 @@ public class DebugModuleTests
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
     [Test]
+    public void DebugTraceBlock_streamed_missing_body_message_is_route_scoped([Values] bool byHash)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(1).TestObject;
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
+        _blockFinder.FindBlock(header.Hash!, header.Number).ReturnsNull();
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        GethTraceOptions options = new() { StreamMode = true };
+        DebugRpcModule module = CreateModule();
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = byHash
+            ? module.debug_traceBlockByHash(header.Hash!, options)
+            : module.debug_traceBlockByNumber(new BlockParameter(header.Hash!), options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo(byHash
+                ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
+        }
+    }
+
+    [Test]
     public void DebugTraceBlockByNumber_DoesNotMapHostFormatFailureToInvalidInput()
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
