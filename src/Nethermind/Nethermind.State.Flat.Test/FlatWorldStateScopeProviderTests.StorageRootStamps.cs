@@ -124,6 +124,88 @@ public partial class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void StorageRootStamps_CountThePrefetch_AndKeepTheRoot([Values(0, 1)] int seed)
+    {
+        if (Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("The storage-root loop needs more than one core.");
+
+        using StampsFixture fixture = new();
+        BlockDiag diag = new() { BlockNumber = 1 };
+        // The large contract's 700 changes pass the threshold; the small ones' 5 do not.
+        (Hash256 rootOn, Hash256 storageRootOn, long largeLoadsOn) = fixture.RunBlock(seed, diag, prefetchMinChanges: 256);
+        (Hash256 rootOff, Hash256 storageRootOff, _) = fixture.RunBlock(seed, null);
+
+        long prefetchLoads = diag.Get(BlockDiag.C.SrItem0PrefetchLoads);
+        long ownReads = diag.Get(BlockDiag.C.SrItem0ReadsOwn);
+        long nestedReads = diag.Get(BlockDiag.C.SrItem0ReadsNested);
+        bool onMain = diag.Get(BlockDiag.C.SrItem0Main) == 1;
+        string label = $"seed {seed}, item 0 on {(onMain ? "main" : "a helper")}, prefetch {prefetchLoads} in {diag.Get(BlockDiag.C.SrItem0PrefetchRounds)} rounds, reads {ownReads} + {nestedReads} of {largeLoadsOn}";
+        NUnit.Framework.TestContext.Out.WriteLine(label);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rootOn, Is.EqualTo(rootOff), $"{label}: state root");
+            Assert.That(storageRootOn, Is.EqualTo(storageRootOff), $"{label}: storage root");
+
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchContracts), Is.EqualTo(1), $"{label}: only the large contract");
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchLoads), Is.EqualTo(prefetchLoads), $"{label}: its loads");
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchRounds), Is.EqualTo(diag.Get(BlockDiag.C.SrItem0PrefetchRounds)), $"{label}: its rounds");
+            Assert.That(prefetchLoads, Is.GreaterThan(0), $"{label}: the prefetch read the cold trie");
+            Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchRounds), Is.GreaterThan(0), $"{label}: rounds");
+            // Every load of the large contract's trie: the prefetch's, and what the commit still read on its own.
+            Assert.That(prefetchLoads + ownReads + nestedReads, Is.EqualTo(largeLoadsOn), $"{label}: loads attributed");
+            Assert.That(ownReads + nestedReads, Is.LessThanOrEqualTo(4), $"{label}: the commit read almost nothing");
+            Assert.That(diag.Get(BlockDiag.F.SrItem0Prefetch).WallTicks, Is.GreaterThan(0), $"{label}: prefetch timed");
+            Assert.That(diag.Get(BlockDiag.F.SrItem0AfterPrefetch).WallTicks, Is.GreaterThan(0), $"{label}: the rest of item 0 timed");
+            Assert.That(diag.Get(BlockDiag.F.SrItem0Prefetch).WallTicks + diag.Get(BlockDiag.F.SrItem0AfterPrefetch).WallTicks,
+                Is.LessThanOrEqualTo(diag.Get(BlockDiag.F.SrItem0).WallTicks), $"{label}: both inside item 0");
+            Assert.That(diag.Get(BlockDiag.F.SrPrefetchMain).WallTicks,
+                Is.EqualTo(onMain ? diag.Get(BlockDiag.F.SrItem0Prefetch).WallTicks : 0), $"{label}: the processing thread's prefetch time");
+        }
+    }
+
+    [Test]
+    public void StorageRootStamps_LeaveThePrefetchReadsOutOfTheItem()
+    {
+        BlockDiag diag = new() { BlockNumber = 1 };
+        BlockDiag? outer = BlockDiag.Current;
+        BlockDiag.Current = diag;
+        try
+        {
+            BlockDiag.BeginPrefetch().End(5, 1);
+
+            using (BlockDiag.EnterStorageItem(diag, 0, firstLoop: true))
+            {
+                BlockDiag.Prefetch prefetch = BlockDiag.BeginPrefetch();
+                Assert.That(BlockDiag.TrieReadStart(), Is.Zero, "a prefetch read is not the item's");
+                prefetch.End(7, 2);
+                long start = BlockDiag.TrieReadStart();
+                Assert.That(start, Is.Not.Zero, "the item's reads count again after its prefetch");
+                BlockDiag.TrieReadEnd(start);
+            }
+
+            using (BlockDiag.EnterStorageItem(diag, 1, firstLoop: true))
+            {
+                BlockDiag.BeginPrefetch().End(11, 3);
+            }
+        }
+        finally
+        {
+            BlockDiag.Current = outer;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchContracts), Is.EqualTo(2), "the two prefetches inside items, not the one outside");
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchLoads), Is.EqualTo(18));
+            Assert.That(diag.Get(BlockDiag.C.SrPrefetchRounds), Is.EqualTo(5));
+            Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchLoads), Is.EqualTo(7));
+            Assert.That(diag.Get(BlockDiag.C.SrItem0PrefetchRounds), Is.EqualTo(2));
+            Assert.That(diag.Get(BlockDiag.C.SrItem0ReadsOwn), Is.EqualTo(1), "only the read after the prefetch");
+            Assert.That(diag.Get(BlockDiag.F.SrItem0AfterPrefetch).WallTicks, Is.GreaterThan(0));
+            Assert.That(diag.Get(BlockDiag.F.SrPrefetchMain).WallTicks, Is.GreaterThanOrEqualTo(diag.Get(BlockDiag.F.SrItem0Prefetch).WallTicks));
+        }
+    }
+
+    [Test]
     public void StorageRootStamps_CountOnlyInsideAStorageRootItem()
     {
         BlockDiag diag = new() { BlockNumber = 1 };
@@ -217,7 +299,8 @@ public partial class FlatWorldStateScopeProviderTests
         JsonElement cnt = json.RootElement.GetProperty("diag").GetProperty("cnt");
         using (Assert.EnterMultipleScope())
         {
-            foreach (string name in new[] { "sr_nested_bs", "sr_nested_hash", "sr_nested_wait", "sr_nested_bs_first", "sr_nested_hash_first", "sr_item0", "sr_item0_reads_own", "sr_item0_reads_nested" })
+            foreach (string name in new[] { "sr_nested_bs", "sr_nested_hash", "sr_nested_wait", "sr_nested_bs_first", "sr_nested_hash_first", "sr_item0", "sr_item0_reads_own", "sr_item0_reads_nested",
+                         "sr_prefetch_main", "sr_item0_prefetch", "sr_item0_after_prefetch" })
             {
                 Assert.That(fin.TryGetProperty(name, out _), Is.True, name);
             }
@@ -228,6 +311,7 @@ public partial class FlatWorldStateScopeProviderTests
                          "sr_nested_off_loops", "sr_nested_off_items", "sr_main_items", "sr_main_idx_first", "sr_main_idx_last", "sr_main_idx_sum",
                          "sr_item0_est", "sr_item0_writes", "sr_item0_deletes", "sr_item0_skipped", "sr_item0_main",
                          "sr_item0_vcsw", "sr_item0_ivcsw", "sr_item0_majflt", "sr_item0_inblock", "sr_item0_reads_own", "sr_item0_reads_nested",
+                         "sr_prefetch_contracts", "sr_prefetch_loads", "sr_prefetch_rounds", "sr_item0_prefetch_loads", "sr_item0_prefetch_rounds",
                      })
             {
                 Assert.That(cnt.TryGetProperty(name, out _), Is.True, name);
@@ -280,14 +364,18 @@ public partial class FlatWorldStateScopeProviderTests
         }
 
         /// <summary>Runs one block on the persisted state, with <paramref name="diag"/> as the block's diagnostics.</summary>
+        /// <param name="prefetchMinChanges">The storage-root prefetch threshold; 0 runs the block without it.</param>
         /// <returns>The state root, the large contract's storage root, and the loads of its trie nodes from persistence.</returns>
-        public (Hash256 Root, Hash256 StorageRoot, long LargeLoads) RunBlock(int seed, BlockDiag? diag)
+        public (Hash256 Root, Hash256 StorageRoot, long LargeLoads) RunBlock(int seed, BlockDiag? diag, int prefetchMinChanges = 0)
         {
             StampsReader reader = new(_persistence.CreateReader(), _largeHash);
             SnapshotBundle bundle = new(
                 new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
                 new TrieNodeCache(_config, LimboLogs.Instance), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            FlatWorldStateScope scope = new(_baseState, bundle, new StampsCodeDb(), new StampsCommitTarget(), _config, new NoopTrieWarmer(), LimboLogs.Instance);
+            FlatDbConfig config = new() { ApplyStorageWritesOnIdleThread = false, StorageRootPrefetchMinChanges = prefetchMinChanges };
+            using WarmReadPool? pool = prefetchMinChanges > 0 ? new WarmReadPool(16) : null;
+            FlatWorldStateScope scope = new(_baseState, bundle, new StampsCodeDb(), new StampsCommitTarget(), config, new NoopTrieWarmer(), LimboLogs.Instance,
+                warmReadPool: pool is null ? null : new Lazy<WarmReadPool>(() => pool));
             WorldState state = new(new StampsScopeProvider(scope), LimboLogs.Instance);
 
             Random random = new(seed);

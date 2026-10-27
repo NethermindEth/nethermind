@@ -53,6 +53,10 @@ public sealed class BlockDiag
         // The block's largest storage-root item (index 0 of its first parallel loop) on the thread that ran it, and the
         // trie-node loads from persistence inside it, on that thread and on the helpers of its nested loops (no CPU).
         SrItem0, SrItem0ReadsOwn, SrItem0ReadsNested,
+        // The storage-root prefetch (FlatDb.StorageRootPrefetchMinChanges): the block-processing thread's time in the
+        // prefetches it ran inside storage-root items, item 0's prefetch on the thread that ran it, and item 0 from the
+        // end of its prefetch to its own end (no CPU).
+        SrPrefetchMain, SrItem0Prefetch, SrItem0AfterPrefetch,
         Count
     }
 
@@ -80,6 +84,9 @@ public sealed class BlockDiag
         // context switches, major faults and blocks read of its thread, and its trie-node loads from persistence.
         SrItem0Est, SrItem0Writes, SrItem0Deletes, SrItem0Skipped, SrItem0Main,
         SrItem0Vcsw, SrItem0Ivcsw, SrItem0Majflt, SrItem0Inblock, SrItem0ReadsOwn, SrItem0ReadsNested,
+        // Storage-root prefetches inside storage-root items: contracts prefetched, trie nodes they read from the store and
+        // levels that read any, summed; and item 0's own.
+        SrPrefetchContracts, SrPrefetchLoads, SrPrefetchRounds, SrItem0PrefetchLoads, SrItem0PrefetchRounds,
         Count
     }
 
@@ -109,6 +116,7 @@ public sealed class BlockDiag
         "pl_storage_first", "pl_account_first", "pl_hash_first",
         "sr_nested_bs", "sr_nested_hash", "sr_nested_wait", "sr_nested_bs_first", "sr_nested_hash_first",
         "sr_item0", "sr_item0_reads_own", "sr_item0_reads_nested",
+        "sr_prefetch_main", "sr_item0_prefetch", "sr_item0_after_prefetch",
     ];
 
     private static readonly string[] CNames =
@@ -128,6 +136,7 @@ public sealed class BlockDiag
         "sr_main_items", "sr_main_idx_first", "sr_main_idx_last", "sr_main_idx_sum",
         "sr_item0_est", "sr_item0_writes", "sr_item0_deletes", "sr_item0_skipped", "sr_item0_main",
         "sr_item0_vcsw", "sr_item0_ivcsw", "sr_item0_majflt", "sr_item0_inblock", "sr_item0_reads_own", "sr_item0_reads_nested",
+        "sr_prefetch_contracts", "sr_prefetch_loads", "sr_prefetch_rounds", "sr_item0_prefetch_loads", "sr_item0_prefetch_rounds",
     ];
 
     private readonly long[] _t = new long[(int)P.Count];
@@ -199,6 +208,8 @@ public sealed class BlockDiag
         // Loads accumulated on the thread until the context ends.
         public long Reads;
         public long ReadTicks;
+        // The largest item: when its storage-root prefetch ended; 0 without one.
+        public long PrefetchEnd;
     }
 
     [ThreadStatic] private static ItemContext _item;
@@ -278,8 +289,9 @@ public sealed class BlockDiag
             if (_diag is not { } diag) return;
             if (_largest)
             {
-                long wall = Stopwatch.GetTimestamp() - _wall0;
-                diag.AddSection(F.SrItem0, wall, ThreadCpuNs() - _cpu0);
+                long now = Stopwatch.GetTimestamp();
+                diag.AddSection(F.SrItem0, now - _wall0, ThreadCpuNs() - _cpu0);
+                if (_item.PrefetchEnd != 0) diag.AddSection(F.SrItem0AfterPrefetch, now - _item.PrefetchEnd, 0);
                 ThreadUsage usage = ThreadUsage.Read();
                 diag._c[(int)C.SrItem0Main] = _main ? 1 : 0;
                 diag._c[(int)C.SrItem0Vcsw] = usage.Vcsw - _usage0.Vcsw;
@@ -413,6 +425,61 @@ public sealed class BlockDiag
 
             if (_item.Largest) diag.AddReads(C.SrItem0ReadsNested, F.SrItem0ReadsNested, _item.Reads, _item.ReadTicks);
             _item = _previous;
+        }
+    }
+
+    /// <summary>
+    /// Begins a storage-root prefetch on the current thread; inside a storage-root item it is stamped. Until
+    /// <see cref="Prefetch.End"/>, which the same thread calls, the loads on this thread are the prefetch's, not the item's.
+    /// </summary>
+    public static Prefetch BeginPrefetch()
+    {
+        ref ItemContext item = ref _item;
+        if (item.Diag is not { } diag) return default;
+        bool largest = item.Largest;
+        item.Largest = false;
+        bool main = ReferenceEquals(Current, diag);
+        return new Prefetch(diag, largest, main, Stopwatch.GetTimestamp(), main || largest ? ThreadCpuNs() : 0);
+    }
+
+    /// <summary>A storage-root prefetch begun inside a storage-root item; <see langword="default"/> outside one.</summary>
+    public readonly ref struct Prefetch
+    {
+        private readonly BlockDiag? _diag;
+        private readonly bool _largest;
+        private readonly bool _main;
+        private readonly long _start;
+        private readonly long _cpu0;
+
+        internal Prefetch(BlockDiag diag, bool largest, bool main, long start, long cpu0)
+        {
+            _diag = diag;
+            _largest = largest;
+            _main = main;
+            _start = start;
+            _cpu0 = cpu0;
+        }
+
+        /// <param name="loads">The trie nodes the prefetch read from the store.</param>
+        /// <param name="rounds">Its levels that read any.</param>
+        public void End(int loads, int rounds)
+        {
+            if (_diag is not { } diag) return;
+            long now = Stopwatch.GetTimestamp();
+            long cpu = _main || _largest ? ThreadCpuNs() - _cpu0 : 0;
+            Interlocked.Increment(ref diag._c[(int)C.SrPrefetchContracts]);
+            Interlocked.Add(ref diag._c[(int)C.SrPrefetchLoads], loads);
+            Interlocked.Add(ref diag._c[(int)C.SrPrefetchRounds], rounds);
+            // Each section has one writer: the block-processing thread, the thread of item 0.
+            if (_main) diag.AddSection(F.SrPrefetchMain, now - _start, cpu);
+            if (!_largest) return;
+
+            ref ItemContext item = ref _item;
+            item.Largest = true;
+            item.PrefetchEnd = now;
+            diag.AddSection(F.SrItem0Prefetch, now - _start, cpu);
+            diag._c[(int)C.SrItem0PrefetchLoads] = loads;
+            diag._c[(int)C.SrItem0PrefetchRounds] = rounds;
         }
     }
 

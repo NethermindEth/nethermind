@@ -375,7 +375,8 @@ public partial class TrieStoreScopeProvider(
         Action<Address, Hash256> onRootUpdated,
         AddressAsKey address,
         bool commit = false,
-        int minWritesToHashInParallel = StorageTreeBulkWriteBatch.MinWritesToHashInParallel) : IWorldStateScopeProvider.IStorageWriteBatch
+        int minWritesToHashInParallel = StorageTreeBulkWriteBatch.MinWritesToHashInParallel,
+        IStorageTreePrefetcher? prefetcher = null) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
@@ -467,6 +468,7 @@ public partial class TrieStoreScopeProvider(
 
                 _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
                 _pendingHashes = null;
+                prefetcher?.Prefetch(storageTree, _bulkWrite.AsSpan());
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);
             }

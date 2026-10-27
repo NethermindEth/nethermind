@@ -66,6 +66,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _earlyAdoptedSlots;
     private int _earlyAbandonedSlots;
 
+    // int.MaxValue when off, so a storage batch decides with one comparison.
+    private readonly int _storageRootPrefetchMinChanges;
+    private int _prefetchedContracts;
+    private int _prefetchLoads;
+    private int _prefetchRounds;
+    private long _prefetchTicks;
+
     // Bench-only (FlatDb.ShadowAccountSplit): the block's account-trie batches, kept for the shadow run at commit.
     private readonly bool _shadowAccountSplit;
     private ShadowAccountBatch? _shadowBatch;
@@ -103,6 +110,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        _storageRootPrefetchMinChanges = configuration.StorageRootPrefetchMinChanges > 0 && !isReadOnly
+            ? configuration.StorageRootPrefetchMinChanges
+            : int.MaxValue;
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -140,6 +150,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Interlocked.Add(ref _earlyReusedSlots, reused);
         Interlocked.Add(ref _earlyRestoredSlots, restored);
     }
+
+    /// <summary>Pending writes from which a storage commit prefetches its trie paths; <c>int.MaxValue</c> when off.</summary>
+    internal int StorageRootPrefetchMinChanges => _storageRootPrefetchMinChanges;
+
+    /// <summary>The dedicated reader threads, created on first use; <c>null</c> for a read-only provider.</summary>
+    internal WarmReadPool? ReadPool => _warmReadPool?.Value;
+
+    internal void CountStorageRootPrefetch(int loads, int rounds, long ticks)
+    {
+        Interlocked.Increment(ref _prefetchedContracts);
+        Interlocked.Add(ref _prefetchLoads, loads);
+        Interlocked.Add(ref _prefetchRounds, rounds);
+        Interlocked.Add(ref _prefetchTicks, ticks);
+    }
+
+    /// <summary>The storage-root prefetches of this scope so far. For tests.</summary>
+    internal (int Contracts, int Loads, int Rounds, long Ticks) StorageRootPrefetchCounts =>
+        (Volatile.Read(ref _prefetchedContracts), Volatile.Read(ref _prefetchLoads), Volatile.Read(ref _prefetchRounds), Interlocked.Read(ref _prefetchTicks));
 
     public void Dispose()
     {
