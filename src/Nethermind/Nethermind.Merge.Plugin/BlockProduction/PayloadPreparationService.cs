@@ -39,8 +39,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
-    public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMillisecondsDelay = TimeSpan.FromMilliseconds(50);
-    public static readonly TimeSpan GetPayloadWaitForMissingBlockMillisecondsDelay = TimeSpan.FromMilliseconds(300);
 
     /// <summary>
     /// Delay between block improvements
@@ -485,31 +483,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             try
             {
-                // A null best block means no valid empty build exists yet, so wait for the improvement like an empty one.
-                Block? currentBestBlock = blockContext.Best.CurrentBestBlock;
-                bool noBlock = currentBestBlock is null;
-                bool currentBestBlockIsEmpty = currentBestBlock is null or { Transactions.Length: 0 };
-                if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
+                if (skipCancel && blockContext.Best.CurrentBestBlock is null or { Transactions.Length: 0 })
                 {
-                    if (!skipCancel)
-                    {
-                        // Inform current improvement that we need results now. With no block to fall back on,
-                        // cancelling turns an existing build into -38001, so let it finish instead.
-                        if (!noBlock) blockContext.CancelOngoingImprovements();
-
-                        if (!await WaitForImprovement(blockContext, noBlock ? GetPayloadWaitForMissingBlockMillisecondsDelay : GetPayloadWaitForNonEmptyBlockMillisecondsDelay)
-                            && noBlock)
-                        {
-                            // Out of time: have the build finish with what it has, and keep it if it lands shortly,
-                            // as disposing first would reject it.
-                            blockContext.CancelOngoingImprovements();
-                            await WaitForImprovement(blockContext, GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
-                        }
-                    }
-                    else
-                    {
-                        await blockContext.ImprovementTask;
-                    }
+                    await blockContext.ImprovementTask;
                 }
 
                 // Stopped before reading, so a build finishing later cannot change what this and later calls return.
@@ -525,16 +501,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
 
         return null;
-    }
-
-    private static async Task<bool> WaitForImprovement(IBlockImprovementContext blockContext, TimeSpan delay)
-    {
-        using CancellationTokenSource cts = new();
-        Task timeout = Task.Delay(delay, cts.Token);
-        if (await Task.WhenAny(blockContext.ImprovementTask, timeout) == timeout) return false;
-
-        await cts.CancelAsync();
-        return true;
     }
 
     /// <summary>
@@ -577,7 +543,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     }
 
     /// <inheritdoc/>
-    /// <remarks>Stops without <see cref="GetPayload"/>'s wait for a missing block, so a simulated build does not hold the producer while newPayload runs.</remarks>
     public void CancelBlockProduction(string payloadId)
     {
         // Stops a build whose empty block is still pending, so its improvements never start.

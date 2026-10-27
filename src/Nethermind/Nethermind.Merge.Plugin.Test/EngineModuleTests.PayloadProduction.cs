@@ -154,7 +154,7 @@ public partial class EngineModuleTests
             // The non-zero improve delay makes production yield before it pulls transactions,
             // so forkchoiceUpdated returns and getPayload is what cancels the blocked pull.
             yield return new TestCaseData(5, TimeSpan.FromMilliseconds(10), 5) { TestName = "Production makes partial block" };
-            yield return new TestCaseData(0, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, 0) { TestName = "Production takes too long" };
+            yield return new TestCaseData(0, TimeSpan.FromMilliseconds(100), 0) { TestName = "Production takes too long" };
         }
     }
 
@@ -270,9 +270,8 @@ public partial class EngineModuleTests
             await improvedBlock;
         }
 
-        // The first call cancels a blocked pull, but production can finish outside the call's
-        // 50ms non-empty wait under load. The stored context keeps the settled block, so the
-        // poll below reads it without a wall-clock cliff.
+        // The first call cancels a blocked pull without waiting for it. The stored context keeps
+        // the settled block, so the poll below reads it without a wall-clock cliff.
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
         Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.TryGetTransactions().Data!,
             Has.Length.EqualTo(expectedTxCount).After(5000, 10));
