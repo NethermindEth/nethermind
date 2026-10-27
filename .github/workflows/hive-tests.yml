@@ -206,4 +206,4 @@ jobs:
         working-directory: nethermind
         run: |
           rm -f ../hive/workspace/logs/hive.json
-          dotnet run --file scripts/HiveResults.cs -- "../hive/workspace/logs/*.json"
+          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"

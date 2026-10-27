@@ -50,7 +50,7 @@ jobs:
             hw-intrinsic: 0
             artifact: release
             avx512: 1
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs).
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
         project:
           - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
@@ -177,7 +177,7 @@ jobs:
 
       - name: Build test project runner
         if: matrix.project.list
-        run: dotnet build scripts/ci/RunTestProjects.cs --output "${{ runner.temp }}/test-project-runner"
+        run: dotnet build scripts/ci/run-test-projects.cs --output "${{ runner.temp }}/test-project-runner"
 
       # A pack runs the checked and no-intrinsics lanes of several projects; the ISA lanes keep their own step.
       - name: ${{ matrix.project.name }}
@@ -187,7 +187,7 @@ jobs:
           CRASH_RETRY: false
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
           DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
-        run: dotnet "${{ runner.temp }}/test-project-runner/RunTestProjects.dll"
+        run: dotnet "${{ runner.temp }}/test-project-runner/run-test-projects.dll"
 
       - name: ${{ matrix.project }}
         if: '!matrix.project.list'

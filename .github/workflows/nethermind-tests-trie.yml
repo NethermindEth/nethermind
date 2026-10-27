@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/RunTestProjects.cs).
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
         project:
           - Nethermind.Eez.Test
           - Nethermind.JsonRpc.Test
@@ -138,7 +138,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           CRASH_RETRY: false
-        run: dotnet run --file scripts/ci/RunTestProjects.cs
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
@@ -205,7 +205,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           CRASH_RETRY: false
-        run: dotnet run --file scripts/ci/RunTestProjects.cs
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
