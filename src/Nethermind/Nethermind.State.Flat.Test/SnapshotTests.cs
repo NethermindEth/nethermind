@@ -124,6 +124,34 @@ public class SnapshotTests
     }
 
     [Test]
+    public void PersistSizingCoversEveryWrittenNode([Values] bool singleBlock)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        // PreGenesis is block ulong.MaxValue, so ending at block 0 spans one block.
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(singleBlock ? 0UL : 1UL, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
+        snapshot.Content.StorageRoots[TestItem.KeccakA] = Write(TestItem.KeccakA).Pointer;
+        snapshot.Content.StateRootPointer = Write(null).Pointer;
+        long rlpBytes = snapshot.StateNodes.Sum(node => node.Record.Rlp.Length) + snapshot.StorageNodes.Sum(node => node.Record.Rlp.Length);
+        int nodes = snapshot.StateNodes.Count() + snapshot.StorageNodes.Count();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlpBytes, Is.GreaterThan(4 * 1024), "the RLP must outgrow the slack");
+            // A single block is bounded by its pinned record bytes, which exceed the RLP they hold; a wider range sums the RLP.
+            Assert.That(PersistedSnapshotBuilder.EstimateTotalRlpSize(snapshot), singleBlock ? Is.GreaterThan(rlpBytes) : Is.EqualTo(rlpBytes));
+            // Each node takes up to 160 bytes of the node table.
+            Assert.That(PersistedSnapshotBuilder.EstimateSize(snapshot), Is.GreaterThanOrEqualTo(snapshot.Content.EstimateMemory() + nodes * 160L));
+        }
+
+        (ValueHash256 Hash, ulong Pointer) Write(Hash256? address)
+        {
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(128);
+            for (int i = 0; i < 128; i++) entries.Add(new(Keccak.Compute(i.ToString()).ValueHash256, Enumerable.Repeat((byte)i, 32).ToArray()));
+            return FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
+        }
+    }
+
+    [Test]
     public void EnumerationAndBloomIncludeOnlyReachableWritesSinceRetain([Values] bool storage)
     {
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();

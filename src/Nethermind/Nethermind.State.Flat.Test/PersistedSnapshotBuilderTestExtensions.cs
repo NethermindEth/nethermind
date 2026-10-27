@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Test.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -23,9 +24,9 @@ internal static class PersistedSnapshotBuilderTestExtensions
     /// </summary>
     public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
     {
-        int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
-        using PooledByteBufferWriter pooled = new(estimatedSize);
-        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
+        // The writer grows, and the estimate takes the buffer's generations to be production-sized, which test buffers are not.
+        using PooledByteBufferWriter pooled = new((int)Math.Min(PersistedSnapshotBuilder.EstimateSize(snapshot), 1.MiB));
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(PersistedSnapshotBuilder.EstimateTotalRlpSize(snapshot));
         using Nethermind.Core.Collections.BloomFilter bloom =
             Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer>(
