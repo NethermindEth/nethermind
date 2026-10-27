@@ -52,8 +52,11 @@ public partial class EngineRpcModule : IEngineRpcModule
         // Gated like V1 on the final spec, as the next block's timestamp is not known here.
         if (!_specProvider.GetFinalSpec().IsEip8288Enabled)
             return ResultWrapper<GetInclusionListV2Result>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
+        // The local handler attaches a held verified proof covering the dependency-bearing transactions it lists.
+        if (getInclusionListTransactionsHandler is IHandler<Hash256?, GetInclusionListV2Result> withProof)
+            return withProof.Handle(parentBlockHash);
+        // Any other handler lists no dependency-bearing transaction, so the list has nothing to prove.
         ResultWrapper<InclusionListBytes> transactions = await engine_getInclusionListV1(parentBlockHash);
-        // The local list leaves out frame transactions, so it has no dependencies to prove.
         return transactions.Result.ResultType == ResultType.Success
             ? ResultWrapper<GetInclusionListV2Result>.Success(new GetInclusionListV2Result(transactions.Data, RecursiveStarkV1.Empty))
             : ResultWrapper<GetInclusionListV2Result>.Fail(transactions.Result.Error!, transactions.ErrorCode);

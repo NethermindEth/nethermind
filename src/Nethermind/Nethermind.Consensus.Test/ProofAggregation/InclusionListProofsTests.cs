@@ -183,6 +183,125 @@ public class InclusionListProofsTests
             Is.EqualTo(new[] { ordinary }));
     }
 
+    // EIPs#12475: a locally built list may reuse a held verified proof whole, surplus dependencies included, as its canonical
+    // InclusionListProof, so a dependency-bearing entry it covers binds.
+    [Test]
+    public void Held_proof_choice_reuses_a_verified_superset_proof()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency covered = Dependency("covered");
+        FrameDependency surplus = Dependency("surplus");
+        List<FrameDependency> held = Eip8288Dependencies.Canonicalize([surplus, covered]);
+        store.AddCachedRecursive(held, [9]);
+
+        HeldInclusionListProof? chosen = new InclusionListProofService(verifier, store).ChooseHeldProof([[covered]], Eip8288Prototype.Instance);
+
+        Assert.That(chosen, Is.Not.Null);
+        CommitteeInclusionList list = new([], chosen!.StarkProof, chosen.ProofDeps);
+        new InclusionListProofService(verifier).ResolveObligations([list], Eip8288Prototype.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chosen.StarkProof, Is.EqualTo(new byte[] { 9 }));
+            Assert.That(chosen.ProofDeps, Is.EqualTo(Encode(held)), "canonical proof_deps, surplus kept");
+            Assert.That(chosen.Covers([covered]), Is.True);
+            Assert.That(chosen.Covers([Dependency("other")]), Is.False);
+            Assert.That(list.VerifiedProofDeps, Is.EquivalentTo(held), "the attached proof verifies as a signed list's would");
+        }
+    }
+
+    // Without a held proof covering a candidate that verifies under the target fork's AGGREGATED_VK, a local list carries none.
+    [TestCase("no-store")]
+    [TestCase("uncovered")]
+    [TestCase("partly-covered")]
+    [TestCase("invalid-proof")]
+    [TestCase("other-fork")]
+    [TestCase("without-eip8288")]
+    public void Held_proof_choice_needs_a_covering_proof_that_verifies(string scenario)
+    {
+        FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency wanted = Dependency("wanted");
+        FrameDependency second = Dependency("second");
+        store.AddCachedRecursive([scenario is "uncovered" or "partly-covered" ? Dependency("held") : wanted], [9]);
+        if (scenario == "partly-covered") store.AddCachedRecursive([wanted], [8]);
+        IReleaseSpec target = scenario switch
+        {
+            "other-fork" => new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk },
+            "without-eip8288" => new OverridableReleaseSpec(Eip8288Prototype.Instance) { IsEip8288Enabled = false },
+            _ => Eip8288Prototype.Instance
+        };
+        IReadOnlyList<FrameDependency>[] candidates = scenario == "partly-covered" ? [[wanted, second]] : [[wanted]];
+
+        HeldInclusionListProof? chosen = new InclusionListProofService(verifier, scenario == "no-store" ? null : store)
+            .ChooseHeldProof(candidates, target);
+
+        Assert.That(chosen, Is.Null);
+    }
+
+    // The choice follows the caller's candidate order, not how much a proof covers, and takes the smallest proof covering the
+    // first candidate that has one, so neither a large proof nor many unrelated held proofs steer which transactions are listed.
+    [Test]
+    public void Held_proof_choice_follows_candidate_order_and_takes_the_smallest_covering_proof()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency first = Dependency("first"), second = Dependency("second"), third = Dependency("third");
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([first, second, third]), [1]);
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([second]), [2, 2]);
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([second, Dependency("flood")]), [3]);
+        for (int i = 0; i < 16; i++) store.AddCachedRecursive([Dependency($"unrelated:{i}")], [4]);
+        InclusionListProofService service = new(verifier, store);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.ChooseHeldProof([[second], [first], [third]], Eip8288Prototype.Instance)?.StarkProof,
+                Is.EqualTo(new byte[] { 2, 2 }), "the smallest proof covering the first candidate");
+            Assert.That(service.ChooseHeldProof([[Dependency("unheld")], [first], [second]], Eip8288Prototype.Instance)?.StarkProof,
+                Is.EqualTo(new byte[] { 1 }), "a candidate without a held proof passes to the next");
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
+        }
+    }
+
+    // EIPs#12475: the serialized InclusionListProof container, two offsets and both fields, must fit MAX_IL_PROOF_BYTES.
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    public void Held_proof_choice_respects_max_il_proof_bytes(int overLimit, bool chosen)
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency dependency = Dependency("sized");
+        int proofBytes = Eip8288Constants.MaxIlProofBytes - 2 * sizeof(uint) - Eip8288Constants.DependencyTripleLength + overLimit;
+        store.AddCachedRecursive([dependency], new byte[proofBytes]);
+
+        HeldInclusionListProof? proof = new InclusionListProofService(new FakeLeanProofVerifier(true), store)
+            .ChooseHeldProof([[dependency]], Eip8288Prototype.Instance);
+
+        Assert.That(proof, chosen ? Is.Not.Null : Is.Null);
+        if (chosen) Assert.That(new Producers.RecursiveStarkV1 { StarkProof = proof!.StarkProof, ProofDeps = proof.ProofDeps }.SszLength,
+            Is.EqualTo(Eip8288Constants.MaxIlProofBytes));
+    }
+
+    // engine_getInclusionListV2 has a 1 s timeout, so held proofs whose verdicts are not cached are verified a bounded number of
+    // times per list.
+    [Test]
+    public void Held_proof_choice_bounds_verifications()
+    {
+        FakeLeanProofVerifier verifier = new(false);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<IReadOnlyList<FrameDependency>> candidates = [];
+        for (int i = 0; i < InclusionListProofService.MaxHeldProofVerifications + 2; i++)
+        {
+            FrameDependency candidate = Dependency($"bounded:{i}");
+            store.AddCachedRecursive([candidate], [(byte)i]);
+            candidates.Add([candidate]);
+        }
+
+        Assert.That(new InclusionListProofService(verifier, store).ChooseHeldProof(candidates, Eip8288Prototype.Instance), Is.Null);
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(InclusionListProofService.MaxHeldProofVerifications));
+    }
+
+    private static FrameDependency Dependency(string message) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(message), default);
+
     private static byte[][] Encode(IReadOnlyList<FrameDependency> dependencies) =>
         [.. dependencies.Select(static dependency => Eip8288Dependencies.Serialize([dependency]))];
 

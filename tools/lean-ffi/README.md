@@ -290,17 +290,29 @@ contain `dependencies(tx)`. The builder folds each verified list proof into its 
 whole and discards the dependencies absent from `dependencies(block)`.
 
 With both EIP-8288 and EIP-7805 active, `engine_getInclusionListV2` returns `transactions` with
-`recursiveStark: {starkProof, proofDeps}` (empty for the local list, which omits frame
-transactions), `engine_forkchoiceUpdatedV6` accepts `PayloadAttributesV6.inclusionLists` and
-`engine_newPayloadV7` receives `InclusionListV1` entries `{transactions, recursiveStark}` in
+`recursiveStark: {starkProof, proofDeps}`, `engine_forkchoiceUpdatedV6` accepts
+`PayloadAttributesV6.inclusionLists` and `engine_newPayloadV7` receives `InclusionListV1` entries `{transactions, recursiveStark}` in
 committee-position order. Earlier API versions retain their existing formats. The execution
 client assumes the consensus client supplies the lists counted by EIP-7805; it does not
 authenticate consensus-layer signatures.
 
 Request bounds (list count and size, a missing or oversized proof, a `proofDeps` entry that is not
 96 bytes) fail the call; an undecodable entry or an invalid proof only affects its own list.
-`getPayload` does not echo inclusion-list proofs. Constructing and signing a list with a nonempty
-proof remains a consensus-layer integration requirement.
+`getPayload` does not echo inclusion-list proofs. Signing a list remains a consensus-layer
+integration requirement.
+
+The local list draws its dependency-free transactions as before, then fills the remaining
+`MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST` bytes with ready, statically valid
+dependency-bearing pool transactions covered by one held recursive proof: a validated mode-1
+wrapper proof or one from the background aggregation cycle, reused whole with its canonical
+`proof_deps`. Candidates come from a bounded uniform sample of senders, at most one each, drawn
+before any state read or validation. Taking them in random order, the proof is the smallest
+held one covering a candidate whose container fits `MAX_IL_PROOF_BYTES` and that verifies,
+normally from the verdict cache, under the `AGGREGATED_VK` of the fork predicted for the next
+slot, so proof size or count cannot steer which transactions are listed. `engine_getInclusionListV2` never
+proves, since its 1 s timeout is below a recursive aggregation, and verifies at most two held
+proofs per call. Without a covering proof, or with no bytes left, the list carries no
+dependency-bearing transaction and an empty proof.
 
 Legacy inclusion sources and producers without an inclusion source use mutually exclusive
 decoding fallbacks; the proof-aware source overrides that path with its prepared snapshot.

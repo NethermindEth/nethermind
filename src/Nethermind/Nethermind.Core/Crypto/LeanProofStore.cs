@@ -595,6 +595,35 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         }
     }
 
+    /// <summary>The smallest verified recursive proof proving every dependency in <paramref name="dependencies"/>, by proof bytes plus
+    /// 96 bytes per proven dependency, or <c>null</c> when none does.</summary>
+    /// <remarks>An inclusion list reuses it whole, so it may prove dependencies outside <paramref name="dependencies"/>. Only records
+    /// proving the first dependency and the bounded generated cache are examined.</remarks>
+    public RecursiveProofInput? SmallestProving(IReadOnlyList<FrameDependency> dependencies)
+    {
+        if (dependencies.Count == 0) return null;
+        ProofRecord? best = null;
+        long bestSize = long.MaxValue;
+        lock (_lock)
+        {
+            if (_holders.TryGetValue(dependencies[0], out List<ProofRecord>? holders))
+                foreach (ProofRecord record in holders) Consider(record);
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+        }
+        return best?.RecursiveInput;
+
+        void Consider(ProofRecord record)
+        {
+            if (record.RecursiveProof is null) return;
+            long size = record.RecursiveProof.Length + (long)record.Dependencies.Length * Eip8288Constants.DependencyTripleLength;
+            if (size >= bestSize) return;
+            foreach (FrameDependency dependency in dependencies)
+                if (Array.IndexOf(record.Dependencies, dependency) < 0) return;
+            best = record;
+            bestSize = size;
+        }
+    }
+
     /// <summary>Lists the distinct dependency sets inside <paramref name="within"/> that have a verified recursive proof.</summary>
     public List<FrameDependency[]> ProvenSubsets(IReadOnlySet<FrameDependency> within)
     {

@@ -7,9 +7,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -427,5 +430,160 @@ public class InclusionListBuilderTests
         {
             Assert.That(originals, Does.Contain(Decode(bytes).Hash!));
         }
+    }
+
+    // EIPs#12475: a dependency-bearing pool transaction joins the list, after the dependency-free draw, only when a held verified
+    // proof covers it; the list then attaches that proof whole. Without one the list and its empty proof are as before.
+    [TestCase("covering-proof", true)]
+    [TestCase("no-held-proof", false)]
+    [TestCase("uncovering-proof", false)]
+    [TestCase("invalid-proof", false)]
+    [TestCase("no-proof-service", false)]
+    [TestCase("next-nonce-only", false)]
+    public void Dependency_bearing_tx_is_listed_only_under_a_covering_held_proof(string scenario, bool listed)
+    {
+        Transaction ordinary = TxOfSize(50, 0, TestItem.PrivateKeyB);
+        Transaction dependencyBearing = DependencyBearingTx("listed", nonce: scenario == "next-nonce-only" ? 1UL : 0);
+        FrameDependency dependency = Eip8288Dependencies.ForTransaction(dependencyBearing, FrameTxSigHash.ComputeValue).Single();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default);
+        if (scenario != "no-held-proof")
+            store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([scenario == "uncovering-proof" ? surplus : dependency, surplus]), [1]);
+        InclusionListProofService? proofs = scenario == "no-proof-service" ? null
+            : new InclusionListProofService(new HeldProofVerifier(scenario != "invalid-proof"), store);
+
+        (InclusionListBytes il, RecursiveStarkV1 proof) = BuildProofBuilder(PoolWithPending([ordinary], [dependencyBearing]), proofs)
+            .GetInclusionListWithProof();
+        using InclusionListBytes owned = il;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il.Select(bytes => Decode(bytes).Hash), Is.EqualTo(listed
+                ? new[] { ordinary.Hash, dependencyBearing.Hash }
+                : new[] { ordinary.Hash }));
+            Assert.That(proof.StarkProof, Is.EqualTo(listed ? new byte[] { 1 } : Array.Empty<byte>()));
+            Assert.That(proof.ProofDeps, Is.EqualTo(listed
+                ? Eip8288Dependencies.Canonicalize([dependency, surplus]).Select(static d => Eip8288Dependencies.Serialize([d])).ToArray()
+                : Array.Empty<byte[]>()));
+        }
+    }
+
+    // MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST bounds the dependency-free and dependency-bearing entries together: a covered entry
+    // fills the remaining budget exactly, but one byte too many leaves it, and so the proof, out.
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    public void Dependency_bearing_tx_fits_the_remaining_byte_budget(int overBudget, bool listed)
+    {
+        Transaction dependencyBearing = DependencyBearingTx("sized");
+        int dependencyBearingBytes;
+        using (ArrayPoolList<byte> encoded = Consensus.Decoders.InclusionListDecoder.EncodePooled(dependencyBearing)) dependencyBearingBytes = encoded.Count;
+        Transaction filler = TxEncodedAs(Eip7805Constants.MaxBytesPerInclusionList - dependencyBearingBytes + overBudget, TestItem.PrivateKeyB);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddCachedRecursive(Eip8288Dependencies.ForTransaction(dependencyBearing, FrameTxSigHash.ComputeValue), [1]);
+
+        (InclusionListBytes il, RecursiveStarkV1 proof) = BuildProofBuilder(PoolWithPending([filler], [dependencyBearing]),
+            new InclusionListProofService(new HeldProofVerifier(true), store)).GetInclusionListWithProof();
+        using InclusionListBytes owned = il;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il.Sum(static bytes => bytes.Count), Is.EqualTo(listed
+                ? Eip7805Constants.MaxBytesPerInclusionList
+                : Eip7805Constants.MaxBytesPerInclusionList - dependencyBearingBytes + overBudget));
+            Assert.That(il, Has.Count.EqualTo(listed ? 2 : 1));
+            Assert.That(proof.StarkProof, listed ? Is.Not.Empty : Is.Empty);
+        }
+    }
+
+    // The dependency-bearing draw is bounded like the dependency-free one: a fixed sample of senders, each contributing at most
+    // one entry, judged among its first few, before the pool's size can cost state reads or validation.
+    [Test]
+    public void Dependency_bearing_draw_is_bounded_per_sender_and_overall()
+    {
+        PrivateKey[] senders = [.. Enumerable.Range(1, InclusionListBuilder.DependencyBearingSenderSample + 8).Select(static i => new PrivateKey(new byte[31].Append((byte)i).ToArray()))];
+        List<Transaction> dependencyBearing = [];
+        foreach (PrivateKey sender in senders)
+            for (int copy = 0; copy < 2; copy++)
+                dependencyBearing.Add(DependencyBearingTx($"bounded:{sender.Address}:{copy}", sender: sender.Address));
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        foreach (Transaction tx in dependencyBearing)
+            store.AddCachedRecursive(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), [1]);
+        IReadOnlyStateProvider headState = Substitute.For<IReadOnlyStateProvider>();
+
+        (InclusionListBytes il, _) = BuildProofBuilder(PoolWithPending([], [.. dependencyBearing]),
+            new InclusionListProofService(new HeldProofVerifier(true), store), headState).GetInclusionListWithProof();
+        using InclusionListBytes owned = il;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(il, Has.Count.EqualTo(1), "each held proof here covers a single entry");
+            Assert.That(headState.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IReadOnlyStateProvider.GetNonce)),
+                Is.EqualTo(InclusionListBuilder.DependencyBearingSenderSample), "one account read per drawn sender, none for the rest");
+        }
+    }
+
+    /// <summary>A legacy transaction whose inclusion-list encoding is exactly <paramref name="encodedBytes"/> long.</summary>
+    private static Transaction TxEncodedAs(int encodedBytes, PrivateKey sender)
+    {
+        for (int payload = Math.Max(0, encodedBytes - 120); payload <= encodedBytes; payload++)
+        {
+            Transaction tx = TxOfSize(payload, 0, sender);
+            using ArrayPoolList<byte> encoded = Consensus.Decoders.InclusionListDecoder.EncodePooled(tx);
+            if (encoded.Count == encodedBytes) return tx;
+        }
+        throw new InvalidOperationException($"No transaction encodes to {encodedBytes} bytes");
+    }
+
+    private static Transaction DependencyBearingTx(string message, ulong nonce = 0, Address? sender = null)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(message), default);
+        TxFrame[] frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas, UInt256.Zero,
+            Eip8288Dependencies.Serialize([dependency]))];
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = BlockchainIds.Mainnet,
+            SenderAddress = sender ?? TestItem.AddressC,
+            Nonce = nonce,
+            NonceKeys = [UInt256.Zero],
+            Frames = frames,
+            FrameSignatures = [],
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    /// <summary>A pool whose dependency-free draw is <paramref name="ready"/> and whose pending set adds
+    /// <paramref name="dependencyBearing"/>.</summary>
+    private static ITxPool PoolWithPending(Transaction[] ready, Transaction[] dependencyBearing)
+    {
+        ITxPool pool = PoolOf(ready);
+        Dictionary<AddressAsKey, Transaction[]> bySender = ready.Concat(dependencyBearing)
+            .GroupBy(tx => new AddressAsKey(tx.SenderAddress!))
+            .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
+        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
+        return pool;
+    }
+
+    /// <summary>A builder whose target fork enables EIP-8288.</summary>
+    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService? proofs, IReadOnlyStateProvider? headState = null)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(0).TestObject);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Eip8288Prototype.Instance);
+        return new InclusionListBuilder(pool, blockTree, specProvider, headState ?? Substitute.For<IReadOnlyStateProvider>(), proofs);
+    }
+
+    private sealed class HeldProofVerifier(bool valid) : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => valid;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => valid;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
+            throw new InvalidOperationException("Inclusion lists never prove");
     }
 }
