@@ -658,6 +658,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     && CanExecuteConcurrently(request, concurrency)
                     && !(window ??= new BatchExecutionWindow(concurrency, this, context)).IsFull)
                 {
+                    if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex + window.Count + 1, requestCount);
                     window.Add(request);
                     hasNext = source.TryGetNext(out request, out decodeException);
                     if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
@@ -675,7 +676,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         executedResponse = CreateBatchResponseLimitEntry(executed);
                     }
 
-                    await WriteBatchResponseAsync(executed, executedResponse, context, requestIndex, requestCount, sink, cancellationToken);
+                    await WriteBatchResponseAsync(executed, executedResponse, requestIndex, requestCount, sink, cancellationToken);
                     isStopped |= sink.StopRequested;
                     continue;
                 }
@@ -692,11 +693,18 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     continue;
                 }
 
-                JsonRpcResult.Entry response = isStopped
-                    ? CreateBatchResponseLimitEntry(request)
-                    : await HandleSingleRequest(request, context);
+                JsonRpcResult.Entry response;
+                if (isStopped)
+                {
+                    response = CreateBatchResponseLimitEntry(request);
+                }
+                else
+                {
+                    if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex, requestCount);
+                    response = await HandleSingleRequest(request, context);
+                }
 
-                await WriteBatchResponseAsync(request, response, context, requestIndex, requestCount, sink, cancellationToken);
+                await WriteBatchResponseAsync(request, response, requestIndex, requestCount, sink, cancellationToken);
                 isStopped |= sink.StopRequested;
                 hasNext = source.TryGetNext(out request, out decodeException);
                 if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
@@ -733,13 +741,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private ValueTask WriteBatchResponseAsync(
         JsonRpcRequest request,
         JsonRpcResult.Entry response,
-        JsonRpcContext context,
         int requestIndex,
         int requestCount,
         IJsonRpcResponseSink sink,
         CancellationToken cancellationToken)
     {
-        if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex, requestCount);
         if (_logger.IsTrace)
         {
             _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {request} handled after {response.Report.HandlingTimeMicroseconds}");
