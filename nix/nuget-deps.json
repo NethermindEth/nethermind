@@ -697,7 +697,7 @@
   {
     "pname": "Nethermind.Crypto.SecP256r1",
     "version": "1.2.1",
-    "hash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    "hash": "sha256-WCDknNLkND/Bh/w8yKF7YeH3TgeK+InVUpgRrYQTAK8="
   },
   {
     "pname": "Nethermind.DotNetty.Buffers",
