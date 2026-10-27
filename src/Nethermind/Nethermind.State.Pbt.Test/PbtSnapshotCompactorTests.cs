@@ -47,7 +47,6 @@ public class PbtSnapshotCompactorTests
     {
         PbtNodePath groupKey = new([], 0);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
-        TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotContent newer = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         older.SetSlot(key, new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true));
@@ -60,24 +59,21 @@ public class PbtSnapshotCompactorTests
             newer.SetTree((default, emptied ? null : newerPayload.GetSpan().ToArray()));
             expected = newerPayload.GetSpan().ToArray();
         }
-        using (PbtSnapshot compacted = Compact(older, newer))
+        using PbtSnapshot compacted = Compact(older, newer);
+        bool found = compacted.Content.TryFindNodeGroup(compacted.RootGroupPointer, default, out RefCountingMemory? payload);
+        using RefCountingMemory? payloadLease = payload;
+        using (Assert.EnterMultipleScope())
         {
-            bool found = compacted.Content.TryFindNodeGroup(compacted.RootGroupPointer, default, out RefCountingMemory? payload);
-            using RefCountingMemory? payloadLease = payload;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
-                Assert.That(compacted.Content.NodeGroups().Length, Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
-                Assert.That(found, Is.EqualTo(!emptied));
-                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(emptied ? null : expected));
-            }
+            Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
+            Assert.That(compacted.Content.NodeGroups().Length, Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
+            Assert.That(found, Is.EqualTo(!emptied));
+            Assert.That(payload?.Memory.ToArray(), Is.EqualTo(emptied ? null : expected));
         }
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
 
         RefCountingMemory CreateStorageLeafGroup()
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-            using PbtNodeGroupWriter<PbtNodePath> writer = new(groupKey.BitDepth, memoryProvider);
+            using PbtNodeGroupWriter<PbtNodePath> writer = new(groupKey.BitDepth);
             writer.Write(path, PbtTwoLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
             return writer.Detach(default, 0)!;
         }
@@ -330,7 +326,7 @@ public class PbtSnapshotCompactorTests
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
         byte[] expected;
-        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(group.BitDepth, store.Memory))
+        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(group.BitDepth))
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], group);
             if (group.BitDepth != 0) path.AppendMut(0);

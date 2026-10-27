@@ -201,7 +201,7 @@ public class PbtSnapshotBundleTests
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(new PbtSnapshotStore(bundle, (bundle.TreeRoot, bundle.RootGroupPointer)));
-        ValueHash256 updated = TrieUpdater.UpdateRoot(counted, (bundle.TreeRoot, bundle.RootGroupPointer), changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, context.NodeGroupMemory).Hash;
+        ValueHash256 updated = TrieUpdater.UpdateRoot(counted, (bundle.TreeRoot, bundle.RootGroupPointer), changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null).Hash;
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
@@ -242,7 +242,7 @@ public class PbtSnapshotBundleTests
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(store);
-        TrieUpdater.UpdateRoot(counted, store.Root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, context.NodeGroupMemory);
+        TrieUpdater.UpdateRoot(counted, store.Root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
@@ -510,7 +510,7 @@ public class PbtSnapshotBundleTests
         byte[]? encoding = null;
         if (bundle.GroupRecordBuffer.TryLocate(bundle.RootGroupPointer, out PbtGroupRecord record))
         {
-            using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record);
+            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record);
             encoding = frame.GetEncoding(PbtTwoLevelGroupGeometry.RootPosition).ToArray();
         }
         using (Assert.EnterMultipleScope())
@@ -982,7 +982,7 @@ public class PbtSnapshotBundleTests
         SetAccountWithCode(bundle, TestItem.AddressB, other, new CodeInfo(otherBytes), codeFirst: true);
         ulong initialFrontier = buffer.WriteFrontier();
         CountingStore store = new(new PbtSnapshotStore(bundle, (root, bundle.RootGroupPointer))) { FailedZone = failedZone };
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, bundle.RootGroupPointer), bundle.PrepareLeafChanges(), new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance));
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, bundle.RootGroupPointer), bundle.PrepareLeafChanges(), new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null));
         if (failedZone == 0xFF)
         {
             Assert.That(store.ApplyCount, Is.GreaterThan(0));

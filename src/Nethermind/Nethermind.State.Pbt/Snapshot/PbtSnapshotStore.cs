@@ -38,9 +38,8 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
     public (ValueHash256 Hash, ulong Pointer) Root { get; private set; } = root;
 
     /// <inheritdoc cref="TrieUpdater.UpdateRoot"/>
-    public void UpdateRoot(PbtPartitionBatches changes, ConcurrencyController foldQuota, FoldFanOut fanOut, IMetricObserver? partitionFoldTime,
-        IRefCountingMemoryProvider memoryProvider) =>
-        SetRoot(TrieUpdater.UpdateRoot(this, Root, changes, foldQuota, fanOut, partitionFoldTime, memoryProvider));
+    public void UpdateRoot(PbtPartitionBatches changes, ConcurrencyController foldQuota, FoldFanOut fanOut, IMetricObserver? partitionFoldTime) =>
+        SetRoot(TrieUpdater.UpdateRoot(this, Root, changes, foldQuota, fanOut, partitionFoldTime));
 
     /// <summary>Makes the final root readable from the bundle.</summary>
     public void Publish()

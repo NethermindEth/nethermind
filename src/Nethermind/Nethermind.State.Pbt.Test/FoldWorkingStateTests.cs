@@ -11,15 +11,14 @@ public class FoldWorkingStateTests
     [Test]
     public void Reuses_writers_folded_ahead_buffers_and_spare_states()
     {
-        TrackingMemoryProvider provider = new();
         // A fresh state rather than a rented one, as other tests share the pool.
         using TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.FoldWorkingState state = new();
 
-        PbtNodeGroupWriter<PbtStorageNodePath> writer = state.RentWriter(8, provider);
+        PbtNodeGroupWriter<PbtStorageNodePath> writer = state.RentWriter(8);
         writer.Append(PbtTwoLevelGroupGeometry.RootPosition, 64);
         state.ReturnWriter(writer);
-        PbtNodeGroupWriter<PbtStorageNodePath> reused = state.RentWriter(16, provider);
-        PbtNodeGroupWriter<PbtStorageNodePath> nested = state.RentWriter(16, provider);
+        PbtNodeGroupWriter<PbtStorageNodePath> reused = state.RentWriter(16);
+        PbtNodeGroupWriter<PbtStorageNodePath> nested = state.RentWriter(16);
 
         state.RentFoldedAhead(out byte[] outerEncodings, out _);
         state.RentFoldedAhead(out byte[] innerEncodings, out TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.SlotNode[] innerNodes);

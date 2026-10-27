@@ -86,7 +86,12 @@ public static class PbtNodeGroupCodec
     /// Runs in every build, for callers whose job is to vet stored data, such as the scanner; readers trust their
     /// payloads and only check them in debug builds, through <see cref="DebugValidateNodes{TPath}"/>.
     /// </remarks>
-    private static void ValidateNodes(scoped in PbtTraversalPath path, ReadOnlySpan<byte> payload)
+    private static void ValidateNodes(scoped in PbtTraversalPath path, ReadOnlySpan<byte> payload) => ValidateNodes(path, payload, null, 0);
+
+    /// <inheritdoc cref="ValidateNodes(in PbtTraversalPath, ReadOnlySpan{byte})"/>
+    /// <remarks>Passes each node to <paramref name="visitor"/> once it is checked.</remarks>
+    private static void ValidateNodes<TArg>(scoped in PbtTraversalPath path, ReadOnlySpan<byte> payload, NodeVisitor<TArg>? visitor, TArg arg)
+        where TArg : allows ref struct
     {
         uint availability = ValidateFraming(path.BitDepth, payload);
         payload = payload[HeaderLength..];
@@ -104,18 +109,28 @@ public static class PbtNodeGroupCodec
             if (end <= start) throw new InvalidDataException("PBT node offsets must strictly increase.");
             if (end > entriesLength) throw new InvalidDataException("PBT node offset is outside the entries section.");
             ReadOnlySpan<byte> encoding = payload[start..end];
+            int position = BitOperations.TrailingZeroCount(remaining);
             try
             {
-                ValidateNode(path, BitOperations.TrailingZeroCount(remaining), encoding);
+                ValidateNode(path, position, encoding);
             }
             catch (InvalidDataException exception) { throw new InvalidDataException("Invalid PBT node in group.", exception); }
+            visitor?.Invoke(position, encoding, arg);
             start = end;
         }
     }
 
+    /// <summary>Receives a checked node of a group: its position and its encoding, which it must not keep.</summary>
+    public delegate void NodeVisitor<in TArg>(int position, ReadOnlySpan<byte> encoding, TArg arg) where TArg : allows ref struct;
+
     /// <inheritdoc cref="ValidateNodes(in PbtTraversalPath, ReadOnlySpan{byte})"/>
     public static void ValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
         ValidateNodes(PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey), payload);
+
+    /// <inheritdoc cref="ValidateNodes{TArg}(in PbtTraversalPath, ReadOnlySpan{byte}, NodeVisitor{TArg}, TArg)"/>
+    public static void ValidateNodes<TPath, TArg>(TPath groupKey, ReadOnlySpan<byte> payload, NodeVisitor<TArg> visitor, TArg arg)
+        where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct =>
+        ValidateNodes(PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey), payload, visitor, arg);
 
     /// <summary>Debug-build guard for a payload entering or leaving a store; readers on the update path trust stored payloads.</summary>
     [Conditional("DEBUG")]

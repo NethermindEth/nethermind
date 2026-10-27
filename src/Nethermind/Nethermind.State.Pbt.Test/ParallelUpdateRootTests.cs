@@ -136,7 +136,7 @@ public class ParallelUpdateRootTests
 
         void ApplyAndCompare(PbtNodeGroupStore target, List<(byte[] Key, byte[]? Value)> writes)
         {
-            root = target.Fold(root, writes, SplitFanOut(splitEveryFrame), null);
+            root = target.Fold(root, writes, SplitFanOut(splitEveryFrame));
             foreach ((byte[] key, byte[]? value) in writes)
             {
                 if (value is null)
@@ -212,10 +212,10 @@ public class ParallelUpdateRootTests
         using BucketWorkerStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = store.Fold(default, initial, foldQuota, PbtTreeHarness.DefaultFanOut, null);
+        ValueHash256 root = store.Fold(default, initial, foldQuota, PbtTreeHarness.DefaultFanOut);
         sequential.ApplyBatch(initial);
         store.Observe(coordinate: expectParallel);
-        root = store.Fold(root, changes, foldQuota, PbtTreeHarness.DefaultFanOut, null);
+        root = store.Fold(root, changes, foldQuota, PbtTreeHarness.DefaultFanOut);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -278,7 +278,7 @@ public class ParallelUpdateRootTests
         using CoordinatedStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = store.Fold(default, initial, foldQuota, fanOut, null);
+        ValueHash256 root = store.Fold(default, initial, foldQuota, fanOut);
         sequential.ApplyBatch(initial);
         string[] initialRecords = store.Inner.PhysicalRecords();
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
@@ -288,7 +288,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance));
+            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -300,7 +300,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance).Hash;
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null).Hash;
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -356,7 +356,7 @@ public class ParallelUpdateRootTests
         {
             store.Reads.Clear();
             store.Writes.Clear();
-            root = store.Fold(root, changes, SplitFanOut(splitEveryFrame), null);
+            root = store.Fold(root, changes, SplitFanOut(splitEveryFrame));
 
             foreach (PbtStorageNodePath path in store.Reads)
                 if (path.BitDepth != 0) nonRootReads++;
@@ -655,7 +655,7 @@ public class ParallelUpdateRootTests
             ValueHash256 root;
             try
             {
-                root = TrieUpdater.UpdateRoot(this, (_root, _inputRoot), batches, new ConcurrencyController(FoldConcurrency), fanOut, null, _memory).Hash;
+                root = TrieUpdater.UpdateRoot(this, (_root, _inputRoot), batches, new ConcurrencyController(FoldConcurrency), fanOut, null).Hash;
                 LastComplete = true;
             }
             finally

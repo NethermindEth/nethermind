@@ -5,7 +5,6 @@ using System.Diagnostics;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt.NodeBuffer;
@@ -44,7 +43,6 @@ public static partial class TrieUpdater
     /// <param name="foldQuota">The worker slots the fold's parallel parts share.</param>
     /// <param name="fanOut">The fewest operations worth handing a worker, by the stored size below its buckets.</param>
     /// <param name="partitionFoldTime">Observes each root slot's fold time, labelled by partition; <c>null</c> to skip.</param>
-    /// <param name="memoryProvider">Rents the published groups' memory.</param>
     /// <returns>The root of the updated tree and its group's pointer, which is 0 for an empty tree.</returns>
     public static (ValueHash256 Hash, ulong Pointer) UpdateRoot(
         IPbtStore store,
@@ -52,12 +50,11 @@ public static partial class TrieUpdater
         PbtPartitionBatches changes,
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
-        IMetricObserver? partitionFoldTime,
-        IRefCountingMemoryProvider memoryProvider)
+        IMetricObserver? partitionFoldTime)
     {
         Debug.Assert(Eip8297KeyDerivation.CodeZone >> ZoneSlotShift == AccountSlot && StorageSlot != AccountSlot, "Only the account and code zones share a root slot.");
-        using RootSlotFold<PbtPath, PbtNodePath> accountFold = new(store, memoryProvider, foldQuota, fanOut, partitionFoldTime, _accountFoldLabel);
-        using RootSlotFold<PbtStoragePath, PbtStorageNodePath> storageFold = new(store, memoryProvider, foldQuota, fanOut, partitionFoldTime, _storageFoldLabel);
+        using RootSlotFold<PbtPath, PbtNodePath> accountFold = new(store, foldQuota, fanOut, partitionFoldTime, _accountFoldLabel);
+        using RootSlotFold<PbtStoragePath, PbtStorageNodePath> storageFold = new(store, foldQuota, fanOut, partitionFoldTime, _storageFoldLabel);
         accountFold.Add(changes.Account);
         accountFold.Add(changes.Code);
         storageFold.Add(changes.Storage);
@@ -71,7 +68,7 @@ public static partial class TrieUpdater
         FoldWorkingState workingState = FoldWorkingState.Rent();
         try
         {
-            FoldContext context = new(store, memoryProvider, foldQuota, null, fanOut, workingState, null);
+            FoldContext context = new(store, foldQuota, null, fanOut, workingState, null);
             // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
             if (currentRoot.Hash == default)
             {
@@ -81,8 +78,7 @@ public static partial class TrieUpdater
             if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !workingState.Loaded.TryLoad(store, rootPath, out rootRecord))
                 throw new InvalidDataException("A referenced PBT node group is missing.");
             GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
-            using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
-                return FoldRoot(context, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot);
+            return FoldRoot(context, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot);
         }
         finally
         {
@@ -96,7 +92,7 @@ public static partial class TrieUpdater
     {
         ValueHash256 hash = default;
         GroupPublication publication;
-        PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = context.WorkingState.RentWriter(0, context.MemoryProvider);
+        PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = context.WorkingState.RentWriter(0);
         try
         {
             PbtTraversalPath rootPath = new(Span<byte>.Empty);
@@ -118,7 +114,7 @@ public static partial class TrieUpdater
     }
 
     /// <summary>The operations under one root boundary slot, all of one key type, folded below the root group.</summary>
-    private sealed class RootSlotFold<TKey, TPath>(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota,
+    private sealed class RootSlotFold<TKey, TPath>(IPbtStore store, ConcurrencyController foldQuota,
         FoldFanOut fanOut, IMetricObserver? foldTime, StringLabel foldLabel) : IDisposable
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
@@ -157,7 +153,7 @@ public static partial class TrieUpdater
             using TrieUpdater<TKey, TPath>.SpareWorkingStates spares = new();
             try
             {
-                TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut, workingState, spares);
+                TrieUpdater<TKey, TPath>.FoldContext context = new(store, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut, workingState, spares);
                 Span<PbtWriteOperation<TKey>> operations = _operations.AsSpan();
                 // The producer grouped each zone by its shard nibble, so sorted shards sort the zone; each shard's leaves are
                 // hashed with its sort, so the fold reads leaf hashes in place of values.

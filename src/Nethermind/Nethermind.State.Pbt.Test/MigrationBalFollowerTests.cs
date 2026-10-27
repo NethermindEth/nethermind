@@ -346,7 +346,7 @@ public class MigrationBalFollowerTests
         private void Open()
         {
             _pbt = new PbtTestContext(_target);
-            Replay = new PbtBalReplay(_pbt.Manager, _pbt.NodeGroupMemory, _pbt.CodeDb, SpecProvider, _pbt.Config, LimboLogs.Instance);
+            Replay = new PbtBalReplay(_pbt.Manager, _pbt.CodeDb, SpecProvider, _pbt.Config, LimboLogs.Instance);
             Follower = CreateFollower(_blockTree, _fetcher, _observedStore);
         }
 

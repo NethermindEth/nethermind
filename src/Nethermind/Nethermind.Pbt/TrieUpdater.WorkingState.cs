@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
@@ -52,11 +51,11 @@ public static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>A writer of an empty group at <paramref name="bitDepth"/>, until <see cref="ReturnWriter"/>.</summary>
-        public PbtNodeGroupWriter<TPath> RentWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
+        public PbtNodeGroupWriter<TPath> RentWriter(int bitDepth)
         {
-            if (!_writers.TryPop(out PbtNodeGroupWriter<TPath>? writer)) return new PbtNodeGroupWriter<TPath>(bitDepth, memoryProvider);
+            if (!_writers.TryPop(out PbtNodeGroupWriter<TPath>? writer)) return new PbtNodeGroupWriter<TPath>(bitDepth);
 
-            writer.Reset(bitDepth, memoryProvider);
+            writer.Reset(bitDepth);
             return writer;
         }
 

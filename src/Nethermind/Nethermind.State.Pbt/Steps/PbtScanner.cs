@@ -5,7 +5,6 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -114,29 +113,28 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private static void ScanGroup<TPath>(TPath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupCodec.ValidateNodes(groupPath, value);
-        using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(RefCountingMemory.Wrapping(value.ToArray()), groupPath.BitDepth);
+        PbtNodeGroupCodec.ValidateNodes(groupPath, value, ScanNode, (stats, groupPath.BitDepth));
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
-        stats.GroupsByOccupancy[BitOperations.PopCount(reader.StoredPositions)]++;
-        for (uint stored = reader.StoredPositions; stored != 0; stored &= stored - 1)
-        {
-            int position = BitOperations.TrailingZeroCount(stored);
-            ReadOnlySpan<byte> encoding = reader.GetEncoding(position).Span;
-            stats.NodeCount++;
-            stats.NodeEncodingBytes += encoding.Length;
-            if (PbtNodeCodec.IsLeaf(encoding)) stats.LeafCount++;
-            else
-            {
-                PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
-                stats.BranchCount++;
-                if (!node.LeftKeyPostfix.IsEmpty) stats.LeafCount++;
-                if (!node.RightKeyPostfix.IsEmpty) stats.LeafCount++;
-            }
-            stats.NodesByDepth[groupPath.BitDepth + PbtTwoLevelGroupGeometry.LocalPathOf(position).Length]++;
-        }
-        if (reader.DescendantMask != 0) stats.GroupsWithDescendants++;
+        stats.GroupsByOccupancy[BitOperations.PopCount(PbtNodeGroupCodec.ReadAvailability(value))]++;
+        if (PbtNodeGroupCodec.ReadDescendantMask(value) != 0) stats.GroupsWithDescendants++;
     }
+
+    private static readonly PbtNodeGroupCodec.NodeVisitor<(PbtScanReport.NodeGroupStats Stats, int BitDepth)> ScanNode = static (position, encoding, group) =>
+    {
+        PbtScanReport.NodeGroupStats stats = group.Stats;
+        stats.NodeCount++;
+        stats.NodeEncodingBytes += encoding.Length;
+        if (PbtNodeCodec.IsLeaf(encoding)) stats.LeafCount++;
+        else
+        {
+            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
+            stats.BranchCount++;
+            if (!node.LeftKeyPostfix.IsEmpty) stats.LeafCount++;
+            if (!node.RightKeyPostfix.IsEmpty) stats.LeafCount++;
+        }
+        stats.NodesByDepth[group.BitDepth + PbtTwoLevelGroupGeometry.LocalPathOf(position).Length]++;
+    };
 
     private static byte[][] CreateBounds(PbtColumns column, int rangeCount)
     {

@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
@@ -17,41 +16,26 @@ namespace Nethermind.Pbt;
 /// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
 /// root's group is loaded through its direct reference or <see cref="IPbtStore.TryLoad"/>.
 /// </remarks>
-public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
+public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    private RefCountingMemory? _lease;
-    private ReadOnlyMemory<byte> _payload;
+    private readonly ReadOnlyMemory<byte> _payload;
     private readonly PbtGroupLinks _links;
     private readonly int _offsetTable;
     private readonly uint _stored;
 
-    /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
-    public GroupFrameReader(RefCountingMemory lease, int bitDepth) : this(lease.Memory, bitDepth, default, lease) { }
-
     /// <summary>Borrows a buffer record whose operation lease remains alive throughout this frame.</summary>
-    public GroupFrameReader(PbtGroupRecord record) : this(record.Payload, record.Path.BitDepth, record.Links, null) { }
-
-    private GroupFrameReader(ReadOnlyMemory<byte> memory, int bitDepth, PbtGroupLinks links, RefCountingMemory? lease)
+    public GroupFrameReader(PbtGroupRecord record)
     {
-        BitDepth = bitDepth;
-        _lease = lease;
-        _payload = memory;
-        _links = links;
-        try
-        {
-            ReadOnlySpan<byte> payload = memory.Span;
-            uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
-            Debug.Assert(bitDepth == 0 || (availability & (1u << PbtTwoLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
-            _offsetTable = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
-            _stored = availability;
-        }
-        catch
-        {
-            ((IDisposable?)lease)?.Dispose();
-            throw;
-        }
+        BitDepth = record.Path.BitDepth;
+        _payload = record.Payload;
+        _links = record.Links;
+        ReadOnlySpan<byte> payload = _payload.Span;
+        uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
+        Debug.Assert(BitDepth == 0 || (availability & (1u << PbtTwoLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
+        _offsetTable = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
+        _stored = availability;
     }
 
     public int BitDepth { get; }
@@ -120,20 +104,5 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
         return PbtNodeCodec.IsLeaf(encoding.Span)
             ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, groupHash)
             : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, Blake3Hash.Hash(PbtBranchReader.FromValidated(encoding.Span).Preimage));
-    }
-
-    public void Dispose()
-    {
-        ((IDisposable?)_lease)?.Dispose();
-        _lease = null;
-        _payload = default;
-    }
-
-    /// <summary>Releases the actual mutable frame, including payloads loaded after this scope was opened.</summary>
-    public readonly ref struct Scope(ref GroupFrameReader<TKey, TPath> reader) : IDisposable
-    {
-        private readonly ref GroupFrameReader<TKey, TPath> _reader = ref reader;
-
-        public void Dispose() => _reader.Dispose();
     }
 }

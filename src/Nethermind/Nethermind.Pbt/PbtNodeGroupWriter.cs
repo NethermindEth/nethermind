@@ -8,7 +8,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
@@ -17,7 +16,7 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// Writable spans are borrowed until the next writer operation. The group is composed in a pooled scratch array, which
 /// <see cref="Reset"/> keeps for the next group and <see cref="Dispose"/> releases.
-/// Detach rents a final-size output and transfers its lease; DetachTo finalizes directly into caller-owned storage.
+/// DetachTo finalizes directly into caller-owned storage.
 /// </remarks>
 public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
@@ -26,7 +25,6 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>A scratch size that holds most groups outright, so growth rarely copies more than once.</summary>
     private const int InitialCapacity = 1024;
     private int _bitDepth;
-    private IRefCountingMemoryProvider _memoryProvider;
     /// <summary>The group composed so far, from <see cref="ArrayPool{T}.Shared"/>, with room for the header in front.</summary>
     private byte[]? _scratch;
     private OffsetBuffer _offsets;
@@ -35,16 +33,14 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private uint _availability;
     private int _written;
 
-    public PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider) => Reset(bitDepth, memoryProvider);
+    public PbtNodeGroupWriter(int bitDepth) => Reset(bitDepth);
 
     /// <summary>Starts an empty group at <paramref name="bitDepth"/>, keeping the scratch of the group written before.</summary>
     /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one, or its scratch, per group.</remarks>
-    [MemberNotNull(nameof(_memoryProvider))]
-    public void Reset(int bitDepth, IRefCountingMemoryProvider memoryProvider)
+    public void Reset(int bitDepth)
     {
         Debug.Assert(PbtTwoLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
         _bitDepth = bitDepth;
-        _memoryProvider = memoryProvider;
         ((Span<long>)_descendantDeltas).Clear();
         _descendantDeltaMask = 0;
         DescendantPointers = default;
@@ -121,24 +117,6 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         }
         _availability |= positions;
         _written += entries.Length;
-    }
-
-    /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
-    /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot; ignored for an empty group.</param>
-    /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
-    public RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
-    {
-        int length = GetPayloadLength(descendantBytes, candidateSlots);
-        if (length == 0)
-        {
-            DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
-            return null;
-        }
-
-        // The snapshot retains the payload's whole capacity until the segment is persisted, so it is rented at its final size.
-        RefCountingMemory memory = _memoryProvider.Rent(length);
-        DetachTo(memory.GetSpan(), descendantBytes, candidateSlots);
-        return memory;
     }
 
     /// <summary>The exact canonical payload length, or zero for an empty group.</summary>

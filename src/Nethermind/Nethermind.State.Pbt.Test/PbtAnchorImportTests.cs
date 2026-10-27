@@ -574,7 +574,7 @@ public class PbtAnchorImportTests
         using PbtNodeGroupStore oracle = new();
         List<(byte[] Key, byte[]? Value)> leaves = [];
         foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot, CancellationToken.None)) leaves.Add((leaf.Key.Bytes.ToArray(), leaf.Leaf.ToByteArray()));
-        Assert.That(oracle.Fold(default, leaves, PbtTreeHarness.DefaultFanOut, null), Is.EqualTo(expectedRoot.ValueHash256));
+        Assert.That(oracle.Fold(default, leaves, PbtTreeHarness.DefaultFanOut), Is.EqualTo(expectedRoot.ValueHash256));
         PbtStoreTestExtensions.AssertSameGroups(harness.Target, reader, oracle);
     }
 

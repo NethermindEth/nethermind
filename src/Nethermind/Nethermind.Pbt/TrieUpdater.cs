@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt.NodeBuffer;
 using static Nethermind.Pbt.TrieUpdater;
@@ -176,11 +175,10 @@ public static partial class TrieUpdater<TKey, TPath>
     /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback and takes every group record.
     /// A parallel run folds under a context of its own, carrying a working state from <see cref="Spares"/>, which is set with <see cref="Operations"/>.
     /// </remarks>
-    public readonly struct FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations,
+    public readonly struct FoldContext(IPbtStore store, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations,
         FoldFanOut fanOut, FoldWorkingState workingState, SpareWorkingStates? spares)
     {
         public IPbtStore Store { get; } = store;
-        public IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
         public ConcurrencyController FoldQuota { get; } = foldQuota;
         public PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         public FoldFanOut FanOut { get; } = fanOut;

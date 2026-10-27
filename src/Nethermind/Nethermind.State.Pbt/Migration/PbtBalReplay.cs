@@ -23,7 +23,6 @@ namespace Nethermind.State.Pbt.Migration;
 /// </remarks>
 public sealed class PbtBalReplay(
     IPbtDbManager manager,
-    IRefCountingMemoryProvider nodeGroupMemory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     ISpecProvider specProvider,
     IPbtConfig config,
@@ -47,7 +46,7 @@ public sealed class PbtBalReplay(
         StateId stateId = new(parent);
         return new PbtWorldStateScope(stateId, parent, manager.GatherBundle(stateId, PbtResourcePool.Usage.ReadOnlyProcessingEnv),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb, isPersistent: true), manager,
-            NullPbtChildHeaderSource.Instance, nodeGroupMemory,
+            NullPbtChildHeaderSource.Instance,
             config, logManager);
     }
 

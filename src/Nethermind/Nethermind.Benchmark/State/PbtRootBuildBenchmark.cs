@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -129,6 +128,6 @@ public class PbtRootBuildBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_shardedOperations), new ArrayPoolList<int>(_zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null, PooledRefCountingMemoryProvider.Instance).Hash;
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null).Hash;
     }
 }

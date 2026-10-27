@@ -194,7 +194,7 @@ public class PbtNodeGroupPrefetchTests
     private static PbtWorldStateScope HintBal(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, InterfaceLogger? logger = null)
     {
         PbtWorldStateScope scope = new(StateId.PreGenesis, null, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(), Substitute.For<IPbtCommitTarget>(),
-            NullPbtChildHeaderSource.Instance, PooledRefCountingMemoryProvider.Instance, new PbtConfig(), logger is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logger)));
+            NullPbtChildHeaderSource.Instance, new PbtConfig(), logger is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logger)));
         scope.HintBal(bal).GetAwaiter().GetResult();
         return scope;
     }

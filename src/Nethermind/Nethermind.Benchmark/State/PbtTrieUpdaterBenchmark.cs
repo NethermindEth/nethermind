@@ -9,7 +9,6 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 
@@ -78,7 +77,7 @@ public class PbtTrieUpdaterBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(sharded), new ArrayPoolList<int>(zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, (_root, 0), batches, _foldQuota, FoldFanOut.Default, null, PooledRefCountingMemoryProvider.Instance).Hash;
+        return TrieUpdater.UpdateRoot(_store, (_root, 0), batches, _foldQuota, FoldFanOut.Default, null).Hash;
     }
 
     /// <summary>A batch of about 70% updates, 20% inserts and 10% deletes over distinct keys.</summary>

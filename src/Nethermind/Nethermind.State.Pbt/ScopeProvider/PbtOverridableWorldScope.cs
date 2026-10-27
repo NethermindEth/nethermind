@@ -29,7 +29,6 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IReadOnlyDb _codeDbOverlay;
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
-    private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtGroupRecordBuffer _groupRecordBuffer;
     // Keeps the groups the overrides fold out of the global buffer; created by the first bundle after a reset.
     private PbtOverlayGroupRecordBuffer? _overlayGroupRecordBuffer;
@@ -40,7 +39,6 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     public PbtOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IPbtDbManager manager,
-        IRefCountingMemoryProvider nodeGroupMemory,
         IPbtGroupRecordBuffer groupRecordBuffer,
         IPbtConfig config,
         IStateHeaderProvider stateHeaderProvider,
@@ -49,7 +47,6 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         _logManager = logManager;
         _config = config;
         _manager = manager;
-        _nodeGroupMemory = nodeGroupMemory;
         _groupRecordBuffer = groupRecordBuffer;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
@@ -138,7 +135,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
             scope = new PbtWorldStateScope(
                 stateId, baseBlock, bundle, _codeDb, outer, NullPbtChildHeaderSource.Instance,
-                outer._nodeGroupMemory, outer._config, outer._logManager);
+                outer._config, outer._logManager);
             return true;
         }
     }

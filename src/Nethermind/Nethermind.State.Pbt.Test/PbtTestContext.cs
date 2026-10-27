@@ -74,11 +74,11 @@ internal sealed class PbtTestContext : IAsyncDisposable
             NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
         Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, GroupRecordBuffer, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, GroupRecordBuffer, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
+        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, GroupRecordBuffer, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>
-        new(CodeDb, Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, isReadOnly, Config, logManager ?? LimboLogs.Instance);
+        new(CodeDb, Manager, _childHeaders, _stateHeaderProvider, isReadOnly, Config, logManager ?? LimboLogs.Instance);
 
     /// <summary>Opens a writable scope over <paramref name="parent"/>, or over the pre-genesis state when it is <c>null</c>.</summary>
     public PbtWorldStateScope BeginScope(BlockHeader? parent) => (PbtWorldStateScope)CreateScopeProvider().BeginScope(parent, new LocalMetrics());
@@ -89,7 +89,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         StateId stateId = new(parent);
         bundle = ((IPbtDbManager)Manager).GatherBundle(stateId, PbtResourcePool.Usage.MainBlockProcessing);
         return new PbtWorldStateScope(stateId, parent, bundle, new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(CodeDb, isPersistent: true),
-            Manager, _childHeaders, NodeGroupMemory, Config, LimboLogs.Instance);
+            Manager, _childHeaders, Config, LimboLogs.Instance);
     }
 
     /// <summary>Builds the production container: the test Nethermind module and the PBT module.</summary>

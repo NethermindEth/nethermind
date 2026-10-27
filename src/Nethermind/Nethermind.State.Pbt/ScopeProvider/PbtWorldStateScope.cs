@@ -34,7 +34,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly ILogger _logger;
     private readonly ConcurrencyController _foldQuota;
     private readonly FoldFanOut _foldFanOut;
-    private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
@@ -56,7 +55,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         IWorldStateScopeProvider.ICodeDb codeDb,
         IPbtCommitTarget commitTarget,
         IPbtChildHeaderSource childHeaders,
-        IRefCountingMemoryProvider nodeGroupMemory,
         IPbtConfig config,
         ILogManager logManager)
     {
@@ -64,7 +62,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _balPrefetch = new BackgroundTask(_logger, "HintBal prefetch");
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
-        _nodeGroupMemory = nodeGroupMemory;
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
         Bundle = bundle;
@@ -400,7 +397,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
                 long updaterStart = Stopwatch.GetTimestamp();
-                _tree.UpdateRoot(changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, _nodeGroupMemory);
+                _tree.UpdateRoot(changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime);
                 Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
                 Bundle.CompleteLeafChanges();
             }

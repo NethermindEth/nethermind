@@ -39,7 +39,7 @@ public class PbtStateReaderTests
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
         using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
-        using PbtOverridableWorldScope overridableScope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        using PbtOverridableWorldScope overridableScope = new(codeDb, manager, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         IStateReader reader = overridable ? overridableScope.GlobalStateReader : new PbtStateReader(codeDb, manager);
         BlockHeader? header = nullHeader ? null : Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
         StateId stateId = new(header);

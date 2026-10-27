@@ -129,8 +129,8 @@ internal sealed class DifferentialTree(FoldFanOut fanOut, ConcurrencyController 
         _oracle.Apply(writes);
 
         // A quota of one folds every zone and frame on the calling thread.
-        Root = _serialStore.Fold(Root, writes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null);
-        _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, foldQuota, fanOut, null);
+        Root = _serialStore.Fold(Root, writes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut);
+        _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, foldQuota, fanOut);
 
         IReadOnlyList<PbtPhysicalPayload> expected = _serialStore.ExportPhysicalPayloads();
         IReadOnlyList<PbtPhysicalPayload> actual = _parallelStore.ExportPhysicalPayloads();
@@ -199,7 +199,25 @@ internal static class PbtStoreTestExtensions
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupCodec.ValidateNodes(groupKey, payload);
-        return new(RefCountingMemory.Wrapping(payload.ToArray()), groupKey.BitDepth);
+        byte[] record = new byte[PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))];
+        PbtStorageNodePath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey).ToPath<PbtStorageNodePath>();
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(record, path, default, payload.Length));
+        return new(new PbtGroupRecord(record, 0));
+    }
+
+    /// <summary>Reads the group <paramref name="lease"/> holds at <paramref name="path"/>, releasing the lease.</summary>
+    internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup(scoped in PbtTraversalPath path, RefCountingMemory lease)
+    {
+        using (lease) return ReadGroup(path.ToPath<PbtStorageNodePath>(), lease.GetSpan());
+    }
+
+    /// <summary>Finishes the writer's group into an array of its own, or returns null for an empty group.</summary>
+    internal static RefCountingMemory? Detach<TPath>(this PbtNodeGroupWriter<TPath> writer, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        byte[] payload = new byte[writer.GetPayloadLength(descendantBytes, candidateSlots)];
+        writer.DetachTo(payload, descendantBytes, candidateSlots);
+        return payload.Length == 0 ? null : RefCountingMemory.Wrapping(payload);
     }
 
     internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader)
@@ -329,19 +347,19 @@ internal static class PbtStoreTestExtensions
 
     /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes) =>
-        store.Fold(root, writes, PbtTreeHarness.DefaultFanOut, null);
+        store.Fold(root, writes, PbtTreeHarness.DefaultFanOut);
 
     /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
-        FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider) =>
-        store.Fold(root, writes, PbtTreeHarness.FoldQuota(), fanOut, memoryProvider);
+        FoldFanOut fanOut) =>
+        store.Fold(root, writes, PbtTreeHarness.FoldQuota(), fanOut);
 
     /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
-        ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
+        ConcurrencyController foldQuota, FoldFanOut fanOut)
     {
         using PbtPartitionBatches changes = PreparePartitions(writes);
-        ValueHash256 folded = TrieUpdater.UpdateRoot(store, (root, 0), changes, foldQuota, fanOut, null, memoryProvider ?? PooledRefCountingMemoryProvider.Instance).Hash;
+        ValueHash256 folded = TrieUpdater.UpdateRoot(store, (root, 0), changes, foldQuota, fanOut, null).Hash;
         // An emptied tree writes no root group, so nothing pruned its groups.
         if (folded == default && root != default && store is PbtNodeGroupStore groups) groups.RetainTreeGroups(emptyTree: true);
         return folded;

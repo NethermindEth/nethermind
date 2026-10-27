@@ -50,7 +50,7 @@ internal static class PbtSnapshotBundleTestExtensions
         try
         {
             PbtSnapshotStore store = new(bundle, (root, bundle.RootGroupPointer));
-            store.UpdateRoot(changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
+            store.UpdateRoot(changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
             store.Publish();
             bundle.CompleteLeafChanges();
             return store.Root.Hash;
@@ -66,7 +66,7 @@ internal static class PbtSnapshotBundleTestExtensions
     {
         PbtSnapshotStore store = new(bundle, (root, bundle.RootGroupPointer));
         using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-            store.UpdateRoot(changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
+            store.UpdateRoot(changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
         store.Publish();
         return store.Root.Hash;
     }

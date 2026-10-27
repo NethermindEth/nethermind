@@ -40,7 +40,7 @@ public class PbtNodeGroupTests
         using PbtNodeGroupStore store = new();
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[capacity], groupKey);
         store.SetNodeGroup(cursor, payload);
-        using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store.GetNodeGroup(cursor)!, cursor.BitDepth);
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(cursor, store.GetNodeGroup(cursor)!);
         cursor.Truncate(0);
         cursor.AppendMut(0);
         using RefCountingMemory? retained = store.GetNodeGroup(groupKey);
@@ -262,7 +262,7 @@ public class PbtNodeGroupTests
     {
         if (!streamingWriter) return ReadGroupCount(groupKey, payload);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth);
         writer.Write(groupPath, position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - PbtNodeGroupCodec.GetTrailerLength(1, 0, default)));
         using RefCountingMemory writtenPayload = writer.Detach(default, 0)!;
         Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
@@ -335,19 +335,16 @@ public class PbtNodeGroupTests
         if (present) store.SetNode(leafPath, encoding, memory);
         WarmReadStore persistence = new(store);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, memory);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth);
         RefCountingMemory? lease = persistence.GetNodeGroup(groupPath);
         Assert.That(lease is not null, Is.EqualTo(present));
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = lease is null ? default : new(lease, groupPath.BitDepth);
-        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = lease is null ? default : PbtStoreTestExtensions.ReadGroup(groupPath, lease);
+        Assert.That(persistence.Reads, Is.EqualTo(new[] { groupKey }));
+        if (present)
         {
-            Assert.That(persistence.Reads, Is.EqualTo(new[] { groupKey }));
-            if (present)
-            {
-                reader.CopyRange(writer, 0, PbtTwoLevelGroupGeometry.PositionCount);
-                Assert.That(reader.GetEncoding(position).ToArray(), Is.EqualTo(encoding));
-                Assert.That(persistence.Reads, Has.Count.EqualTo(1), "a frame reads its group once");
-            }
+            reader.CopyRange(writer, 0, PbtTwoLevelGroupGeometry.PositionCount);
+            Assert.That(reader.GetEncoding(position).ToArray(), Is.EqualTo(encoding));
+            Assert.That(persistence.Reads, Has.Count.EqualTo(1), "a frame reads its group once");
         }
         writer.Dispose();
         store.Dispose();
@@ -367,20 +364,17 @@ public class PbtNodeGroupTests
         byte[] encoding = PbtTreeHarness.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)), inlineLeaf ? key[(groupDepth >> 3)..] : [], []);
         store.SetNode(path, encoding);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store.GetNodeGroup(groupPath)!, groupPath.BitDepth);
-        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupPath, store.GetNodeGroup(groupPath)!);
+        TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode source = TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode.StoredAt(ref reader, position, default);
+        Assert.That(source.AnchorDepth, Is.EqualTo(path.BitDepth));
+        if (inlineLeaf)
         {
-            TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode source = TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode.StoredAt(ref reader, position, default);
-            Assert.That(source.AnchorDepth, Is.EqualTo(path.BitDepth));
-            if (inlineLeaf)
+            TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode leaf = TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode.InlineLeafAt(ref reader, position, right: false);
+            PbtVariableTreeKey leafKey = leaf.LeafKey(groupPath);
+            using (Assert.EnterMultipleScope())
             {
-                TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode leaf = TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode.InlineLeafAt(ref reader, position, right: false);
-                PbtVariableTreeKey leafKey = leaf.LeafKey(groupPath);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(leaf.KeyOffset, Is.EqualTo(groupDepth >> 3));
-                    Assert.That(leafKey.Bytes.ToArray(), Is.EqualTo(key));
-                }
+                Assert.That(leaf.KeyOffset, Is.EqualTo(groupDepth >> 3));
+                Assert.That(leafKey.Bytes.ToArray(), Is.EqualTo(key));
             }
         }
     }
@@ -423,25 +417,6 @@ public class PbtNodeGroupTests
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode>(),
                 Is.EqualTo(Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.BoundaryNode>()));
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode>(), Is.LessThan(72));
-        }
-    }
-
-    [Test]
-    public void Group_frames_release_the_payload_on_parse_failure()
-    {
-        TrackingMemoryProvider memory = new();
-        using PbtNodeGroupStore store = new();
-        RefCountingMemory payload = memory.Rent(1);
-        payload.GetSpan()[0] = 0xff;
-        WarmReadStore persistence = new(store) { Payload = payload };
-        Assert.Catch(() => _ = new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>(persistence.GetNodeGroup(new PbtTraversalPath(Span<byte>.Empty))!, 0));
-
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "the caller still owns its payload lease");
-        ((IDisposable)payload).Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(persistence.Reads.Count, Is.EqualTo(1));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
     }
 
@@ -694,7 +669,7 @@ public class PbtNodeGroupTests
         List<PbtNodeRecord> records = [];
         ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtTwoLevelGroupGeometry.PositionCount];
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> streamingWriter = new(groupKey.BitDepth, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtStorageNodePath> streamingWriter = new(groupKey.BitDepth);
         int fullLength = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.AvailabilityLength + PbtNodeGroupCodec.DescendantMaskLength;
         int omitted = 0;
         int positionCount = groupDepth == 0 ? 7 : 6;
@@ -756,56 +731,42 @@ public class PbtNodeGroupTests
         byte[] sourcePayload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads([new(groupKey, sourcePayload)]);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store.GetNodeGroup(groupPath)!, groupPath.BitDepth);
-        TrackingMemoryProvider provider = new();
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, provider);
-        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupPath, store.GetNodeGroup(groupPath)!);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth);
+        int nextPosition = 0;
+        foreach (int endPosition in new[] { 0, 2, 5, 7 })
         {
-            int nextPosition = 0;
-            foreach (int endPosition in new[] { 0, 2, 5, 7 })
+            while (nextPosition < endPosition)
             {
-                while (nextPosition < endPosition)
+                if ((selected & (1u << nextPosition)) == 0)
                 {
-                    if ((selected & (1u << nextPosition)) == 0)
-                    {
-                        nextPosition++;
-                        continue;
-                    }
-                    int startPosition = nextPosition;
-                    do
-                    {
-                        ReadOnlyMemory<byte> encoding = reader.GetEncoding(nextPosition);
-                        if (!copyRanges && !encoding.IsEmpty) writer.Write(groupPath, nextPosition, encoding.Span);
-                        nextPosition++;
-                    } while (nextPosition < endPosition && (selected & (1u << nextPosition)) != 0);
-                    if (copyRanges) reader.CopyRange(writer, startPosition, nextPosition);
+                    nextPosition++;
+                    continue;
                 }
-            }
-            using RefCountingMemory? payload = writer.Detach(default, 0);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expectedRecords.Count == 0 ? null : PbtNodeGroupEncoder.Encode(groupKey, expectedRecords, default)));
-                Assert.That(provider.RentCount, Is.EqualTo(expectedRecords.Count == 0 ? 0 : 1));
+                int startPosition = nextPosition;
+                do
+                {
+                    ReadOnlyMemory<byte> encoding = reader.GetEncoding(nextPosition);
+                    if (!copyRanges && !encoding.IsEmpty) writer.Write(groupPath, nextPosition, encoding.Span);
+                    nextPosition++;
+                } while (nextPosition < endPosition && (selected & (1u << nextPosition)) != 0);
+                if (copyRanges) reader.CopyRange(writer, startPosition, nextPosition);
             }
         }
+        using RefCountingMemory? payload = writer.Detach(default, 0);
+        Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expectedRecords.Count == 0 ? null : PbtNodeGroupEncoder.Encode(groupKey, expectedRecords, default)));
     }
 
-    [TestCase(0, 1, false)]
-    [TestCase(0, 7, false)]
-    [TestCase(2, 6, false)]
-    [TestCase(2, 3, false)]
-    [TestCase(0, 1, true)]
-    [TestCase(0, 7, true)]
-    [TestCase(2, 6, true)]
-    [TestCase(2, 3, true)]
-    public void Streaming_writer_preserves_canonical_bytes_and_transfers_backing_memory(int groupDepth, int count, bool nativeProvider)
+    [TestCase(0, 1)]
+    [TestCase(0, 7)]
+    [TestCase(2, 6)]
+    [TestCase(2, 3)]
+    public void Streaming_writer_preserves_canonical_bytes(int groupDepth, int count)
     {
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        TrackingMemoryProvider provider = new(nativeProvider ? nativePool : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
         List<PbtNodeRecord> records = [];
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, provider);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth);
         for (int index = 0; index < count; index++)
         {
             int position = count == 1 ? 6 : count == 3 ? 1 + index * 2 : index;
@@ -823,48 +784,39 @@ public class PbtNodeGroupTests
         }
 
         byte[] expected = PbtNodeGroupEncoder.Encode(groupKey, records, default);
-        Assert.That(provider.RentCount, Is.Zero);
 
-        using (RefCountingMemory payload = writer.Detach(default, 0)!)
+        using RefCountingMemory payload = writer.Detach(default, 0)!;
+        writer.Dispose();
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
+        using (Assert.EnterMultipleScope())
         {
-            writer.Dispose();
-            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
-            using (Assert.EnterMultipleScope())
+            Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(expected));
+            Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("09")));
+            Assert.That(reader.Nodes(), Has.Count.EqualTo(count));
+            int nodeLength = PbtNodeCodec.BranchLength(4, 0, 0);
+            Assert.That(expected.Length, Is.EqualTo(count * nodeLength + 3 + 2 * count));
+            uint availability = 0;
+            for (int index = 0; index < count; index++)
             {
-                Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(expected));
-                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("09")));
-                Assert.That(reader.Nodes(), Has.Count.EqualTo(count));
-                int nodeLength = PbtNodeCodec.BranchLength(4, 0, 0);
-                Assert.That(expected.Length, Is.EqualTo(count * nodeLength + 3 + 2 * count));
-                uint availability = 0;
-                for (int index = 0; index < count; index++)
-                {
-                    int position = PbtTestPaths.Locate(records[index].Path).Position;
-                    availability |= 1u << position;
-                    Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(expected.AsSpan(1 + count * nodeLength + index * 2)), Is.EqualTo(index * nodeLength));
-                    Assert.That(reader.GetEncoding(position).ToArray(), Is.EqualTo(expected.AsSpan(1 + index * nodeLength, nodeLength).ToArray()));
-                }
-                Assert.That((uint)expected[^2], Is.EqualTo(availability));
-                Assert.That(payload, Is.SameAs(provider.Rented[^1]));
-                Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1));
-                Assert.That(provider.RentCount, Is.EqualTo(1));
-                Assert.That(payload.Capacity, Is.LessThan(2 * expected.Length), "retained capacity is close to the payload");
+                int position = PbtTestPaths.Locate(records[index].Path).Position;
+                availability |= 1u << position;
+                Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(expected.AsSpan(1 + count * nodeLength + index * 2)), Is.EqualTo(index * nodeLength));
+                Assert.That(reader.GetEncoding(position).ToArray(), Is.EqualTo(expected.AsSpan(1 + index * nodeLength, nodeLength).ToArray()));
             }
+            Assert.That((uint)expected[^2], Is.EqualTo(availability));
         }
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
 
     [Test]
     public void Streaming_writer_rejects_groups_above_the_maximum_payload_length()
     {
-        TrackingMemoryProvider provider = new();
-        using (PbtNodeGroupWriter<PbtNodePath> writer = new(0, provider))
+        using (PbtNodeGroupWriter<PbtNodePath> writer = new(0))
         {
             for (int position = 0; position < 3; position++) AppendBranch(writer, position, 8192);
             using RefCountingMemory payload = writer.Detach(default, 0)!;
             Assert.That(PbtStoreTestExtensions.ReadGroup(new PbtNodePath([], 0), payload.GetSpan()).Nodes(), Has.Count.EqualTo(3));
         }
-        using (PbtNodeGroupWriter<PbtNodePath> writer = new(0, provider))
+        using (PbtNodeGroupWriter<PbtNodePath> writer = new(0))
         {
             for (int position = 0; position < 4; position++) AppendBranch(writer, position, 8191);
             using (Assert.EnterMultipleScope())
@@ -939,7 +891,7 @@ public class PbtNodeGroupTests
         slots[slot] = descendantBytes;
         byte[] payload = PbtNodeGroupEncoder.Encode(groupKey, [record], slots);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtNodePath> streamingWriter = new(0, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtNodePath> streamingWriter = new(0);
         streamingWriter.Write(groupPath, PbtTwoLevelGroupGeometry.RootPosition, record.Encoding.Span);
         using RefCountingMemory streamed = streamingWriter.Detach(slots, 0x0F)!;
         long[] stored = PbtStoreTestExtensions.ReadDescendantBytes(payload);

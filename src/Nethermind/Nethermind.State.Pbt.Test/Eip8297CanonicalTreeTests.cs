@@ -102,7 +102,7 @@ public class Eip8297CanonicalTreeTests
         table[0] = 1;
         table[1] = 1;
         using PbtWriteBatch<PbtPath> batch = new(operations, table);
-        Action update = () => TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
+        Action update = () => TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
 
         if (foldFails is null) batch.Dispose();
         // A single zone never fans out, so the failure surfaces unwrapped.
@@ -1183,13 +1183,11 @@ public class Eip8297CanonicalTreeTests
                 break;
         }
 
-        TrackingMemoryProvider memoryProvider = new();
-        Assert.Catch(expectedException, () => store.Fold(root, [(AccountKey(0x12), Value(3))], PbtTreeHarness.DefaultFanOut, memoryProvider));
+        Assert.Catch(expectedException, () => store.Fold(root, [(AccountKey(0x12), Value(3))], PbtTreeHarness.DefaultFanOut));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure + appliesDelta));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
             Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(before.PhysicalRecords()));
         }
 
@@ -1216,7 +1214,7 @@ public class Eip8297CanonicalTreeTests
         ];
         foreach ((byte[] Key, byte[]? Value)[] changes in batches)
         {
-            root = store.Fold(root, changes, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut, null);
+            root = store.Fold(root, changes, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut);
             expectedRoot = expectedStore.Fold(expectedRoot, changes);
             oracle.Apply(changes);
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
@@ -1226,32 +1224,6 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(reopened.PhysicalRecords(), Is.EqualTo(expectedStore.PhysicalRecords()));
             }
-        }
-    }
-
-    [Test]
-    public void Owned_node_encodings_are_released_at_every_rent_failure([Values] bool parallel)
-    {
-        (byte[] Key, byte[]? Value)[] changes =
-        [
-            (ZoneKey("00123450"), Value(1)), (ZoneKey("00123458"), Value(2)),
-            (ZoneKey("01123450"), Value(3)), (ZoneKey("01123458"), Value(4)),
-            (ZoneKey("ff123450"), Value(5)), (ZoneKey("ff123458"), Value(6)),
-        ];
-        TrackingMemoryProvider successfulProvider = new();
-        using (PbtNodeGroupStore store = new()) ApplyTracked(store, default, changes, parallel, successfulProvider);
-        Assert.That(TrackingMemoryProvider.CountUnreleased(successfulProvider.Rented), Is.Zero);
-        for (int rent = 1; rent <= successfulProvider.RentCount; rent++)
-        {
-            TrackingMemoryProvider memoryProvider = new() { ThrowOnRent = rent };
-            using PbtNodeGroupStore store = new();
-            Exception? exception = Assert.Catch(() => ApplyTracked(store, default, changes, parallel, memoryProvider));
-            if (exception is AggregateException aggregateException)
-                Assert.That(aggregateException.Flatten().InnerExceptions, Has.All.TypeOf<InvalidOperationException>());
-            else
-                Assert.That(exception, Is.TypeOf<InvalidOperationException>());
-            store.Dispose();
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero, $"failed rental {rent}");
         }
     }
 
@@ -1268,7 +1240,7 @@ public class Eip8297CanonicalTreeTests
             (ZoneKey("01000000"), Value(3)), (ZoneKey("01800000"), Value(4)),
             (ZoneKey("ff000000"), Value(5)), (ZoneKey("ff800000"), Value(6)),
         ];
-        Assert.That(() => store.Fold(default, changes, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut, null),
+        Assert.That(() => store.Fold(default, changes, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut),
             Throws.InstanceOf<InvalidOperationException>().Or.InstanceOf<AggregateException>());
     }
 
@@ -1299,7 +1271,6 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 root = store.Fold(default, [
             (ZoneKey("00123450"), Value(1)), (ZoneKey("00123451"), Value(4)), (ZoneKey("00123458"), Value(2)), (ZoneKey("0080"), Value(3))]);
         TrackingMemoryProvider readProvider = new();
-        TrackingMemoryProvider nodeProvider = new() { FillByte = 0xFF };
         RefCountingMemory? promotedPayload = null;
         bool checkedPromotion = false;
         store.OverrideGroup = groupKey =>
@@ -1318,7 +1289,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(TrackingMemoryProvider.CountUnreleased([promotedPayload!]), Is.Zero);
             checkedPromotion = true;
         };
-        root = store.Fold(root, [(ZoneKey("00123458"), null)], PbtTreeHarness.DefaultFanOut, nodeProvider);
+        root = store.Fold(root, [(ZoneKey("00123458"), null)], PbtTreeHarness.DefaultFanOut);
         EipReferenceTree oracle = new();
         oracle.Insert(ZoneKey("00123450"), Value(1));
         oracle.Insert(ZoneKey("00123451"), Value(4));
@@ -1330,7 +1301,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(readProvider.Rented), Is.Zero);
         }
         AssertAllMemoryReleased(store);
-        Assert.That(TrackingMemoryProvider.CountUnreleased(nodeProvider.Rented), Is.Zero);
     }
 
     [Test]
@@ -1407,9 +1377,6 @@ public class Eip8297CanonicalTreeTests
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
         Assert.That(reopened.Fold(root, [(left, Value(1))]), Is.EqualTo(root));
     }
-
-    private static ValueHash256 ApplyTracked(IPbtStore store, ValueHash256 root, (byte[] Key, byte[]? Value)[] changes, bool parallel, TrackingMemoryProvider memoryProvider) =>
-        store.Fold(root, changes, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut, memoryProvider);
 
     private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch
     {

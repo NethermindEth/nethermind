@@ -18,14 +18,13 @@ public class PbtWorldStateManager(
     IPbtDbManager manager,
     IPbtChildHeaderSource childHeaders,
     IStateHeaderProvider stateHeaderProvider,
-    IRefCountingMemoryProvider nodeGroupMemory,
     PbtStateReader stateReader,
     Func<PbtOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IPbtConfig config,
     ILogManager logManager) : IWorldStateManager
 {
-    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, stateHeaderProvider, nodeGroupMemory, isReadOnly: false, config, logManager);
+    private readonly PbtScopeProvider _mainWorldState = new(codeDb, manager, childHeaders, stateHeaderProvider, isReadOnly: false, config, logManager);
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
 
@@ -35,7 +34,7 @@ public class PbtWorldStateManager(
 
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, stateHeaderProvider, nodeGroupMemory, isReadOnly: true, config, logManager);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new PbtScopeProvider(codeDb, manager, childHeaders, stateHeaderProvider, isReadOnly: true, config, logManager);
 
     public IOverridableWorldScope CreateOverridableWorldScope() => overridableWorldScopeFactory();
 

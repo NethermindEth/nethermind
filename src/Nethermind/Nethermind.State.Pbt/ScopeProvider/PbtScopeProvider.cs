@@ -19,7 +19,6 @@ public class PbtScopeProvider(
     IPbtDbManager manager,
     IPbtChildHeaderSource childHeaders,
     IStateHeaderProvider stateHeaderProvider,
-    IRefCountingMemoryProvider nodeGroupMemory,
     bool isReadOnly,
     IPbtConfig config,
     ILogManager logManager) : IWorldStateScopeProvider
@@ -45,7 +44,7 @@ public class PbtScopeProvider(
             return false;
         }
 
-        scope = new PbtWorldStateScope(stateId, baseBlock, bundle, _codeDb, _commitTarget, childHeaders, nodeGroupMemory, config, logManager);
+        scope = new PbtWorldStateScope(stateId, baseBlock, bundle, _codeDb, _commitTarget, childHeaders, config, logManager);
         Metrics.PbtBeginScopeTime.Observe(Stopwatch.GetTimestamp() - start);
         return true;
     }

@@ -127,8 +127,7 @@ public static partial class TrieUpdater<TKey, TPath>
             if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !context.WorkingState.Loaded.TryLoad(context.Store, path, out record))
                 throw new InvalidDataException("A referenced PBT node group is missing.");
             GroupFrameReader<TKey, TPath> reader = new(record);
-            using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
-                return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
+            return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
         }
         return FoldSortedAndPublish(context, ref absent, current, operations, ref path, bitDepth, anchorDepth, encoding);
     }
@@ -140,7 +139,7 @@ public static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         // A fold that throws leaves its writer to the collector rather than to the working state.
-        PbtNodeGroupWriter<TPath> writer = context.WorkingState.RentWriter(bitDepth, context.MemoryProvider);
+        PbtNodeGroupWriter<TPath> writer = context.WorkingState.RentWriter(bitDepth);
         StoredGroupHashes.Open(out StoredGroupHashes hashes);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
         SlotNode result = default;
@@ -252,7 +251,7 @@ public static partial class TrieUpdater<TKey, TPath>
         FoldWorkingState workingState = spares.Rent();
         try
         {
-            FoldContext runContext = new(context.Store, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut, workingState, spares);
+            FoldContext runContext = new(context.Store, context.FoldQuota, context.Operations, context.FanOut, workingState, spares);
             for (int fold = run == 0 ? 0 : runEnds[run - 1]; fold < runEnds[run]; fold++)
                 folds[fold].Fold(runContext, groupPath, bitDepth, foldedAhead);
         }

@@ -222,7 +222,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
         using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
-        using PbtOverridableWorldScope scope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        using PbtOverridableWorldScope scope = new(codeDb, manager, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
 
         Assert.Throws<MissingTrieNodeException>(() => scope.GlobalStateReader.GetStorage(null, TestItem.AddressA, 1, out _));
         manager.Received(1).TryGatherBundle(Arg.Any<StateId>(), Arg.Any<PbtSnapshotPooledList>(), PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true, Arg.Any<IPbtGroupRecordBuffer>());

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt.NodeBuffer;
 
@@ -43,7 +42,7 @@ public static class PbtSortedLeafFold
         {
             cancellationToken.ThrowIfCancellationRequested();
             using (PbtPartitionBatches prepared = changes.Build())
-                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null, PooledRefCountingMemoryProvider.Instance);
+                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null);
             store.ReleaseSuperseded();
             changes.Reset();
             onWindowFolded(windowCount);
