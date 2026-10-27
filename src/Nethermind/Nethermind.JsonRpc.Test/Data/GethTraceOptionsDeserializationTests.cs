@@ -139,7 +139,7 @@ public class GethTraceOptionsDeserializationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(typeInfo.CreateObject, Is.Not.Null);
+            Assert.That(typeInfo.CreateObject is not null, Is.True);
             foreach (JsonPropertyInfo property in typeInfo.Properties)
                 Assert.That(property.AssociatedParameter, Is.Null, property.Name);
             Assert.That(options.NoBaseFee, Is.False);
