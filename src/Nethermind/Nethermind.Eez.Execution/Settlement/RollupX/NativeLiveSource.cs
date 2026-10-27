@@ -21,6 +21,8 @@ internal sealed class NativeLiveSource
         _parentHash = parentHash;
     }
 
+    internal ulong ChainId => _chainId;
+
     /// <remarks>The ordinal counts complete applying groups before any consumed suffix is selected.</remarks>
     internal ValueHash256 Entry(ulong index)
     {

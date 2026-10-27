@@ -9,18 +9,24 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
 /// <summary>Whole signed outbound groups followed by inbound deliveries in canonical Sync order.</summary>
-internal sealed class NativeTransactions
+internal sealed partial class NativeTransactions
 {
     private readonly List<(ExecutionTable Table, byte[] User)> _outbound = [];
     private readonly List<L2ExecutionEntry> _inbound = [];
 
-    private NativeTransactions(bool hasActions) => HasActions = hasActions;
+    private readonly ulong _chainId;
+
+    private NativeTransactions(bool hasActions, ulong chainId)
+    {
+        HasActions = hasActions;
+        _chainId = chainId;
+    }
 
     public bool HasActions { get; }
 
     public static NativeTransactions Parse(StreamMessage[] messages, EezSettlementContext context)
     {
-        NativeTransactions transactions = new(messages.Length != 0);
+        NativeTransactions transactions = new(messages.Length != 0, context.ChainId);
         bool inbound = false;
         int index = 0;
         while (index < messages.Length)
