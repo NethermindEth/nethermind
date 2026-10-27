@@ -311,9 +311,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         /// <summary><c>true</c> when this was the last copy, so the entry is to be removed and its waiters are released.</summary>
         /// <remarks>
-        /// Removals are raised once per copy and in sequence today; the clamps keep a second removal of the last copy,
-        /// should one ever overlap, from stranding the entry at a count nothing can bring back to zero - which would
-        /// leave every waiter on the hash to its full bound and spin the next enqueue of it forever.
+        /// Each tracked copy owns one removal; enqueue, recovery and processing removals can overlap. The last
+        /// removal atomically makes the count terminal, preventing new copies from joining this entry. Removals at
+        /// zero or a terminal count do nothing; this does not make duplicate removal events safe after a re-enqueue.
         /// </remarks>
         /// <param name="processed">Whether the processing loop took this copy, so it is the one that can have had its verdict.</param>
         public bool RemoveCopy(bool processed)
@@ -324,16 +324,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // is taken, which is the order ExecutedCopyRemoved relies on.
             bool executed = processed && _executed;
 
-            int copies = Interlocked.Decrement(ref _copies);
-            // A copy queued between the decrement and here keeps the entry alive, and the waiters wait for it too.
-            if (copies == 0)
+            int copies;
+            while (true)
             {
-                copies = Interlocked.CompareExchange(ref _copies, -1, 0);
-                if (copies == 0)
-                {
-                    Release();
-                    return true;
-                }
+                int previous = Volatile.Read(ref _copies);
+                if (previous <= 0) return false;
+                copies = previous == 1 ? -1 : previous - 1;
+                if (Interlocked.CompareExchange(ref _copies, copies, previous) == previous) break;
+            }
+
+            if (copies == -1)
+            {
+                Release();
+                return true;
             }
 
             if (executed)

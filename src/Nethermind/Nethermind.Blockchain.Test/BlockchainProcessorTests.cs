@@ -909,9 +909,13 @@ public class BlockchainProcessorTests
 
         Assert.That(removeCopy(true), Is.False);
 
-        Assert.That(await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10)), Is.False,
-            "the processed copy releases its waiter without waiting for the duplicate");
-        Assert.That(removed.IsCompleted, Is.False);
+        bool removedWhenExecutedCopyCompleted = await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removedWhenExecutedCopyCompleted, Is.False,
+                "the processed copy releases its waiter without waiting for the duplicate");
+            Assert.That(removed.IsCompleted, Is.False);
+        }
 
         Assert.That(removeCopy(false), Is.True);
         Assert.That(removed.IsCompleted, Is.True);
@@ -933,15 +937,40 @@ public class BlockchainProcessorTests
     }
 
     [Test]
+    public void Removal_without_a_tracked_copy_preserves_the_count([Values] bool completed)
+    {
+        (Func<bool, bool> removeCopy, Task removed, Task<bool> observation) = ObserveInFlightRemoval(copies: completed ? 1 : 0);
+        if (completed) Assert.That(removeCopy(false), Is.True);
+
+        Assert.That(removeCopy(true), Is.False);
+
+        object inFlight = removeCopy.Target!;
+        FieldInfo copies = inFlight.GetType().GetField("_copies", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)copies.GetValue(inFlight)!, Is.EqualTo(completed ? -1 : 0));
+            Assert.That(removed.IsCompleted, Is.EqualTo(completed));
+            Assert.That(observation.IsCompleted, Is.EqualTo(completed));
+        }
+
+        Func<bool> addCopy = inFlight.GetType().GetMethod("TryAddCopy")!.CreateDelegate<Func<bool>>(inFlight);
+        Assert.That(addCopy(), Is.EqualTo(!completed));
+    }
+
+    [Test]
     public async Task Last_copy_removal_keeps_late_executed_waiters_parked_until_release()
     {
         (Func<bool, bool> removeCopy, Task removed, Task<bool> lateGetterWaited) = ObserveInFlightRemoval(copies: 1, observeLateGetter: true);
 
         Assert.That(removeCopy(true), Is.True);
 
-        Assert.That(await lateGetterWaited.WaitAsync(TimeSpan.FromSeconds(10)), Is.True,
-            "a getter arriving before the executed source is released must still wait on that source");
-        Assert.That(removed.IsCompleted, Is.True);
+        bool lateGetterWasWaiting = await lateGetterWaited.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lateGetterWasWaiting, Is.True,
+                "a getter arriving before the executed source is released must still wait on that source");
+            Assert.That(removed.IsCompleted, Is.True);
+        }
     }
 
     private static (Func<bool, bool> RemoveCopy, Task Removed, Task<bool> Observation) ObserveInFlightRemoval(int copies, bool observeLateGetter = false)
