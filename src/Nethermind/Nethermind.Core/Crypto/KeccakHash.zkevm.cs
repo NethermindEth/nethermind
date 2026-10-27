@@ -541,7 +541,6 @@ public sealed partial class KeccakHash
 
         fixed (byte* pinned = node)
         {
-            // An array's elements start on a word boundary; rounding says so to the JIT.
             byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
             ZeroCapacity(ref retained);
             AbsorbBlock(ref retained, data, intoZeroState: true);
