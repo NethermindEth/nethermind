@@ -572,10 +572,9 @@ jobs:
               exit 1
             fi
             FIXTURE_DIR="$SCOPED_DIR"
-            # This archive's fixtures declare fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250,
-            # EIP-8272 and EIP-7906, which is FramesDevnet1 here; the FOCIL archive gives the same name a
-            # different meaning.
-            echo "fork_alias=Bogota=FramesDevnet1" >> "$GITHUB_OUTPUT"
+            # This archive's fixtures declare fork "Bogota" meaning bogota-devnet-2, which is BogotaDevnet2
+            # here; the FOCIL archive gives the same name a different meaning.
+            echo "fork_alias=Bogota=BogotaDevnet2" >> "$GITHUB_OUTPUT"
           fi
 
           # Fixtures whose expectations are knowingly not met, excluded so the lane still gates on the
@@ -614,19 +613,6 @@ jobs:
                 'test_tx_total_gas_limit_cap\[fork_Bogota-tx_type_3-blockchain_test_engine_inclusion_list_from_state_test-at_cap\]$'
               )
             fi
-          elif [ "$SCOPE" = "frames" ]; then
-            KNOWN_FAILURES+=(
-              # The v1.1.0 release also carries the APPROVE changes of ethereum/execution-specs#3801,
-              # implemented in NethermindEth/nethermind#14639; drop these once it lands.
-              'test_refused_approval_charges_memory_expansion'
-              'test_approve_creates_sender.*sender_emptied_by_earlier_frame'
-              'test_approve_sender_creation_unaffordable.*sender_emptied_by_earlier_frame'
-              # The release encodes frame fees as [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas],
-              # where EIP-8141 now takes [max_fee, max_priority_fee_per_gas] (ethereum/EIPs#12414). Every fixture
-              # carrying a frame transaction therefore awaits a refill; only the legacy-transaction ones still run.
-              # Drop this once a release is filled with the max_fee shape.
-              '(?!test_diff_instructions_in_legacy_transaction\[)test_'
-            )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
