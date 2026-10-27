@@ -1,0 +1,24 @@
+{
+  "name": "Pinned whole-block native and action traces",
+  "calls": {
+    "debug_traceBlockByNumber": [
+      {
+        "id": "block-25489981",
+        "params": [
+          "0x184f23d",
+          {
+            "tracer": "callTracer"
+          }
+        ]
+      }
+    ],
+    "trace_block": [
+      {
+        "id": "block-25489981",
+        "params": [
+          "0x184f23d"
+        ]
+      }
+    ]
+  }
+}
