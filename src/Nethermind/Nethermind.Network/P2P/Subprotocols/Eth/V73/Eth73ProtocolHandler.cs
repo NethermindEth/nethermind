@@ -60,6 +60,23 @@ public class Eth73ProtocolHandler(
 
     string IWrapperLink.Description => Session.ToString() ?? "eth/73 peer";
 
+    /// <summary>Whether wrapper exchange runs on this connection, which the blob availability of wrapped transactions needs.</summary>
+    private bool WrapperExchangeActive => wrapperTransport.IsEnabled && Volatile.Read(ref _wrapperPeer) is not null;
+
+    /// <remarks>EIP-8437: EIP-8070 applies on <c>eth/73</c> to blob-carrying frame transactions.</remarks>
+    protected override bool ExchangesFrameBlobsAsCells => true;
+
+    /// <remarks>A blob-carrying frame transaction's cells are announced like a type-3 one's; a dependency-bearing one's only once
+    /// its covering wrapper validated and its cells passed EIP-8070's checks, which pool admission implies, and only while
+    /// wrapper exchange runs.</remarks>
+    protected override bool AnnouncesCells(Transaction tx) => base.AnnouncesCells(tx)
+        || tx.Type == TxType.FrameTx && tx.CarriesBlobs && (!Eip8288Dependencies.IsDependencyBearing(tx) || WrapperExchangeActive);
+
+    protected override bool AnnouncesDependencyBearingCells(Transaction tx) => IsWrappedBlobTransaction(tx) && WrapperExchangeActive;
+
+    private static bool IsWrappedBlobTransaction(Transaction tx) =>
+        tx.Type == TxType.FrameTx && tx.CarriesBlobs && Eip8288Dependencies.IsDependencyBearing(tx);
+
     protected override bool HandleMessageCore(ZeroPacket message)
     {
         int size = message.Content.ReadableBytes;

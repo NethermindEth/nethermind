@@ -23,7 +23,7 @@ public class Eth73MessagesTests
         public override string ToString() => $"mode {Mode}, {Size} bytes";
     }
 
-    // ethereum/EIPs#12423 at 06c467ff, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
+    // ethereum/EIPs#12423 at fc571b38, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
     private static IEnumerable<AnnouncementVector> AnnouncementVectors() =>
     [
         new(0, 1, "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a",
@@ -63,7 +63,7 @@ public class Eth73MessagesTests
         "a9627cc76ad0b92ebe067018f96cf3acc2d3411fea2c23441c019c780a88e39a"
     ];
 
-    // ethereum/EIPs#12423 at 06c467ff, assets/eip-8437/wrapper-vectors.json: full-envelope mode-0 and mode-1 wrappers.
+    // ethereum/EIPs#12423 at fc571b38, assets/eip-8437/wrapper-vectors.json: full-envelope mode-0 and mode-1 wrappers.
     [TestCase(Mode0Body, 0, "12d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455",
         "e58082016ba012d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455",
         "f9019307f9018ff9018ca012d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455")]
@@ -83,9 +83,11 @@ public class Eth73MessagesTests
             // response_rlp: ProofWrappers [7, [[hash, wrapper]]] embeds the wrapper as an RLP item after its hash.
             Assert.That(new ProofWrappersMessageSerializer().Encode(new(7, [new(announcement.Hash, wrapper)])).ToHexString(),
                 Is.EqualTo(responsePrefix + body));
-            // full_request_rlp: GetProofWrappers [8, 1, [hash]].
-            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(8, true, [announcement.Hash])).ToHexString(),
-                Is.EqualTo("e40801e1a0" + hash));
+            // compact_request_rlp: GetProofWrappers [7, 1, [hash]]; full_request_rlp: [8, 0, [hash]].
+            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(7, true, [announcement.Hash])).ToHexString(),
+                Is.EqualTo("e40701e1a0" + hash));
+            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(8, false, [announcement.Hash])).ToHexString(),
+                Is.EqualTo("e40880e1a0" + hash));
             Assert.That(transactions.Select(static h => h.ToString(false)), Is.EqualTo(TransactionHashes));
         }
     }
@@ -224,7 +226,7 @@ public class Eth73MessagesTests
         byte[] response = new ProofWrappersMessageSerializer().Encode(new(request.RequestId, []));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(request.Full, Is.True);
+            Assert.That(request.Compact, Is.True);
             Assert.That(new GetProofWrappersMessageSerializer().Encode(request), Is.EqualTo(encoded));
             Assert.That(response, Is.EqualTo(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(ulong.MaxValue), Eth73Rlp.EncodeList())));
             Assert.That(response.Length, Is.EqualTo(ProofWrapperTransport.ResponseLength(request.RequestId, 0)));
@@ -243,7 +245,7 @@ public class Eth73MessagesTests
             Assert.That(announce.Decode(announce.Encode(new(announcements))).Announcements.Select(d => d.Hash), Is.EqualTo(announcements.Select(d => d.Hash)));
             GetProofWrappersMessageSerializer get = new();
             GetProofWrappersMessage request = get.Decode(get.Encode(new(42, false, [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256])));
-            Assert.That((request.RequestId, request.Full, request.Hashes.Length), Is.EqualTo((42L, false, 2)));
+            Assert.That((request.RequestId, request.Compact, request.Hashes.Length), Is.EqualTo((42L, false, 2)));
             ProofWrappersMessageSerializer wrappers = new();
             byte[] encoded = wrappers.Encode(new(42, [entry, entry]));
             Assert.That(encoded.Length, Is.EqualTo(ProofWrapperTransport.ResponseLength(42, 2 * ProofWrapperTransport.EntryLength(wrapper.Length))));
@@ -252,18 +254,31 @@ public class Eth73MessagesTests
         }
     }
 
-    // compact_response_rlp: a hash reference is an RLP list in place of a transaction string. The message decodes, but this
-    // client, which always requests complete wrappers, cannot parse the compact wrapper.
+    // compact_response_rlp: a hash reference is an RLP list in place of a transaction string. With the cached encodings the
+    // identical canonical wrapper is reconstructed; without them the item is discarded for a complete retry; a reconstruction
+    // longer than the announced length is rejected.
     [Test]
-    public void Compact_response_vector_decodes_but_its_wrapper_is_not_complete()
+    public void Compact_response_vector_reconstructs_the_canonical_wrapper()
     {
         ProofWrappersMessage message = new ProofWrappersMessageSerializer().Decode(Bytes.FromHexString(Mode1Compact));
+        byte[] body = Bytes.FromHexString(Mode1Body);
+        byte[] compact = message.Entries.Single().Wrapper;
+        System.Collections.Generic.Dictionary<ValueHash256, byte[]> cache = WrapperCompaction.Encodings(body).ToDictionary(static e => e.Hash, static e => e.Encoding);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(message.RequestId, Is.EqualTo(7));
-            Assert.That(message.Entries.Single().Hash.ToString(false), Is.EqualTo("082aec04a3cd181c4a376032dc0819b192a8b39ab14839f3fffb09089d1f9638"));
-            Assert.That(ValueKeccak.Compute(message.Entries[0].Wrapper), Is.Not.EqualTo(message.Entries[0].Hash));
-            Assert.That(() => WrapperBodies.ParseWrapper(message.Entries[0].Wrapper, out _), Throws.InstanceOf<RlpException>());
+            Assert.That(message.Entries[0].Hash.ToString(false), Is.EqualTo("082aec04a3cd181c4a376032dc0819b192a8b39ab14839f3fffb09089d1f9638"));
+            Assert.That(() => WrapperBodies.ParseWrapper(compact, out _), Throws.InstanceOf<RlpException>(), "references are unresolved");
+            Assert.That(WrapperCompaction.Compact(body, cache.ContainsKey), Is.EqualTo(compact), "both encodings are replaced");
+            Assert.That(WrapperCompaction.Reconstruct(compact, body.Length, h => cache.GetValueOrDefault(h), out byte[]? rebuilt, out _),
+                Is.EqualTo(WrapperCompaction.Outcome.Complete));
+            Assert.That(rebuilt, Is.EqualTo(body));
+            Assert.That(WrapperCompaction.Reconstruct(compact, body.Length, static _ => null, out _, out _), Is.EqualTo(WrapperCompaction.Outcome.Missing));
+            Assert.That(WrapperCompaction.Reconstruct(compact, body.Length - 1, h => cache.GetValueOrDefault(h), out _, out string? error),
+                Is.EqualTo(WrapperCompaction.Outcome.Malformed));
+            Assert.That(error, Does.Contain("announced length"));
+            Assert.That(WrapperCompaction.EncodingHashes(body).Select(static h => h.ToString(false)), Is.EqualTo(TransactionHashes),
+                "without blobs, encoding hashes equal transaction hashes");
         }
     }
 
@@ -271,8 +286,8 @@ public class Eth73MessagesTests
     [TestCase("empty announcement")]
     [TestCase("duplicate request")]
     [TestCase("too many requested")]
-    [TestCase("missing full flag")]
-    [TestCase("full flag 2")]
+    [TestCase("missing compact flag")]
+    [TestCase("compact flag 2")]
     [TestCase("string wrapper")]
     [TestCase("entry without hash")]
     [TestCase("short entry hash")]
@@ -292,8 +307,8 @@ public class Eth73MessagesTests
             "duplicate request" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Id(1), Eth73Rlp.EncodeList(Hash(TestItem.KeccakA), Hash(TestItem.KeccakA)))),
             "too many requested" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Id(1),
                 Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eth73Protocol.MaxWrappersPerRequest + 1).Select(i => Eth73Rlp.EncodeBytes(Keccak.Compute(i.ToString()).Bytes))]))),
-            "missing full flag" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Hash(TestItem.KeccakA)))),
-            "full flag 2" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Id(2), Eth73Rlp.EncodeList(Hash(TestItem.KeccakA)))),
+            "missing compact flag" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(Hash(TestItem.KeccakA)))),
+            "compact flag 2" => () => new GetProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Id(2), Eth73Rlp.EncodeList(Hash(TestItem.KeccakA)))),
             "string wrapper" => () => new ProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(
                 Eth73Rlp.EncodeList(Hash(TestItem.KeccakA), Eth73Rlp.EncodeBytes([1, 2]))))),
             "entry without hash" => () => new ProofWrappersMessageSerializer().Decode(Eth73Rlp.EncodeList(Id(1), Eth73Rlp.EncodeList(wrapper))),

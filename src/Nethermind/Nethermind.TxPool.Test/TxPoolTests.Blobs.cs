@@ -6002,6 +6002,25 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8437: on eth/73 EIP-8070 applies to blob-carrying frame transactions, which arrive with their blob data elided
+        // and are sampled like type-3 ones; their announced size is the elided network size.
+        [Test]
+        public void Blob_carrying_frame_tx_in_elided_form_passes_sampling_validation()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [] };
+            tx.ClearLengthCache();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.ValidateTxForBlobSampling(tx), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(tx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetLength()));
+                Assert.That(new LightTransaction(tx).PersistedDependencyBearing, Is.False);
+            }
+        }
+
         // EIP-8141 "Revalidation". The persistent pool swaps the transaction for a frameless light record, but
         // the prefix it was admitted with is still in blob storage, so the sweep reloads it in every blob mode.
         [Test]

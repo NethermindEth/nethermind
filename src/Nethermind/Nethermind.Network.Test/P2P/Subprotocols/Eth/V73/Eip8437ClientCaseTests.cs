@@ -45,7 +45,7 @@ public class Eip8437ClientCaseTests
         Assert.That(node.Transport.PublishWrapper(w3), Is.True);
         Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(w3).Hash }), "W1 and W2 came from the peer; W3 halves its verifications");
 
-        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, true, [Describe(w3).Hash]));
+        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, false, [Describe(w3).Hash]));
         Assert.That(link.Sent<ProofWrappersMessage>().Single().Entries.Select(static e => e.Wrapper), Is.EqualTo(new[] { w3 }));
         node.Tick(TimeSpan.FromSeconds(1));
         Assert.That(node.Transport.PublishWrapper(w4), Is.True);
@@ -116,10 +116,13 @@ public class Eip8437ClientCaseTests
     // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change).
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
+    [TestCase("reserved scheme", false)]
     [TestCase("announced hash", true)]
     public async Task Proof_and_dependency_failures_are_discarded_without_penalty(string scenario, bool penalized)
     {
-        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        // EIP-8288 reserves the leanSTARK scheme: a dependency under it fails the fork's rules, it is not malformed transport.
+        Transaction a = scenario == "reserved scheme" ? FrameTransaction(1, Eip8288Constants.LeanStarkScheme) : FrameTransaction(1),
+            b = FrameTransaction(2);
         byte[] wrapper = scenario == "dependency union" ? MismatchedUnion(a, b) : Wrapper(64, a, b);
         using WrapperTestNode node = new();
         node.Verifier.Valid = scenario != "proof";
@@ -154,29 +157,8 @@ public class Eip8437ClientCaseTests
         }).Bytes;
     }
 
-    // Omission caches are optional: this client never omits encodings, serves a full = 0 request in full and always requests
-    // full wrappers, so a compact reply never reaches reconstruction.
-    [Test]
-    public void Requests_are_full_and_full_zero_requests_are_served_in_full()
-    {
-        Transaction a = FrameTransaction(1);
-        byte[] wrapper = Wrapper(64, a);
-        using WrapperTestNode node = new();
-        FakeWrapperLink link = new();
-        WrapperPeer peer = node.Connect(link);
-        Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
-        node.Transport.OnGetProofWrappers(peer, new(1, false, [Describe(wrapper).Hash]));
-        node.Transport.OnGetProofWrappers(peer, new(2, false, [Describe(wrapper).Hash]));
-        using WrapperTestNode requester = new();
-        FakeWrapperLink source = new();
-        requester.Transport.OnAnnounce(requester.Connect(source), new([Describe(wrapper)]));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(link.Sent<ProofWrappersMessage>().Select(static m => m.Entries.Single().Wrapper), Is.EqualTo(new[] { wrapper, wrapper }),
-                "an encoding sent before is sent in full again");
-            Assert.That(source.Sent<GetProofWrappersMessage>().Single().Full, Is.True);
-        }
-    }
+    // Omitting encodings previously sent in full, and retrying in full after eviction, are covered by
+    // ProofWrapperOmissionTests.
 
     // A complete wrapper can be validated without envelope requests: the transport has no other request than GetProofWrappers.
     [Test]

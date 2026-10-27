@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using CkzgLib;
 using System.Collections.Generic;
 using System.Threading;
 using System.Linq;
@@ -1150,7 +1151,8 @@ public class ProofWrapperServiceTests
         return (CreateService(transactions, store, verifier), verifier);
     }
 
-    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null)
+    private static ProofWrapperService CreateService(Transaction[] transactions, LeanProofStore store, ILeanProofVerifier verifier, IReleaseSpec? spec = null, ITxPool? pool = null,
+        IWrappedBlobTransactionAdmission? blobAdmission = null)
     {
         pool ??= Substitute.For<ITxPool>();
         pool.GetPendingTransactions().Returns(transactions);
@@ -1164,7 +1166,192 @@ public class ProofWrapperServiceTests
         pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
-        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier);
+        return new(pool, new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance), finder, store, verifier, blobAdmission);
+    }
+
+    /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form EIP-8437
+    /// transports: commitments and cell proofs, no blob data.</summary>
+    private static Transaction CreateBlobTransaction(Hash256 key, int blobs = 1)
+    {
+        Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, key.ValueHash256, default), key);
+        byte[][] commitments = [.. Enumerable.Range(0, blobs).Select(static i => Enumerable.Repeat((byte)(i + 1), 48).ToArray())];
+        transaction.BlobVersionedHashes = [.. commitments.Select(static commitment =>
+        {
+            byte[] hash = System.Security.Cryptography.SHA256.HashData(commitment);
+            hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+            return hash;
+        })];
+        transaction.MaxFeePerBlobGas = 1;
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper([], commitments,
+            [.. Enumerable.Range(0, blobs * Ckzg.CellsPerExtBlob).Select(static i => Enumerable.Repeat((byte)i, 48).ToArray())], ProofVersion.V1);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
+    private static byte[] DirectWrapper(params Transaction[] transactions)
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+            transactions.SelectMany(static transaction => Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
+        return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [.. transactions.OrderBy(static transaction => transaction.Hash!.ToString())],
+            Deps = dependencies,
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [.. dependencies.Select(static _ => new byte[] { 1 })]
+        }).Bytes;
+    }
+
+    // EIP-8437: a dependency under the reserved leanSTARK scheme is a fork-dependent EIP-8288 rule failure, discarded without
+    // penalty; a scheme EIP-8288 does not define is malformed encoding.
+    [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Malformed)]
+    public async Task Reserved_dependency_scheme_is_invalid_and_an_undefined_one_malformed(byte scheme, ProofWrapperAcceptanceStatus expected)
+    {
+        Transaction transaction = CreateTransaction(new(scheme, TestItem.KeccakA.ValueHash256, default), TestItem.KeccakA);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true));
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(transaction));
+
+        Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
+    }
+
+    // EIP-8437: a blob-carrying dependency-bearing transaction arrives with its blob data elided. Once the wrapper validates it is
+    // handed to EIP-8070 cell retrieval, with its coverage pinned, instead of the pool; the wrapper is relayed.
+    [Test]
+    public async Task Blob_carrying_transaction_is_handed_to_cell_retrieval_under_pinned_coverage()
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 2), plain = CreateHashedTransaction(TestItem.KeccakB);
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        IWrappedBlobTransactionAdmission admission = Substitute.For<IWrappedBlobTransactionAdmission>();
+        Transaction? handed = null;
+        object? handedSource = null;
+        IDisposable? pin = null;
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        List<FrameDependency> blobDependencies = Eip8288Dependencies.ForTransaction(blob, FrameTxSigHash.ComputeValue);
+        bool coveredWhileHanded = false;
+        admission.Admit(Arg.Any<Transaction>(), Arg.Any<object?>(), Arg.Any<IDisposable>()).Returns(call =>
+        {
+            (handed, handedSource, pin) = (call.ArgAt<Transaction>(0), call.ArgAt<object?>(1), call.ArgAt<IDisposable>(2));
+            coveredWhileHanded = store.Covers(handed);
+            return AcceptTxResult.Accepted;
+        });
+        ProofWrapperService service = CreateService([], store, new FakeLeanProofVerifier(true), pool: pool, blobAdmission: admission);
+        int relayed = 0;
+        service.WrapperValidated += (_, _) => relayed++;
+        object source = new();
+
+        ProofWrapperAcceptance result = await service.AcceptOwnedDetailedAsync(DirectWrapper(blob, plain), default, source);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            Assert.That(relayed, Is.EqualTo(1), "validated wrappers circulate before availability is established");
+            Assert.That(handed?.Hash, Is.EqualTo(blob.Hash));
+            Assert.That(((ShardBlobNetworkWrapper)handed!.NetworkWrapper!).Blobs, Is.Empty);
+            Assert.That(((ShardBlobNetworkWrapper)handed.NetworkWrapper!).Commitments, Has.Length.EqualTo(2));
+            Assert.That(handedSource, Is.SameAs(source));
+            Assert.That(coveredWhileHanded, Is.True);
+            Assert.That(store.TryReserveTransaction(blobDependencies, out IDisposable? reservation), Is.True, "the pin keeps the coverage");
+            reservation?.Dispose();
+            pool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == blob.Hash), Arg.Any<TxHandlingOptions>());
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == plain.Hash), TxHandlingOptions.PersistentBroadcast);
+        }
+        pin!.Dispose();
+        pin.Dispose();
+    }
+
+    // A wrapper submitted with full blob data, as over RPC, is admitted directly and relayed at once in the elided network form
+    // EIP-8437 carries; one whose blobs have no cell proofs cannot be relayed in that form.
+    [TestCase(ProofVersion.V1, true)]
+    [TestCase(ProofVersion.V0, false)]
+    public async Task Wrapper_with_full_blobs_is_relayed_in_its_elided_form(ProofVersion version, bool relayed)
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 1);
+        ShardBlobNetworkWrapper elided = (ShardBlobNetworkWrapper)blob.NetworkWrapper!;
+        blob.NetworkWrapper = elided with
+        {
+            Blobs = [new byte[Ckzg.BytesPerBlob]],
+            Proofs = version == ProofVersion.V1 ? elided.Proofs : [new byte[48]],
+            Version = version
+        };
+        blob.ClearLengthCache();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        List<byte[]> relay = [];
+        service.WrapperValidated += (encoded, _) => relay.Add(encoded);
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(blob));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs.Length == 1), TxHandlingOptions.PersistentBroadcast);
+            Assert.That(relay, Has.Count.EqualTo(relayed ? 1 : 0));
+            if (relayed)
+            {
+                Transaction relayedTx = Decode(relay[0]).Transactions.Single();
+                Assert.That(relayedTx.Hash, Is.EqualTo(blob.Hash));
+                Assert.That(MempoolWrapperDecoder.EncodeTransaction(relayedTx), Is.EqualTo(MempoolWrapperDecoder.EncodeTransaction(CreateBlobTransaction(TestItem.KeccakA, 1))));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Blob_carrying_transaction_without_cell_retrieval_is_not_admitted()
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA);
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        int relayed = 0;
+        service.WrapperValidated += (_, _) => relayed++;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(blob));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(relayed, Is.Zero);
+            pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+    }
+
+    // The producer wraps blob-carrying dependency-bearing transactions from the blob pool in their elided network form.
+    [Test]
+    public void Produced_wrappers_carry_blob_transactions_in_their_elided_network_form()
+    {
+        Transaction plain = CreateHashedTransaction(TestItem.KeccakB);
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 2);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        foreach (Transaction transaction in new[] { plain, blob })
+            store.AddVerified(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue), [[1]], null);
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([plain], store, new FakeLeanProofVerifier(true), pool: pool);
+        Transaction light = new LightTransaction(blob);
+        pool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]> { [Address.Zero] = [light] });
+        pool.TryGetPendingTransactionWithoutBlobs(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = blob;
+            return true;
+        });
+        pool.TryGetPendingTransaction(blob.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = blob;
+            return true;
+        });
+
+        MempoolWrapper wrapper = Decode(service.BuildWrapper().Data!);
+
+        Transaction wrapped = wrapper.Transactions.Single(t => t.Hash == blob.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Transactions.Select(static t => t.Hash), Is.EquivalentTo(new[] { plain.Hash, blob.Hash }));
+            Assert.That(Eip8288Dependencies.IsDependencyBearing(light), Is.True, "the frameless pool record keeps its dependency flag");
+            Assert.That(MempoolWrapperDecoder.EncodeTransaction(wrapped), Is.EqualTo(MempoolWrapperDecoder.EncodeTransaction(blob)));
+            Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Blobs, Is.Empty);
+            Assert.That(((ShardBlobNetworkWrapper)wrapped.NetworkWrapper!).Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob));
+        }
     }
 
     private static MempoolWrapper Decode(byte[] encoded)

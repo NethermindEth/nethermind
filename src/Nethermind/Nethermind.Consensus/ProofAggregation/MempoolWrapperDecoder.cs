@@ -66,7 +66,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             if (deps.Count == Eip8288Constants.MaxDepsPerWrapper) throw new RlpException("Proof wrapper exceeds the dependency count limit.");
             byte[] triple = decoderContext.DecodeByteArray(RlpLimit.For<MempoolWrapper>(Eip8288Constants.DependencyTripleLength, nameof(MempoolWrapper.Deps)));
             if (triple.Length != Eip8288Constants.DependencyTripleLength || !triple.AsSpan(0, 31).IsZero()
-                || !Eip8288Dependencies.IsAcceptedScheme(triple[31]))
+                || !Eip8288Dependencies.IsKnownScheme(triple[31]))
                 throw new RlpException("Invalid dependency encoding.");
             if (previousTriple is not null && previousTriple.AsSpan().SequenceCompareTo(triple) >= 0)
                 throw new RlpException("Proof wrapper dependencies must be sorted and deduplicated.");

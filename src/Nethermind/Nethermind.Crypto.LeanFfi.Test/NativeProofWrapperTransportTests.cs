@@ -141,7 +141,7 @@ public class NativeProofWrapperTransportTests
     {
         using Context context = await Create();
         Init(context);
-        WireMessage request = Encode(context, new GetProofWrappersMessage(1, true, [TestItem.KeccakA.ValueHash256]));
+        WireMessage request = Encode(context, new GetProofWrappersMessage(1, false, [TestItem.KeccakA.ValueHash256]));
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<SubprotocolException>(() => Receive(context, request));

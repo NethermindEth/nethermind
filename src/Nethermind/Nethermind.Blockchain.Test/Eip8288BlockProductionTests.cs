@@ -1031,6 +1031,43 @@ public class Eip8288BlockProductionTests
         Assert.That(result.IsSuccess, Is.False);
     }
 
+    // EIP-8437: a blob-carrying dependency-bearing transaction that reached the blob pool with its blob data is produced like a
+    // type-3 blob transaction: it is included, its blob gas is charged, and its dependency is proven in the block.
+    [Test]
+    public async Task Blob_carrying_dependency_bearing_transaction_is_included_in_a_block()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        ((TestBlockProducer)chain.BlockProducer).PrepareBlobFields = true;
+        await KzgPolynomialCommitments.InitializeAsync();
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero], static tx =>
+        {
+            IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
+            ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper([new byte[CkzgLib.Ckzg.BytesPerBlob]]);
+            proofsManager.ComputeProofsAndCommitments(wrapper);
+            tx.NetworkWrapper = wrapper;
+            tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+            tx.MaxFeePerBlobGas = 1.GWei;
+        });
+        Assert.That(transaction.CarriesBlobs, Is.True);
+        ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
+
+        Result<Hash256[]> admitted = await AcceptWrapper(service, EncodeWrapper(dependency, transaction), transaction);
+        Assert.That(admitted.IsSuccess, Is.True, admitted.Error);
+        Assert.That(chain.TxPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+        Block block = await ProduceAndImport(chain, slot: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Select(static tx => tx.Hash), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(block.Header.BlobGasUsed, Is.EqualTo(Eip4844Constants.GasPerBlob));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash(
+                Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)))));
+        }
+    }
+
     private static Task<BasicTestBlockchain> CreateChain(CountingVerifier verifier, LeanProofStore proofs, Action<ContainerBuilder>? configure = null) =>
         BasicTestBlockchain.Create(builder =>
         {
@@ -1049,7 +1086,11 @@ public class Eip8288BlockProductionTests
         });
 
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
-        ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
+        ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution) =>
+        CreateTransaction(chain, dependency, keys, null, nonce, key, execution);
+
+    private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
+        Action<Transaction>? beforeSigning, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
         ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
@@ -1072,6 +1113,7 @@ public class Eip8288BlockProductionTests
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei
         };
+        beforeSigning?.Invoke(transaction);
         FrameTxTestFrames.SignSecp256k1(transaction, key ?? TestItem.PrivateKeyB, (key ?? TestItem.PrivateKeyB).Address);
         transaction.Hash = transaction.CalculateHash();
         return transaction;

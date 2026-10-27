@@ -53,7 +53,7 @@ public class ProofWrapperTransportTests
         node.Transport.OnAnnounce(peer, holderLink.Sent<NewProofWrapperHashesMessage>().Single());
         GetProofWrappersMessage request = link.Sent<GetProofWrappersMessage>().Single();
         Assert.That(request.Hashes, Is.EqualTo(new[] { announcement.Hash }));
-        Assert.That(request.Full, Is.True, "this client keeps no omission cache");
+        Assert.That(request.Compact, Is.False, "nothing was exchanged in full on this connection yet");
         holder.Transport.OnGetProofWrappers(requester, request);
         ProofWrappersMessage response = holderLink.Sent<ProofWrappersMessage>().Single();
         Assert.That(response.Entries.Single().Hash, Is.EqualTo(announcement.Hash));
@@ -89,7 +89,7 @@ public class ProofWrapperTransportTests
     }
 
     // EIP-8437: requesters check each returned wrapper's canonical hash and the responder's announced mode and length.
-    // A hash reference in a response to a full request changes the bytes, so it fails the hash check too.
+    // A hash reference in a compact = 0 response is rejected too.
     [TestCase("hash")]
     [TestCase("mode")]
     [TestCase("length")]
@@ -124,6 +124,7 @@ public class ProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
+            if (scenario == "reference") Assert.That(link.Penalties[0], Does.Contain("compact = 0"));
             Assert.That(node.Transport.ChargedBytes, Is.Zero);
             Assert.That(node.Pending, Is.Empty);
         }
@@ -252,7 +253,7 @@ public class ProofWrapperTransportTests
 
     // EIP-8437: a responder adds no wrapper once the response reaches the soft limit, so the last one added may take it past
     // the limit; check_vectors.py packs three of five 1 MB wrappers. Hashes it has not announced on the connection are
-    // unavailable, and a full = 0 request is served in full.
+    // unavailable.
     [Test]
     public void Responder_returns_announced_wrappers_in_request_order_until_the_soft_limit_is_reached()
     {
@@ -439,7 +440,7 @@ public class ProofWrapperTransportTests
 
         CrossVerifierFork(node);
         await WrapperTestNode.Until(() => !node.Transport.IsStored(Describe(mode1).Hash));
-        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, true, [Describe(mode1).Hash, Describe(mode0).Hash]));
+        node.Transport.OnGetProofWrappers(peer, new GetProofWrappersMessage(1, false, [Describe(mode1).Hash, Describe(mode0).Hash]));
         FakeWrapperLink late = new("late");
         node.Connect(late);
 

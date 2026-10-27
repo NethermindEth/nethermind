@@ -221,7 +221,8 @@ pending transactions left without coverage are evicted, and nothing validated un
 verifier is announced or served. Development chains schedule such a fork with the chainspec
 parameters `eip8288AggregatedVkTransitionTimestamp` / `eip8288AggregatedVk`, or the geth genesis
 keys `eip8288AggregatedVkTimestamp` / `eip8288AggregatedVk`; the pinned backend verifies only its
-own key, so proofs under any other key fail.
+own key, so proofs under any other key fail. These options are devnet-only: EIP-8288 treats
+`AGGREGATED_VK` as fixed at the protocol level, and no production network overrides it.
 
 ## eth/73 proof wrapper propagation
 
@@ -236,8 +237,14 @@ The only object is the canonical EIP-8288 wrapper
 encoding, at most `MAX_WRAPPER_BYTES` (2 MiB).
 An announcement entry is `[mode, length, hash]`; a returned wrapper must match the responding
 peer's announced mode and length as well as the hash. NewProofWrapperHashes and GetProofWrappers
-are bounded before decompression at their largest valid sizes, 2,499 and 1,072 bytes. This client
-always requests and serves full wrappers (`full = 1`) without hash-reference omission. Responses
+are bounded before decompression at their largest valid sizes, 2,499 and 1,072 bytes. Requests to a
+peer set `compact = 1` once this node caches transaction encodings that peer sent in full within
+validated wrappers (LRU, 4 MiB per peer and 64 MiB overall, released with the connection); a
+responder then replaces each encoding it already sent in full on that connection with its
+`[encoding-hash]` where smaller. References are resolved from the cache and the complete wrapper must
+match its announced hash and length; a reference to an evicted encoding discards the item and
+retries it with `compact = 0` without penalty, while a reference in a `compact = 0` response or a
+reconstruction past the announced length disconnects the peer. Responses
 carry whole wrappers under the 2 MiB `eth` soft response limit, always including the first one.
 A wrapper is announced to every `eth/73` peer once validated, except a hash already announced or
 sent on that connection, or one whose transactions the peer's exchanged wrappers already cover
@@ -246,7 +253,18 @@ reaggregated before full validation.
 
 Dependency-bearing transactions travel only inside their covering wrappers: on every `eth`
 version they are neither broadcast nor announced, and GetPooledTransactions answers them as
-unavailable.
+unavailable. The one exception is EIP-8070 blob availability on `eth/73`: a blob-carrying one is
+wrapped with its blob data elided (commitments and cell proofs only), and once its wrapper validates
+it waits, with its proof coverage pinned, for its cells. Cells announced for it before then are
+recorded but not fetched; after validation they are fetched and checked like type-3 cells, the pool
+admits the transaction, and its cells are announced through NewPooledTransactionHashes. A wrapper
+submitted with full blob data, as over RPC, is admitted directly and relayed at once with its blob
+data elided (only blobs with cell proofs can be). Produced wrappers carry such transactions in the
+same elided form, and block production includes them like
+type-3 blob transactions. On `eth/73` every blob-carrying frame transaction uses EIP-8070 cells: one
+without dependencies is announced with a cell mask, served elided through PooledTransactions and
+fetched like a type-3 one, though its cells are requested only once its body is known; on `eth/72`
+it still travels whole.
 
 Local policy follows the EIP-8437 recommended defaults: 30-second requests, at most three fetch
 sources per wrapper, 8 MiB/s served per peer, four announcements per second per peer and

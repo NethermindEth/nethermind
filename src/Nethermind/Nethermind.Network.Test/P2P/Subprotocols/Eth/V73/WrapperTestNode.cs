@@ -11,6 +11,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
@@ -91,7 +92,7 @@ internal sealed class WrapperTestNode : IDisposable
             lock (Pending) Pending.Add(call.Arg<Transaction>());
             return AcceptTxResult.Accepted;
         });
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier);
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this));
         Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
     }
 
@@ -103,6 +104,19 @@ internal sealed class WrapperTestNode : IDisposable
     public LeanProofStore ProofStore { get; } = new(FrameTxSigHash.ComputeValue);
     public ProofWrapperService Wrappers { get; }
     public ProofWrapperTransport Transport { get; }
+
+    /// <summary>Where validated wrappers hand their blob-carrying transactions; none refuses them.</summary>
+    public IWrappedBlobTransactionAdmission? BlobAdmission { get; set; }
+
+    private sealed class ForwardingBlobAdmission(WrapperTestNode node) : IWrappedBlobTransactionAdmission
+    {
+        public AcceptTxResult Admit(Transaction transaction, object? source, IDisposable proofPin)
+        {
+            if (node.BlobAdmission is { } target) return target.Admit(transaction, source, proofPin);
+            proofPin.Dispose();
+            return AcceptTxResult.Invalid;
+        }
+    }
 
     /// <summary>Moves the local head to <paramref name="number"/> at <paramref name="timestamp"/>, with a parent one EIP-7843 slot
     /// of <paramref name="slotLength"/> seconds earlier, so the target fork is the one active at <c>timestamp + slotLength</c>.</summary>
@@ -131,9 +145,12 @@ internal sealed class WrapperTestNode : IDisposable
 internal static class WrapperTestObjects
 {
     /// <summary>A frame transaction with one leanSPHINCS dependency.</summary>
-    public static Transaction FrameTransaction(int seed)
+    public static Transaction FrameTransaction(int seed) => FrameTransaction(seed, Eip8288Constants.LeanSphincsScheme);
+
+    /// <summary>A frame transaction with one dependency under <paramref name="scheme"/>.</summary>
+    public static Transaction FrameTransaction(int seed, byte scheme)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
+        FrameDependency dependency = new(scheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -144,6 +161,28 @@ internal static class WrapperTestObjects
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
+        return transaction;
+    }
+
+    /// <summary>A dependency-bearing frame transaction carrying <paramref name="blobs"/> blobs in the elided network form
+    /// EIP-8437 transports: commitments bound to its versioned hashes and cell proofs, no blob data.</summary>
+    public static Transaction BlobFrameTransaction(int seed, int blobs = 1, bool dependencyBearing = true)
+    {
+        Transaction transaction = FrameTransaction(seed);
+        if (!dependencyBearing)
+            transaction.Frames = [new(FrameMode.Sender, FrameFlags.None, Address.Zero, 21_000, UInt256.Zero, BitConverter.GetBytes(seed))];
+        byte[][] commitments = [.. Enumerable.Range(0, blobs).Select(i => Enumerable.Repeat((byte)(seed + i + 1), 48).ToArray())];
+        transaction.BlobVersionedHashes = [.. commitments.Select(static commitment =>
+        {
+            byte[] hash = System.Security.Cryptography.SHA256.HashData(commitment);
+            hash[0] = 0x01;
+            return hash;
+        })];
+        transaction.MaxFeePerBlobGas = 1;
+        transaction.NetworkWrapper = new ShardBlobNetworkWrapper([], commitments,
+            [.. Enumerable.Range(0, blobs * CkzgLib.Ckzg.CellsPerExtBlob).Select(static i => Enumerable.Repeat((byte)i, 48).ToArray())], ProofVersion.V1);
+        transaction.ClearLengthCache();
+        transaction.Hash = transaction.CalculateHash();
         return transaction;
     }
 

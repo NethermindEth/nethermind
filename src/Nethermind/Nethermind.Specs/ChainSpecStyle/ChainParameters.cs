@@ -198,7 +198,13 @@ public class ChainParameters
     public ulong? Eip8288TransitionTimestamp { get; set; }
 
     /// <summary>Activation of <see cref="Eip8288AggregatedVk"/>, a fork that changes the EIP-8288 aggregate verifier.</summary>
+    /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
+    /// models a verifier-changing fork for testing.</remarks>
     public ulong? Eip8288AggregatedVkTransitionTimestamp { get; set; }
+
+    /// <summary>The EIP-8288 <c>AGGREGATED_VK</c> from <see cref="Eip8288AggregatedVkTransitionTimestamp"/>, replacing the pinned one.</summary>
+    /// <remarks>Devnet-only: EIP-8288 fixes <c>AGGREGATED_VK</c> at the protocol level, so a production network never overrides it; this
+    /// models a verifier-changing fork for testing.</remarks>
     public Hash256? Eip8288AggregatedVk { get; set; }
     public ulong? Eip8250TransitionTimestamp { get; set; }
 

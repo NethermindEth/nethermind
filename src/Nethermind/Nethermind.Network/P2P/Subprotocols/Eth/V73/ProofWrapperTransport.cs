@@ -34,6 +34,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly Lock _gate = new();
     private readonly List<WrapperPeer> _peers = [];
     private readonly WrapperStore _store = new();
+    private readonly WrapperEncodingBudget _encodingBudget = new(WrapperTransportLimits.MaxCachedEncodingBytes);
     private readonly Dictionary<ValueHash256, WrapperFetch> _fetches = [];
     private readonly WrapperBoundedSet _tombstones = new(WrapperTransportLimits.MaxTombstones);
     // Wrappers that failed proof or dependency rules, keyed by InvalidKey with the verifier they were judged under: another
@@ -70,6 +71,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     internal int FetchCount { get { lock (_gate) return _fetches.Count; } }
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long ChargedBytes { get { lock (_gate) return _chargedBytes; } }
+    internal long CachedEncodingBytes => _encodingBudget.Used;
     internal bool IsStored(in ValueHash256 wrapperHash) { lock (_gate) return _store.Contains(wrapperHash); }
     internal bool IsOffered(in ValueHash256 wrapperHash) { lock (_gate) return TryGetOffered(wrapperHash, out _); }
 
@@ -101,7 +103,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         lock (_gate)
         {
             if (_disposed) return null;
-            peer = new(link, _clock);
+            peer = new(link, _clock, _encodingBudget);
             _peers.Add(peer);
             // Peers announce the wrappers they offer on connection, most recent first, within the announcement rate limit.
             foreach (WrapperStore.Entry entry in _store.Recent())
@@ -131,6 +133,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         foreach (WrappersRequest request in peer.Requests.Values) Abandon(peer, request);
         peer.Requests.Clear();
         peer.ToAnnounce.Clear();
+        peer.Received.Close();
         foreach (WrapperFetch fetch in _fetches.Values) fetch.Sources.Remove(peer);
     }
 
@@ -356,13 +359,14 @@ public sealed partial class ProofWrapperTransport : IDisposable
         WrapperShape shape;
         try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape); }
         catch (RlpException) { return false; }
+        ValueHash256[] encodingHashes = WrapperCompaction.EncodingHashes(wrapper);
         WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode);
         Outbox outbox = new();
         lock (_gate)
         {
             // A wrapper validated under a verifier the target fork no longer uses is never offered.
             if (_disposed || verifier != _verifier
-                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape))) return false;
+                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, verifier, shape, encodingHashes))) return false;
             _tombstones.Remove(announcement.Hash);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
@@ -474,17 +478,18 @@ public sealed partial class ProofWrapperTransport : IDisposable
 
     // ---- Responder ---------------------------------------------------------------------------------------------------
 
-    /// <summary>Returns the requested wrappers this node offers and announced to <paramref name="peer"/>, in request order, each
-    /// in full, adding none once the response reaches the soft response limit; the last one added may take it past the limit
+    /// <summary>Returns the requested wrappers this node offers and announced to <paramref name="peer"/>, in request order,
+    /// adding none once the response reaches the soft response limit; the last one added may take it past the limit
     /// (EIP-8437).</summary>
-    /// <remarks>This client keeps no omission cache, so it serves complete wrappers whatever the request's <c>full</c> flag.</remarks>
+    /// <remarks>With <c>compact = 1</c>, each transaction encoding this node already sent the peer in full within a validated
+    /// wrapper is replaced by its hash reference where that is smaller; with <c>compact = 0</c> wrappers are complete.</remarks>
     internal void OnGetProofWrappers(WrapperPeer peer, GetProofWrappersMessage request)
     {
         Outbox outbox = new();
         lock (_gate)
         {
             if (peer.Closed) return;
-            List<WrapperStore.Entry> served = [];
+            List<(WrapperStore.Entry Entry, byte[] Sent)> served = [];
             int content = 0;
             long now = _clock.GetTimestamp();
             foreach (ValueHash256 wrapperHash in request.Hashes)
@@ -493,21 +498,36 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 // Hashes this node has not announced on this connection are unavailable.
                 if (!peer.Announced.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
                 if (ResponseLength(request.RequestId, content) >= Eth73Protocol.SoftResponseLimit) break;
-                served.Add(entry);
-                content += EntryLength(entry.Wrapper.Length);
+                byte[] sent = request.Compact ? Compact(peer, entry, now) : entry.Wrapper;
+                served.Add((entry, sent));
+                content += EntryLength(sent.Length);
             }
             // Beyond the serving budget a responder answers with an empty list.
             if (served.Count > 0 && !peer.Serving.TryTake(content)) served.Clear();
             ProofWrapperEntry[] entries = new ProofWrapperEntry[served.Count];
             for (int i = 0; i < entries.Length; i++)
             {
-                entries[i] = new(served[i].Announcement.Hash, served[i].Wrapper);
-                peer.Exchanged.Add(served[i].Announcement.Hash);
+                (WrapperStore.Entry entry, byte[] sent) = served[i];
+                entries[i] = new(entry.Announcement.Hash, sent);
+                peer.Exchanged.Add(entry.Announcement.Hash);
+                // Every encoding of the wrapper is now held by the peer, whether sent now or earlier.
+                foreach (ValueHash256 encoding in entry.EncodingHashes) peer.Delivered.Add(encoding);
             }
             if (entries.Length > 0) WrapperMetrics.Record(WrapperEvent.Served, entries.Length);
             outbox.Send(peer, new ProofWrappersMessage(request.RequestId, entries));
         }
         outbox.Flush();
+    }
+
+    /// <summary>The wrapper with each encoding previously sent to <paramref name="peer"/> in full replaced by its reference.</summary>
+    private static byte[] Compact(WrapperPeer peer, WrapperStore.Entry entry, long now)
+    {
+        int references = 0;
+        foreach (ValueHash256 encoding in entry.EncodingHashes) if (peer.Delivered.Contains(encoding, now)) references++;
+        if (references == 0) return entry.Wrapper;
+        byte[] compact = WrapperCompaction.Compact(entry.Wrapper, hash => peer.Delivered.Contains(hash, now));
+        if (compact != entry.Wrapper) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
+        return compact;
     }
 
     /// <summary>The encoded length of a ProofWrappers entry <c>[hash, wrapper]</c> for a wrapper of <paramref name="wrapperLength"/> bytes.</summary>

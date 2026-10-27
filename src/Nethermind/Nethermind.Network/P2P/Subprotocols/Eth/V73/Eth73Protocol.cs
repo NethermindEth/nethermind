@@ -102,6 +102,12 @@ public static class WrapperTransportLimits
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
 
+    /// <summary>Bytes of encodings cached from one peer for resolving its hash references.</summary>
+    public const long MaxCachedEncodingBytesPerPeer = 2L * Eth73Protocol.MaxWrapperBytes;
+
+    /// <summary>Bytes of encodings cached across all peers.</summary>
+    public const long MaxCachedEncodingBytes = 64L * 1024 * 1024;
+
     public const int MaxTombstones = 4096;
     public const int MaxKnownPerPeer = 4096;
     public static readonly TimeSpan SoftTombstone = TimeSpan.FromSeconds(60);
