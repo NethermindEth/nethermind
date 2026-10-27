@@ -40,6 +40,10 @@ namespace Ethereum.Abi.Test
             Assert.That(encode(abiTest.Args), Is.EqualTo(Bytes.FromHexString(abiTest.Result)));
         }
 
+        [Test]
+        public void Encoding_tests_cover_every_fixture_test() =>
+            Assert.That(EncodingTests().Select(static t => t.TestName), Is.EquivalentTo(LoadTests().Keys));
+
         private static TestCaseData Case<T>(string testName, AbiSignature<T> signature, Func<JsonElement[], T> toArgs) =>
             new TestCaseData(testName, signature.Abi.Name, (Func<JsonElement[], byte[]>)(args => AbiCodec.Encode(signature, toArgs(args))))
                 .SetName(testName);
