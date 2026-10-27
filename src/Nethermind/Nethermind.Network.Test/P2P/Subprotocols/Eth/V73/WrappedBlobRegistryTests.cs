@@ -209,6 +209,33 @@ public class WrappedBlobRegistryTests
         Assert.That(pin.Disposed, Is.True);
     }
 
+    // When the charged source leaves and no remaining source has room for the body's charge, the body is dropped rather than
+    // kept outside every peer's budget.
+    [Test]
+    public void Wrapped_body_is_dropped_when_no_remaining_source_can_be_charged()
+    {
+        Peer first = Connect(0), second = Connect(1);
+        // The second source spends its per-peer wrapped-body allowance on bodies of other senders.
+        for (int i = 0; i < 256; i++)
+        {
+            Transaction filler = BlobFrameTransaction(100 + i);
+            filler.SenderAddress = new Address(ValueKeccak.Compute(BitConverter.GetBytes(i)).Bytes[..20]);
+            filler.Hash = Nethermind.Crypto.TransactionExtensions.CalculateHash(filler);
+            Assert.That(_registry.Admit(filler, second, new Pin()), Is.EqualTo(AcceptTxResult.Accepted), $"filler {i}");
+        }
+        Transaction blob = BlobFrameTransaction(1);
+        Pin pin = new();
+        _registry.Admit(blob, first, pin);
+        _registry.Admit(blob, second, new Pin());
+
+        _registry.RemovePeer(first);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pin.Disposed, Is.True);
+            Assert.That(_registry.IsAwaitingCells(blob.Hash!), Is.False);
+        }
+    }
+
     // A source disconnecting while its body is being added does not leave the body behind.
     [Test]
     public void Source_disconnecting_during_admission_drops_the_body()

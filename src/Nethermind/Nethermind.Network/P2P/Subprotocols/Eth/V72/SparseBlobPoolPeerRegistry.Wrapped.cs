@@ -368,7 +368,7 @@ public sealed partial class SparseBlobPoolPeerRegistry
     }
 
     /// <summary>Removes a disconnected peer as a source of the bodies its wrappers supplied; a body is dropped once no source
-    /// remains, and its charge moves to a remaining source.</summary>
+    /// remains, and its charge moves to a remaining source, or the body is dropped when none has room for it.</summary>
     private void DropWrapped(PublicKey peerId)
     {
         foreach (KeyValuePair<ValueHash256, WrappedBlobTx> entry in _wrapped)
@@ -403,6 +403,9 @@ public sealed partial class SparseBlobPoolPeerRegistry
                         }
                     }
                 }
+
+                // A body no remaining source can be charged for is dropped rather than kept outside every peer's budget.
+                remove = entry.ChargedPeer is null;
             }
         }
 
