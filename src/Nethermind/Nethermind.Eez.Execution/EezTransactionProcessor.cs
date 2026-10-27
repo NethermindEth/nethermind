@@ -170,7 +170,7 @@ public sealed class EezTransactionProcessor(
     {
         if (tx.IsEezSystemTransaction() && !tx.ValueRef.IsZero)
         {
-            WorldState.AddToBalance(tx.SenderAddress!, in tx.ValueRef, spec);
+            WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
         base.PayValue(tx, spec, opts);
