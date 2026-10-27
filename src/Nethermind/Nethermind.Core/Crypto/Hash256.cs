@@ -53,7 +53,7 @@ namespace Nethermind.Core.Crypto
         public ValueHash256(ReadOnlySpan<byte> bytes)
         {
             Debug.Assert(bytes.Length == MemorySize);
-            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            _bytes = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);

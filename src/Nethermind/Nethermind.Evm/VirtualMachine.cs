@@ -350,8 +350,17 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <exception cref="EvmException">
     /// Thrown when an EVM-specific error occurs during execution.
     /// </exception>
-    [SkipLocalsInit]
     public virtual TransactionSubstate ExecuteTransaction<TTracingInst>(
+        VmState<TGasPolicy> vmState,
+        IWorldState worldState,
+        ITxTracer txTracer)
+        where TTracingInst : struct, IFlag
+        => ExecuteTransactionCore<TTracingInst>(vmState, worldState, txTracer);
+
+    /// <inheritdoc cref="ExecuteTransaction{TTracingInst}"/>
+    /// <remarks>Not virtual, so a build can run a transaction without a generic virtual call.</remarks>
+    [SkipLocalsInit]
+    private TransactionSubstate ExecuteTransactionCore<TTracingInst>(
 
         VmState<TGasPolicy> vmState,
         IWorldState worldState,
@@ -557,9 +566,6 @@ public partial class VirtualMachine<TGasPolicy>(
             }
         }
     }
-
-    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
-        ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
 
     private void DisposeActiveFrames(VmState<TGasPolicy> topLevel)
     {

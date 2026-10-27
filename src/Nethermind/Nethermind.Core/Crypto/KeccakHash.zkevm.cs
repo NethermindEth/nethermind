@@ -903,12 +903,14 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned.</summary>
-    /// <remarks>A plain load rather than an unaligned read: every guest target executes either as one wide load, but where
-    /// the JIT tests alignment (<see cref="StrictAlignmentFlag"/>) it drops the test for a plain load whose address it can
-    /// prove aligned, and keeps it for an unaligned read always.</remarks>
+    /// <remarks>Where the JIT tests alignment (<see cref="StrictAlignmentFlag"/>), a plain load: the JIT drops the test for a
+    /// plain load whose address it can prove aligned, but keeps it for an unaligned read. Elsewhere an unaligned read: one
+    /// wide load on targets that tolerate misalignment, and expanded byte-wise on targets that reject it.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong ReadLane(byte* data, nuint index) =>
-        *(ulong*)(data + index * sizeof(ulong));
+        StrictAlignmentFlag.IsActive
+            ? *(ulong*)(data + index * sizeof(ulong))
+            : Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong));
 
     /// <summary><paramref name="pointer"/> rounded down to an 8-byte boundary: itself, for a pointer already on one.</summary>
     /// <remarks>The JIT sees through the rounding (dotnet-riscv perf-67) and proves every lane access off the result aligned.</remarks>
