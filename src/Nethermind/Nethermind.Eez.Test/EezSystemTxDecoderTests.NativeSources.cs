@@ -22,9 +22,28 @@ public partial class EezSystemTxDecoderTests
         foreach (JsonElement vector in NativeSourceFixture().GetProperty("vectors").EnumerateArray())
         {
             string id = vector.GetProperty("id").GetString()!;
-            if (id.StartsWith("inbound-", StringComparison.Ordinal) || id.StartsWith("outbound-", StringComparison.Ordinal)
-                || id.StartsWith("history-", StringComparison.Ordinal) && !id.EndsWith("calldata", StringComparison.Ordinal))
+            if (id.StartsWith("history-", StringComparison.Ordinal) && !id.EndsWith("calldata", StringComparison.Ordinal))
                 yield return new TestCaseData(vector).SetName($"NativeSource_Upstream_{id}");
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CurrentSourceVectors()
+    {
+        foreach (JsonElement vector in StatelessFixtures.ReadJson("rollupx/native-profile-v3", "vectors.json").GetProperty("vectors").EnumerateArray())
+            if (vector.GetProperty("id").GetString()!.StartsWith("source-", StringComparison.Ordinal))
+                yield return new TestCaseData(vector).SetName($"NativeSource_Upstream_{vector.GetProperty("id").GetString()}");
+    }
+
+    [TestCaseSource(nameof(CurrentSourceVectors))]
+    public void NativeSource_CurrentVector_MatchesExactAbiAndHash(JsonElement vector)
+    {
+        JsonElement args = vector.GetProperty("arguments");
+        NativeLiveSource source = new(NativeNumber(args[1]), new ValueHash256(args[2].GetString()!));
+        ulong index = NativeNumber(args[3]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.EncodeEntry(index), Is.EqualTo(Bytes.FromHexString(vector.GetProperty("expectedBytes").GetString()!)));
+            Assert.That(source.Entry(index), Is.EqualTo(new ValueHash256(vector.GetProperty("expectedKeccak256").GetString()!)));
         }
     }
 
@@ -33,27 +52,14 @@ public partial class EezSystemTxDecoderTests
     {
         string id = vector.GetProperty("id").GetString()!;
         JsonElement args = vector.GetProperty("arguments");
+        NativeHistorySource source = new(1, 901, RepeatedHash(0x33));
         ValueHash256 actual;
-        if (id.StartsWith("history-", StringComparison.Ordinal))
-        {
-            NativeHistorySource source = new(1, 901, RepeatedHash(0x33));
-            if (id == "history-domain") actual = source.Domain;
-            else
-            {
-                byte[] data = Bytes.FromHexString(SourceVector(id == "history-advance-source" ? "history-advance-calldata" : "history-repeat-calldata")
-                    .GetProperty("expectedBytes").GetString()!);
-                actual = source.Compute(new ValueHash256(args[1].GetString()!), NativeNumber(args[2]), NativeNumber(args[3]), data);
-            }
-        }
+        if (id == "history-domain") actual = source.Domain;
         else
         {
-            bool inbound = id.StartsWith("inbound-", StringComparison.Ordinal);
-            bool domain = id.EndsWith("-domain", StringComparison.Ordinal);
-            NativeLiveSource source = new(1, EezConstants.RollupXEezl2Address, 7, 901,
-                domain ? 144 : NativeNumber(args[1]), domain ? RepeatedHash(0x88) : new ValueHash256(args[2].GetString()!));
-            actual = domain ? inbound ? source.InboundDomain : source.OutboundDomain
-                : inbound ? source.Inbound(NativeNumber(args[3]), NativeNumber(args[4]), new ValueHash256(args[5].GetString()!))
-                : source.Outbound(NativeNumber(args[3]), new ValueHash256(args[4].GetString()!));
+            byte[] data = Bytes.FromHexString(SourceVector(id == "history-advance-source" ? "history-advance-calldata" : "history-repeat-calldata")
+                .GetProperty("expectedBytes").GetString()!);
+            actual = source.Compute(new ValueHash256(args[1].GetString()!), NativeNumber(args[2]), NativeNumber(args[3]), data);
         }
         Assert.That(actual, Is.EqualTo(new ValueHash256(vector.GetProperty("expectedKeccak256").GetString()!)));
     }
@@ -131,16 +137,31 @@ public partial class EezSystemTxDecoderTests
     }
 
     [Test]
-    public void NativeSource_NonzeroLiveContext_BindsEveryDomainField([Values("l1", "l2", "rollup", "registry")] string field)
+    public void NativeSource_GroupIdentity_BindsOriginalOrdinalAndContext([Values("chain", "parent", "index")] string field)
     {
-        NativeLiveSource baseline = new(1, EezConstants.RollupXEezl2Address, 7, 901, 144, RepeatedHash(0x88));
-        NativeLiveSource changed = new(field == "l1" ? ulong.MaxValue : 1UL,
-            field == "registry" ? new Address("0x1111111111111111111111111111111111111111") : EezConstants.RollupXEezl2Address,
-            field == "rollup" ? ulong.MaxValue : 7UL, field == "l2" ? ulong.MaxValue : 901UL, 144, RepeatedHash(0x88));
+        NativeLiveSource baseline = new(901, RepeatedHash(0x88));
+        NativeLiveSource changed = new(field == "chain" ? ulong.MaxValue : 901UL,
+            RepeatedHash(field == "parent" ? (byte)0x89 : (byte)0x88));
+        Assert.That(changed.Entry(field == "index" ? ulong.MaxValue : 3UL), Is.Not.EqualTo(baseline.Entry(3)));
+    }
+
+    [Test]
+    public void NativeSource_ConsumedSuffix_RetainsCompleteOriginalGroupOrdinal()
+    {
+        JsonElement vectors = StatelessFixtures.ReadJson("rollupx/native-profile-v3", "vectors.json").GetProperty("vectors");
+        ValueHash256 original = default, consumed = default;
+        foreach (JsonElement vector in vectors.EnumerateArray())
+        {
+            if (vector.GetProperty("id").GetString() == "source-base") original = new ValueHash256(vector.GetProperty("expectedKeccak256").GetString()!);
+            if (vector.GetProperty("id").GetString() == "source-after-prefix-consumed") consumed = new ValueHash256(vector.GetProperty("expectedKeccak256").GetString()!);
+        }
+        NativeLiveSource source = new(901, RepeatedHash(0x88));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(changed.InboundDomain, Is.Not.EqualTo(baseline.InboundDomain));
-            Assert.That(changed.OutboundDomain, Is.Not.EqualTo(baseline.OutboundDomain));
+            Assert.That(original, Is.Not.EqualTo(default(ValueHash256)));
+            Assert.That(source.Entry(3), Is.EqualTo(original));
+            Assert.That(source.Entry(3), Is.EqualTo(consumed));
+            Assert.That(source.Entry(0), Is.Not.EqualTo(consumed));
         }
     }
 
@@ -154,9 +175,8 @@ public partial class EezSystemTxDecoderTests
     }
 
     [Test]
-    public void NativeSource_MissingLiveContext_Rejects([Values("l1", "l2", "rollup", "registry", "timestamp", "parent")] string field) =>
-        Assert.That(() => new NativeLiveSource(field == "l1" ? 0UL : 1UL, field == "registry" ? Address.Zero : EezConstants.RollupXEezl2Address,
-            field == "rollup" ? 0UL : 7UL, field == "l2" ? 0UL : 901UL, field == "timestamp" ? 0UL : 144UL,
+    public void NativeSource_MissingLiveContext_Rejects([Values("chain", "parent")] string field) =>
+        Assert.That(() => new NativeLiveSource(field == "chain" ? 0UL : 901UL,
             field == "parent" ? default : RepeatedHash(0x88)), Throws.TypeOf<ArgumentException>());
 
     [Test]

@@ -13,7 +13,7 @@ namespace Nethermind.Eez.Execution.Settlement.RollupX;
 internal static class NativeOfflineProfile
 {
     internal const int MaxRuleEpochs = 64;
-    private const int OuterWords = 5;
+    private const int OuterWords = 6;
     private const int ProfileWords = 11;
     private static readonly ValueHash256 Domain = ValueKeccak.Compute("EEZ_ROLLUPX_OFFLINE_PROFILE"u8);
     private static readonly ValueHash256 RulesDomain = ValueKeccak.Compute("EEZ_ROLLUPX_L1_RULES_V1"u8);
@@ -36,6 +36,7 @@ internal static class NativeOfflineProfile
         byte[] encoded = new byte[(OuterWords + ProfileWords + 1 + ruleTimes.Length) * AbiWord.Size];
         AbiWriter writer = new(encoded);
         writer.Write(Domain);
+        writer.Write(RollupXValidationIdentity.Version);
         writer.Write(EezConstants.L1HistoryAddress);
         writer.Write((ulong)NativeHistoryCall.MaxHashes);
         writer.Write(EezConstants.L1HistoryTxGasCap);

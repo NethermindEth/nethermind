@@ -8,11 +8,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
-/// <summary>Portable identity encoding for native validation contract 1; does not authorize execution or signing.</summary>
+/// <summary>Portable identity encoding for the native validation contract; does not authorize execution or signing.</summary>
 internal static class RollupXValidationIdentity
 {
     private static ReadOnlySpan<byte> Domain => "eez.validation-identity"u8;
-    private const ulong Version = 1;
+    internal const ulong Version = 3;
 
     internal static Hash256 Compute(in Inputs input) => Keccak.Compute(Encode(in input));
 

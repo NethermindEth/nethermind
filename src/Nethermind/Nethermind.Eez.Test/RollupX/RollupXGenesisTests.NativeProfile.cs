@@ -36,8 +36,8 @@ public partial class RollupXGenesisTests
         byte[] encoded = NativeOfflineProfile.Encode(in input, [0]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded.AsSpan(5 * 32, 32).IndexOfAnyExcept((byte)0xff), Is.EqualTo(-1));
             Assert.That(encoded.AsSpan(6 * 32, 32).IndexOfAnyExcept((byte)0xff), Is.EqualTo(-1));
+            Assert.That(encoded.AsSpan(7 * 32, 32).IndexOfAnyExcept((byte)0xff), Is.EqualTo(-1));
         }
     }
 
@@ -97,7 +97,7 @@ public partial class RollupXGenesisTests
         ulong[] times = new ulong[64];
         for (int index = 0; index < times.Length; index++) times[index] = (ulong)index;
         NativeOfflineProfile.Inputs input = OfflineInput(0x11);
-        Assert.That(NativeOfflineProfile.Encode(in input, times).Length, Is.EqualTo((5 + 11 + 1 + 64) * 32));
+        Assert.That(NativeOfflineProfile.Encode(in input, times).Length, Is.EqualTo((6 + 11 + 1 + 64) * 32));
     }
 
     private static readonly string[] InvalidOfflineIdentityFields =
@@ -208,7 +208,7 @@ public partial class RollupXGenesisTests
 
     private static JsonElement OfflineVector(string id)
     {
-        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v1", "vectors.json");
+        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v3", "vectors.json");
         foreach (JsonElement vector in fixture.GetProperty("vectors").EnumerateArray())
             if (vector.GetProperty("id").GetString() == id) return vector;
         throw new InvalidOperationException($"Missing native profile vector {id}.");

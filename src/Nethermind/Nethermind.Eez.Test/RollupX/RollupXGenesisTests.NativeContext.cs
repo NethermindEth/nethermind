@@ -23,7 +23,7 @@ public partial class RollupXGenesisTests
     public void NativeContext_IndependentAbi_MatchesExactFlatEncoding([Values] bool actualParent)
     {
         NativeOfflineContext context = Context(actualParent);
-        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v1", "offline-context.json");
+        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v3", "offline-context.json");
         JsonElement vector = fixture.GetProperty("vectors")[actualParent ? 0 : 1];
         using (Assert.EnterMultipleScope())
         {
@@ -201,18 +201,17 @@ public partial class RollupXGenesisTests
     public void NativeContext_ActualParent_CanCreateExactLiveSource()
     {
         NativeOfflineContext context = Context(true);
-        NativeLiveSource expected = new(1, ContextRegistry, 7, 901, 132, context.Anchor.Hash);
+        NativeLiveSource expected = new(901, context.Anchor.Hash);
         NativeLiveSource actual = context.LiveSource();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual.InboundDomain, Is.EqualTo(expected.InboundDomain));
-            Assert.That(actual.Outbound(2, OfflineHash(0x88)), Is.EqualTo(expected.Outbound(2, OfflineHash(0x88))));
+            Assert.That(actual.Entry(2), Is.EqualTo(expected.Entry(2)));
             Assert.That(() => Context(false).LiveSource(), Throws.TypeOf<EezSettlementException>());
         }
     }
 
     [Test]
-    public void NativeContext_WideChains_EncodeWithoutTruncationButRejectLiveSource([Values] bool l1)
+    public void NativeContext_WideChains_OnlySourceL2MustFitUint64([Values] bool l1)
     {
         NativeOfflineProfile.Inputs profile = l1
             ? OfflineInput(0x11) with { L1ChainId = UInt256.MaxValue }
@@ -224,7 +223,8 @@ public partial class RollupXGenesisTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.CustomData.Slice((l1 ? 1 : 5) * 32, 32).IndexOfAnyExcept((byte)0xff), Is.EqualTo(-1));
-            Assert.That(() => context.LiveSource(), Throws.TypeOf<EezSettlementException>());
+            if (l1) Assert.That(context.LiveSource().Entry(2), Is.EqualTo(new NativeLiveSource(901, endpoint.Hash).Entry(2)));
+            else Assert.That(() => context.LiveSource(), Throws.TypeOf<EezSettlementException>());
         }
     }
 
@@ -239,11 +239,10 @@ public partial class RollupXGenesisTests
         ValueHash256 accepted = OfflineHash(0x66);
         NativeOfflineContext context = new(in profile, [0], ContextRegistry, ContextManager, 7, in accepted, in anchor, endpoint);
         NativeLiveSource actual = context.LiveSource();
-        NativeLiveSource expected = new(l1 ? ulong.MaxValue : 1UL, ContextRegistry, 7, l1 ? 901UL : ulong.MaxValue, 132, endpoint.Hash);
+        NativeLiveSource expected = new(l1 ? 901UL : ulong.MaxValue, endpoint.Hash);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual.InboundDomain, Is.EqualTo(expected.InboundDomain));
-            Assert.That(actual.OutboundDomain, Is.EqualTo(expected.OutboundDomain));
+            Assert.That(actual.Entry(2), Is.EqualTo(expected.Entry(2)));
         }
     }
 
@@ -258,7 +257,7 @@ public partial class RollupXGenesisTests
 
     private static NativeL1Header ContextEndpoint()
     {
-        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v1", "offline-context.json");
+        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v3", "offline-context.json");
         byte[] bytes = Bytes.FromHexString(fixture.GetProperty("endpointRlp").GetString()!);
         return NativeL1Header.Decode(bytes, LegacyHeaderRules);
     }

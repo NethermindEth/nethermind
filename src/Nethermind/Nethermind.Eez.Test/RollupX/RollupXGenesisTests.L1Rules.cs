@@ -34,7 +34,7 @@ public partial class RollupXGenesisTests
         {
             Assert.That(rules.GenesisHash, Is.EqualTo(new ValueHash256("0x9aaab55cf37d924af8638f6b50b0e238554efa215a55f62304c5853ebdbfe123")));
             Assert.That(rules.ConfigHash, Is.EqualTo(new ValueHash256("0x6dad1f7d24e1d34f08fda373214f8c5c6f5b1b37db79ee7df71fc4fd2d010027")));
-            Assert.That(NativeOfflineProfile.Compute(in profile, rules.RuleTimes), Is.EqualTo(new ValueHash256("0x32442221f79225663e25bf29d8c7e48df1d1d2e13d9f41b01965683485b48972")));
+            Assert.That(NativeOfflineProfile.Compute(in profile, rules.RuleTimes), Is.EqualTo(new ValueHash256("0xa674e19599d89adc3d22490dfca4183f096189b7e969c8bf35579e04788671da")));
             Assert.That(rules.Headers, Is.EqualTo(new NativeL1HeaderRules(0, 0, 0, 0, null)));
             Assert.That(rules.RuleTimes.ToArray(), Is.EqualTo(new ulong[] { 0 }));
             Assert.That(rules.SourceDigest, Is.Not.EqualTo(rules.ConfigHash), "source identity and effective rule identity have different domains");

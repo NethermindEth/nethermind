@@ -1,0 +1,17 @@
+{
+  "revision": "d8e8b9cbf63afba6ba9a69a807fac22bd11075d7",
+  "unchanged_upstream": [
+    "vectors.json",
+    "validation-identity.json"
+  ],
+  "own_independent_oracles": [
+    "offline-context.json",
+    "profile-encoding.json"
+  ],
+  "sha256": {
+    "profile-encoding.json": "226455699a2eff620bff8573b4bbf1c0687bc2c9923d75a737227bfc5ab0f2a9",
+    "vectors.json": "94df93868866f22e35eb465ea49e823fd17a0f969353d237a1083a3953f4920a",
+    "offline-context.json": "94dc7b22c8edea7b47d478a481ebd909b89dc8ed0b715c0bdc4199f2966c91d2",
+    "validation-identity.json": "a74f7638f8de6310bd8a2189104c4bebd1bb8c729354266a29970a2c02d79769"
+  }
+}

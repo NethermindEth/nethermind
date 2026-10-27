@@ -105,5 +105,5 @@ public partial class RollupXGenesisTests
     public void CanonicalJson_InvalidUtf8_Rejects(byte[] input) =>
         Assert.That(() => RollupXCanonicalJson.Encode(input), Throws.InstanceOf<JsonException>());
 
-    private static JsonElement IdentityFixture() => StatelessFixtures.ReadJson("rollupx/native-profile-v1", "validation-identity.json");
+    private static JsonElement IdentityFixture() => StatelessFixtures.ReadJson("rollupx/native-profile-v3", "validation-identity.json");
 }

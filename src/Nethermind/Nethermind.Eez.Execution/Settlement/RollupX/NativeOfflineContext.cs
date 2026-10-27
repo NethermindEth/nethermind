@@ -14,7 +14,6 @@ internal sealed class NativeOfflineContext
     private static readonly ValueHash256 Domain = ValueKeccak.Compute("EEZ_ROLLUPX_L1_HISTORY_V1"u8);
     private readonly NativeOfflineProfile.Inputs _profile;
     private readonly ulong[] _ruleTimes;
-    private readonly Address _registry;
     private readonly byte[] _customData;
 
     internal NativeEvidenceAnchor Anchor { get; }
@@ -37,7 +36,6 @@ internal sealed class NativeOfflineContext
             anchor.Hash == default || anchor.Number == ulong.MaxValue || endpoint.Number != anchor.Number || endpoint.Hash != anchor.Hash ||
             (anchor.TargetTimestamp is { } target ? target <= endpoint.Timestamp : anchor.Number == 0))
             throw NativeL1Header.Invalid("invalid offline deployment, accepted block or anchor");
-        _registry = registry;
         Anchor = anchor;
         RollupId = rollupId;
         AcceptedL2BlockHash = acceptedL2BlockHash;
@@ -62,9 +60,9 @@ internal sealed class NativeOfflineContext
 
     internal NativeLiveSource LiveSource()
     {
-        if (Anchor.TargetTimestamp is not { } timestamp || _profile.L1ChainId > ulong.MaxValue || _profile.L2ChainId > ulong.MaxValue)
+        if (Anchor.TargetTimestamp is null || _profile.L2ChainId > ulong.MaxValue)
             throw NativeL1Header.Invalid("historical context or unsupported chain ID cannot authorize native cross-chain actions");
-        return new NativeLiveSource((ulong)_profile.L1ChainId, _registry, RollupId, (ulong)_profile.L2ChainId, timestamp, Anchor.Hash);
+        return new NativeLiveSource((ulong)_profile.L2ChainId, Anchor.Hash);
     }
 
     internal void ValidateInclusion(NativeL1Header inclusion)
