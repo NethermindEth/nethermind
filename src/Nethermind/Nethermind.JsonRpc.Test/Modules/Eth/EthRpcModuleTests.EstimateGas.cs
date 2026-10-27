@@ -407,11 +407,11 @@ public partial class EthRpcModuleTests
 
     [Test]
     public async Task FrameGas_CallMethods_FundTheTipTheBudgetBuys(
-        [Values("eth_call", "eth_estimateGas")] string method, [Values] bool explicitLimits, [Values] bool blobFeeSurplus)
+        [Values("eth_call", "eth_estimateGas")] string method, [Values] bool explicitLimits, [Values] bool blobFeeSurplus, [Values(0, 7)] int baseFee)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
-        request.MaxFeePerGas = 2;
+        request.MaxFeePerGas = (UInt256)(baseFee + 2);
         request.MaxPriorityFeePerGas = 5;
         if (blobFeeSurplus)
         {
@@ -423,9 +423,9 @@ public partial class EthRpcModuleTests
             (request.Frames![0].ExecutionGas, request.Frames[0].StateGas) = (50_000, 0);
             (request.Frames[1].ExecutionGas, request.Frames[1].StateGas) = (50_000, 200_000);
         }
-        int gasPrice = blobFeeSurplus ? 5 : 2;
+        int gasPrice = baseFee + (blobFeeSurplus ? 5 : 2);
         object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{OneEther}}}"},"{{{request.Frames![1].Target}}}":{"code":"0x6004b060801c3a60{{{gasPrice:x2}}}141517601057005b5f5ffd"}}""")!;
-        object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0","blobBaseFee":"0x1"}""")!;
+        object blockOverride = JsonSerializer.Deserialize<object>($$"""{"baseFeePerGas":"0x{{baseFee:x}}","blobBaseFee":"0x1"}""")!;
 
         string response = await ctx.Test.TestEthRpc(method, request, "latest", overrides, blockOverride);
 
