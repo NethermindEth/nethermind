@@ -193,6 +193,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
+            // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
+            // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
+            byte[]? relay = ElidedForRelay(decoded, wrapper);
             foreach (Transaction transaction in decoded.Transactions)
             {
                 if (!Preflight(transaction, out string? frameError, admissionSpec))
@@ -251,8 +254,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
             // Relay only once every transaction it carries is pending, so a partly rejected wrapper is not relayed.
-            if (admission.IsSuccess && RefreshVerifier() == verifier)
-                WrapperValidated?.Invoke(wrapper, verifier);
+            if (admission.IsSuccess && relay is not null && RefreshVerifier() == verifier)
+                WrapperValidated?.Invoke(relay, verifier);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)
@@ -268,6 +271,35 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         finally { Volatile.Write(ref _admissionActive, 0); }
+    }
+
+    /// <summary>The wrapper as EIP-8437 relays it: unchanged unless a transaction carries blob data, which is elided, leaving
+    /// its commitments and cell proofs. Null when a transaction's blobs have no cell proofs, so it cannot be relayed.</summary>
+    private static byte[]? ElidedForRelay(MempoolWrapper decoded, byte[] wrapper)
+    {
+        Transaction[]? elided = null;
+        for (int i = 0; i < decoded.Transactions.Count; i++)
+        {
+            Transaction transaction = decoded.Transactions[i];
+            if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper { Blobs.Length: > 0 } blobs) continue;
+            if (blobs.Version != ProofVersion.V1) return null;
+            elided ??= [.. decoded.Transactions];
+            Transaction copy = new();
+            transaction.CopyTo(copy, copyHash: true);
+            copy.NetworkWrapper = blobs with { Blobs = [], CellMask = default, Cells = null };
+            copy.ClearLengthCache();
+            elided[i] = copy;
+        }
+
+        if (elided is null) return wrapper;
+        return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = elided,
+            Mode = decoded.Mode,
+            Deps = decoded.Deps,
+            Proofs = decoded.Proofs,
+            RecursiveStark = decoded.RecursiveStark
+        }).Bytes;
     }
 
     private void RememberVerification((ValueHash256, ValueHash256) hash, string? error)

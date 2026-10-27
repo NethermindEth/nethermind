@@ -1261,6 +1261,43 @@ public class ProofWrapperServiceTests
         pin.Dispose();
     }
 
+    // A wrapper submitted with full blob data, as over RPC, is admitted directly and relayed at once in the elided network form
+    // EIP-8437 carries; one whose blobs have no cell proofs cannot be relayed in that form.
+    [TestCase(ProofVersion.V1, true)]
+    [TestCase(ProofVersion.V0, false)]
+    public async Task Wrapper_with_full_blobs_is_relayed_in_its_elided_form(ProofVersion version, bool relayed)
+    {
+        Transaction blob = CreateBlobTransaction(TestItem.KeccakA, 1);
+        ShardBlobNetworkWrapper elided = (ShardBlobNetworkWrapper)blob.NetworkWrapper!;
+        blob.NetworkWrapper = elided with
+        {
+            Blobs = [new byte[Ckzg.BytesPerBlob]],
+            Proofs = version == ProofVersion.V1 ? elided.Proofs : [new byte[48]],
+            Version = version
+        };
+        blob.ClearLengthCache();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        List<byte[]> relay = [];
+        service.WrapperValidated += (encoded, _) => relay.Add(encoded);
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(DirectWrapper(blob));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), result.Result.Error);
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs.Length == 1), TxHandlingOptions.PersistentBroadcast);
+            Assert.That(relay, Has.Count.EqualTo(relayed ? 1 : 0));
+            if (relayed)
+            {
+                Transaction relayedTx = Decode(relay[0]).Transactions.Single();
+                Assert.That(relayedTx.Hash, Is.EqualTo(blob.Hash));
+                Assert.That(MempoolWrapperDecoder.EncodeTransaction(relayedTx), Is.EqualTo(MempoolWrapperDecoder.EncodeTransaction(CreateBlobTransaction(TestItem.KeccakA, 1))));
+            }
+        }
+    }
+
     [Test]
     public async Task Blob_carrying_transaction_without_cell_retrieval_is_not_admitted()
     {

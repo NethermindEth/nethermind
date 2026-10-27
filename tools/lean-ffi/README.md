@@ -257,8 +257,10 @@ unavailable. The one exception is EIP-8070 blob availability on `eth/73`: a blob
 wrapped with its blob data elided (commitments and cell proofs only), and once its wrapper validates
 it waits, with its proof coverage pinned, for its cells. Cells announced for it before then are
 recorded but not fetched; after validation they are fetched and checked like type-3 cells, the pool
-admits the transaction, and its cells are announced through NewPooledTransactionHashes. Produced
-wrappers carry such transactions in the same elided form, and block production includes them like
+admits the transaction, and its cells are announced through NewPooledTransactionHashes. A wrapper
+submitted with full blob data, as over RPC, is admitted directly and relayed at once with its blob
+data elided (only blobs with cell proofs can be). Produced wrappers carry such transactions in the
+same elided form, and block production includes them like
 type-3 blob transactions. On `eth/73` every blob-carrying frame transaction uses EIP-8070 cells: one
 without dependencies is announced with a cell mask, served elided through PooledTransactions and
 fetched like a type-3 one, though its cells are requested only once its body is known; on `eth/72`
