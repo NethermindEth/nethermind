@@ -98,7 +98,7 @@ public partial class EezSystemTxDecoderTests
     [Test]
     public void Decode_InvalidOrNoncanonicalEnvelope_Rejects([ValueSource(nameof(InvalidHistoryEnvelopeFields))] string field)
     {
-        Rlp encodedHash = Rlp.Encode(RepeatedHash(1).Bytes.ToArray());
+        Rlp encodedHash = Rlp.Encode(RepeatedHash(1).Bytes);
         Rlp[] hashes = [encodedHash];
         if (field == "empty") hashes = [];
         if (field == "zero") hashes = [Rlp.Encode(new byte[Hash256.Size])];
