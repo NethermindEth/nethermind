@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
@@ -31,6 +30,6 @@ internal sealed class SnapshotContentFilters
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in content.StateNodes) StateNodes.Add((uint)entry.Key.GetHashCode());
 
         StorageNodes.Reset(counts.StorageNodes);
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> entry in content.StorageNodes) StorageNodes.Add((uint)entry.Key.GetHashCode());
+        content.StorageNodes.AddKeyHashesTo(StorageNodes);
     }
 }
