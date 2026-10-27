@@ -256,7 +256,7 @@ public class BlockAccessListDecoderTests
     }
 
     /// <summary>
-    /// One sender of 65,536 transactions has a balance and nonce change at every index up to the post-execution one,
+    /// One sender of 65,536 transactions has a balance, nonce and storage change at every index up to the post-execution one,
     /// beyond the uint16 range of the old index.
     /// </summary>
     [Test]
