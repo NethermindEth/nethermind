@@ -568,6 +568,14 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     /// a statement can lose some of its transactions to a peer's block while it is being proven.
     /// </remarks>
     public List<RecursiveProofInput> ProvenOverlaps(IReadOnlySet<FrameDependency> within, int limit)
+        => RankOverlaps(within, minShared: 2, limit);
+
+    /// <summary>Lists verified recursive proofs proving at least one dependency in <paramref name="within"/>, most shared first.</summary>
+    /// <remarks>An inclusion list reuses one of them whole, so its proof may cover dependencies outside <paramref name="within"/>.</remarks>
+    public List<RecursiveProofInput> ProvenIntersecting(IReadOnlySet<FrameDependency> within, int limit)
+        => RankOverlaps(within, minShared: 1, limit);
+
+    private List<RecursiveProofInput> RankOverlaps(IReadOnlySet<FrameDependency> within, int minShared, int limit)
     {
         List<(int Shared, ProofRecord Record)> overlaps = [];
         HashSet<ValueHash256> seen = [];
@@ -591,7 +599,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
             int shared = 0;
             foreach (FrameDependency dependency in record.Dependencies)
                 if (within.Contains(dependency)) shared++;
-            if (shared >= 2) overlaps.Add((shared, record));
+            if (shared >= minShared) overlaps.Add((shared, record));
         }
     }
 

@@ -18,8 +18,60 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// </summary>
 /// <remarks>Verdicts are cached by <c>(keccak256(stark_proof), get_deps_hash(proof_deps), AGGREGATED_VK)</c>, so the same signed
 /// list arriving through forkchoiceUpdated and newPayload is verified once.</remarks>
-public sealed class InclusionListProofService(ILeanProofVerifier verifier)
+/// <param name="verifier">The backend every inclusion-list proof is verified with.</param>
+/// <param name="proofStore">The held verified proofs a locally built list may reuse; without it a local list carries no proof.</param>
+public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanProofStore? proofStore = null)
 {
+    /// <summary>Held proofs considered for a locally built list, the most covering first.</summary>
+    internal const int MaxHeldProofCandidates = 8;
+
+    /// <summary>Held proofs verified under the target fork per local list, so a verifier miss cannot stall
+    /// <c>engine_getInclusionListV2</c> past its timeout.</summary>
+    internal const int MaxHeldProofVerifications = 2;
+
+    /// <summary>Chooses the held verified recursive proof a locally built list attaches: the one, among those that verify under
+    /// <paramref name="targetSpec"/> and whose <c>InclusionListProof</c> container fits <c>MAX_IL_PROOF_BYTES</c>, that covers the
+    /// most of <paramref name="candidates"/>.</summary>
+    /// <remarks>Never proves: <c>engine_getInclusionListV2</c> has a 1 s timeout, well under a recursive aggregation. Held proofs
+    /// are the validated mode-1 wrapper proofs and the background aggregation cycle's own, whose verdicts are normally cached,
+    /// so verification is usually a cache hit; at most <see cref="MaxHeldProofVerifications"/> are verified per call. A proof
+    /// covering surplus dependencies is reused whole, which EIPs#12475 allows for inclusion-list proofs only.</remarks>
+    /// <param name="candidates">The dependencies of each dependency-bearing candidate.</param>
+    /// <returns>The proof and its <c>proof_deps</c>, or <c>null</c> when none covers a candidate.</returns>
+    public HeldInclusionListProof? ChooseHeldProof(IReadOnlyList<IReadOnlyList<FrameDependency>> candidates, IReleaseSpec targetSpec)
+    {
+        if (proofStore is null || candidates.Count == 0 || !targetSpec.IsEip8288Enabled) return null;
+        HashSet<FrameDependency> wanted = [];
+        foreach (IReadOnlyList<FrameDependency> dependencies in candidates) wanted.UnionWith(dependencies);
+
+        List<(int Covered, long Size, RecursiveProofInput Proof)> ranked = [];
+        foreach (RecursiveProofInput held in proofStore.ProvenIntersecting(wanted, MaxHeldProofCandidates))
+        {
+            long size = 2 * sizeof(uint) + held.Proof.Length + (long)held.InnerDeps.Count * Eip8288Constants.DependencyTripleLength;
+            if (size > Eip8288Constants.MaxIlProofBytes || held.Proof.IsEmpty) continue;
+            HashSet<FrameDependency> proven = [.. held.InnerDeps];
+            int covered = 0;
+            foreach (IReadOnlyList<FrameDependency> dependencies in candidates)
+                if (proven.IsSupersetOf(dependencies)) covered++;
+            if (covered > 0) ranked.Add((covered, size, held));
+        }
+        ranked.Sort(static (x, y) => x.Covered != y.Covered ? y.Covered.CompareTo(x.Covered) : x.Size.CompareTo(y.Size));
+
+        Eip8288Verifier forkVerifier = Eip8288Verifier.For(targetSpec);
+        for (int i = 0; i < ranked.Count && i < MaxHeldProofVerifications; i++)
+        {
+            List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(ranked[i].Proof.InnerDeps);
+            if (proofDeps.Count != ranked[i].Proof.InnerDeps.Count || !Eip8288Dependencies.AreSchemesEnabled(proofDeps)) continue;
+            byte[] starkProof = ranked[i].Proof.Proof.ToArray();
+            ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
+            if (!ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in depsHash, starkProof)) continue;
+            byte[][] encoded = new byte[proofDeps.Count][];
+            for (int j = 0; j < encoded.Length; j++) encoded[j] = Eip8288Dependencies.Serialize([proofDeps[j]]);
+            return new HeldInclusionListProof(starkProof, encoded, new HashSet<FrameDependency>(proofDeps));
+        }
+        return null;
+    }
+
     /// <summary>Sets each list's <see cref="CommitteeInclusionList.VerifiedProofDeps"/> under the fork of
     /// <paramref name="targetSpec"/>: its <c>proof_deps</c> when its nonempty proof verifies, and <c>null</c> otherwise.</summary>
     public void ResolveObligations(IReadOnlyList<CommitteeInclusionList>? lists, IReleaseSpec targetSpec)
@@ -55,6 +107,21 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier)
             return false;
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps!);
         return ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.For(spec), in depsHash, list.StarkProof);
+    }
+}
+
+/// <summary>A held verified proof a locally built inclusion list attaches as its <c>InclusionListProof</c>.</summary>
+/// <param name="StarkProof">The proof bytes.</param>
+/// <param name="ProofDeps">Its canonical <c>proof_deps</c>, each a 96-byte dependency encoding.</param>
+/// <param name="Dependencies">The same dependencies, for coverage checks.</param>
+public sealed record HeldInclusionListProof(byte[] StarkProof, byte[][] ProofDeps, IReadOnlySet<FrameDependency> Dependencies)
+{
+    /// <summary>Whether the proof covers every dependency of <paramref name="dependencies"/>.</summary>
+    public bool Covers(IReadOnlyList<FrameDependency> dependencies)
+    {
+        foreach (FrameDependency dependency in dependencies)
+            if (!Dependencies.Contains(dependency)) return false;
+        return true;
     }
 }
 
@@ -126,7 +193,8 @@ public static class InclusionListProofValidator
         return true;
     }
 
-    private static bool IsStaticallyValid(Transaction? tx, IReleaseSpec spec)
+    /// <summary>EIP-8141 and EIP-8288 static validity under <paramref name="spec"/>; any non-frame transaction passes.</summary>
+    public static bool IsStaticallyValid(Transaction? tx, IReleaseSpec spec)
     {
         if (tx is null) return false;
         if (!tx.SupportsFrames) return true;
