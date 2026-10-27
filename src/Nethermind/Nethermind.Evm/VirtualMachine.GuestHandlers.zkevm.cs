@@ -1538,7 +1538,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte destination = ref state.Memory.GetActiveInitializedRange(offset, EvmStack.WordSize);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
-                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
+                        StoreBigEndian(ref destination, ref Unsafe.Add(ref offset, -4));
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -1581,7 +1581,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
+                        StoreBigEndian(ref destination, ref Unsafe.Add(ref offset, -4));
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);

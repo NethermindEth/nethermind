@@ -576,7 +576,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
+                        StoreBigEndian(ref destination, ref Unsafe.Add(ref offset, -4));
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -699,7 +699,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     // Memory holds the word big-endian.
                     ref ulong value = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                    StoreBigEndian(ref destination, Unsafe.Add(ref value, 3), Unsafe.Add(ref value, 2), Unsafe.Add(ref value, 1), value);
+                    StoreBigEndian(ref destination, ref value);
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 3);
