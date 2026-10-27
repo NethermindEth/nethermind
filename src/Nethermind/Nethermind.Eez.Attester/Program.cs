@@ -102,11 +102,11 @@ public static class Program
 
     private static async Task Serve(AttesterOptions options)
     {
-        TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder());
         ILogManager logManager = SimpleConsoleLogManager.Instance;
         PrivateKey key = AttestationKeyStore.Unlock(options.KeyStoreDirectory, options.PasswordFile, options.AttesterAddress, logManager);
         (ISpecProvider specProvider, EezChainRules rules) = ChainConfigLoader.LoadProfile(options.ChainConfigPath);
         if (options.SkipConsensusLayerCalls) rules = rules.WithoutConsensusLayerCalls();
+        TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(rules));
         if (rules.IsRollupX && options.StreamingConfigPath is null)
             throw new InvalidOperationException("RollupX attestation requires the native streaming profile");
         EezSettlementContext context = new(options.RollupId, specProvider.ChainId, options.ProofSystem, options.VerificationKey, options.BlockTimeSeconds, options.GasLimit);

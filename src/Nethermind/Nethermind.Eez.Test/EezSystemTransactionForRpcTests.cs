@@ -14,7 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
 
-public class EezSystemTransactionForRpcTests
+public partial class EezSystemTransactionForRpcTests
 {
     [OneTimeSetUp]
     public void RegisterRpcType() => TransactionForRpc.RegisterTransactionType<EezSystemTransactionForRpc>();

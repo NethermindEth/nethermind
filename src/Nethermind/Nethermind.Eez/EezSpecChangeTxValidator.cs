@@ -15,7 +15,7 @@ namespace Nethermind.Eez;
 /// </summary>
 /// <remarks>
 /// A system transaction is unsigned, so anyone can build one; only derivation may place it in a block.
-/// Block import validates it with <see cref="EezTxType.CreateValidator"/> instead, which this key never reaches.
+/// Block import uses the chain-selected <see cref="EezTxType"/> validators instead, which this key never reaches.
 /// </remarks>
 public sealed class EezSpecChangeTxValidator : ITxValidator, ILightTxValidator, ISpecChangeTxValidator
 {

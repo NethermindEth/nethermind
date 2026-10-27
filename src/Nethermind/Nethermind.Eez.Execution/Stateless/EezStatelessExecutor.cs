@@ -157,7 +157,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRul
     private TxValidator CreateTxValidator()
     {
         TxValidator txValidator = new(specProvider.ChainId);
-        txValidator.RegisterValidator(EezConstants.SystemTxType, EezTxType.CreateValidator(specProvider.ChainId));
+        txValidator.RegisterValidator(rules.SystemTransactionType, EezTxType.CreateValidator(specProvider.ChainId, rules));
         return txValidator;
     }
 

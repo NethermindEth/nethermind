@@ -38,7 +38,10 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         EnsureRolesSupported(eezConfig, Rules);
         EnsureFollowerConfig(eezConfig);
         EnsureSequencerConfig(eezConfig, api.Config<IKeyStoreConfig>());
-        api.RegisterTxType<EezSystemTransactionForRpc>(EezTxType.CreateDecoder(), EezTxType.CreateValidator(api.SpecProvider!.ChainId));
+        if (Rules.UsesNativeSystemTransactions)
+            api.RegisterTxType<EezNativeSystemTransactionForRpc>(EezTxType.CreateDecoder(Rules), EezTxType.CreateValidator(api.SpecProvider!.ChainId, Rules));
+        else
+            api.RegisterTxType<EezSystemTransactionForRpc>(EezTxType.CreateDecoder(), EezTxType.CreateValidator(api.SpecProvider!.ChainId));
     }
 
     public IModule Module => new EezModule(eezConfig, Rules);

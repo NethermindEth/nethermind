@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
 
-public class EezTxTypeTests
+public partial class EezTxTypeTests
 {
     private const ulong ChainId = 6290;
 
