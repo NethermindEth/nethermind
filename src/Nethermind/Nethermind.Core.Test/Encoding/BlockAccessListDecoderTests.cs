@@ -255,6 +255,36 @@ public class BlockAccessListDecoderTests
                 .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
     }
 
+    /// <summary>
+    /// One sender of 65,536 transactions has a balance and nonce change at every index up to the post-execution one,
+    /// beyond the uint16 range of the old index.
+    /// </summary>
+    [Test]
+    public void Account_changes_with_more_changes_than_uint16_range_roundtrip()
+    {
+        const int changeCount = ushort.MaxValue + 2;
+        BalanceChange[] balanceChanges = new BalanceChange[changeCount];
+        NonceChange[] nonceChanges = new NonceChange[changeCount];
+        StorageChange[] storageChanges = new StorageChange[changeCount];
+        for (int i = 0; i < changeCount; i++)
+        {
+            uint index = (uint)i + 1;
+            balanceChanges[i] = new BalanceChange(index, index);
+            nonceChanges[i] = new NonceChange(index, index);
+            storageChanges[i] = new StorageChange(index, index);
+        }
+
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(1, storageChanges)
+            .WithBalanceChanges(balanceChanges)
+            .WithNonceChanges(nonceChanges)
+            .TestObject;
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        Assert.That(Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None), Is.EqualTo(accountChanges));
+    }
+
     [Test]
     public void DecodeArray_with_decoder_stays_constrained_to_reference_types()
     {
