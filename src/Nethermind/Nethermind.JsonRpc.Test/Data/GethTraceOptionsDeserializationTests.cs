@@ -128,6 +128,25 @@ public class GethTraceOptionsDeserializationTests
             Is.EqualTo(JsonSerializer.Serialize(expected, EthereumJsonSerializer.JsonRpcRequestOptions)));
     }
 
+    [TestCase("{}")]
+    [TestCase("{\"noBaseFee\":true,\"logIndex\":{}}")]
+    public void ByNumber_wire_metadata_uses_parameterless_construction(string json)
+    {
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        serializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, serializerOptions)!;
+        JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(typeof(GethTraceOptionsConverter.WireOptions));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeInfo.CreateObject, Is.Not.Null);
+            foreach (JsonPropertyInfo property in typeInfo.Properties)
+                Assert.That(property.AssociatedParameter, Is.Null, property.Name);
+            Assert.That(options.NoBaseFee, Is.False);
+            Assert.That(options.LogIndex, Is.Null);
+        }
+    }
+
     [Test]
     public void ByNumber_options_use_the_supplied_metadata_resolver()
     {

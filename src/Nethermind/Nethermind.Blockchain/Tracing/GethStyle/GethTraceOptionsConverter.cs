@@ -2,61 +2,101 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions>
 {
-    public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException("Trace options must be an object.");
-        return JsonSerializer.Deserialize<WireOptions>(ref reader, options)!.Materialize();
-    }
+    public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        JsonSerializer.Deserialize<WireOptions>(ref reader, options)!.Materialize();
 
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
-        JsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), options);
+        JsonSerializer.Serialize(writer, new WireOptions(value), options);
 
-    internal sealed record WireOptions : GethTraceOptions
+    /// <remarks>Inheriting init-only properties adds synthetic constructor arguments even when setter shadows hide them.</remarks>
+    internal sealed class WireOptions
     {
         public WireOptions() { }
-        public WireOptions(GethTraceOptions options) : base(options) { }
 
-        private bool? _disableStorage;
-        private bool? _enableReturnData;
-        private bool? _disableStack;
-        private long? _limit;
-
-        // Setters see every duplicate; source generation buffers init-only values until construction.
-        public new bool? DisableStorage { get => base.DisableStorage; set => _disableStorage = value ?? _disableStorage; }
-        public new bool? EnableReturnData { get => base.EnableReturnData; set => _enableReturnData = value ?? _enableReturnData; }
-        public new bool? DisableStack { get => base.DisableStack; set => _disableStack = value ?? _disableStack; }
-
-        [JsonConverter(typeof(LimitConverter))]
-        public new long? Limit { get => base.Limit; set => _limit = value ?? _limit; }
-
-        // Keep the public init-only contract; getters above must read the base so later record copies serialize their overrides.
-        internal GethTraceOptions Materialize() => ((GethTraceOptions)this) with
+        public WireOptions(GethTraceOptions options)
         {
-            DisableStorage = _disableStorage ?? base.DisableStorage,
-            EnableReturnData = _enableReturnData ?? base.EnableReturnData,
-            DisableStack = _disableStack ?? base.DisableStack,
-            Limit = _limit ?? base.Limit
-        };
-
-        [JsonConverter(typeof(ParsedDurationConverter))]
-        public new ParsedTraceDuration Timeout
-        {
-            get => ParsedTimeout;
-            init => ParsedTimeout = value;
+            _disableStorage = options.DisableStorage;
+            _enableReturnData = options.EnableReturnData;
+            _disableStack = options.DisableStack;
+            _limit = options.Limit;
+            Timeout = options.ParsedTimeout;
+            _enableMemory = options.EnableMemory;
+            Tracer = options.Tracer;
+            TxHash = options.TxHash;
+            TxIndex = options.TxIndex;
+            TracerConfig = options.TracerConfig;
+            StateOverrides = options.StateOverrides;
+            BlockOverrides = options.BlockOverrides;
+            NoBaseFee = options.NoBaseFee;
+            LogIndex = options.LogIndex;
+            StreamMode = options.StreamMode;
         }
 
-#pragma warning disable CS0618
-        public new bool? DisableMemory { get => base.DisableMemory; set { if (value is { } v) base.DisableMemory = v; } }
-#pragma warning restore CS0618
+        private bool _disableStorage;
+        private bool _enableReturnData;
+        private bool _disableStack;
+        private long _limit;
+        private bool _enableMemory;
 
-        public new bool? EnableMemory { get => base.EnableMemory; set { if (value is { } v) base.EnableMemory = v; } }
+        public bool? DisableStorage { get => _disableStorage; set { if (value is { } v) _disableStorage = v; } }
+        public bool? EnableReturnData { get => _enableReturnData; set { if (value is { } v) _enableReturnData = v; } }
+        public bool? DisableStack { get => _disableStack; set { if (value is { } v) _disableStack = v; } }
+
+        [JsonConverter(typeof(GethTraceOptions.LimitConverter))]
+        public long? Limit { get => _limit; set { if (value is { } v) _limit = v; } }
+
+        [JsonConverter(typeof(ParsedDurationConverter))]
+        public ParsedTraceDuration Timeout { get; set; }
+
+        public bool? DisableMemory { get => !_enableMemory; set { if (value is { } v) _enableMemory = !v; } }
+        public bool? EnableMemory { get => _enableMemory; set { if (value is { } v) _enableMemory = v; } }
+        public string Tracer { get; set; }
+        public Hash256? TxHash { get; set; }
+
+        [JsonConverter(typeof(GethTraceOptions.TransactionIndexConverter))]
+        public ulong? TxIndex { get; set; }
+
+        public JsonElement? TracerConfig { get; set; }
+        public Dictionary<Address, AccountOverride>? StateOverrides { get; set; }
+        public BlockOverride? BlockOverrides { get; set; }
+
+        [JsonIgnore]
+        public bool NoBaseFee { get; set; }
+
+        [JsonIgnore]
+        public BlockLogIndex? LogIndex { get; set; }
+
+        public bool? StreamMode { get; set; }
+
+        internal GethTraceOptions Materialize() => new()
+        {
+            DisableStorage = _disableStorage,
+            EnableReturnData = _enableReturnData,
+            DisableStack = _disableStack,
+            Limit = _limit,
+            ParsedTimeout = Timeout,
+            EnableMemory = _enableMemory,
+            Tracer = Tracer,
+            TxHash = TxHash,
+            TxIndex = TxIndex,
+            TracerConfig = TracerConfig,
+            StateOverrides = StateOverrides,
+            BlockOverrides = BlockOverrides,
+            NoBaseFee = NoBaseFee,
+            LogIndex = LogIndex,
+            StreamMode = StreamMode
+        };
     }
 
     internal sealed class ParsedDurationConverter : JsonConverter<ParsedTraceDuration>
