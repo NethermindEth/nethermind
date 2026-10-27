@@ -623,7 +623,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
+                    ref byte source = ref state.Memory.GetActiveInitializedRange(slot, EvmStack.WordSize);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         LoadBigEndian(ref slot, ref source);
@@ -658,7 +658,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
             {
-                ref byte source = ref state.Memory.GetActiveInitializedWord(Unsafe.Add(ref ip, 1));
+                ref byte source = ref state.Memory.GetActiveInitializedRange(Unsafe.Add(ref ip, 1), EvmStack.WordSize);
                 if (!Unsafe.IsNullRef(ref source))
                 {
                     LoadBigEndian(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref source);

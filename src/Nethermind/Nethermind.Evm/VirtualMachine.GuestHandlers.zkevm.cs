@@ -1905,7 +1905,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
+                    ref byte source = ref state.Memory.GetActiveInitializedRange(slot, EvmStack.WordSize);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.

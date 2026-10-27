@@ -239,14 +239,12 @@ internal static unsafe class GuestWord
             return;
         }
 
-        ulong limb3 = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
-        ulong limb2 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
-        ulong limb1 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
-        ulong limb0 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
-        slot = limb0;
-        Unsafe.Add(ref slot, 1) = limb1;
-        Unsafe.Add(ref slot, 2) = limb2;
-        Unsafe.Add(ref slot, 3) = limb3;
+        // Each limb is stored as soon as it is read: the memory never overlaps the stack, and a 32-bit guest holding
+        // all four would take callee-saved registers for them.
+        slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
+        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
+        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
+        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
     }
 
     /// <summary>Stores a word big-endian to the 32 bytes at <paramref name="destination"/>, given its limbs from the most significant.</summary>
