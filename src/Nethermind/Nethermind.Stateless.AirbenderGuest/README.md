@@ -13,8 +13,9 @@ three local builds:
 - `BFLAT_DIR`: the output directory of a bflat build with the Airbender layout,
   that is, bflat built with `LocalCompilerDir` (a riscv32 ILCompiler and JIT) and
   `AirbenderLibsDir` (see bflat's `BUILDING.md`).
-- `AIRBENDER_LIB_DIR`: a libairbender build, which holds the precompiles, the
-  input and output, and the exit protocol.
+- `AIRBENDER_LIB_DIR`: a libairbender build
+  ([NethermindEth/bflat-airbender](https://github.com/NethermindEth/bflat-airbender)),
+  which holds the precompiles, the input and output, and the exit protocol.
 - `bflat-riscv64`: the bflat build image, from bflat's `Dockerfile.build`.
 
 ```bash
