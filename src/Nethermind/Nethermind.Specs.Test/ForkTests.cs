@@ -136,6 +136,26 @@ public class ForkTests
     }
 
     [Test]
+    public void BogotaDevnet2_adds_its_eips_to_frames_devnet_1()
+    {
+        IReleaseSpec spec = SpecNameParser.Parse("BogotaDevnet2");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec, Is.SameAs(BogotaDevnet2.Instance));
+            Assert.That(BogotaDevnet2.Instance.Parent, Is.SameAs(FramesDevnet1.Instance));
+            Assert.That(spec.IsEip8141Enabled, Is.True);
+            Assert.That(spec.IsEip8250Enabled, Is.True);
+            Assert.That(spec.IsEip8272Enabled, Is.True);
+            Assert.That(spec.IsEip7906Enabled, Is.True);
+            Assert.That(spec.IsEip8253Enabled, Is.True);
+            Assert.That(spec.IsEip4758Enabled, Is.True);
+            Assert.That(spec.IsEip8298Enabled, Is.True);
+            Assert.That(spec.IsEip8151Enabled, Is.True);
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+        }
+    }
+
+    [Test]
     public void Bogota_enables_inclusion_lists_and_eip8198_without_frame_transactions()
     {
         using (Assert.EnterMultipleScope())

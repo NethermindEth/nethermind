@@ -281,7 +281,8 @@ public class IncludedBlobLocationsTests
         {
             readers[r] = Task.Run(() =>
             {
-                while (!writerDone.IsCancellationRequested)
+                // At least one pass, even when the writer finishes before this reader is scheduled.
+                do
                 {
                     for (int seed = 0; seed < hashCount; seed++)
                     {
@@ -292,7 +293,7 @@ public class IncludedBlobLocationsTests
 
                         Interlocked.Increment(ref reads);
                     }
-                }
+                } while (!writerDone.IsCancellationRequested);
             });
         }
 

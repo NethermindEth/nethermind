@@ -6,7 +6,6 @@ using System.Text.Json;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonConverters;
 using Evm.T8n.JsonTypes;
-using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
@@ -15,16 +14,10 @@ namespace Evm.T8n;
 
 public static class T8nCommand
 {
-    private static readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
+    private static readonly EthereumJsonSerializer _ethereumJsonSerializer = new([new AccountStateJsonConverter()]);
     private const string Stdout = "stdout";
     private static ILogManager _logManager = new NLogManager("t8n.log");
     private static ILogger _logger = _logManager.GetClassLogger(typeof(T8nCommand));
-
-    static T8nCommand()
-    {
-        EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
-        EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
-    }
 
     public static void Configure(ref RootCommand rootCmd)
     {
@@ -33,6 +26,7 @@ public static class T8nCommand
         cmd.SetAction(parseResult =>
         {
             T8nCommandArguments arguments = T8nCommandArguments.FromParseResult(parseResult);
+            TextWriter output = parseResult.InvocationConfiguration.Output;
 
             T8nOutput t8nOutput = new();
             try
@@ -45,7 +39,7 @@ public static class T8nCommand
 
                 if (!t8nOutput.IsEmpty())
                 {
-                    Console.WriteLine(_ethereumJsonSerializer.Serialize(t8nOutput, true));
+                    output.WriteLine(_ethereumJsonSerializer.Serialize(t8nOutput, true));
                 }
             }
             catch (T8nException e)
@@ -68,14 +62,13 @@ public static class T8nCommand
                 t8nOutput = new T8nOutput(e.Message, T8nErrorCodes.ErrorEvm);
                 _logger.Error(e.Message, e);
             }
-            finally
+
+            if (t8nOutput.ErrorMessage is not null)
             {
-                Environment.ExitCode = t8nOutput.ExitCode;
-                if (t8nOutput.ErrorMessage is not null)
-                {
-                    Console.WriteLine(t8nOutput.ErrorMessage);
-                }
+                parseResult.InvocationConfiguration.Error.WriteLine(t8nOutput.ErrorMessage);
             }
+
+            return t8nOutput.ExitCode;
         });
 
         rootCmd.Add(cmd);
@@ -84,7 +77,7 @@ public static class T8nCommand
     private static T? GetOrWriteToFile<T>(T t8nResultObject, string? outputFile, string outputBasedir)
     {
         if (outputFile == Stdout) return t8nResultObject;
-        if (outputFile is not null) WriteToFile(outputFile, outputBasedir, t8nResultObject);
+        if (!string.IsNullOrEmpty(outputFile)) WriteToFile(outputFile, outputBasedir, t8nResultObject);
 
         return default;
     }

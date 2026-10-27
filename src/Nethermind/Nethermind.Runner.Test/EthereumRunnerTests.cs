@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -21,12 +22,15 @@ using Autofac.Core;
 using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Blockchain.Receipts;
@@ -50,11 +54,13 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.EraE.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
@@ -65,6 +71,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Optimism;
@@ -79,6 +86,7 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
+using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
@@ -337,6 +345,20 @@ public class EthereumRunnerTests
             Assert.That((warmPool!.BlobsSupport, warmPool.PersistentBroadcastEnabled, warmPool.ProofsTranslationEnabled),
                 Is.EqualTo((livePool.BlobsSupport, livePool.PersistentBroadcastEnabled, livePool.ProofsTranslationEnabled)));
         }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ManualTimestamper timestamper = new();
+        IRpcAuthentication authentication = JwtAuthentication.FromSecret(new string('a', 64), Timestamper.Default, NullLogger.Instance);
+
+        // Outlasts the 60-second token lifetime before the first Engine API request.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), new ConfigProvider(new InitConfig { BaseDbPath = directory.Path }), false,
+            cancellation.Token, authentication, timestamper: timestamper,
+            configureContainer: builder => builder.RegisterBuildCallback(_ => timestamper.Add(TimeSpan.FromMinutes(2))));
     }
 
     private static string WarmupToken(JwtAuthentication authentication) =>
@@ -685,6 +707,12 @@ public class EthereumRunnerTests
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
+    private static Type ExpectedRewardCalculatorType(IList<INethermindPlugin> plugins) =>
+        plugins.Any(static p => p is AuRaPlugin) ? typeof(AuRaRewardCalculator)
+        : plugins.Any(static p => p is XdcPlugin) ? typeof(XdcRewardCalculator)
+        : plugins.Any(static p => p is MergePlugin) ? typeof(MergeRewardCalculator)
+        : typeof(NoBlockRewards);
+
     /// <summary>Budget for a single start or stop of a runner under test.</summary>
     /// <remarks>This is what fails a smoke case whose steps deadlock on incorrect dependencies. A test-level
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
@@ -701,12 +729,12 @@ public class EthereumRunnerTests
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
-        Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
+        Parallel.ForEach(BuiltInConfigs.Names, name =>
         {
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource(configFile));
+            configProvider.AddSource(BuiltInConfig(name));
             configProvider.Initialize();
-            resultQueue.Enqueue((configFile, configProvider));
+            resultQueue.Enqueue(($"{name}.json", configProvider));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
@@ -716,7 +744,7 @@ public class EthereumRunnerTests
         {
             // Special case for verify trie on state sync finished
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Add(("mainnet-verify-trie-starter", configProvider));
@@ -725,7 +753,7 @@ public class EthereumRunnerTests
         {
             // Flashbots
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
             result.Add(("flashbots", configProvider));
@@ -734,7 +762,7 @@ public class EthereumRunnerTests
         {
             // Censorship detector
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
             result.Add(("censorship-detector", configProvider));
@@ -808,7 +836,7 @@ public class EthereumRunnerTests
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
 
         ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+        configProvider.AddSource(BuiltInConfig("mainnet"));
         configProvider.Initialize();
 
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
@@ -838,15 +866,7 @@ public class EthereumRunnerTests
     [TestCase("mainnet")]
     public async Task Pool_retains_simulator_and_is_disposed_on_shutdown(string network)
     {
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
-        configProvider.Initialize();
-        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
-        pluginLoader.Load();
-        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        EthereumRunner runner = await CreateRunner(network);
         TxPool.TxPool? pool = null;
         try
         {
@@ -863,6 +883,115 @@ public class EthereumRunnerTests
                 Assert.That(disposedField.GetValue(pool), Is.True);
             }
         }
+    }
+
+    [TestCase(false, false, typeof(NoopMonitoringService))]
+    [TestCase(true, false, typeof(MonitoringService))]
+    [TestCase(false, true, typeof(MonitoringService))]
+    public async Task Metrics_enabled_loads_monitoring_plugin(bool enabled, bool countersEnabled, Type expected)
+    {
+        EthereumRunner runner = await CreateRunner("mainnet", configProvider =>
+        {
+            MetricsConfig config = (MetricsConfig)configProvider.GetConfig<IMetricsConfig>();
+            config.Enabled = enabled;
+            config.CountersEnabled = countersEnabled;
+        });
+        try
+        {
+            Assert.That(runner.Api.Context.Resolve<IMonitoringService>(), Is.TypeOf(expected));
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ReviewBlockTree"/> waits until the blocks left unprocessed at the last shutdown are processed,
+    /// which can take days on an archive node. JSON-RPC and health checks must not wait for it, but block
+    /// production must. An era import waits for it and holds the network back, so then JSON-RPC waits too.
+    /// </summary>
+    [Test]
+    public async Task Rpc_does_not_wait_for_block_tree_review(
+        [Values("mainnet", "gnosis", "op-mainnet", "taiko-alethia", "xdc")] string network,
+        [Values] EraJob eraJob)
+    {
+        EthereumRunner runner = await CreateRunner(network, configProvider =>
+        {
+            IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
+            IEraEConfig eraEConfig = configProvider.GetConfig<IEraEConfig>();
+            switch (eraJob)
+            {
+                case EraJob.Era1Import: eraConfig.ImportDirectory = "era"; break;
+                case EraJob.Era1Export: eraConfig.ExportDirectory = "era"; break;
+                case EraJob.EraEImport: eraEConfig.ImportDirectory = "era"; break;
+                case EraJob.EraEExport: eraEConfig.ExportDirectory = "era"; break;
+            }
+        });
+        bool eraStepWaitsForReview = eraJob is not EraJob.None;
+        try
+        {
+            Dictionary<Type, HashSet<Type>> dependencies = [];
+            HashSet<Type> GetDependencies(Type step) =>
+                dependencies.TryGetValue(step, out HashSet<Type>? set) ? set : dependencies[step] = [];
+
+            foreach (StepInfo step in runner.LifetimeScope.Resolve<IEthereumStepsLoader>().ResolveStepsImplementations())
+            {
+                GetDependencies(step.StepBaseType).UnionWith(step.Dependencies);
+                foreach (Type dependent in step.Dependents) GetDependencies(dependent).Add(step.StepBaseType);
+            }
+
+            HashSet<Type> TransitiveDependencies(Type step)
+            {
+                HashSet<Type> visited = [];
+                Stack<Type> toVisit = new(GetDependencies(step));
+                while (toVisit.TryPop(out Type? current))
+                {
+                    if (visited.Add(current)) foreach (Type dependency in GetDependencies(current)) toVisit.Push(dependency);
+                }
+                return visited;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TransitiveDependencies(typeof(StartRpc)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartHealthChecks)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartBlockProducer)), Does.Contain(typeof(ReviewBlockTree)));
+            }
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    public enum EraJob
+    {
+        None,
+        Era1Import,
+        Era1Export,
+        EraEImport,
+        EraEExport
+    }
+
+    private static JsonConfigSource BuiltInConfig(string name)
+    {
+        using Stream stream = BuiltInConfigs.Open(name)!;
+        return new JsonConfigSource(stream);
+    }
+
+    private static async Task<EthereumRunner> CreateRunner(string network, Action<ConfigProvider>? configure = null)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(BuiltInConfig(network));
+        configProvider.Initialize();
+        configure?.Invoke(configProvider);
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        return builder.CreateEthereumRunner(plugins, command: null);
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
@@ -948,7 +1077,9 @@ public class EthereumRunnerTests
             api.Context.Resolve<ISealValidator>();
             api.Context.Resolve<ISealer>();
             api.Context.Resolve<ISealEngine>();
-            api.Context.Resolve<IRewardCalculatorSource>();
+            // The calculator needs the world state, so only a processing scope can resolve it.
+            ILifetimeScope processingScope = ((MainProcessingContext)api.Context.Resolve<IMainProcessingContext>()).LifetimeScope;
+            Assert.That(processingScope.Resolve<IRewardCalculator>(), Is.TypeOf(ExpectedRewardCalculatorType(plugins)));
             api.Context.Resolve<IBlockValidator>();
             api.Context.Resolve<IHeaderValidator>();
             api.Context.Resolve<IUnclesValidator>();

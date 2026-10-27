@@ -183,9 +183,9 @@ public class SimulateTxExecutor<TTrace>(
                 if (blockToSimulate.StateOverrides is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
-                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    foreach ((Address address, AccountOverride? accountOverride) in blockToSimulate.StateOverrides)
                     {
-                        if (accountOverride.MovePrecompileToAddress is null) continue;
+                        if (accountOverride?.MovePrecompileToAddress is null) continue;
 
                         if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
                             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(

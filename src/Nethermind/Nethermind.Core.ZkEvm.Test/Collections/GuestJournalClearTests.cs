@@ -56,8 +56,11 @@ public class GuestJournalClearTests
         Assert.That(collection.ToArray(), Is.EqualTo(new[] { "third", "fifth" }));
     }
 
+    public enum JournalChange { Clear, Restore, Add }
+
+    /// <remarks>Two items leave spare capacity, so <see cref="JournalChange.Add"/> takes the guest's in-place add path.</remarks>
     [Test]
-    public void Clearing_and_restoring_invalidate_running_enumerators([Values] bool set, [Values] bool restore)
+    public void Changing_the_journal_invalidates_running_enumerators([Values] bool set, [Values] JournalChange change)
     {
         ICollection<Address> journal = set ? new JournalSet<Address>(Address.EqualityComparer) : new JournalCollection<Address>();
         journal.Add(_a);
@@ -67,10 +70,18 @@ public class GuestJournalClearTests
         {
             foreach (Address _ in journal)
             {
-                if (restore)
-                    ((IJournal<int>)journal).Restore(0);
-                else
-                    journal.Clear();
+                switch (change)
+                {
+                    case JournalChange.Clear:
+                        journal.Clear();
+                        break;
+                    case JournalChange.Restore:
+                        ((IJournal<int>)journal).Restore(0);
+                        break;
+                    case JournalChange.Add:
+                        journal.Add(_c);
+                        break;
+                }
             }
         });
     }

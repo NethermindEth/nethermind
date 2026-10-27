@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain
             ReceiptsEventArgs e;
             try
             {
-                e = new(block.Header, _receiptStorage.Get(block), removed, _eip8116.IsEnabled(block.Number, block.Timestamp));
+                e = new(block, _receiptStorage.Get(block), removed, _eip8116.IsEnabled(block.Number, block.Timestamp));
             }
             catch (Exception exception)
             {

@@ -72,12 +72,15 @@ public class FilterStoreTests
         FilterStore store = new(new TimerFactory());
         BlockFilter filter = store.CreateBlockFilter();
         store.SaveFilter(filter);
-        bool hasNotified = false;
-        store.FilterRemoved += (s, e) => hasNotified = true;
-        store.RemoveFilter(0);
+        int notifications = 0;
+        store.FilterRemoved += (s, e) => notifications++;
 
-        Assert.That(hasNotified, Is.True, "notified");
+        Assert.That(store.RemoveFilter(0), Is.True, "removed");
+        Assert.That(notifications, Is.EqualTo(1), "notified");
         Assert.That(store.FilterExists(0), Is.False, "exists");
+
+        Assert.That(store.RemoveFilter(0), Is.False, "removed again");
+        Assert.That(notifications, Is.EqualTo(1), "notified again");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
