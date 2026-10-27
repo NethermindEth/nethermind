@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -13,54 +11,8 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
 {
     public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        JsonReaderOptions readerOptions = reader.CurrentState.Options;
-        StringComparison nameComparison = options.PropertyNameCaseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        if (reader.TokenType == JsonTokenType.StartObject && !RequiresNullFiltering(reader, options.GetTypeInfo(typeof(WireOptions)), nameComparison))
-            return JsonSerializer.Deserialize<WireOptions>(ref reader, options)!;
-
-        using JsonDocument document = JsonDocument.ParseValue(ref reader);
-        if (document.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Trace options must be an object.");
-        JsonTypeInfo wireTypeInfo = options.GetTypeInfo(typeof(WireOptions));
-
-        ArrayBufferWriter<byte> buffer = new();
-        using (Utf8JsonWriter writer = new(buffer))
-        {
-            writer.WriteStartObject();
-            foreach (JsonProperty property in document.RootElement.EnumerateObject())
-            {
-                if (property.Value.ValueKind == JsonValueKind.Null && IsNonNullableOption(property.Name, wireTypeInfo, nameComparison)) continue;
-                writer.WritePropertyName(property.Name);
-                writer.WriteRawValue(property.Value.GetRawText(), skipInputValidation: true);
-            }
-            writer.WriteEndObject();
-        }
-
-        Utf8JsonReader normalizedReader = new(buffer.WrittenSpan, readerOptions);
-        return JsonSerializer.Deserialize<WireOptions>(ref normalizedReader, options)!;
-    }
-
-    private static bool RequiresNullFiltering(Utf8JsonReader reader, JsonTypeInfo typeInfo, StringComparison comparison)
-    {
-        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
-        {
-            Utf8JsonReader propertyReader = reader;
-            if (!reader.Read()) return false;
-            if (reader.TokenType == JsonTokenType.Null && IsNonNullableOption(propertyReader.GetString()!, typeInfo, comparison)) return true;
-            if (!reader.TrySkip()) return false;
-        }
-
-        return false;
-    }
-
-    private static bool IsNonNullableOption(string name, JsonTypeInfo typeInfo, StringComparison comparison)
-    {
-        foreach (JsonPropertyInfo property in typeInfo.Properties)
-        {
-            if ((property.PropertyType == typeof(bool) || property.PropertyType == typeof(long)) && name.Equals(property.Name, comparison))
-                return true;
-        }
-
-        return false;
+        if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException("Trace options must be an object.");
+        return JsonSerializer.Deserialize<WireOptions>(ref reader, options)!.Materialize();
     }
 
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
@@ -70,6 +22,28 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
     {
         public WireOptions() { }
         public WireOptions(GethTraceOptions options) : base(options) { }
+
+        private bool? _disableStorage;
+        private bool? _enableReturnData;
+        private bool? _disableStack;
+        private long? _limit;
+
+        // Setters see every duplicate; source generation buffers init-only values until construction.
+        public new bool? DisableStorage { get => base.DisableStorage; set => _disableStorage = value ?? _disableStorage; }
+        public new bool? EnableReturnData { get => base.EnableReturnData; set => _enableReturnData = value ?? _enableReturnData; }
+        public new bool? DisableStack { get => base.DisableStack; set => _disableStack = value ?? _disableStack; }
+
+        [JsonConverter(typeof(LimitConverter))]
+        public new long? Limit { get => base.Limit; set => _limit = value ?? _limit; }
+
+        // Keep the public init-only contract; getters above must read the base so later record copies serialize their overrides.
+        internal GethTraceOptions Materialize() => ((GethTraceOptions)this) with
+        {
+            DisableStorage = _disableStorage ?? base.DisableStorage,
+            EnableReturnData = _enableReturnData ?? base.EnableReturnData,
+            DisableStack = _disableStack ?? base.DisableStack,
+            Limit = _limit ?? base.Limit
+        };
 
         [JsonConverter(typeof(ParsedDurationConverter))]
         public new ParsedTraceDuration Timeout
