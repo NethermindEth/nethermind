@@ -27,7 +27,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          queries: security-and-quality
+          queries: security-extended
           packs: githubsecuritylab/codeql-csharp-queries
 
       - name: Set up .NET
