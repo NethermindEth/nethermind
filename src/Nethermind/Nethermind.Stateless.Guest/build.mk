@@ -11,9 +11,16 @@
 # directory, so derive it rather than repeat it.
 GUEST_PROJECT := $(notdir $(MAKEFILE_DIR))
 
-# The bindings manifest is named after the libc everywhere except zisk, whose is
-# libziskos; that guest sets GUEST_EXTLIB itself.
-GUEST_EXTLIB ?= lib$(GUEST_LIBC)
+# The runtime package of the guest's zkVM. bflat gets the .nupkg that restore
+# put in the NuGet cache, not the files that the build copied out of it: bflat
+# checks the signature of a package, and does not check a local manifest. The
+# package has the platform (entry, linker script, manifest) and the bindings.
+NUGET_PACKAGES ?= $(HOME)/.nuget/packages
+GUEST_PACKAGE_ID := $(shell echo '$(GUEST_PACKAGE)' | tr '[:upper:]' '[:lower:]')
+GUEST_PACKAGE_VERSION := $(shell sed -n 's/.*Include="$(GUEST_PACKAGE)" Version="\[\([^]]*\)\]".*/\1/p' $(MAKEFILE_DIR)/../../../Directory.Packages.props)
+GUEST_NUPKG := $(GUEST_PACKAGE_ID).$(GUEST_PACKAGE_VERSION).nupkg
+GUEST_NUPKG_PATH := $(NUGET_PACKAGES)/$(GUEST_PACKAGE_ID)/$(GUEST_PACKAGE_VERSION)/$(GUEST_NUPKG)
+PACKAGE_DIR := /nethermind/package
 
 # The bflat RISC-V64 compiler and .NET runtime, pinned by digest because :latest
 # moves with every CI run there; the tag records the bflat-riscv64 commit.
@@ -29,7 +36,9 @@ BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:c2c0faa32dbbbdfed6120eea0041b28cbf
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
-ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
+# Floating point in the IL is not an error: the guest is soft-float (lp64), and
+# --error-on-float-binary checks that no F/D instruction is in the image.
+ISA_GATES ?= --error-on-float-binary --error-on-compressed --error-on-atomic
 
 # The guest has no instruction cache, so favouring speed over size is near free.
 # Requires the TrieNode seqlock collapse: -Ot over the seqlock built a guest whose
@@ -105,7 +114,7 @@ BFLAT_REFS := \
 # --- Targets shared by every guest ---------------------------------------
 #
 # Parameterised by GUEST_LIBC, which each guest sets before the include, and
-# by GUEST_PROJECT/GUEST_EXTLIB derived above. Note MAKEFILE_DIR here is the
+# by GUEST_PROJECT/GUEST_NUPKG derived above. Note MAKEFILE_DIR here is the
 # GUEST's directory, set by its Makefile; only SHARED_DIR points at this file.
 
 .DEFAULT_GOAL := build
@@ -116,12 +125,14 @@ dotnet-build:
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
 build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
+	@[ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		--mount type=bind,source="$(GUEST_NUPKG_PATH)",target=$(PACKAGE_DIR)/$(GUEST_NUPKG),readonly \
 		$(SHARED_MOUNT) \
 		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
@@ -133,7 +144,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		--extlib $(PACKAGE_DIR)/$(GUEST_NUPKG) \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \

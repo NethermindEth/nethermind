@@ -8,6 +8,7 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
+GUEST_PACKAGE := Nethermind.OpenVM.Runtime
 
 # MUL on the bigint extension without the frame a call from managed code takes.
 GUEST_OBJECTS := mul.o
