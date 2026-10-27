@@ -87,8 +87,11 @@ public partial class DebugRpcModuleTests
             string byHash = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, options);
             Assert.That(JToken.Parse(byHash)["error"], Is.Null, "ByHash deadline behavior is outside this change");
         }
-        Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
-        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, tracer == "noopTracer" ? Is.Empty : Is.Not.Empty);
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     [TestCase("callTracer", "onlyTopCall")]
@@ -175,7 +178,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task NativeStreamTimeout_Valid_duration_keeps_indexed_streaming(
-        [Values("5s", "0s", "-1s", "4294968s")] string timeout)
+        [Values("5s", "0s", "-1s", "3m", "4294968s")] string timeout)
     {
         IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -194,10 +197,13 @@ public partial class DebugRpcModuleTests
         Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the consumed native stream must use the indexed path");
         string buffered = await RpcTest.TestSerializedRequest(module, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", timeout, streamMode = false });
-        Assert.That(streamed, Is.EqualTo(buffered));
-        Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
-        Assert.That(clock.Timers, Has.Count.EqualTo(block.Transactions.Length));
-        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Timers, Has.Count.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock)
