@@ -22,9 +22,8 @@ public sealed partial class ProofWrapperTransport
 
     /// <summary>The outcome of validating a received wrapper.</summary>
     /// <remarks>Only <see cref="Malformed"/> penalizes the serving peer. <see cref="Invalid"/> is a proof or dependency-rule
-    /// failure, discarded without penalty (EIP-8437); <see cref="Refused"/> and <see cref="LocalFailure"/> are local inabilities
-    /// to finish validation.</remarks>
-    private enum Verdict { Valid, PoolRejected, Malformed, Invalid, LocalFailure, Refused }
+    /// failure, discarded without penalty (EIP-8437); <see cref="LocalFailure"/> is a local inability to finish validation.</remarks>
+    private enum Verdict { Valid, PoolRejected, Malformed, Invalid, LocalFailure }
 
     // ---- Announcements and wrapper requests ---------------------------------------------------------------------------
 
@@ -390,7 +389,7 @@ public sealed partial class ProofWrapperTransport
             return;
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
-            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token), cancellation).ConfigureAwait(false);
+            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token, fetch.Server?.Link), cancellation).ConfigureAwait(false);
         // Encodings received in full within a validated wrapper resolve the server's later references.
         if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
             foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);
@@ -423,10 +422,6 @@ public sealed partial class ProofWrapperTransport
                 if (verifier is { } judgedUnder)
                     lock (_gate) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
-                break;
-            case Verdict.Refused:
-                WrapperMetrics.Record(WrapperEvent.LocalFailure);
-                if (_logger.IsDebug) _logger.Debug($"eth/73 refused {fetch.Announcement}: {error}");
                 break;
             default:
                 WrapperMetrics.Record(WrapperEvent.LocalFailure);
@@ -472,7 +467,6 @@ public sealed partial class ProofWrapperTransport
                     case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error, null);
                     case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error, result.Verifier);
                     case ProofWrapperAcceptanceStatus.Malformed: return (Verdict.Malformed, result.Result.Error, null);
-                    case ProofWrapperAcceptanceStatus.Refused: return (Verdict.Refused, result.Result.Error, null);
                     case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:
                         await Task.Delay(WrapperTransportLimits.BusyRetry, cancellation).ConfigureAwait(false);
                         continue;

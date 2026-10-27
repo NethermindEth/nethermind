@@ -252,7 +252,13 @@ reaggregated before full validation.
 
 Dependency-bearing transactions travel only inside their covering wrappers: on every `eth`
 version they are neither broadcast nor announced, and GetPooledTransactions answers them as
-unavailable.
+unavailable. The one exception is EIP-8070 blob availability on `eth/73`: a blob-carrying one is
+wrapped with its blob data elided (commitments and cell proofs only), and once its wrapper validates
+it waits, with its proof coverage pinned, for its cells. Cells announced for it before then are
+recorded but not fetched; after validation they are fetched and checked like type-3 cells, the pool
+admits the transaction, and its cells are announced through NewPooledTransactionHashes. Produced
+wrappers carry such transactions in the same elided form, and block production includes them like
+type-3 blob transactions. Blob-carrying frame transactions without dependencies still travel whole.
 
 Local policy follows the EIP-8437 recommended defaults: 30-second requests, at most three fetch
 sources per wrapper, 8 MiB/s served per peer, four announcements per second per peer and

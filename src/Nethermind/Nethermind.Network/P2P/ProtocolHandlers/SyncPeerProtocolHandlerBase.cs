@@ -213,10 +213,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
         /// <remarks>EIP-8437: dependency-bearing transactions travel only inside proof wrappers, never through Transactions or
-        /// NewPooledTransactionHashes, on any <c>eth</c> version.</remarks>
+        /// NewPooledTransactionHashes, on any <c>eth</c> version, except for the blob-availability announcement of
+        /// <see cref="AnnouncesDependencyBearingCells"/>.</remarks>
         private bool ShouldNotifyTransaction(Transaction tx, bool sendFullTx)
-            => !Eip8288Dependencies.IsDependencyBearing(tx)
+            => (!Eip8288Dependencies.IsDependencyBearing(tx) || !sendFullTx && AnnouncesDependencyBearingCells(tx))
                && (sendFullTx || (tx.Hash is not null && ShouldNotifyTransactionCore(tx)));
+
+        /// <summary>Whether NewPooledTransactionHashes may announce the cells of a pooled dependency-bearing transaction, which
+        /// EIP-8437 permits only for EIP-8070 blob availability on <c>eth/73</c>.</summary>
+        protected virtual bool AnnouncesDependencyBearingCells(Transaction tx) => false;
 
         protected virtual bool ShouldNotifyTransactionCore(Transaction tx)
             => NotifiedTransactions.Set(tx.Hash!.ValueHash256);

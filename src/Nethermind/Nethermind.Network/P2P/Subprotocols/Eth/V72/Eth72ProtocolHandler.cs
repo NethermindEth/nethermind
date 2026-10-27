@@ -296,9 +296,16 @@ public class Eth72ProtocolHandler(
         }
     }
 
+    /// <summary>Whether <paramref name="tx"/> is announced with a cell mask and its blobs exchanged as EIP-8070 cells.</summary>
+    protected virtual bool AnnouncesCells(Transaction tx) => tx.SupportsBlobs;
+
+    /// <summary>Whether an announcement of <paramref name="txType"/> under <paramref name="announcementMask"/> offers the cells of
+    /// a dependency-bearing frame transaction, whose body arrives only in its covering proof wrapper (EIP-8437).</summary>
+    protected virtual bool IsWrappedCellAnnouncement(TxType txType, BlobCellMask announcementMask) => false;
+
     protected override void SendNewTransactionCore(Transaction tx)
     {
-        if (!tx.SupportsBlobs)
+        if (!AnnouncesCells(tx))
         {
             if (tx.CanBeBroadcast())
             {
@@ -320,7 +327,7 @@ public class Eth72ProtocolHandler(
 
     protected override bool ShouldNotifyTransactionCore(Transaction tx)
     {
-        if (!tx.SupportsBlobs || tx.Hash is null)
+        if (!AnnouncesCells(tx) || tx.Hash is null)
         {
             return base.ShouldNotifyTransactionCore(tx);
         }
@@ -363,8 +370,9 @@ public class Eth72ProtocolHandler(
         BlobCellMask? pendingMask = null;
         foreach (Transaction tx in txs)
         {
-            BlobCellMask mask = tx.SupportsBlobs ? GetAnnouncementMask(tx) : BlobCellMask.Empty;
-            if (tx.SupportsBlobs && mask.IsEmpty)
+            bool announcesCells = AnnouncesCells(tx);
+            BlobCellMask mask = announcesCells ? GetAnnouncementMask(tx) : BlobCellMask.Empty;
+            if (announcesCells && mask.IsEmpty)
             {
                 continue;
             }
@@ -455,13 +463,14 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            bool supportsBlobs = txType.SupportsBlobs();
+            bool wrapped = !txType.SupportsBlobs() && IsWrappedCellAnnouncement(txType, announcementMask);
+            bool supportsBlobs = txType.SupportsBlobs() || wrapped;
             Hash256? blobHash = null;
             bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash);
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
                 blobHash = hash.ToHash256();
-                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask);
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask, wrapped);
                 if (!recorded
                     && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {
@@ -474,7 +483,9 @@ public class Eth72ProtocolHandler(
                 }
             }
 
-            bool shouldRequestTx = !_txPool.IsKnown(hash)
+            // A wrapped transaction's body comes only with its covering proof wrapper.
+            bool shouldRequestTx = !wrapped
+                && !_txPool.IsKnown(hash)
                 && _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired;
 
             if (shouldRequestTx
@@ -985,7 +996,7 @@ public class Eth72ProtocolHandler(
     private void OnNewPending(object? sender, TxEventArgs e)
     {
         Transaction tx = e.Transaction;
-        if (!tx.SupportsBlobs || tx.Hash is null)
+        if (!tx.CarriesBlobs || tx.Hash is null)
         {
             return;
         }
@@ -1733,7 +1744,8 @@ public class Eth72ProtocolHandler(
 
         if (!containsBlobTransaction)
         {
-            return BlobCellMask.Empty;
+            // A mask without a type-3 entry matters only for the wrapped cells of eth/73 frame transactions.
+            return message.CellMask.Length == BlobCellMask.FixedByteLength ? BlobCellMask.FromBytes(message.CellMask) : BlobCellMask.Empty;
         }
 
         if (message.CellMask.Length != BlobCellMask.FixedByteLength)
@@ -1958,7 +1970,7 @@ public class Eth72ProtocolHandler(
         for (int i = 0; i < count; i++)
         {
             Transaction tx = txs[i];
-            int announcementSize = GetAnnouncementSize(tx);
+            int announcementSize = GetAnnouncementSize(tx, AnnouncesCells(tx));
             if (announcementSize <= 0)
             {
                 continue;
@@ -1982,9 +1994,9 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private static int GetAnnouncementSize(Transaction tx)
+    private static int GetAnnouncementSize(Transaction tx, bool announcesCells)
     {
-        if (!tx.SupportsBlobs)
+        if (!announcesCells)
         {
             return tx.GetLength();
         }

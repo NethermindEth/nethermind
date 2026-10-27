@@ -25,15 +25,17 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// aggregate proof is dropped, direct witnesses are kept only if they re-validate, and pending transactions left without
 /// proof coverage leave the pool.
 /// </remarks>
+/// <remarks>A blob-carrying transaction arrives with its blob data elided and is handed to <c>blobAdmission</c>, which admits it
+/// once EIP-8070 cell retrieval establishes availability; its dependency coverage stays pinned until then.</remarks>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
-    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier)
+    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier,
+    IWrappedBlobTransactionAdmission? blobAdmission = null)
 {
     /// <summary>Encoded transaction bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the largest
     /// aggregate proof, a full dependency list and the list framing.</summary>
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes
         - Eip8288Constants.MaxDepsPerWrapper * (2 + Eip8288Constants.DependencyTripleLength) - 64;
 
-    private const string BlobsUnsupported = "Blob-carrying dependency transactions are not supported.";
     private const int MaxRememberedVerifications = 128;
     private readonly object _aggregationLock = new();
     private int _rotation;
@@ -164,10 +166,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Accepts an exclusively owned transport buffer without another encoded-body copy.</summary>
     /// <remarks>The transport must retain its charged buffer throughout the returned task and must not mutate it.
     /// Validation subscribers must treat the encoded body as read-only.</remarks>
-    internal Task<ProofWrapperAcceptance> AcceptOwnedDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
-        => AcceptDetailedCoreAsync(wrapper, false, cancellationToken);
+    /// <param name="source">The connection the wrapper came from, to which cell retrieval for its blob-carrying transactions is
+    /// first attributed.</param>
+    internal Task<ProofWrapperAcceptance> AcceptOwnedDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default, object? source = null)
+        => AcceptDetailedCoreAsync(wrapper, false, cancellationToken, source);
 
-    private async Task<ProofWrapperAcceptance> AcceptDetailedCoreAsync(byte[] wrapper, bool copyInput, CancellationToken cancellationToken)
+    private async Task<ProofWrapperAcceptance> AcceptDetailedCoreAsync(byte[] wrapper, bool copyInput, CancellationToken cancellationToken,
+        object? source = null)
     {
         IReleaseSpec? admissionSpec = TargetSpec;
         if (admissionSpec?.IsEip8288Enabled != true)
@@ -190,9 +195,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             foreach (Transaction transaction in decoded.Transactions)
             {
-                // EIP-8437 carries blob-carrying frame transactions with their blob data elided, for EIP-8070 cell retrieval,
-                // which this client does not implement for dependency-bearing transactions.
-                if (transaction.CarriesBlobs) return ProofWrapperAcceptance.Refused(BlobsUnsupported);
                 if (!Preflight(transaction, out string? frameError, admissionSpec))
                     return frameError is FrameTxValidation.AssertFrameNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
                         or FrameTxValidation.LegacyNonceNotAllowed
@@ -239,7 +241,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 try
                 {
-                    admission = SubmitProofTransactions(decoded.Transactions, cancellationToken, admittedDependencies);
+                    admission = SubmitProofTransactions(decoded.Transactions, cancellationToken, admittedDependencies, source);
                 }
                 finally
                 {
@@ -276,7 +278,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         _verifiedWrappers[hash] = error;
     }
 
-    private Result<Hash256[]> SubmitProofTransactions(IReadOnlyList<Transaction> transactions, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies)
+    private Result<Hash256[]> SubmitProofTransactions(IReadOnlyList<Transaction> transactions, CancellationToken cancellationToken,
+        List<FrameDependency> admittedDependencies, object? source)
     {
         Hash256[] hashes = new Hash256[transactions.Count];
         string? firstError = null;
@@ -293,11 +296,38 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // Admission is per transaction: a pool rejection, including EIP-8272 recent-root mempool rules, leaves the proof and
             // the other transactions intact.
-            AcceptTxResult result = txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = IsAwaitingAvailability(transaction)
+                ? AdmitAwaitingAvailability(transaction, source)
+                : txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
             else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
         }
         return firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError);
+    }
+
+    /// <summary>Whether a wrapped transaction carries blobs without their data, as EIP-8437 transports it, so its availability
+    /// is established through EIP-8070 cell retrieval rather than from the wrapper.</summary>
+    private static bool IsAwaitingAvailability(Transaction transaction) =>
+        transaction.CarriesBlobs && transaction.NetworkWrapper is ShardBlobNetworkWrapper { Blobs.Length: 0, Cells: null };
+
+    /// <summary>Pins the transaction's coverage, still inside this wrapper's admission, and hands it to cell retrieval.</summary>
+    private AcceptTxResult AdmitAwaitingAvailability(Transaction transaction, object? source)
+    {
+        if (blobAdmission is null) return AcceptTxResult.Invalid.WithMessage("Blob cell retrieval is unavailable.");
+        // A fresh owner per admission, so each pin is released exactly once whoever else pins the same transaction.
+        object owner = new();
+        if (!leanProofStore.PinPending(transaction, owner)) return AcceptTxResult.MissingDependencyProof;
+        return blobAdmission.Admit(transaction, source, new ProofPin(leanProofStore, transaction.Hash!.ValueHash256, owner));
+    }
+
+    private sealed class ProofPin(LeanProofStore store, ValueHash256 hash, object owner) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) store.UnpinPending(hash, owner);
+        }
     }
 
     /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
@@ -390,8 +420,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         HashSet<FrameDependency> covered = [];
         AggregationInput selectedInput = new();
         int transactionBytes = 0;
-        // Blob-carrying transactions are left out: their wrapped form elides blob data for EIP-8070 cell retrieval.
         List<Transaction> candidates = [.. txPool.GetPendingTransactions()];
+        AddBlobCandidates(candidates);
         candidates.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
         candidateCount = candidates.Count;
         int start = candidates.Count == 0 ? 0 : (int)((uint)_rotation % (uint)candidates.Count);
@@ -401,7 +431,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             cancellationToken.ThrowIfCancellationRequested();
             Transaction transaction = candidates[candidateIndex];
-            if (!transaction.SupportsFrames || transaction.CarriesBlobs) continue;
+            if (!transaction.SupportsFrames) continue;
             List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
             if (transactionDeps.Count == 0) continue;
             int encodedLength = Rlp.LengthOfSequence(TxDecoder.Instance.GetLength(transaction, MempoolWrapperDecoder.TransactionBehaviors));
@@ -495,6 +525,17 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             return Result<byte[]>.Fail(exception.Message);
         }
+    }
+
+    /// <summary>Adds the blob pool's dependency-bearing frame transactions in the elided network form EIP-8437 carries:
+    /// commitments and cell proofs without blob data, which peers retrieve as EIP-8070 cells.</summary>
+    private void AddBlobCandidates(List<Transaction> candidates)
+    {
+        foreach (Transaction[] senderTransactions in txPool.GetPendingLightBlobTransactionsBySender().Values)
+            foreach (Transaction light in senderTransactions)
+                if (light.SupportsFrames && light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
+                    && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))
+                    candidates.Add(elided);
     }
 
     private static bool HasOverlap(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> selected)

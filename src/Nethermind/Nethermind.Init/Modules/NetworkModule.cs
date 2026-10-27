@@ -77,6 +77,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
+            .Bind<IWrappedBlobTransactionAdmission, Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry>()
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()

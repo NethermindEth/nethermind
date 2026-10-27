@@ -15,9 +15,7 @@ public enum ProofWrapperAcceptanceStatus
     Accepted,
     PoolRejected,
     Busy,
-    LocalFailure,
-    /// <summary>A wrapper this client does not support, such as one carrying blobs: refused locally, never invalid.</summary>
-    Refused
+    LocalFailure
 }
 
 /// <summary>A valid proof can cover transactions rejected by local pool policy.</summary>
@@ -32,5 +30,4 @@ public readonly record struct ProofWrapperAcceptance(ProofWrapperAcceptanceStatu
         new(ProofWrapperAcceptanceStatus.Invalid, Result<Hash256[]>.Fail(error)) { Verifier = verifier };
     public static ProofWrapperAcceptance Malformed(string error) => new(ProofWrapperAcceptanceStatus.Malformed, Result<Hash256[]>.Fail(error));
     public static ProofWrapperAcceptance LocalFailure(string error) => new(ProofWrapperAcceptanceStatus.LocalFailure, Result<Hash256[]>.Fail(error));
-    public static ProofWrapperAcceptance Refused(string error) => new(ProofWrapperAcceptanceStatus.Refused, Result<Hash256[]>.Fail(error));
 }

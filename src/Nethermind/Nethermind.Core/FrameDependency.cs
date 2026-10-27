@@ -56,6 +56,7 @@ public static class Eip8288Dependencies
     /// a fully validated covering wrapper, and an inclusion list obligates them only under a verified covering proof.</remarks>
     public static bool IsDependencyBearing(Transaction transaction)
     {
+        if (transaction.PersistedDependencyBearing is { } persisted) return persisted;
         TxFrame[]? frames = transaction.Frames;
         if (frames is null) return false;
         foreach (TxFrame frame in frames)

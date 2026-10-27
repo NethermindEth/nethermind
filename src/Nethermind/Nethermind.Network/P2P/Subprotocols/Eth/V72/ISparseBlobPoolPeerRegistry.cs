@@ -8,9 +8,10 @@ using Nethermind.TxPool;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
 /// <summary>
-/// Coordinates node-wide sparse blob announcements, requests, admission, and serving budgets across eth/72 peers.
+/// Coordinates node-wide sparse blob announcements, requests, admission, and serving budgets across eth/72 peers, including
+/// the cells of blob-carrying dependency-bearing transactions from validated eth/73 proof wrappers.
 /// </summary>
-public interface ISparseBlobPoolPeerRegistry
+public interface ISparseBlobPoolPeerRegistry : IWrappedBlobTransactionAdmission
 {
     /// <summary>Registers an active eth/72 peer.</summary>
     void AddPeer(ISparseBlobPoolPeer peer);
@@ -19,8 +20,10 @@ public interface ISparseBlobPoolPeerRegistry
     void RemovePeer(ISparseBlobPoolPeer peer);
 
     /// <summary>Records an announcement when the peer and process admission budgets allow it.</summary>
+    /// <param name="requiresWrapper">Whether the cells belong to a dependency-bearing frame transaction, which are not requested
+    /// until its covering proof wrapper validated (EIP-8437).</param>
     /// <returns><c>true</c> when the announcement is tracked; otherwise <c>false</c>.</returns>
-    bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask);
+    bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, bool requiresWrapper = false);
 
     /// <summary>Returns the node-wide provider or sampler request mask for an announcement.</summary>
     BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -196,6 +197,110 @@ public class Eth73ProtocolHandlerTests
             Assert.That(Delivered<GetProofWrappersMessage>(), Is.Empty);
             Assert.That(Delivered<ProofWrappersMessage>(), Is.Empty);
             _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    private void AnnounceCells(Transaction transaction, BlobCellMask mask)
+    {
+        using NewPooledTransactionHashesMessage72 message = new([(byte)transaction.Type], [transaction.GetElidedNetworkEncodingSize()],
+            [transaction.Hash!.ValueHash256], mask.ToBytes());
+        Handle(message, Eth72MessageCode.NewPooledTransactionHashes);
+    }
+
+    private void Maintain() => ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow.AddSeconds(5));
+
+    // EIP-8437: a blob-carrying dependency-bearing transaction's cells may be announced before its covering wrapper reaches this
+    // node. Its body is not requested through GetPooledTransactions and its cells are not fetched until the wrapper validates;
+    // then EIP-8070 cell retrieval completes and the pool admits it.
+    [Test]
+    public async Task Wrapped_blob_transaction_cells_are_fetched_only_after_its_wrapper_validates()
+    {
+        EnableFrameTransactions();
+        _node.BlobAdmission = _registry;
+        _node.Pool.ValidateTxForBlobSampling(Arg.Any<Transaction>()).Returns(AcceptTxResult.Accepted);
+        // Cells for a transaction the pool does not hold yet go to its admission, as in the real pool.
+        _node.Pool.MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>()).Returns(BlobCellMergeResult.TransactionUnavailable);
+        Transaction blob = BlobFrameTransaction(1, 2);
+        byte[] wrapper = Wrapper(64, blob);
+
+        AnnounceCells(blob, BlobCellMask.Full);
+        Maintain();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Delivered<GetPooledTransactionsMessage66>(), Is.Empty, "the body comes only inside its wrapper");
+            Assert.That(Delivered<GetCellsMessage72>(), Is.Empty, "no cells before the covering wrapper validated");
+            Assert.That(_registry.IsAwaitingCells(blob.Hash!), Is.False);
+        }
+
+        using NewProofWrapperHashesMessage announce = new([Describe(wrapper)]);
+        Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
+        using ProofWrappersMessage response = new(Delivered<GetProofWrappersMessage>().Single().RequestId, [Entry(wrapper)]);
+        Handle(response, Eth73MessageCode.ProofWrappers);
+        await WrapperTestNode.Until(() => _registry.IsAwaitingCells(blob.Hash!));
+        Assert.That(_node.Transport.IsStored(Describe(wrapper).Hash), Is.True, "the wrapper circulates before availability is established");
+        await WrapperTestNode.Until(() =>
+        {
+            Maintain();
+            return Delivered<GetCellsMessage72>().Length != 0;
+        });
+
+        GetCellsMessage72 request = Delivered<GetCellsMessage72>().Single();
+        BlobCellMask requested = BlobCellMask.FromBytes(request.CellMask);
+        Assert.That(request.Hashes, Is.EqualTo(new[] { blob.Hash!.ValueHash256 }));
+        byte[][] cells = [.. Enumerable.Range(0, 2 * requested.Count).Select(static _ => new byte[CkzgLib.Ckzg.BytesPerCell])];
+        using CellsMessage72 cellsResponse = new(request.RequestId, [blob.Hash!.ValueHash256], [cells], request.CellMask);
+        Handle(cellsResponse, Eth72MessageCode.Cells);
+        await WrapperTestNode.Until(() => { lock (_node.Pending) return _node.Pending.Any(t => t.Hash == blob.Hash); });
+
+        Transaction admitted;
+        lock (_node.Pending) admitted = _node.Pending.Single(t => t.Hash == blob.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ShardBlobNetworkWrapper)admitted.NetworkWrapper!).CellMask, Is.EqualTo(requested));
+            Assert.That(_registry.IsAwaitingCells(blob.Hash!), Is.False, "the pin passes to the pool on admission");
+            Assert.That(Delivered<GetPooledTransactionsMessage66>(), Is.Empty);
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    // Admission of a dependency-bearing blob transaction outside its validated wrapper is refused.
+    [Test]
+    public void Wrapped_blob_transaction_is_not_admitted_without_its_wrapper()
+    {
+        _node.Pool.ValidateTxForBlobSampling(Arg.Any<Transaction>()).Returns(AcceptTxResult.Accepted);
+        Transaction blob = BlobFrameTransaction(1);
+        Assert.That(_registry.RecordTransaction(_handler, blob), Is.EqualTo(AcceptTxResult.MissingDependencyProof));
+        _node.Pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+    }
+
+    // EIP-8437: once pooled, after wrapper validation and EIP-8070's checks, a blob-carrying dependency-bearing transaction's
+    // cells are announced through NewPooledTransactionHashes at its elided size; its body never travels in Transactions.
+    [Test]
+    public void Pooled_wrapped_blob_transaction_announces_its_cells([Values] bool sendFullTx)
+    {
+        Transaction blob = BlobFrameTransaction(1);
+        ShardBlobNetworkWrapper elided = (ShardBlobNetworkWrapper)blob.NetworkWrapper!;
+        BlobCellMask custody = new(UInt128.One | UInt128.One << 5);
+        blob.NetworkWrapper = elided with { CellMask = custody, Cells = [new byte[CkzgLib.Ckzg.BytesPerCell], new byte[CkzgLib.Ckzg.BytesPerCell]] };
+        LightTransaction pooled = new(blob);
+
+        _handler.SendNewTransactions([pooled], sendFullTx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Delivered<TransactionsMessage>(), Is.Empty);
+            NewPooledTransactionHashesMessage72[] announcements = Delivered<NewPooledTransactionHashesMessage72>();
+            if (sendFullTx) Assert.That(announcements, Is.Empty);
+            else
+            {
+                NewPooledTransactionHashesMessage72 announcement = announcements.Single();
+                Assert.That(announcement.Hashes, Is.EqualTo(new[] { blob.Hash!.ValueHash256 }));
+                Assert.That(announcement.Types, Is.EqualTo(new[] { (byte)TxType.FrameTx }));
+                Assert.That(BlobCellMask.FromBytes(announcement.CellMask), Is.EqualTo(custody));
+                blob.NetworkWrapper = elided;
+                blob.ClearLengthCache();
+                Assert.That(announcement.Sizes, Is.EqualTo(new[] { blob.GetLength() }), "the elided network size");
+            }
         }
     }
 }
