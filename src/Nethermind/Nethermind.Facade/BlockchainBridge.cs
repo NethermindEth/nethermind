@@ -725,7 +725,7 @@ namespace Nethermind.Facade
             return filter.Id;
         }
 
-        public void UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
+        public bool UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
         public ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId) => filterManager.PollLogs(filterId);
         public ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId) => filterManager.PollBlockHashes(filterId);
 
