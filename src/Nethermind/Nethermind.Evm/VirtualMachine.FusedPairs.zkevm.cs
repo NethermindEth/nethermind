@@ -1459,7 +1459,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void ApplyToPushedByte(ref ulong end, ulong pushed)
             {
                 ref ulong word = ref Unsafe.Subtract(ref end, LimbsPerWord);
-                if (typeof(TOperation) == typeof(AddOperation))
+                if (typeof(TOperation) == typeof(AddOperation) && IntPtr.Size == sizeof(uint))
+                {
+                    // A 32-bit guest adds to the low word alone: the 64-bit limb sum and compare cost three times as much.
+                    ref uint low = ref Unsafe.As<ulong, uint>(ref word);
+                    uint sum = low + (uint)pushed;
+                    low = sum;
+                    for (int i = 1; sum < (uint)pushed && i < 2 * LimbsPerWord; i++)
+                        sum = ++Unsafe.Add(ref low, i) == 0 ? 0 : uint.MaxValue;
+                }
+                else if (typeof(TOperation) == typeof(AddOperation))
                 {
                     ulong sum = word + pushed;
                     word = sum;
