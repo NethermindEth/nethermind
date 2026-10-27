@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -40,6 +41,16 @@ public static partial class ZkEvmBitOperations
     internal static ulong ReadUInt64BigEndian(ref byte source)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.
+            uint high = ((uint)source << 24) | ((uint)Unsafe.Add(ref source, 1) << 16) |
+                ((uint)Unsafe.Add(ref source, 2) << 8) | Unsafe.Add(ref source, 3);
+            uint low = ((uint)Unsafe.Add(ref source, 4) << 24) | ((uint)Unsafe.Add(ref source, 5) << 16) |
+                ((uint)Unsafe.Add(ref source, 6) << 8) | Unsafe.Add(ref source, 7);
+            return ((ulong)high << 32) | low;
+        }
+
         return ((ulong)source << 56) | ((ulong)Unsafe.Add(ref source, 1) << 48) |
             ((ulong)Unsafe.Add(ref source, 2) << 40) | ((ulong)Unsafe.Add(ref source, 3) << 32) |
             ((ulong)Unsafe.Add(ref source, 4) << 24) | ((ulong)Unsafe.Add(ref source, 5) << 16) |
@@ -54,6 +65,21 @@ public static partial class ZkEvmBitOperations
         if (HasByteReverse)
         {
             Unsafe.WriteUnaligned(ref destination, BinaryPrimitives.ReverseEndianness(value));
+            return;
+        }
+
+        if (IntPtr.Size == sizeof(uint))
+        {
+            uint high = (uint)(value >> 32);
+            uint low = (uint)value;
+            destination = (byte)(high >> 24);
+            Unsafe.Add(ref destination, 1) = (byte)(high >> 16);
+            Unsafe.Add(ref destination, 2) = (byte)(high >> 8);
+            Unsafe.Add(ref destination, 3) = (byte)high;
+            Unsafe.Add(ref destination, 4) = (byte)(low >> 24);
+            Unsafe.Add(ref destination, 5) = (byte)(low >> 16);
+            Unsafe.Add(ref destination, 6) = (byte)(low >> 8);
+            Unsafe.Add(ref destination, 7) = (byte)low;
             return;
         }
 

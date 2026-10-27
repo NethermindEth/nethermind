@@ -140,9 +140,17 @@ public sealed partial class KeccakHash
 
     /// <summary>Absorbs and pads the <paramref name="length"/> bytes at <paramref name="data"/> into a state of
     /// uninitialized lanes, leaving their digest in its first four lanes.</summary>
+    /// <remarks>On Airbender the whole sponge runs natively, absorbing straight into the 256-byte aligned state its
+    /// Keccak-f delegation works on: the copies of the state in and out around every permutation go away.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void Sponge(ref ulong lane, byte* data, nuint length)
     {
+        if (AirbenderFlag.IsActive)
+        {
+            airbender_keccak256(data, length, (byte*)Unsafe.AsPointer(ref lane));
+            return;
+        }
+
         if (length == Hash532InputLength)
         {
             // A full branch node, the most common input of both the witness load and the trie commit:
@@ -901,6 +909,10 @@ public sealed partial class KeccakHash
         ulong word = ReadLane(data, index);
         Unsafe.Add(ref lane, index) = intoZeroState ? word : Unsafe.Add(ref lane, index) ^ word;
     }
+
+    // Named as its entry point in libairbender; only code behind AirbenderFlag reaches it.
+    [DllImport("*")]
+    private static extern unsafe void airbender_keccak256(byte* data, nuint length, byte* output);
 
     /// <summary>Lane <paramref name="index"/> of <paramref name="data"/>, which need not be aligned.</summary>
     /// <remarks>Where the JIT tests alignment (<see cref="StrictAlignmentFlag"/>), a plain load: the JIT drops the test for a

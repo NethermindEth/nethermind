@@ -253,9 +253,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             : (nuint)(((bytes & 0xFF) << 8) | ((bytes >> 8) & 0xFF));
 
         /// <summary>The big-endian 16-bit value in the two bytes at <paramref name="bytes"/>, which need not be aligned.</summary>
-        /// <remarks>Where <see cref="StrictAlignmentFlag"/> is on, the bytes are read one at a time, already in big-endian order: half the time they are misaligned, and there the alignment-tested load would assemble them from bytes anyway.</remarks>
+        /// <remarks>Where <see cref="StrictAlignmentFlag"/> is on, or on Airbender, which also rejects misaligned accesses, the bytes are read one at a time, already in big-endian order: half the time they are misaligned, and there the alignment-tested load would assemble them from bytes anyway.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nuint ReadBigEndianUInt16(ref byte bytes) => StrictAlignmentFlag.IsActive
+        private static nuint ReadBigEndianUInt16(ref byte bytes) => StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive
             ? ((nuint)bytes << 8) | Unsafe.Add(ref bytes, 1)
             : ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref bytes));
 
@@ -756,7 +756,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong bits = Unsafe.Add(ref end, -4);
                 if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1) | (bits >> 8)) == 0)
                 {
-                    ShiftRight(ref Unsafe.Add(ref end, -8), (int)bits, arithmetic: true);
+                    // The shift's slot is consumed.
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -4)), (int)bits);
+                    else
+                        ShiftRight(ref Unsafe.Add(ref end, -8), (int)bits, arithmetic: true);
                     return;
                 }
 
@@ -1994,6 +1998,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The product replaces the second word.
                 ref ulong product = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
                 ref ulong top = ref Unsafe.Add(ref product, LimbsPerWord);
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.MultiplyLow(Unsafe.AsPointer(ref product), Unsafe.AsPointer(ref top));
+                    head--;
+                    sp = ref Moved(ref sp, -1);
+                    ip = ref Unsafe.Add(ref ip, 1);
+                    nint following = AlignedTable(handlers)[PairAt(ref ip)];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
+                }
+
                 ulong upperHalves = Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3) | Unsafe.Add(ref product, 2) | Unsafe.Add(ref product, 3);
                 if ((Unsafe.Add(ref top, 1) | Unsafe.Add(ref product, 1) | upperHalves) != 0)
                 {

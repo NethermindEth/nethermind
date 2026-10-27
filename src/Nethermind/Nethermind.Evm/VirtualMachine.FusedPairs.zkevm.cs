@@ -100,7 +100,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static nint PairAt(ref byte ip) =>
-            StrictAlignmentFlag.IsActive ? ip | (Unsafe.Add(ref ip, 1) << 8) : Unsafe.ReadUnaligned<ushort>(ref ip);
+            StrictAlignmentFlag.IsActive || AirbenderFlag.IsActive ? ip | (Unsafe.Add(ref ip, 1) << 8) : Unsafe.ReadUnaligned<ushort>(ref ip);
 
         /// <summary>Installs the fused handlers of the pairs that run often enough in mainnet blocks to pay for one.</summary>
         /// <param name="handlers">The 256-entry table the paired one expands.</param>
@@ -1221,7 +1221,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             /// <remarks>A pushed byte is a shift below 256.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void ApplyToPushedByte(ref ulong end, ulong pushed) => ShiftLeft(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            public static void ApplyToPushedByte(ref ulong end, ulong pushed)
+            {
+                // The slot the PUSH1 would have taken is free.
+                if (AirbenderFlag.IsActive)
+                    AirbenderArithmetic.ShiftLeft(Unsafe.AsPointer(ref Unsafe.Subtract(ref end, LimbsPerWord)), Unsafe.AsPointer(ref end), (int)pushed);
+                else
+                    ShiftLeft(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            }
 
             public static nint Handler => Entry(&ExecuteShl);
 
@@ -1232,7 +1239,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong value = ref Unsafe.Subtract(ref shift, LimbsPerWord);
                 ulong bits = shift;
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
-                    ShiftLeft(ref value, (int)bits);
+                {
+                    // The shift's slot is consumed.
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftLeft(Unsafe.AsPointer(ref value), Unsafe.AsPointer(ref shift), (int)bits);
+                    else
+                        ShiftLeft(ref value, (int)bits);
+                }
                 else
                     SetWord(ref value, 0);
             }
@@ -1248,7 +1261,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             /// <remarks>A pushed byte is a shift below 256.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static void ApplyToPushedByte(ref ulong end, ulong pushed) => ShiftRight(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            public static void ApplyToPushedByte(ref ulong end, ulong pushed)
+            {
+                // The slot the PUSH1 would have taken is free.
+                if (AirbenderFlag.IsActive)
+                    AirbenderArithmetic.ShiftRight(Unsafe.AsPointer(ref Unsafe.Subtract(ref end, LimbsPerWord)), Unsafe.AsPointer(ref end), (int)pushed);
+                else
+                    ShiftRight(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
+            }
 
             public static nint Handler => Entry(&ExecuteShr);
 
@@ -1259,7 +1279,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong value = ref Unsafe.Subtract(ref shift, LimbsPerWord);
                 ulong bits = shift;
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
-                    ShiftRight(ref value, (int)bits);
+                {
+                    // The shift's slot is consumed.
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftRight(Unsafe.AsPointer(ref value), Unsafe.AsPointer(ref shift), (int)bits);
+                    else
+                        ShiftRight(ref value, (int)bits);
+                }
                 else
                     SetWord(ref value, 0);
             }
@@ -1415,7 +1441,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 else if (typeof(TOperation) == typeof(ArithmeticShiftRightOperation))
                 {
-                    ShiftRight(ref word, (int)pushed, arithmetic: true);
+                    // The slot the PUSH1 would have taken is free.
+                    if (AirbenderFlag.IsActive)
+                        AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref word), Unsafe.AsPointer(ref end), (int)pushed);
+                    else
+                        ShiftRight(ref word, (int)pushed, arithmetic: true);
                 }
             }
         }
