@@ -297,6 +297,40 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void Lookup_compares_only_items_within_count()
+    {
+        using ArrayPoolList<CountingItem> list = new(1024);
+        list.Add(new CountingItem(1, null));
+        EqualsCounter counter = new();
+        CountingItem missing = new(2, counter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Contains(missing), Is.False);
+            Assert.That(list.IndexOf(missing), Is.EqualTo(-1));
+            Assert.That(list.Remove(missing), Is.False);
+            Assert.That(counter.Calls, Is.EqualTo(3 * list.Count));
+        }
+    }
+
+    private sealed class EqualsCounter
+    {
+        public int Calls;
+    }
+
+    /// <summary>Counts the comparisons made against the item searched for.</summary>
+    private readonly record struct CountingItem(int Value, EqualsCounter? Counter)
+    {
+        public bool Equals(CountingItem other)
+        {
+            if (other.Counter is not null) other.Counter.Calls++;
+            return Value == other.Value;
+        }
+
+        public override int GetHashCode() => Value;
+    }
+
+    [Test]
     public void Should_not_throw_on_invalid_type_lookup([Values("null", null)] object? value)
     {
         using ArrayPoolList<int> arrayPoolList = new(1024);
