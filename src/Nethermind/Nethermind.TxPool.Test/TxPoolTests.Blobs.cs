@@ -1699,7 +1699,7 @@ namespace Nethermind.TxPool.Test
 
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(txs).TestObject;
 
-            await RaiseBlockAddedToMainAndWaitForTransactions(txs.Length, block);
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
@@ -5817,8 +5817,9 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx must clear the same blob-pool fee floor as a type-3 tx, so one priced
-        // below the current blob base fee is rejected as FeeTooLow rather than admitted via the SupportsBlobs gate.
+        // EIP-8141: a blob-carrying frame tx must clear the same blob-pool fee floor as a type-3 tx, so one whose max_fee
+        // cannot cover its blob gas at the current blob base fee is rejected as FeeTooLow rather than admitted via the
+        // SupportsBlobs gate.
         [Test]
         public void Blob_carrying_frame_tx_below_current_blob_base_fee_is_rejected()
         {
@@ -5832,7 +5833,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(config: txPoolConfig, specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, maxFeePerBlobGas: 99, withSidecar: true);
+            // Short of the blob gas alone at the current blob base fee, so no execution or state gas could be covered either.
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, maxFee: (UInt256)Eip4844Constants.GasPerBlob * 100 - 1, withSidecar: true);
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FeeTooLow));
         }
@@ -6017,8 +6019,7 @@ namespace Nethermind.TxPool.Test
             // the stub would never be consulted and neither arm would exercise revalidation.
             _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF);
-            EnsureSenderBalance(TestItem.AddressA, (UInt256)tx.GasLimit * tx.MaxFeePerGas
-                + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
+            EnsureSenderBalance(TestItem.AddressA, tx.MaxFee);
             EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -6305,8 +6306,7 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction first = SignedBlobFrameTx(deadline: null);
-            EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
-                + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
+            EnsureSenderBalance(TestItem.AddressA, first.MaxFee);
 
             // The gauge, not a second submission: the payer here is the sender, whose balance already covers
             // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
@@ -6397,8 +6397,7 @@ namespace Nethermind.TxPool.Test
             paymaster ??= TestItem.AddressF;
             _stateProvider.InsertCode([0x60, 0x00], paymaster);
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: paymaster, sender: sender);
-            EnsureSenderBalance(sender.Address, (UInt256)tx.GasLimit * tx.MaxFeePerGas
-                + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
+            EnsureSenderBalance(sender.Address, tx.MaxFee);
             return tx;
         }
 
@@ -6642,7 +6641,7 @@ namespace Nethermind.TxPool.Test
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null, bool withRecentRoot = false)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFee = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null, bool withRecentRoot = false)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -6711,8 +6710,9 @@ namespace Nethermind.TxPool.Test
                 Nonce = nonce,
                 GasLimit = 1_000_000,
                 GasPrice = 1,
+                // 1 gwei per gas and per blob gas.
+                MaxFee = maxFee ?? (UInt256)(1_000_000 + Eip4844Constants.GasPerBlob * (ulong)blobCount) * 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
-                MaxFeePerBlobGas = blobCount > 0 ? (maxFeePerBlobGas ?? 1.GWei) : null,
                 Frames = [.. frames],
                 FrameSignatures = [],
                 BlobVersionedHashes = versionedHashes,

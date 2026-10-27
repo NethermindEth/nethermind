@@ -861,7 +861,6 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
             NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
         };
 
@@ -879,7 +878,6 @@ public class TxBroadcasterTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
         };
         Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
 
@@ -993,9 +991,15 @@ public class TxBroadcasterTests
             }
         });
 
-        Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
-
-        cts.Cancel();
+        try
+        {
+            Parallel.For(0, txCount, i => _broadcaster.Broadcast(transactions[i], isPersistent: false));
+        }
+        finally
+        {
+            // A failed broadcast must not leave the ticker spinning a core for the rest of the run.
+            cts.Cancel();
+        }
         await ticker;
         // Final flush of whatever was still accumulated after the adders finished.
         timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
@@ -1080,9 +1084,9 @@ public class TxBroadcasterTests
             Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
             FrameSignatures = [],
             BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
-            MaxFeePerBlobGas = carriesBlobs ? 1 : null,
             GasLimit = 100_000,
             GasPrice = 1.GWei,
+            MaxFee = (UInt256)100_000 * 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
         };
         tx.Hash = tx.CalculateHash();

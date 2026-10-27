@@ -71,6 +71,7 @@ public static class T8nValidator
             if (env.CurrentDifficulty is not null && !env.CurrentDifficulty.Value.IsZero)
                 throw new T8nException("post-merge difficulty must be zero (or omitted) in env",
                     T8nErrorCodes.ErrorConfig);
+            env.CurrentDifficulty = null;
             return;
         }
 

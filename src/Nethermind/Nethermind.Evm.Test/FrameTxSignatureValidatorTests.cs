@@ -49,7 +49,6 @@ public class FrameTxSignatureValidatorTests
     public void Validate_Secp256k1BlobCarryingTx_ReturnsTrueAndResolvesSigner()
     {
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 3;
         tx.BlobVersionedHashes = [BlobVersionedHash(0x01), BlobVersionedHash(0x02)];
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
 
@@ -62,7 +61,6 @@ public class FrameTxSignatureValidatorTests
     {
         // Mutating a blob field after signing must invalidate the signature, proving the preimage covers it.
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 3;
         tx.BlobVersionedHashes = [BlobVersionedHash(0x01)];
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
 
@@ -380,7 +378,6 @@ public class FrameTxSignatureValidatorTests
     public void RecoverSecp256k1Signers_TxChangedAfterRecovery_StaleSignerRejected()
     {
         Transaction tx = CreateFrameTx();
-        tx.MaxFeePerBlobGas = 3;
         tx.BlobVersionedHashes = [BlobVersionedHash(0x01)];
         tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
         FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
@@ -523,6 +520,6 @@ public class FrameTxSignatureValidatorTests
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 100,
+            MaxFee = 100,
         };
 }

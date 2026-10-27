@@ -57,6 +57,9 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
 
+    [ConfigItem(Description = "Whether to mask IP addresses, enode URLs and ENR records in logs. Loopback and unspecified addresses are not masked.", DefaultValue = "false")]
+    bool MaskIpsInLogs { get; set; }
+
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
 
@@ -65,9 +68,6 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
-
-    [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
-    ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }

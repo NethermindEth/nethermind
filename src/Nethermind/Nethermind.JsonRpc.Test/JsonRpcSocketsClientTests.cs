@@ -124,10 +124,14 @@ public class JsonRpcSocketsClientTests
         RecordingWebSocket socket = new() { BlockEndOfMessage = true };
         using WebSocketMessageStream stream = new(socket, LimboLogs.Instance);
         using SocketSendLock sendLock = new();
-        using CancellationTokenSource request = new(TimeSpan.FromMilliseconds(100));
+        using CancellationTokenSource request = new();
 
-        await Assert.CatchAsync<OperationCanceledException>(async () =>
-            await WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batchItems, static () => "0x1", request.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        // Cancelled once the end-of-message send blocks: a timer can fire before the write has taken the lock.
+        Task write = WriteSocketResponseAsync(stream, RpcEndpoint.Ws, sendLock, batchItems, static () => "0x1", request.Token).AsTask();
+        await socket.EndOfMessageEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await request.CancelAsync();
+
+        await Assert.CatchAsync<OperationCanceledException>(async () => await write.WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.That(sendLock.IsFaulted, Is.True, "a cancelled send may have left part of the message on the connection");
     }
 
@@ -728,6 +732,7 @@ public class JsonRpcSocketsClientTests
     {
         public List<(byte[] Payload, bool EndOfMessage)> Frames { get; } = [];
         public bool BlockEndOfMessage { get; init; }
+        public TaskCompletionSource EndOfMessageEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public override WebSocketCloseStatus? CloseStatus => null;
         public override string? CloseStatusDescription => null;
@@ -736,7 +741,11 @@ public class JsonRpcSocketsClientTests
 
         public override async Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
         {
-            if (endOfMessage && BlockEndOfMessage) await Task.Delay(Timeout.Infinite, cancellationToken);
+            if (endOfMessage && BlockEndOfMessage)
+            {
+                EndOfMessageEntered.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
             Frames.Add((buffer.ToArray(), endOfMessage));
         }
 
@@ -907,9 +916,22 @@ public class JsonRpcSocketsClientTests
             }
 
             Assert.That(() => concurrentCall, Is.EqualTo(concurrencyLevel).After(10000, 10));
-            completeSource.SetResult();
 
-            await ShutdownAndWait(pair.SendSocket, receiver);
+            // A client can close its send side after the last request and still expect every response.
+            pair.SendSocket.Shutdown(SocketShutdown.Send);
+            completeSource.SetResult();
+            await receiver;
+
+            int responses = 0;
+            byte[] buffer = new byte[1024];
+            while (responses < concurrencyLevel)
+            {
+                int read = await pair.SendSocket.ReceiveAsync(buffer, pair.Cts.Token);
+                if (read == 0) break;
+                responses += buffer.AsSpan(0, read).Count((byte)'\n');
+            }
+
+            Assert.That(responses, Is.EqualTo(concurrencyLevel));
         }
 
         [Test]
