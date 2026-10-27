@@ -7,12 +7,14 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -260,8 +262,8 @@ public partial class EngineModuleTests
         source.ReceivedWithAnyArgs(scenario == "valid" ? 1 : 0).Set(default!, default!, default);
     }
 
-    // EIPs#12475: engine_getInclusionListV2 returns the list's transactions with its recursiveStark. The local list leaves out
-    // frame transactions, so its proof is empty: "0x" with no proofDeps.
+    // EIPs#12475: engine_getInclusionListV2 returns the list's transactions with its recursiveStark. Without a dependency-bearing
+    // pool transaction the proof is empty: "0x" with no proofDeps.
     [Test]
     public async Task GetInclusionListV2_returns_transactions_with_an_empty_proof()
     {
@@ -274,6 +276,107 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, "engine_getInclusionListV2");
 
         Assert.That(response, Does.Contain($$$"""{"transactions":["{{{TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true)}}}"],"recursiveStark":{"starkProof":"0x","proofDeps":[]}}"""));
+    }
+
+    // EIPs#12475 end to end: a dependency-bearing pool transaction admitted with a verified mode-1 wrapper is listed under that
+    // wrapper's proof, which then obligates it. The block built with the list includes it under a proof covering its dependency,
+    // and a sibling block omitting it fails the list. Tampering with the signed proof leaves the list no dependency-bearing
+    // obligation, so the same omission satisfies it.
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task GetInclusionListV2_lists_dependency_bearing_transactions_under_a_held_wrapper_proof(bool validListProof)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new DepsHashProofVerifier()));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 parent = chain.BlockTree.HeadHash!;
+        ExecutionPayloadV3 omitting = await BuildPayload(chain, parent, []);
+
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("il-dependency"), default);
+        Transaction transaction = ExecutableDependencyTransaction(chain.SpecProvider.ChainId, dependency);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([dependency]);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [transaction],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark(depsHash.ToByteArray(), new Hash256(depsHash))
+        }).Bytes;
+        ProofWrapperAcceptance accepted = await chain.Container.Resolve<ProofWrapperService>().AcceptDetailedAsync(wrapper);
+        Assert.That(accepted.Result.IsSuccess, Is.True, accepted.Result.Error);
+
+        InclusionListV1 list;
+        using (ResultWrapper<GetInclusionListV2Result> listed = await rpc.engine_getInclusionListV2(parent))
+        {
+            Assert.That(listed.Result.ResultType, Is.EqualTo(ResultType.Success), listed.Result.Error);
+            list = new InclusionListV1
+            {
+                Transactions = [.. listed.Data.Transactions.Select(static bytes => bytes.AsSpan().ToArray())],
+                RecursiveStark = listed.Data.RecursiveStark
+            };
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Transactions, Is.EqualTo(new[] { TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes }));
+            Assert.That(list.RecursiveStark!.StarkProof, Is.EqualTo(depsHash.ToByteArray()), "the wrapper's verified proof is reused");
+            Assert.That(list.RecursiveStark.ProofDeps, Is.EqualTo(new[] { Eip8288Dependencies.Serialize([dependency]) }));
+        }
+        if (!validListProof) list.RecursiveStark = new RecursiveStarkV1 { StarkProof = [0xee], ProofDeps = list.RecursiveStark.ProofDeps };
+
+        ExecutionPayloadV3 including = await BuildPayload(chain, parent, [list], minTransactions: 1);
+        ResultWrapper<PayloadStatusV2> includingStatus = await rpc.engine_newPayloadV7((ExecutionPayloadV4)including, [], Keccak.Zero, [], [list]);
+        ResultWrapper<PayloadStatusV2> omittingStatus = await rpc.engine_newPayloadV7((ExecutionPayloadV4)omitting, [], Keccak.Zero, [], [list]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(including.Transactions, Is.EqualTo(list.Transactions));
+            Assert.That(including.StarkProof, Is.EqualTo(depsHash.ToByteArray()), "the block's proof covers the listed transaction's dependency");
+            Assert.That(includingStatus.Data.Status, Is.EqualTo(PayloadStatus.Valid), includingStatus.Result.Error);
+            Assert.That(includingStatus.Data.InclusionListSatisfied, Is.True);
+            Assert.That(omitting.Transactions, Is.Empty);
+            Assert.That(omittingStatus.Data.Status, Is.EqualTo(PayloadStatus.Valid), omittingStatus.Result.Error);
+            Assert.That(omittingStatus.Data.InclusionListSatisfied, Is.EqualTo(!validListProof),
+                validListProof ? "a verified covering proof obligates the listed transaction" : "an invalid proof obligates no dependency-bearing entry");
+        }
+    }
+
+    // A held proof that does not verify under the target fork is never attached, so the dependency-bearing transaction it would
+    // cover stays out of the list and the proof is empty.
+    [Test]
+    public async Task GetInclusionListV2_leaves_out_dependency_bearing_transactions_without_a_verified_held_proof()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new DepsHashProofVerifier()));
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("il-unproven"), default);
+        Transaction transaction = ExecutableDependencyTransaction(chain.SpecProvider.ChainId, dependency);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [transaction],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
+        }).Bytes;
+        Assert.That((await chain.Container.Resolve<ProofWrapperService>().AcceptDetailedAsync(wrapper)).Result.IsSuccess, Is.True);
+        chain.Container.Resolve<LeanProofStore>().AddCachedRecursive([dependency], [0xee]);
+
+        using ResultWrapper<GetInclusionListV2Result> listed = await chain.EngineRpcModule.engine_getInclusionListV2();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(listed.Data.Transactions, Is.Empty);
+            Assert.That(listed.Data.RecursiveStark.StarkProof, Is.Empty);
+            Assert.That(listed.Data.RecursiveStark.ProofDeps, Is.Empty);
+        }
+    }
+
+    private async Task<ExecutionPayloadV3> BuildPayload(MergeTestBlockchain chain, Hash256 parent, InclusionListV1[] lists, int minTransactions = 0)
+    {
+        Task improved = chain.WaitForImprovedBlock(parent, minTransactions);
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await chain.EngineRpcModule.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent),
+            BuildPerListPayloadAttributes(lists));
+        Assert.That(build.Result.ResultType, Is.EqualTo(ResultType.Success), build.Result.Error);
+        await improved;
+        return (await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!.ExecutionPayload;
     }
 
     [Test]
@@ -333,6 +436,43 @@ public partial class EngineModuleTests
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei
         };
+    }
+
+    /// <summary>A funded, signed frame transaction whose only dependency is <paramref name="dependency"/>.</summary>
+    private static Transaction ExecutableDependencyTransaction(ulong chainId, FrameDependency dependency)
+    {
+        TxFrame[] frames =
+        [
+            new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
+                stateGasLimit: 0, UInt256.Zero, default),
+            new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
+                Eip8288Dependencies.Serialize([dependency]))
+        ];
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = chainId,
+            SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = [UInt256.Zero],
+            Frames = frames,
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei
+        };
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
+    /// <summary>A verifier whose only valid proof of a dependency set is its <c>get_deps_hash</c>.</summary>
+    private sealed class DepsHashProofVerifier : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) =>
+            proof.SequenceEqual(depsHash.Bytes);
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
+            depsHash.ToByteArray();
     }
 
     private sealed class EngineListProofVerifier : ILeanProofVerifier
