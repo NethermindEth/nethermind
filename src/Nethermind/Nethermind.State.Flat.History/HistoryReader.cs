@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -23,6 +25,9 @@ public sealed class HistoryReader
     // Slim-format account RLP is at most nonce + balance + two 32-byte hashes; 256 bytes is ample headroom.
     private const int AccountValueBufferSize = 256;
 
+    // 131,072 entries per domain, a few blocks' worth of distinct reads.
+    private const int ReadCacheSetsBits = 16;
+
     private readonly HistoryStore? _accountHistory;
     private readonly HistoryStore? _storageHistory;
     private readonly HistoryStoreV3? _accountHistoryV3;
@@ -33,6 +38,11 @@ public sealed class HistoryReader
     private readonly HistoryAvailability _availability;
     private readonly bool _rlpWrapSlots;
     private readonly bool _isV3;
+
+    // The state as of a covered block never changes, so one result serves every scope and request at that block.
+    // A whole-block trace opens a scope per transaction, each starting with empty state caches.
+    private readonly SeqlockCache<AccountAtBlock, CachedAccount> _accounts = new(ReadCacheSetsBits);
+    private readonly SeqlockCache<SlotAtBlock, CachedSlot> _slots = new(ReadCacheSetsBits);
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
     {
@@ -87,8 +97,22 @@ public sealed class HistoryReader
     /// <summary>Resolves the account as of <paramref name="block"/>. False when it did not exist there.</summary>
     public bool TryGetAccount(ulong block, Address address, out AccountStruct account) => TryGetAccount(block, address, out account, null);
 
-    [SkipLocalsInit]
     internal bool TryGetAccount(ulong block, Address address, out AccountStruct account, ReadScope? scope)
+    {
+        AccountAtBlock key = new(block, address);
+        if (_accounts.TryGetValue(in key, out CachedAccount cached))
+        {
+            account = cached.Account;
+            return cached.Exists;
+        }
+
+        bool exists = ReadAccount(block, address, out account, scope);
+        _accounts.Set(in key, new CachedAccount(exists, account));
+        return exists;
+    }
+
+    [SkipLocalsInit]
+    private bool ReadAccount(ulong block, Address address, out AccountStruct account, ReadScope? scope)
     {
         ValueHash256 accountPath = address.ToAccountPath;
         ReadOnlySpan<byte> flatKey = accountPath.Bytes;
@@ -136,8 +160,22 @@ public sealed class HistoryReader
         TryGetStorage(block, address, index, out value, clearsCache: null);
 
     /// <param name="clearsCache">Skips the per-slot destruct probes for an account with no clear markers.</param>
-    [SkipLocalsInit]
     internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache, ReadScope? scope = null)
+    {
+        SlotAtBlock key = new(block, address, index);
+        if (_slots.TryGetValue(in key, out CachedSlot cached))
+        {
+            value = cached.Value;
+            return cached.Exists;
+        }
+
+        bool exists = ReadStorage(block, address, index, out value, clearsCache, scope);
+        _slots.Set(in key, new CachedSlot(exists, value));
+        return exists;
+    }
+
+    [SkipLocalsInit]
+    private bool ReadStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache, ReadScope? scope)
     {
         ValueHash256 addrHash = address.ToAccountPath;
         ValueHash256 slotHash = ValueKeccak.Zero;
@@ -264,4 +302,32 @@ public sealed class HistoryReader
 
         return BaseFlatPersistence.DecodeSlotValue(stored);
     }
+
+    // The cache indexes sets with low and high hash bits, so the block is spread over all of them.
+    private static long MixBlock(long hash, ulong block) =>
+        hash ^ (long)BitOperations.RotateLeft(block * 0x9E3779B97F4A7C15UL, 23);
+
+    private readonly struct AccountAtBlock(ulong block, Address address) : IHash64bit<AccountAtBlock>
+    {
+        private readonly ulong _block = block;
+        private readonly AddressAsKey _address = address;
+
+        public long GetHashCode64() => MixBlock(_address.GetHashCode64(), _block);
+
+        public bool Equals(in AccountAtBlock other) => _block == other._block && _address.Equals(in other._address);
+    }
+
+    private readonly struct SlotAtBlock(ulong block, Address address, in UInt256 index) : IHash64bit<SlotAtBlock>
+    {
+        private readonly ulong _block = block;
+        private readonly StorageCell _cell = new(address, index);
+
+        public long GetHashCode64() => MixBlock(_cell.GetHashCode64(), _block);
+
+        public bool Equals(in SlotAtBlock other) => _block == other._block && _cell.Equals(in other._cell);
+    }
+
+    private readonly record struct CachedAccount(bool Exists, AccountStruct Account);
+
+    private readonly record struct CachedSlot(bool Exists, UInt256 Value);
 }
