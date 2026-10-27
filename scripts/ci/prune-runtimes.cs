@@ -30,6 +30,7 @@ try
     var foreign = candidates.Where(path => Path.GetFileName(path).Contains('-') && Path.GetFileName(path) != rid).ToArray();
     foreach (var path in foreign)
     {
+        cancellation.Token.ThrowIfCancellationRequested();
         if (Directory.Exists(path))
             Directory.Delete(path, recursive: true);
     }
