@@ -1097,6 +1097,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void Apply(ref ulong end, ref byte opcode)
             {
                 nint source = -TOpCount.Count * LimbsPerWord;
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Copy(Unsafe.AsPointer(ref end), Unsafe.AsPointer(ref Unsafe.Add(ref end, source)));
+                    return;
+                }
+
                 end = Unsafe.Add(ref end, source);
                 Unsafe.Add(ref end, 1) = Unsafe.Add(ref end, source + 1);
                 Unsafe.Add(ref end, 2) = Unsafe.Add(ref end, source + 2);
@@ -1122,16 +1128,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void ApplyToPushedByte(ref ulong end, ulong pushed)
             {
                 nint source = -TOpCount.Count * LimbsPerWord;
-                end = Unsafe.Add(ref end, source);
-                Unsafe.Add(ref end, 1) = Unsafe.Add(ref end, source + 1);
-                Unsafe.Add(ref end, 2) = Unsafe.Add(ref end, source + 2);
-                Unsafe.Add(ref end, 3) = Unsafe.Add(ref end, source + 3);
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Copy(Unsafe.AsPointer(ref end), Unsafe.AsPointer(ref Unsafe.Add(ref end, source)));
+                }
+                else
+                {
+                    end = Unsafe.Add(ref end, source);
+                    Unsafe.Add(ref end, 1) = Unsafe.Add(ref end, source + 1);
+                    Unsafe.Add(ref end, 2) = Unsafe.Add(ref end, source + 2);
+                    Unsafe.Add(ref end, 3) = Unsafe.Add(ref end, source + 3);
+                }
+
                 SetWord(ref Unsafe.Add(ref end, source), pushed);
             }
 
+            /// <remarks>On Airbender the slot above the top, which every stack has, is the exchange's scratch word.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode)
             {
+                if (AirbenderFlag.IsActive)
+                {
+                    AirbenderArithmetic.Swap(
+                        Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)),
+                        Unsafe.AsPointer(ref Unsafe.Add(ref end, -(TOpCount.Count + 1) * LimbsPerWord)),
+                        Unsafe.AsPointer(ref end));
+                    return;
+                }
+
                 SwapLimbs(ref end, -LimbsPerWord, -(TOpCount.Count + 1) * LimbsPerWord);
                 SwapLimbs(ref end, 1 - LimbsPerWord, 1 - (TOpCount.Count + 1) * LimbsPerWord);
                 SwapLimbs(ref end, 2 - LimbsPerWord, 2 - (TOpCount.Count + 1) * LimbsPerWord);

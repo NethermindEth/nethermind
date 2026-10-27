@@ -964,12 +964,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
-                ref ulong top = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                ref ulong copy = ref Unsafe.Add(ref top, EvmStack.WordSize / sizeof(ulong));
-                copy = top;
-                Unsafe.Add(ref copy, 1) = Unsafe.Add(ref top, 1);
-                Unsafe.Add(ref copy, 2) = Unsafe.Add(ref top, 2);
-                Unsafe.Add(ref copy, 3) = Unsafe.Add(ref top, 3);
+                DupStep<EvmInstructions.Op1>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);

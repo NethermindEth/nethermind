@@ -20,6 +20,25 @@ internal static unsafe class AirbenderArithmetic
     private const uint SubtractOp = 1u << 1;
     private const uint MultiplyLowOp = 1u << 3;
     private const uint MultiplyHighOp = 1u << 4;
+    private const uint CopyOp = 1u << 7;
+
+    /// <summary>Copies the word at <paramref name="source"/> to <paramref name="destination"/>.</summary>
+    /// <remarks>One delegation in place of eight loads and eight stores.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Copy(void* destination, void* source)
+    {
+        Debug.Assert((((nuint)destination | (nuint)source) & 31) == 0 && destination != source);
+        airbender_u256_op(destination, source, CopyOp);
+    }
+
+    /// <summary>Exchanges the words at <paramref name="a"/> and <paramref name="b"/> through the free word <paramref name="scratch"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Swap(void* a, void* b, void* scratch)
+    {
+        Copy(scratch, a);
+        Copy(a, b);
+        Copy(b, scratch);
+    }
 
     /// <summary>Replaces <paramref name="left"/> with the low 256 bits of <paramref name="left"/> times <paramref name="right"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
