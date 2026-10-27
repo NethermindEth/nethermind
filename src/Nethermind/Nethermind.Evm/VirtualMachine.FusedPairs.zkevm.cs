@@ -484,7 +484,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteJumpAfter<TFirst>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -509,7 +509,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         TFirst.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                         head += TFirst.Growth;
                         sp = ref Moved(ref sp, TFirst.Growth);
-                        gas += JumpGasCost.GasCost + JumpDestGasCost.GasCost;
+                        gas += (nuint)(JumpGasCost.GasCost + JumpDestGasCost.GasCost);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
@@ -526,7 +526,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += fusedGas;
+                gas += (nuint)(fusedGas);
             }
 
             nint alone = TFirst.Handler;
@@ -551,7 +551,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteMStoreAfter<TFirst>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -585,7 +585,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += VeryLowGasCost.GasCost;
+                gas += (nuint)(VeryLowGasCost.GasCost);
                 nint store = Entry(&ExecuteMStoreInsideBacking);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, store);
             }
@@ -603,7 +603,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteMLoadAfter<TFirst>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -633,7 +633,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                gas += VeryLowGasCost.GasCost;
+                gas += (nuint)(VeryLowGasCost.GasCost);
                 nint load = Entry(&ExecuteMLoadFromActiveMemory);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, load);
             }
@@ -648,7 +648,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1MLoad(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -669,7 +669,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += 2 * VeryLowGasCost.GasCost;
+                gas += (nuint)(2 * VeryLowGasCost.GasCost);
             }
 
             nint alone = Push1Step.Handler;
@@ -682,7 +682,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1MStore(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -707,7 +707,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += 2 * VeryLowGasCost.GasCost;
+                gas += (nuint)(2 * VeryLowGasCost.GasCost);
             }
 
             nint alone = Push1Step.Handler;
@@ -727,7 +727,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1Jump<TConditional>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -763,7 +763,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!stack.IsAnalyzedJumpDestination(destination))
                     {
                         // The analysis charges the jump itself.
-                        gas += jumpGas;
+                        gas += (nuint)(jumpGas);
                         SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), destination);
                         ip = ref Unsafe.Add(ref ip, 2);
                         head++;
@@ -798,7 +798,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1ByFollower(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -823,7 +823,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePush1OneByFollower(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -899,7 +899,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteOnesMask<TOpCount>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,
@@ -935,7 +935,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
-                gas += 2 * VeryLowGasCost.GasCost;
+                gas += (nuint)(2 * VeryLowGasCost.GasCost);
             }
 
             nint alone = Entry(&ExecutePush<TOpCount>);
@@ -951,7 +951,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecutePair<TFirst, TSecond>(
             ref EvmStack stack,
-            ulong gas,
+            nuint gas,
             ref DispatchState state,
             ref byte ip,
             nint head,

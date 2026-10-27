@@ -42,7 +42,7 @@ public partial struct EvmPooledMemory
     /// <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal ref byte TryPrepareWordOverwrite(ulong offset, ref ulong gas)
+    internal ref byte TryPrepareWordOverwrite(ulong offset, ref nuint gas)
     {
         Debug.Assert(offset <= uint.MaxValue);
         ulong end = offset + WordSize;
@@ -68,7 +68,7 @@ public partial struct EvmPooledMemory
             cost -= (words * words) >> 9;
             if (gas < cost) return ref Unsafe.NullRef<byte>();
 
-            gas -= cost;
+            gas -= (nuint)cost;
             Size = newWords << 5;
         }
 
@@ -105,7 +105,7 @@ public partial struct EvmPooledMemory
     /// <see cref="TryPrepareWordOverwrite"/> for any length; the caller must write every byte of the range. The same
     /// caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
     /// </remarks>
-    internal ref byte TryPrepareRangeOverwrite(ulong offset, ulong length, ref ulong gas)
+    internal ref byte TryPrepareRangeOverwrite(ulong offset, ulong length, ref nuint gas)
     {
         Debug.Assert(offset <= uint.MaxValue && length is > 0 and <= uint.MaxValue);
         ulong end = offset + length;
@@ -122,7 +122,7 @@ public partial struct EvmPooledMemory
             ulong cost = newWords * GasCostOf.Memory + ((newWords * newWords) >> 9) - words * GasCostOf.Memory - ((words * words) >> 9);
             if (gas < cost) return ref Unsafe.NullRef<byte>();
 
-            gas -= cost;
+            gas -= (nuint)cost;
             Size = newWords << 5;
         }
 
