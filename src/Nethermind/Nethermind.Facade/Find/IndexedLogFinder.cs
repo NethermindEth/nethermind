@@ -90,8 +90,8 @@ public class IndexedLogFinder(
         if (!filter.UseIndex || filter.AcceptsAnyBlock)
             return null;
 
-        // The log index maps canonical block numbers; hash-pinned queries must use the requested block.
-        if (filter.FromBlock.Type == BlockParameterType.BlockHash || filter.ToBlock.Type == BlockParameterType.BlockHash)
+        // The log index maps canonical block numbers; a single-block hash filter must use the requested block.
+        if (filter.IsBlockHashFilter)
             return null;
 
         if (_logIndexStorage.MinBlockNumber is not { } indexFrom || _logIndexStorage.MaxBlockNumber is not { } indexTo)

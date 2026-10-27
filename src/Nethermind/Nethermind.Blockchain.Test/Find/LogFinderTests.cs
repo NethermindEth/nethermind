@@ -758,6 +758,10 @@ public class LogFinderTests
     private static LogFilter BoundaryFilter(ulong from = BoundaryFrom) =>
         FilterBuilder.New().FromBlock(from).ToBlock(BoundaryTo).WithAddress(TestItem.AddressA).Build();
 
+    private static LogFilter BoundaryFilter(BlockHeader from, BlockHeader to, bool hashFrom, bool hashTo) =>
+        new(0, hashFrom ? new(from.Hash!) : new(from.Number), hashTo ? new(to.Hash!) : new(to.Number),
+            new AddressFilter(TestItem.AddressA), new SequenceTopicsFilter());
+
     private static BlockHeader BoundaryHeader(ulong number) => Build.A.BlockHeader.WithNumber(number).TestObject;
 
     [Test]
@@ -785,14 +789,34 @@ public class LogFinderTests
     }
 
     [Test]
-    public void Should_FailClosed_BelowTheReclaimCursor()
+    public void Should_FailClosed_BelowTheReclaimCursor([Values] bool hashFrom, [Values] bool hashTo)
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
         pruner.OldestUnreclaimedBlockNumber.Returns(BoundaryOldestStored);
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out _, historyPruner: pruner);
+        BlockHeader from = BoundaryHeader(BoundaryFrom);
+        BlockHeader to = BoundaryHeader(BoundaryTo);
 
         Assert.Throws<ResourceNotFoundException>(() =>
-            finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+            finder.FindLogs(BoundaryFilter(from, to, hashFrom, hashTo), from, to).ToArray());
+    }
+
+    [Test]
+    public void Should_UseTheIndex_ForRangesExceedingMaxBlockDepth([Values] bool hashFrom, [Values] bool hashTo)
+    {
+        IndexedLogFinder indexedFinder = CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, lowestStored: 1UL);
+        RangeLimitedLogFinder finder = new(indexedFinder, blockFinder, new ReceiptConfig { MaxBlockDepth = 2 }, index);
+        BlockHeader from = BoundaryHeader(BoundaryFrom);
+        BlockHeader to = BoundaryHeader(BoundaryTo);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(from, to, hashFrom, hashTo), from, to).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Is.Empty);
+            index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeaderIfBloomMatches(default, default!, out _);
+        }
     }
 
     [Test]
