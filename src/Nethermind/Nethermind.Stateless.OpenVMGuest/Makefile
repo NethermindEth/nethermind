@@ -30,7 +30,10 @@ OPT_FLAGS += \
 # a transpiled .vmexe, so this is our own: NethermindEth/bflat-openvm builds the
 # SDK's develop-v2.1.0 rv64 line into a harness that transpiles the ELF and runs
 # it. `main` is still rv32 and rejects a 64-bit ELF, so the line is not a version
-# preference. OPENVM_RUNNER overrides it with a host binary.
+# preference. OPENVM_RUNNER overrides it with a host binary. The VM configuration
+# is SdkVmConfig::standard() of the SDK, as in ere, so the guest has no
+# openvm.toml. The image of this tag still takes a configuration argument: "-"
+# selects the standard one that it ships.
 OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:dc2db86864d19c749929b0665e909122afdfbbaecdab25dbf83f3b68549ac945
 OPENVM_RUNNER ?=
 
@@ -40,9 +43,8 @@ run:
 ifeq ($(strip $(OPENVM_RUNNER)),)
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		--mount type=bind,source="$(GUEST_DIR)/openvm.toml",target=/openvm.toml,readonly \
 		$(OPENVM_IMAGE) \
-		/n/nethermind /openvm.toml /n/$(INPUT).raw
+		/n/nethermind - /n/$(INPUT).raw
 else
-	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/openvm.toml $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/bin/$(INPUT).raw
 endif
