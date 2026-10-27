@@ -1,9 +1,10 @@
 #!/usr/bin/env dotnet
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+#:include ../version.helpers.cs
 #:include script-process.helpers.cs
 
-var runner = Path.GetFullPath("scripts/ci/run-script-tests.cs");
+var runner = Path.Combine(ScriptVersion.Root(), "scripts/ci/run-script-tests.cs");
 var directory = Directory.CreateTempSubdirectory("script-names-");
 var passed = 0;
 try
