@@ -581,6 +581,32 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Incoming_session_of_a_proven_static_host_peer_does_not_keep_the_pooled_record_static_after_the_host_moves([Values] bool disconnectAfterRefresh)
+        {
+            IPAddress[] resolved = [IPAddress.Parse("1.2.3.4")];
+            await using Context ctx = new(staticPeerHosts: "node.example:30303", resolve: (_, _) => Task.FromResult(resolved));
+            await ctx.StaticHostFilter.RefreshAsync(CancellationToken.None);
+            ctx.PeerManager.Start();
+
+            Peer pooled = ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.4", 30303));
+            ctx.StaticHostFilter.MarkProven(pooled.Node, pooled.Node.Address);
+            ctx.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+            Session session = ctx.Sessions.Single(static s => s.Direction == ConnectionDirection.In);
+            Assert.That(session.Node.IsStatic, Is.True);
+
+            if (!disconnectAfterRefresh) session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+            resolved = [IPAddress.Parse("5.6.7.8")];
+            await ctx.StaticHostFilter.RefreshAsync(CancellationToken.None);
+            if (disconnectAfterRefresh) session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pooled.Node.IsStatic, Is.False);
+                Assert.That(session.Node.IsStatic, Is.False);
+            }
+        }
+
+        [Test]
         public async Task Handshake_proves_a_static_peer_host_only_at_the_matched_address([Values] bool atAlternateAddress)
         {
             PeerPoolTests.ManualTimestampProvider timeProvider = new();
@@ -1246,9 +1272,9 @@ namespace Nethermind.Network.Test
             private readonly StaticHostFilter _staticHostFilter;
             public StaticHostFilter StaticHostFilter => _staticHostFilter;
 
-            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null, string? staticPeerHosts = null, TimeProvider? peerPoolTimeProvider = null)
+            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null, string? staticPeerHosts = null, TimeProvider? peerPoolTimeProvider = null, Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null)
             {
-                _staticHostFilter = new StaticHostFilter(staticPeerHosts, static (_, _) => Task.FromResult(Array.Empty<IPAddress>()), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
+                _staticHostFilter = new StaticHostFilter(staticPeerHosts, resolve ?? (static (_, _) => Task.FromResult(Array.Empty<IPAddress>())), LimboLogs.Instance.GetClassLogger<StaticHostFilter>());
                 _timeProvider = timeProvider ?? TimeProvider.System;
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();

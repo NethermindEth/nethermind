@@ -91,6 +91,18 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
         }
     }
 
+    public bool TryInherit(Node node, Node source)
+    {
+        lock (_promotionLock)
+        {
+            if (node.IsStatic || !IsPromoted(source) || !IsProven(source)) return false;
+
+            node.IsStatic = true;
+            _promoted.AddOrUpdate(node, new Promotion(matchPort: false, source));
+            return true;
+        }
+    }
+
     public void Demote(Node node)
     {
         lock (_promotionLock)
@@ -168,8 +180,20 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
         foreach (KeyValuePair<Node, Promotion> promoted in _promoted)
         {
             Node node = promoted.Key;
-            bool matches = promoted.Value.MatchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address);
-            if (!matches) stale.Add(node);
+            Promotion promotion = promoted.Value;
+            if (promotion.Source is null && !(promotion.MatchPort ? IsMatch(node.Address) : IsMatch(node.Address.Address))) stale.Add(node);
+        }
+
+        foreach (Node node in stale)
+        {
+            Demote(node);
+        }
+
+        // An inherited flag follows its source, which was demoted above when it stopped matching.
+        stale.Clear();
+        foreach (KeyValuePair<Node, Promotion> promoted in _promoted)
+        {
+            if (promoted.Value.Source is { IsStatic: false }) stale.Add(promoted.Key);
         }
 
         foreach (Node node in stale)
@@ -294,12 +318,15 @@ public sealed class StaticHostFilter : IStaticHostFilter, IDisposable
 
     private readonly record struct Rule(IPNetwork Network, int Port);
 
-    private sealed class Promotion(bool matchPort)
+    private sealed class Promotion(bool matchPort, Node? source = null)
     {
         public static readonly Promotion EndPoint = new(true);
         public static readonly Promotion Address = new(false);
 
         public bool MatchPort { get; } = matchPort;
+
+        /// <summary>The pooled node whose proven host match the promoted node inherited.</summary>
+        public Node? Source { get; } = source;
     }
 
     private sealed class HostEntry(string name, int port)

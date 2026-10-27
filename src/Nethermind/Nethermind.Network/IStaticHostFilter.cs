@@ -25,6 +25,13 @@ public interface IStaticHostFilter
     /// <remarks>A promoted node is demoted when a hostname refresh makes it stop matching in the same mode.</remarks>
     bool TryPromote(Node node, bool matchPort);
 
+    /// <summary>Marks a node as static because <paramref name="source"/> is a proven host promotion, and tracks it like <see cref="TryPromote"/>.</summary>
+    /// <param name="node">The node to promote, for example an inbound session node with the key of <paramref name="source"/>. A node that is already static is not changed.</param>
+    /// <param name="source">The pooled node.</param>
+    /// <returns><c>true</c> when the node was promoted.</returns>
+    /// <remarks>The node is demoted when a hostname refresh demotes <paramref name="source"/>.</remarks>
+    bool TryInherit(Node node, Node source);
+
     /// <summary>Clears the static flag set by <see cref="TryPromote"/>. Nodes that are static for other reasons are not changed.</summary>
     void Demote(Node node);
 
