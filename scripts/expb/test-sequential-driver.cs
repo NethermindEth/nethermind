@@ -67,22 +67,21 @@ var tests = 0;
 var temporary = Directory.CreateTempSubdirectory("sequential driver tests ");
 try
 {
-    foreach (var (source, client, layout, payload, fixture, expected) in new (string, string, string, string, string, string?)[]
+    foreach (var (source, client, layout, fixture, expected) in new (string, string, string, string, string?)[]
     {
-        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "flat", "fusaka", "/mnt/sda/nethermind-flat-25490000", "25490000"),
-        ("/data/nethermind/nethermind-flat-26000000", "nethermind", "flat", "fusaka", "/data/nethermind/nethermind-flat-26000000", "26000000"),
-        ("/data/nethermind/nethermind-flat-0", "nethermind", "flat", "fusaka", "/data/nethermind/nethermind-flat-0", "0"),
-        ("/snapshots/custom", "nethermind", "flat", "fusaka", "/mnt/sda/nethermind-flat-25490000", ""),
-        ("/mnt/sda/nethermind-flat-25490000", "custom", "flat", "fusaka", "/mnt/sda/nethermind-flat-25490000", ""),
-        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "halfpath", "fusaka", "/mnt/sda/nethermind-flat-25490000", ""),
-        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "flat", "realblocks", "/mnt/sda/nethermind-flat-25490000", ""),
-        ("", "nethermind", "flat", "fusaka", "", ""),
-        ("/mnt/sda/nethermind-flat-invalid", "nethermind", "flat", "fusaka", "/mnt/sda/nethermind-flat-invalid", null),
-        ("/mnt/sda/nethermind-flat--1", "nethermind", "flat", "fusaka", "/mnt/sda/nethermind-flat--1", null),
-        ("/mnt/sda/nethermind-flat-01", "nethermind", "flat", "fusaka", "/mnt/sda/nethermind-flat-01", null)
-    }) Check($"checkpoint scope {client}/{layout}/{payload}/{source}", () =>
+        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "flat", "/mnt/sda/nethermind-flat-25490000", "25490000"),
+        ("/data/nethermind/nethermind-flat-26000000", "nethermind", "flat", "/data/nethermind/nethermind-flat-26000000", "26000000"),
+        ("/data/nethermind/nethermind-flat-0", "nethermind", "flat", "/data/nethermind/nethermind-flat-0", "0"),
+        ("/snapshots/custom", "nethermind", "flat", "/mnt/sda/nethermind-flat-25490000", ""),
+        ("/mnt/sda/nethermind-flat-25490000", "custom", "flat", "/mnt/sda/nethermind-flat-25490000", ""),
+        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "halfpath", "/mnt/sda/nethermind-flat-25490000", ""),
+        ("", "nethermind", "flat", "", ""),
+        ("/mnt/sda/nethermind-flat-invalid", "nethermind", "flat", "/mnt/sda/nethermind-flat-invalid", null),
+        ("/mnt/sda/nethermind-flat--1", "nethermind", "flat", "/mnt/sda/nethermind-flat--1", null),
+        ("/mnt/sda/nethermind-flat-01", "nethermind", "flat", "/mnt/sda/nethermind-flat-01", null)
+    }) Check($"checkpoint scope {client}/{layout}/{source}", () =>
     {
-        var driver = Driver(("CLIENT", client), ("STATE_LAYOUT", layout), ("PAYLOAD_SET", payload), ("FLAT_SNAPSHOT_BLOCK_DIR", fixture));
+        var driver = Driver(("CLIENT", client), ("STATE_LAYOUT", layout), ("FLAT_SNAPSHOT_BLOCK_DIR", fixture));
         var scenario = new JsonObject() { ["snapshot_source"] = source };
         if (expected is null) Reject(() => driver.StartupFlags(scenario));
         else Equal(string.Join('|', driver.StartupFlags(scenario)), expected.Length == 0 ? "" : "--startup-block|" + expected);
@@ -92,7 +91,7 @@ try
         {
             var root = Path.Combine(temporary.FullName, "checkpoint-" + outcome + known);
             var driver = Driver(("EXPB_CAMPAIGN_DIR", root), ("RUN_COUNT", "2"), ("EXPB_IMAGES_JSON", Images().ToJsonString()),
-                ("STATE_LAYOUT", "flat"), ("PAYLOAD_SET", "fusaka"), ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
+                ("STATE_LAYOUT", "flat"), ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
             var config = Base();
             config["scenarios"]!["nethermind"]!["snapshot_source"] = known ? "/mnt/sda/nethermind-flat-25490000" : "/snapshots/custom";
             var probes = 0;
@@ -134,7 +133,7 @@ try
     {
         var root = Path.Combine(temporary.FullName, "default checkpoint preflight");
         var driver = Driver(("EXPB_CAMPAIGN_DIR", root), ("EXPB_BIN", Environment.ProcessPath!), ("RUN_COUNT", "1"),
-            ("EXPB_IMAGES_JSON", Images().ToJsonString()), ("STATE_LAYOUT", "flat"), ("PAYLOAD_SET", "fusaka"),
+            ("EXPB_IMAGES_JSON", Images().ToJsonString()), ("STATE_LAYOUT", "flat"),
             ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
         var config = Base();
         config["scenarios"]!["nethermind"]!["snapshot_source"] = "/mnt/sda/nethermind-flat-25490000";
@@ -432,7 +431,7 @@ try
         var root = Directory.CreateDirectory(Path.Combine(temporary.FullName, "real sample"));
         var driver = Driver(("EXPB_BIN", Environment.ProcessPath!), ("EXPB_DATA_DIR", root.FullName), ("RUNNER_TEMP", root.FullName), ("AMOUNT", "1"),
             ("EXPB_ENV_PASSTHROUGH", "EXPB_TEST_VALUE=value with spaces,EXPB_TEST_STARTUP=26000000"), ("DOTTRACE", "true"), ("PERF", "true"),
-            ("STATE_LAYOUT", "flat"), ("PAYLOAD_SET", "fusaka"), ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
+            ("STATE_LAYOUT", "flat"), ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
         var config = Base(); config["export"] = new JsonObject { ["secret"] = "private" };
         config["scenarios"]!["nethermind"]!["snapshot_source"] = "/mnt/sda/nethermind-flat-25490000";
         var result = await driver.RunSample(config, image, 1, root.FullName, CancellationToken.None, (_, _) => Task.CompletedTask);

@@ -239,7 +239,6 @@ jobs:
       retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
-      payload_set: ${{ steps.resolve.outputs.payload_set }}
       cells: ${{ steps.resolve.outputs.cells }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
@@ -700,7 +699,6 @@ jobs:
             echo "retrospective_last=${retrospective_last:-100}"
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
-            echo "payload_set=${payload_set}"
             echo "cells=${cells}"
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"
@@ -3026,7 +3024,6 @@ jobs:
         shell: bash
         env:
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
-          PAYLOAD_SET: ${{ needs.resolve.outputs.payload_set }}
           EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
           # An explicit `docker_images` dispatch is an A/B: one bad arm invalidates the comparison, so
           # the campaign stops. A retrospective sweep bisects across many master builds and its other

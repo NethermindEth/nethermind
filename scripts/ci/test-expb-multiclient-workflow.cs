@@ -41,13 +41,12 @@ void Contains(string value, params string[] fragments) { foreach (var fragment i
 }
 tests.Case("campaign checkpoint selection outputs reach the driver", () =>
 {
-    Contains(text, "      payload_set: ${{ steps.resolve.outputs.payload_set }}");
     var (code, values, log) = Resolve(("DISPATCH_PAYLOAD_SET", "fusaka"), ("DISPATCH_STATE_LAYOUT", "flat"));
-    Require(code == 0 && values["payload_set"] == "fusaka", log);
+    Require(code == 0 && values["state_layout"] == "flat", log);
     var step = text.Split("      - name: Run sequential EXPB campaign\n", StringSplitOptions.None)[1];
     var settings = step[..step.IndexOf("        run: |\n", StringComparison.Ordinal)];
-    Contains(Body("Run sequential EXPB campaign"), "dotnet run --file \"${GITHUB_WORKSPACE}/scripts/expb/SequentialDriver.cs\"");
-    foreach (var (name, output) in new[] { ("STATE_LAYOUT", "state_layout"), ("PAYLOAD_SET", "payload_set"), ("FLAT_SNAPSHOT_BLOCK_DIR", "flat_snapshot_block_dir") })
+    Contains(Body("Run sequential EXPB campaign"), "dotnet run --file \"${GITHUB_WORKSPACE}/scripts/expb/sequential-driver.cs\"");
+    foreach (var (name, output) in new[] { ("STATE_LAYOUT", "state_layout"), ("FLAT_SNAPSHOT_BLOCK_DIR", "flat_snapshot_block_dir") })
         Contains(settings, "          " + name + ": ${{ needs.resolve.outputs." + output + " }}");
 });
 tests.Case("dispatch input count", () => Require(((YamlMappingNode)WorkflowTest.Get(WorkflowTest.Get(WorkflowTest.Get(workflow.Document, "on"), "workflow_dispatch"), "inputs")!).Children.Count <= 25, "GitHub dispatch input limit exceeded"));

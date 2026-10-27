@@ -190,8 +190,8 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
     internal string[] StartupFlags(JsonObject scenario)
     {
         var source = Get("FLAT_SNAPSHOT_BLOCK_DIR");
-        if (Get("CLIENT", "nethermind") != "nethermind" || Get("STATE_LAYOUT") != "flat" || Get("PAYLOAD_SET") != "fusaka"
-            || source.Length == 0 || Text(scenario["snapshot_source"]) != source)
+        if (Get("CLIENT", "nethermind") != "nethermind" || Get("STATE_LAYOUT") != "flat" || source.Length == 0
+            || Text(scenario["snapshot_source"]) != source)
             return [];
         var block = SnapshotBlockRegex().Match(source[(source.LastIndexOf('/') + 1)..]);
         if (!block.Success) throw new ArgumentException($"snapshot fixture '{source}' has no canonical numeric block suffix");
