@@ -453,16 +453,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     public async Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
     {
-        BlockHeader header = await _headers.GetAsync(head.BlockHash, async stopping =>
-        {
-            BlockHeader fetched = await GetHeaderByHashAsync(head.BlockHash, stopping);
-            if (fetched.Number != head.Number || fetched.StateRoot != head.StateRoot)
-                throw new RpcException(-32000, "Execution header does not match the verified finalized payload.");
-            return CopyHeader(fetched);
-        }, cancellationToken);
-        if (header.Number != head.Number || header.StateRoot != head.StateRoot)
+        BlockHeader header = await GetHeaderByHashAsync(head.BlockHash, cancellationToken);
+        if (header.Hash != head.BlockHash || header.Number != head.Number || header.StateRoot != head.StateRoot)
             throw new RpcException(-32000, "Execution header does not match the verified finalized payload.");
-        return CopyHeader(header);
+        return header;
     }
 
     private static BlockHeader CopyHeader(BlockHeader header)
@@ -470,8 +464,21 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         BlockHeader copy = header.Clone();
         copy.ExtraData = header.ExtraData.AsSpan().ToArray();
         copy.Bloom = header.Bloom is null ? null : header.Bloom.IsZeroLength ? Bloom.ZeroLength : new(header.Bloom.ReadOnlyBytes);
+        copy.ParentHash = CopyHash(header.ParentHash);
+        copy.UnclesHash = CopyHash(header.UnclesHash);
+        copy.StateRoot = CopyHash(header.StateRoot);
+        copy.TxRoot = CopyHash(header.TxRoot);
+        copy.ReceiptsRoot = CopyHash(header.ReceiptsRoot);
+        copy.MixHash = CopyHash(header.MixHash);
+        copy.Hash = CopyHash(header.Hash);
+        copy.WithdrawalsRoot = CopyHash(header.WithdrawalsRoot);
+        copy.ParentBeaconBlockRoot = CopyHash(header.ParentBeaconBlockRoot);
+        copy.RequestsHash = CopyHash(header.RequestsHash);
+        copy.BlockAccessListHash = CopyHash(header.BlockAccessListHash);
         return copy;
     }
+
+    private static Hash256? CopyHash(Hash256? hash) => hash is null ? null : new Hash256(hash.ValueHash256);
 
     public async Task<ReadOnlyBlockAccessList> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken)
     {
@@ -511,14 +518,19 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         return list;
     }
 
-    public Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken) =>
-        RequestExecutionAsync(AllocationContexts.Headers, async (peer, token) =>
+    public async Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken)
+    {
+        Hash256 key = new(hash.ValueHash256);
+        BlockHeader retained = await _headers.GetAsync(key, stopping => RequestExecutionAsync(AllocationContexts.Headers, async (peer, token) =>
         {
-            BlockHeader header = await peer.GetHeadBlockHeader(hash, token)
+            BlockHeader header = await peer.GetHeadBlockHeader(new Hash256(key.ValueHash256), token)
                 ?? throw new IOException("Execution peer did not supply the requested header.");
-            if (header.Hash != hash) throw new InvalidDataException("Execution peer returned a header inconsistent with the requested hash.");
-            return header;
-        }, cancellationToken, failureMessage: "No execution peer supplied the requested execution header.");
+            BlockHeader snapshot = CopyHeader(header);
+            if (snapshot.Hash != key) throw new InvalidDataException("Execution peer returned a header inconsistent with the requested hash.");
+            return snapshot;
+        }, stopping, failureMessage: "No execution peer supplied the requested execution header."), cancellationToken);
+        return CopyHeader(retained);
+    }
 
     public async Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)
     {
