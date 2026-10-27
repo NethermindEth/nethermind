@@ -322,14 +322,14 @@ public class DebugRpcModule(
     /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
     /// <see cref="Block"/> overload never takes the indexed parallel path.
     /// </remarks>
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false)
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false, Hash256? missingBodyHash = null)
     {
         Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
         if (resolvedBlock is null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
-                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found"
-                    : selector?.Type == BlockParameterType.BlockHash ? $"block {selector.BlockHash} not found" : $"Block body not found for {header.Hash}",
+                missingBodyHash is not null ? $"block {missingBodyHash} not found"
+                    : selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
                 ErrorCodes.ResourceNotFound);
         }
 
@@ -630,7 +630,7 @@ public class DebugRpcModule(
             return stateError;
         }
 
-        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options, new BlockParameter(blockHash));
+        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options, missingBodyHash: blockHash);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
