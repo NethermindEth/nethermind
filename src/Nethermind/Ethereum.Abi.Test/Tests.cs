@@ -36,8 +36,11 @@ namespace Ethereum.Abi.Test
         {
             AbiTest abiTest = LoadTests()[testName];
 
-            Assert.That($"({string.Join(',', abiTest.Types)})", Is.EqualTo(types));
-            Assert.That(encode(abiTest.Args), Is.EqualTo(Bytes.FromHexString(abiTest.Result)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That($"({string.Join(',', abiTest.Types)})", Is.EqualTo(types));
+                Assert.That(encode(abiTest.Args), Is.EqualTo(Bytes.FromHexString(abiTest.Result)));
+            }
         }
 
         [Test]

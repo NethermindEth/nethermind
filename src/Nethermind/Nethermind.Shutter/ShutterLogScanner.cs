@@ -32,7 +32,7 @@ public class ShutterLogScanner(
         {
             Eon = eon,
             TxIndex = txIndex,
-            IdentityPrefix = new Bytes32(identityPrefix),
+            IdentityPrefix = Bytes32.Wrap(identityPrefix),
             Sender = sender,
             EncryptedTransaction = encryptedTransaction,
             GasLimit = gasLimit
