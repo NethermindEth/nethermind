@@ -186,6 +186,11 @@ public ref partial struct EvmStack
             word = Unsafe.ReadUnaligned<EvmWord>(ref value).ByteSwap();
             return;
         }
+        if (IntPtr.Size == sizeof(uint))
+        {
+            WriteWordFromBigEndianBytesIn32BitLimbs(ref word, ref value, length);
+            return;
+        }
         Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         const int limbBytes = sizeof(ulong);
         int fullLimbs = length / limbBytes;
@@ -217,6 +222,48 @@ public ref partial struct EvmStack
             Unsafe.Add(ref limbs, 2) = limb2;
             Unsafe.Add(ref limbs, 3) = limb3;
         }
+    }
+
+    /// <summary><see cref="WriteWordFromBigEndianBytes"/> for a 32-bit process.</summary>
+    /// <remarks>
+    /// Each 32-bit limb is gathered from its four bytes. A 32-bit core reads an unaligned 8-byte limb
+    /// through an alignment test and byte gathers, then reverses it in software: several times the
+    /// instructions of the gather alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteWordFromBigEndianBytesIn32BitLimbs(ref EvmWord word, ref byte value, int length)
+    {
+        ref uint limbs = ref Unsafe.As<EvmWord, uint>(ref word);
+        limbs = BigEndianLimb(ref value, length);
+        Unsafe.Add(ref limbs, 1) = BigEndianLimb(ref value, length - 4);
+        Unsafe.Add(ref limbs, 2) = BigEndianLimb(ref value, length - 8);
+        Unsafe.Add(ref limbs, 3) = BigEndianLimb(ref value, length - 12);
+        Unsafe.Add(ref limbs, 4) = BigEndianLimb(ref value, length - 16);
+        Unsafe.Add(ref limbs, 5) = BigEndianLimb(ref value, length - 20);
+        Unsafe.Add(ref limbs, 6) = BigEndianLimb(ref value, length - 24);
+        Unsafe.Add(ref limbs, 7) = BigEndianLimb(ref value, length - 28);
+    }
+
+    /// <summary>The 32-bit limb whose last big-endian byte is the one before <paramref name="end"/>.</summary>
+    /// <remarks>Spelled out rather than looped so that a literal length folds it to the one gather it needs.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint BigEndianLimb(ref byte value, int end)
+    {
+        if (end <= 0)
+            return 0;
+        if (end < sizeof(uint))
+        {
+            uint partial = value;
+            if (end > 1)
+                partial = (partial << 8) | Unsafe.Add(ref value, 1);
+            if (end > 2)
+                partial = (partial << 8) | Unsafe.Add(ref value, 2);
+            return partial;
+        }
+
+        ref byte bytes = ref Unsafe.Add(ref value, end - sizeof(uint));
+        return ((uint)bytes << 24) | ((uint)Unsafe.Add(ref bytes, 1) << 16) |
+            ((uint)Unsafe.Add(ref bytes, 2) << 8) | Unsafe.Add(ref bytes, 3);
     }
 
     /// <summary>
