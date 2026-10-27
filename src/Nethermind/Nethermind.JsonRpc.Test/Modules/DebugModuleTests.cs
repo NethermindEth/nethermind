@@ -494,6 +494,7 @@ public class DebugModuleTests
         {
             _blockFinder.Head.Returns(block);
             _blockFinder.FindHeader(new BlockParameter(1UL)).Returns(block.Header);
+            _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
             _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         }
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(1UL));
@@ -627,6 +628,7 @@ public class DebugModuleTests
         _blockFinder.Head.Returns(block);
         _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
+        _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
         _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
         Assert.That(_blockFinder.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None, block.Number - 1), Is.Null);
         object selector = method switch
@@ -681,6 +683,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(header.Hash!).Returns(header);
         _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
         _blockFinder.FindBlock(header.Hash!).Returns(block);
+        _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
         _blockFinder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeaderMissing ? null : parent);
         // The RLP-decoded block of debug_traceBlock is a copy, so headers are matched by hash.
         _blockchainBridge.HasStateForBlock(Arg.Is<BlockHeader>(h => h.Hash == header.Hash)).Returns(true);
@@ -825,6 +828,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(selector).Returns(validated.Header);
         _blockFinder.FindBlock(selector).Returns(replacement);
         _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(validated);
+        _blockFinder.HasBlock(validated.Number, validated.Hash!).Returns(true);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
         _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);

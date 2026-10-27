@@ -146,14 +146,14 @@ jobs:
                 })
               | . + { max_run_duration: (((.timeout + 60) | tostring) + "m") }]')
 
-          matrix=$(echo "$matrix" | dotnet run --file scripts/sync/SelectNetworks.cs -- "$CHAIN_FILTER")
+          matrix=$(echo "$matrix" | dotnet run --file scripts/sync/select-networks.cs -- "$CHAIN_FILTER")
 
           if [ "$(echo "$matrix" | jq 'length')" -eq 0 ]; then
             echo "chain_filter '$CHAIN_FILTER' matched no networks"
             exit 1
           fi
 
-          matrix=$(echo "$matrix" | dotnet run --file scripts/sync/CheckRunnerShapes.cs)
+          matrix=$(echo "$matrix" | dotnet run --file scripts/sync/check-runner-shapes.cs)
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
@@ -269,10 +269,10 @@ jobs:
           git -C metrics-branch config user.name "github-actions[bot]"
           git -C metrics-branch config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Publish.cs is idempotent, so on a push race we reset and re-apply
+          # publish.cs is idempotent, so on a push race we reset and re-apply
           pushed=false
           for _ in 1 2 3; do
-            dotnet run --file scripts/sync-metrics/Publish.cs -- metrics metrics-branch/history.jsonl
+            dotnet run --file scripts/sync-metrics/publish.cs -- metrics metrics-branch/history.jsonl
             git -C metrics-branch add history.jsonl
             if git -C metrics-branch diff --cached --quiet; then
               echo "No new records."

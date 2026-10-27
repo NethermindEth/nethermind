@@ -22,7 +22,7 @@ jobs:
 
       - name: Update config files
         id: update
-        run: dotnet run --file scripts/SyncSettings.cs -- -k ${{ secrets.ETHERSCAN_API_KEY }}
+        run: dotnet run --file scripts/sync-settings.cs -- -k ${{ secrets.ETHERSCAN_API_KEY }}
 
       # Still open the PR for the chains that did update; the job stays red for the ones that did not.
       - name: Create GitHub app token

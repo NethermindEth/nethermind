@@ -106,7 +106,7 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ github.ref }}
         run: |
-          dotnet run --file main-repo/scripts/WaitForWorkflow.cs
+          dotnet run --file main-repo/scripts/wait-for-workflow.cs
         working-directory: ${{ github.workspace }}
 
       - name: Replace Placeholders in YAML

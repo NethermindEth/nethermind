@@ -170,7 +170,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.groth16_artifacts_version }}
-        run: dotnet run --file scripts/frame-verify-gas/FetchArtifacts.cs --
+        run: dotnet run --file scripts/frame-verify-gas/fetch-artifacts.cs --
 
       - name: Run measurement harnesses
         id: measure

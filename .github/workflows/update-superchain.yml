@@ -24,13 +24,13 @@ jobs:
           rm -f ./src/Nethermind/Chains/dictionary
           find src/Nethermind/Nethermind.Runner/configs -maxdepth 1 -name '*.json' ! -name '*_archive.json' -exec grep -l '"Optimism"' {} \; | xargs rm
       - name: Generate Chainspec and config files
-        run: dotnet run --file scripts/Superchain.cs -- -v -o /tmp/superchain
+        run: dotnet run --file scripts/superchain.cs -- -v -o /tmp/superchain
       - name: Copy generated files
         run: |
           cp -r /tmp/superchain/chainspec/* ./src/Nethermind/Chains
           cp -r /tmp/superchain/runner/* ./src/Nethermind/Nethermind.Runner/configs
       - name: Update fast sync settings
-        run: dotnet run --file scripts/SyncSettings.cs -- --superchain
+        run: dotnet run --file scripts/sync-settings.cs -- --superchain
       - name: Create GitHub app token
         id: gh-app
         uses: actions/create-github-app-token@v3

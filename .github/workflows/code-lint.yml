@@ -59,7 +59,7 @@ jobs:
       # These scripts enforce the private-corpus privacy boundary (what may be staged and
       # published). Their suites are the only thing that verifies it, so CI must run them.
       - name: Run script test suites
-        run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/rpc-bench
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/rpc-bench
 
   ci-script-tests:
     name: Test CI scripts
@@ -82,7 +82,7 @@ jobs:
       # across three checkout-less workflow jobs. The suite runs the shipped step bodies against
       # synthetic mount tables and fails if the copies drift apart.
       - name: Run script test suites
-        run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/ci
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/ci
 
   zisk-bench-scripts:
     name: Test zkVM benchmark scripts
@@ -106,7 +106,7 @@ jobs:
       # Both fail silently otherwise: a drifted parse reports nothing, a second block list
       # lets the benchmark report on blocks the tests never verified.
       - name: Run script test suites
-        run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/zisk-bench
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/zisk-bench
 
   expb-script-tests:
     name: Test EXPB campaign driver
@@ -128,7 +128,7 @@ jobs:
       # The sequential driver owns every pass/fail gate of a multi-image campaign, and a campaign
       # costs hours of benchmark-runner time. Nothing else exercises its parsing or failure scope.
       - name: Run script test suites
-        run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/expb
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/expb
 
   frame-verify-gas-scripts:
     name: Test frame-verify-gas artifact fetch
@@ -145,7 +145,7 @@ jobs:
       # The verifier artifact fetcher is the only gate between a frame-verify-gas release and the tar members
       # extracted on the shared benchmark runner, so its suite must run on every change.
       - name: Run the fetch-artifacts test suite
-        run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/frame-verify-gas
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/frame-verify-gas
 
   sync-scripts:
     name: Test sync workflow scripts
@@ -167,7 +167,7 @@ jobs:
       # Covers the network selection and L1 mapping the sync workflows depend on; both
       # were production bugs, and nothing else exercises them without a multi-hour run.
       - name: Run script test suites
-        run: dotnet run --file scripts/ci/RunScriptTests.cs -- scripts/sync
+        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/sync
 
   docker-image-labels:
     name: Check Docker image labels
@@ -190,8 +190,8 @@ jobs:
       # this builds the final stage of every published Dockerfile and inspects the result.
       - name: Check the published images' OCI labels
         run: |
-          if [[ -f scripts/CheckDockerLabels.cs ]]; then
-            dotnet run --file scripts/CheckDockerLabels.cs
+          if [[ -f scripts/check-docker-labels.cs ]]; then
+            dotnet run --file scripts/check-docker-labels.cs
           else
             scripts/check-docker-labels.sh
           fi
@@ -210,5 +210,5 @@ jobs:
 
       - name: Check script analyzers
         run: |
-          dotnet run --file scripts/ci/RunScriptTests.cs -- --check scripts
-          dotnet run --file scripts/ci/RunScriptTests.cs -- --check .github/actions
+          dotnet run --file scripts/ci/run-script-tests.cs -- --check scripts
+          dotnet run --file scripts/ci/run-script-tests.cs -- --check .github/actions

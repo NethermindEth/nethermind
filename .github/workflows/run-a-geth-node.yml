@@ -181,7 +181,7 @@ jobs:
           NAME_FILTER: ${{ env.BASE_TAG }}
           REF: "main"
         run: |
-          dotnet run --file scripts/WaitForWorkflow.cs | tee script-output.txt
+          dotnet run --file scripts/wait-for-workflow.cs | tee script-output.txt
           run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
           echo "Run ID extracted is: $run_id"
           echo "RUN_ID=$run_id" >> $GITHUB_ENV
@@ -192,7 +192,7 @@ jobs:
         env:
           GH_APP_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          # WaitForWorkflow.cs already blocks until the run completes, so the artifact
+          # wait-for-workflow.cs already blocks until the run completes, so the artifact
           # exists; this short retry only absorbs brief artifact-API listing lag.
           ARTIFACT_ID=""
           for attempt in $(seq 1 10); do
