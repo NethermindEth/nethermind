@@ -57,6 +57,9 @@ public partial struct EvmPooledMemory
     internal ref byte TryPrepareWordOverwrite(ulong offset, ref nuint gas)
     {
         Debug.Assert(offset <= uint.MaxValue);
+        if (IntPtr.Size == sizeof(uint))
+            return ref TryPrepareWordOverwriteInNativeWords((nuint)offset, ref gas);
+
         ulong end = offset + WordSize;
         ulong initializedSize = _initializedSize;
         if (end > initializedSize && (offset > initializedSize + MaxClearedGap || end > GetBackingCapacity()))
@@ -94,6 +97,51 @@ public partial struct EvmPooledMemory
             // which would cost the frameless handler a frame: a word from where the initialized memory ends, which may
             // run into the word the caller overwrites, and the word below that one when the gap needs it.
             nint gap = (nint)(end - WordSize) - (nint)initializedSize;
+            if (gap > 0)
+            {
+                ClearWord(ref Unsafe.Subtract(ref word, gap));
+                if (gap > WordSize) ClearWord(ref Unsafe.Subtract(ref word, WordSize));
+            }
+        }
+
+        return ref word;
+    }
+
+    /// <summary><see cref="TryPrepareWordOverwrite"/> for a 32-bit guest, in native words.</summary>
+    /// <remarks>
+    /// Every size fits a native word there: memory past 4 GiB costs more gas than one holds. Only the quadratic charge
+    /// needs 64 bits. An offset within a word of 2^32 wraps the end, which the first test turns away.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref byte TryPrepareWordOverwriteInNativeWords(nuint offset, ref nuint gas)
+    {
+        nuint end = offset + WordSize;
+        nuint initializedSize = (nuint)_initializedSize;
+        if (end < offset || (end > initializedSize && (offset > initializedSize + (nuint)MaxClearedGap || end > (nuint)GetBackingCapacity())))
+            return ref Unsafe.NullRef<byte>();
+
+        nuint size = (nuint)Size;
+        if (end > size)
+        {
+            Debug.Assert(GasCostOf.Memory == 3, "The linear term adds the word counts once per unit of the memory charge.");
+            nuint newWords = (end + (WordSize - 1)) >> 5;
+            nuint words = size >> 5;
+            ulong cost = (Math.BigMul((uint)newWords, (uint)newWords) >> 9) - (Math.BigMul((uint)words, (uint)words) >> 9) +
+                3 * (ulong)(newWords - words);
+            if (gas < cost) return ref Unsafe.NullRef<byte>();
+
+            gas -= (nuint)cost;
+            Size = newWords << 5;
+        }
+
+        // Reread rather than held through the expansion charge, which would take callee-saved registers.
+        initializedSize = (nuint)_initializedSize;
+        ref byte word = ref Unsafe.Add(ref GetBackingReference(), offset);
+        if (end > initializedSize)
+        {
+            _initializedSize = end;
+            // As in TryPrepareWordOverwrite: at most the two words below this one are cleared.
+            nint gap = (nint)offset - (nint)initializedSize;
             if (gap > 0)
             {
                 ClearWord(ref Unsafe.Subtract(ref word, gap));
