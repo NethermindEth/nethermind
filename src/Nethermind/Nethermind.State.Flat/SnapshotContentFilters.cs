@@ -11,6 +11,9 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>Negative filters over the keys of a committed <see cref="SnapshotContent"/>, keyed by <see cref="HashedKey{T}"/> hash codes.</summary>
+/// <remarks>
+/// Owned by the <see cref="SnapshotContent"/> and pooled with it, so each build reuses the arrays of an earlier one.
+/// </remarks>
 internal sealed class SnapshotContentFilters
 {
     public readonly SplitBlockFilter Accounts = new();
@@ -18,7 +21,8 @@ internal sealed class SnapshotContentFilters
     public readonly SplitBlockFilter StateNodes = new();
     public readonly SplitBlockFilter StorageNodes = new();
 
-    public SnapshotContentFilters(SnapshotContent content, in SnapshotContentCounts counts)
+    /// <summary>Rebuilds every filter from the keys of <paramref name="content"/>.</summary>
+    public void Build(SnapshotContent content, in SnapshotContentCounts counts)
     {
         Accounts.Reset(counts.Accounts);
         foreach (KeyValuePair<HashedKey<Address>, Account?> entry in content.Accounts) Accounts.Add((uint)entry.Key.GetHashCode());

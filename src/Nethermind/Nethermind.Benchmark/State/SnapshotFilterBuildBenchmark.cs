@@ -60,7 +60,15 @@ public class SnapshotFilterBuildBenchmark
     private static Address Address(int i) => new(Keccak.Compute($"a{i}").Bytes[..20]);
 
     [Benchmark(Baseline = true)]
-    public object Build() => new SnapshotContentFilters(_content, _counts);
+    public object BuildFresh()
+    {
+        SnapshotContentFilters filters = new();
+        filters.Build(_content, _counts);
+        return filters;
+    }
+
+    [Benchmark]
+    public void BuildPooled() => _content.Filters.Build(_content, _counts);
 
     [Benchmark]
     public uint EnumerateAccounts()

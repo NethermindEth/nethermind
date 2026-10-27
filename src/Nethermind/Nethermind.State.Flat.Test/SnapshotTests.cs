@@ -150,21 +150,20 @@ public class SnapshotTests
     }
 
     [Test]
-    public void FilteredLookupsFindEveryWrittenKeyAndNoOthers()
+    public void FilteredLookupsFindEveryWrittenKeyAndNoOthers([Values] bool reusedContent)
     {
         const int Count = 1_000;
-        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
+        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+        if (reusedContent)
         {
-            for (int i = 0; i < Count; i++)
-            {
-                (Address address, Hash256 hash, TreePath path) = Key(i);
-                content.Accounts[new(address)] = new((ulong)i, 1);
-                content.Storages[new((address, (UInt256)i))] = (UInt256)i;
-                content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
-                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
-            }
-        });
+            // An earlier, larger build over the keys asserted absent below: its filter arrays are reused, not reallocated.
+            Populate(Count, 4 * Count);
+            new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing).BuildFilters();
+            content.Reset();
+        }
 
+        Populate(0, Count);
+        using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         snapshot.BuildFilters();
 
         using (Assert.EnterMultipleScope())
@@ -177,6 +176,18 @@ public class SnapshotTests
                 Assert.That(snapshot.TryGetStorage(new((address, (UInt256)i)), out _), Is.EqualTo(written));
                 Assert.That(snapshot.TryGetStateNode(new(path), out _), Is.EqualTo(written));
                 Assert.That(snapshot.TryGetStorageNode(new((hash, path)), out _), Is.EqualTo(written));
+            }
+        }
+
+        void Populate(int from, int to)
+        {
+            for (int i = from; i < to; i++)
+            {
+                (Address address, Hash256 hash, TreePath path) = Key(i);
+                content.Accounts[new(address)] = new((ulong)i, 1);
+                content.Storages[new((address, (UInt256)i))] = (UInt256)i;
+                content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
             }
         }
 
