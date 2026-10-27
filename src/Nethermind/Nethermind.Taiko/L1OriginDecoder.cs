@@ -102,13 +102,6 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             return;
         }
 
-        int contentLength = GetContentLength(item, rlpBehaviors);
-        lengths.Push(contentLength);
-        lengths.Push(Rlp.LengthOfSequence(contentLength));
-    }
-
-    private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
-    {
         int buildPayloadLength = 0;
         if (item.BuildPayloadArgsId is not null || item.IsForcedInclusion || item.Signature is not null)
         {
@@ -123,12 +116,14 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             isForcedInclusionLength = Rlp.LengthOf(item.IsForcedInclusion);
         }
 
-        return Rlp.LengthOf(item.BlockId)
+        int contentLength = Rlp.LengthOf(item.BlockId)
             + Rlp.LengthOf(item.L2BlockHash)
             + Rlp.LengthOf(item.L1BlockHeight ?? 0)
             + Rlp.LengthOf(item.L1BlockHash)
             + buildPayloadLength
             + isForcedInclusionLength
             + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0));
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

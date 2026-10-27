@@ -32,17 +32,16 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
 
     public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        PushTypedTransactionLength(GetContentLength(transaction), ref lengths, rlpBehaviors);
-
-    private static int GetContentLength(Transaction transaction) =>
-        Rlp.LengthOf(transaction.SourceHash)
-        + Rlp.LengthOf(transaction.SenderAddress)
-        + Rlp.LengthOf(transaction.To)
-        + Rlp.LengthOf(transaction.Mint)
-        + Rlp.LengthOf(transaction.ValueRef)
-        + Rlp.LengthOf(transaction.GasLimit)
-        + Rlp.LengthOf(transaction.IsOPSystemTransaction)
-        + Rlp.LengthOf(transaction.Data);
+        PushTypedTransactionLength(
+            Rlp.LengthOf(transaction.SourceHash)
+            + Rlp.LengthOf(transaction.SenderAddress)
+            + Rlp.LengthOf(transaction.To)
+            + Rlp.LengthOf(transaction.Mint)
+            + Rlp.LengthOf(transaction.ValueRef)
+            + Rlp.LengthOf(transaction.GasLimit)
+            + Rlp.LengthOf(transaction.IsOPSystemTransaction)
+            + Rlp.LengthOf(transaction.Data),
+            ref lengths, rlpBehaviors);
 
     private readonly struct Payload : ITxPayloadDecoder
     {

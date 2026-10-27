@@ -111,7 +111,13 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 return;
             }
 
-            int contentLength = GetContentLength(accessList);
+            int contentLength = 0;
+            foreach ((Address Address, AccessList.StorageKeysEnumerable StorageKeys) entry in accessList)
+            {
+                int indexesContentLength = entry.StorageKeys.Count * Rlp.LengthOfKeccakRlp;
+                contentLength += Rlp.LengthOfSequence(Rlp.LengthOfSequence(indexesContentLength) + Rlp.LengthOfAddressRlp);
+            }
+
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
@@ -133,19 +139,6 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             public int ContentLength { get; }
 
             public int SequenceLength { get; }
-        }
-
-        private static int GetContentLength(AccessList accessList)
-        {
-            int sum = 0;
-            foreach ((Address Address, AccessList.StorageKeysEnumerable StorageKeys) entry in accessList)
-            {
-                int indexesContentLength = entry.StorageKeys.Count * Rlp.LengthOfKeccakRlp;
-                int contentLength = Rlp.LengthOfSequence(indexesContentLength) + Rlp.LengthOfAddressRlp;
-                sum += Rlp.LengthOfSequence(contentLength);
-            }
-
-            return sum;
         }
     }
 }

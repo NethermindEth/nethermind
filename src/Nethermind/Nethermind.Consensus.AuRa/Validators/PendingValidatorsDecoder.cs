@@ -70,22 +70,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
+            int addressesLength = GetAddressesLength(item.Addresses);
+            int contentLength = Rlp.LengthOf(item.BlockNumber)
+                                + Rlp.LengthOf(item.BlockHash)
+                                + Rlp.LengthOf(item.AreFinalized)
+                                + Rlp.LengthOfSequence(addressesLength);
             lengths.Push(addressesLength);
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
-        private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
-        {
-            int contentLength = Rlp.LengthOf(item.BlockNumber)
-                                + Rlp.LengthOf(item.BlockHash)
-                                + Rlp.LengthOf(item.AreFinalized);
-
-            int addressesLength = GetAddressesLength(item.Addresses);
-            contentLength += Rlp.LengthOfSequence(addressesLength);
-
-            return (contentLength, addressesLength);
         }
 
         private static int GetAddressesLength(Address[] addresses)

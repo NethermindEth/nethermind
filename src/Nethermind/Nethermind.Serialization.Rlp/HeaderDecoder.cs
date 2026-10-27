@@ -177,8 +177,14 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
-        private int GetContentLength(BlockHeader item, RlpBehaviors rlpBehaviors)
+        public override void PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
+            }
+
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             int contentLength = 0
                                 + Rlp.LengthOf(item.ParentHash ?? Keccak.Zero)
@@ -212,7 +218,8 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
 
-            return contentLength;
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)
@@ -231,19 +238,6 @@ namespace Nethermind.Serialization.Rlp
             {
                 requiredItems[i] |= requiredItems[i + 1];
             }
-        }
-
-        public override void PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                lengths.Push(Rlp.OfEmptyList.Length);
-                return;
-            }
-
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            lengths.Push(contentLength);
-            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
     }
 }

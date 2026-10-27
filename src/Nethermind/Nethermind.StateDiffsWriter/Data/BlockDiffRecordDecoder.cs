@@ -47,7 +47,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             stream.Encode(entry.NewCount);
         }
 
-        // Trailing additive fields, always emitted so the on-wire length matches GetContentLength.
+        // Trailing additive fields, always emitted so the on-wire length matches PopulateLength.
         stream.Encode(item.AccountTrieBytesDelta);
         stream.Encode(item.StorageTrieBytesDelta);
         stream.Encode(item.AccountsAddedDelta);
@@ -63,7 +63,13 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 
         int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
         int slotChangesContent = GetSlotCountChangesContentLength(item.SlotCountChanges);
-        int contentLength = GetContentLength(item, codeChangesContent, slotChangesContent);
+        int contentLength = Rlp.LengthOf(item.BlockNumber)
+            + Rlp.LengthOf(item.StateRoot)
+            + Rlp.LengthOfSequence(codeChangesContent)
+            + Rlp.LengthOfSequence(slotChangesContent)
+            + Rlp.LengthOf(item.AccountTrieBytesDelta)
+            + Rlp.LengthOf(item.StorageTrieBytesDelta)
+            + Rlp.LengthOf(item.AccountsAddedDelta);
         lengths.Push(slotChangesContent);
         lengths.Push(codeChangesContent);
         lengths.Push(contentLength);
@@ -158,13 +164,4 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             total += Rlp.LengthOfSequence(GetSlotCountEntryContentLength(entry));
         return total;
     }
-
-    private static int GetContentLength(BlockDiffRecord item, int codeChangesContent, int slotChangesContent)
-        => Rlp.LengthOf(item.BlockNumber)
-           + Rlp.LengthOf(item.StateRoot)
-           + Rlp.LengthOfSequence(codeChangesContent)
-           + Rlp.LengthOfSequence(slotChangesContent)
-           + Rlp.LengthOf(item.AccountTrieBytesDelta)
-           + Rlp.LengthOf(item.StorageTrieBytesDelta)
-           + Rlp.LengthOf(item.AccountsAddedDelta);
 }

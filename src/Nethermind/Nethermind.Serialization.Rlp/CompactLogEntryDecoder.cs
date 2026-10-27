@@ -126,10 +126,16 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int total, int topics) = GetContentLength(item);
-            lengths.Push(topics);
-            lengths.Push(total);
-            lengths.Push(Rlp.LengthOfSequence(total));
+            int topicsLength = GetTopicsLength(item);
+            ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
+            int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
+            int contentLength = Rlp.LengthOf(item.Address)
+                + Rlp.LengthOfSequence(topicsLength)
+                + Rlp.LengthOf(dataZeroPrefix)
+                + Rlp.LengthOf(withoutLeadingZero);
+            lengths.Push(topicsLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         /// <summary>Decodes the leading-zero-stripped log data.</summary>
@@ -151,27 +157,6 @@ namespace Nethermind.Serialization.Rlp
             Rlp.GuardLimit(zeroPrefix, LogEntryDataRlpLimit.Limit - data.Length, LogEntryDataRlpLimit);
 
             return position;
-        }
-
-        private static (int Total, int Topics) GetContentLength(LogEntry? item)
-        {
-            int contentLength = 0;
-            if (item is null)
-            {
-                return (contentLength, 0);
-            }
-
-            contentLength += Rlp.LengthOf(item.Address);
-
-            int topicsLength = GetTopicsLength(item);
-            contentLength += Rlp.LengthOfSequence(topicsLength);
-
-            ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
-            int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
-            contentLength += Rlp.LengthOf(dataZeroPrefix);
-            contentLength += Rlp.LengthOf(withoutLeadingZero);
-
-            return (contentLength, topicsLength);
         }
 
         private static int GetTopicsLength(LogEntry? item)

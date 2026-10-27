@@ -61,14 +61,11 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
             return;
         }
 
-        int contentLength = GetContentLength(item);
+        int contentLength = Rlp.LengthOf(item.Index) +
+            Rlp.LengthOf(item.ValidatorIndex) +
+            Rlp.LengthOfAddressRlp +
+            Rlp.LengthOf(item.AmountInGwei);
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
-
-    private static int GetContentLength(Withdrawal item) =>
-        Rlp.LengthOf(item.Index) +
-        Rlp.LengthOf(item.ValidatorIndex) +
-        Rlp.LengthOfAddressRlp +
-        Rlp.LengthOf(item.AmountInGwei);
 }

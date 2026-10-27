@@ -38,7 +38,18 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
 
     internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
-        int contentLength = GetContentLength(transaction, forSigning, isEip155Enabled, chainId);
+        int contentLength = GetLegacyFieldsLength(transaction);
+
+        if (!forSigning)
+        {
+            Signature? signature = transaction.Signature;
+            contentLength += GetSignatureLength(signature, signature?.V ?? 0);
+        }
+        else if (IncludeSigChainIdHack(isEip155Enabled, chainId))
+        {
+            contentLength += Rlp.LengthOf(chainId) + 2;
+        }
+
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
@@ -60,23 +71,6 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
             writer.Encode(Rlp.OfEmptyByteArray);
             writer.Encode(Rlp.OfEmptyByteArray);
         }
-    }
-
-    private static int GetContentLength(Transaction transaction, bool forSigning, bool isEip155Enabled, ulong chainId)
-    {
-        int contentLength = GetLegacyFieldsLength(transaction);
-
-        if (!forSigning)
-        {
-            Signature? signature = transaction.Signature;
-            contentLength += GetSignatureLength(signature, signature?.V ?? 0);
-        }
-        else if (IncludeSigChainIdHack(isEip155Enabled, chainId))
-        {
-            contentLength += Rlp.LengthOf(chainId) + 2;
-        }
-
-        return contentLength;
     }
 
     private static void DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, bool allowEmptySignature)

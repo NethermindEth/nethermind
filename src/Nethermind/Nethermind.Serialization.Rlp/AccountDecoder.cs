@@ -206,23 +206,6 @@ namespace Nethermind.Serialization.Rlp
             return position + 1 + length;
         }
 
-        public int GetLength(Account[] accounts)
-        {
-            int length = 0;
-
-            if (accounts is null || accounts.Length == 0)
-            {
-                return 1;
-            }
-
-            for (int i = 0; i < accounts.Length; i++)
-            {
-                length += Rlp.LengthOfSequence(GetContentLength(accounts[i]));
-            }
-
-            return length;
-        }
-
         public override void PopulateLength(Account? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

@@ -114,26 +114,11 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            int contentLength = GetContentLength(item).Total;
+            int contentLength = Rlp.LengthOf(item.Address)
+                + Rlp.LengthOfSequence(GetTopicsLength(item))
+                + Rlp.LengthOf(item.Data);
             lengths.Push(contentLength);
             lengths.Push(Rlp.LengthOfSequence(contentLength));
-        }
-
-        private static (int Total, int Topics) GetContentLength(LogEntry? item)
-        {
-            int contentLength = 0;
-            if (item is null)
-            {
-                return (contentLength, 0);
-            }
-
-            contentLength += Rlp.LengthOf(item.Address);
-
-            int topicsLength = GetTopicsLength(item);
-            contentLength += Rlp.LengthOfSequence(topicsLength);
-            contentLength += Rlp.LengthOf(item.Data);
-
-            return (contentLength, topicsLength);
         }
 
         // Every topic is a 32-byte word, as the decoder's topic count also assumes.

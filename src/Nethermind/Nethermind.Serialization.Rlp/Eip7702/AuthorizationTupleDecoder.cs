@@ -64,16 +64,14 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 
     public override void PopulateLength(AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetContentLength(item ?? throw new ArgumentNullException(nameof(item)));
+        ArgumentNullException.ThrowIfNull(item);
+        int contentLength = GetContentLengthWithoutSig(item.ChainId, item.CodeAddress, item.Nonce)
+            + Rlp.LengthOf(item.AuthoritySignature.V - Signature.VOffset)
+            + Rlp.LengthOf(new UInt256(item.AuthoritySignature.R.Span, true))
+            + Rlp.LengthOf(new UInt256(item.AuthoritySignature.S.Span, true));
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
-
-    private static int GetContentLength(AuthorizationTuple tuple) =>
-        GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)
-        + Rlp.LengthOf(tuple.AuthoritySignature.V - Signature.VOffset)
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.R.Span, true))
-        + Rlp.LengthOf(new UInt256(tuple.AuthoritySignature.S.Span, true));
 
     private static int GetContentLengthWithoutSig(in UInt256 chainId, Address codeAddress, ulong nonce) =>
         Rlp.LengthOf(chainId)

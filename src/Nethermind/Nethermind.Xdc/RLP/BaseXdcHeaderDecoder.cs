@@ -149,7 +149,24 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             return;
         }
 
-        int contentLength = GetContentLength(h, rlpBehaviors);
+        int contentLength =
+            +Rlp.LengthOf(h.ParentHash ?? Keccak.Zero)
+            + Rlp.LengthOf(h.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
+            + Rlp.LengthOf(h.Beneficiary ?? Address.Zero)
+            + Rlp.LengthOf(h.StateRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(h.TxRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(h.ReceiptsRoot ?? Keccak.EmptyTreeHash)
+            + Rlp.LengthOf(h.Bloom ?? Bloom.Empty)
+            + Rlp.LengthOf(h.Difficulty)
+            + Rlp.LengthOf(h.Number)
+            + Rlp.LengthOf(h.GasLimit)
+            + Rlp.LengthOf(h.GasUsed)
+            + Rlp.LengthOf(h.Timestamp)
+            + Rlp.LengthOf(h.ExtraData)
+            + Rlp.LengthOf(h.MixHash ?? Keccak.Zero)
+            + Rlp.LengthOfNonce(h.Nonce);
+
+        contentLength += GetHeaderSpecificContentLength(h, rlpBehaviors);
         lengths.Push(contentLength);
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
@@ -163,29 +180,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             throw new InvalidOperationException(
                 $"{GetType().Name} can only encode {typeof(TH).Name} or a plain {nameof(BlockHeader)}, but got {header.GetType().Name}.");
         }
-    }
-
-    private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)
-    {
-        int contentLength =
-            +Rlp.LengthOf(header.ParentHash ?? Keccak.Zero)
-            + Rlp.LengthOf(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
-            + Rlp.LengthOf(header.Beneficiary ?? Address.Zero)
-            + Rlp.LengthOf(header.StateRoot ?? Keccak.EmptyTreeHash)
-            + Rlp.LengthOf(header.TxRoot ?? Keccak.EmptyTreeHash)
-            + Rlp.LengthOf(header.ReceiptsRoot ?? Keccak.EmptyTreeHash)
-            + Rlp.LengthOf(header.Bloom ?? Bloom.Empty)
-            + Rlp.LengthOf(header.Difficulty)
-            + Rlp.LengthOf(header.Number)
-            + Rlp.LengthOf(header.GasLimit)
-            + Rlp.LengthOf(header.GasUsed)
-            + Rlp.LengthOf(header.Timestamp)
-            + Rlp.LengthOf(header.ExtraData)
-            + Rlp.LengthOf(header.MixHash ?? Keccak.Zero)
-            + Rlp.LengthOfNonce(header.Nonce);
-
-        contentLength += GetHeaderSpecificContentLength(header, rlpBehaviors);
-        return contentLength;
     }
 
 }
