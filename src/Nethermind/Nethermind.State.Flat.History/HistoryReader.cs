@@ -25,8 +25,8 @@ public sealed class HistoryReader
     // Slim-format account RLP is at most nonce + balance + two 32-byte hashes; 256 bytes is ample headroom.
     private const int AccountValueBufferSize = 256;
 
-    // 131,072 entries per domain, a few blocks' worth of distinct reads.
-    private const int ReadCacheSetsBits = 16;
+    // 262,144 entries per domain, the distinct reads of about a hundred blocks.
+    private const int ReadCacheSetsBits = 17;
 
     private readonly HistoryStore? _accountHistory;
     private readonly HistoryStore? _storageHistory;
@@ -41,7 +41,8 @@ public sealed class HistoryReader
 
     // The state as of a covered block never changes, so one result serves every scope and request at that block.
     // A whole-block trace opens a scope per transaction, each starting with empty state caches.
-    private readonly SeqlockCache<AccountAtBlock, CachedAccount> _accounts = new(ReadCacheSetsBits);
+    // Accounts are immutable, so a hit hands out the cached instance without allocating.
+    private readonly SeqlockCache<AccountAtBlock, Account?> _accounts = new(ReadCacheSetsBits);
     private readonly SeqlockCache<SlotAtBlock, CachedSlot> _slots = new(ReadCacheSetsBits);
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
@@ -99,16 +100,20 @@ public sealed class HistoryReader
 
     internal bool TryGetAccount(ulong block, Address address, out AccountStruct account, ReadScope? scope)
     {
-        AccountAtBlock key = new(block, address);
-        if (_accounts.TryGetValue(in key, out CachedAccount cached))
-        {
-            account = cached.Account;
-            return cached.Exists;
-        }
+        Account? found = GetAccount(block, address, scope);
+        account = found?.ToStruct() ?? default;
+        return found is not null;
+    }
 
-        bool exists = ReadAccount(block, address, out account, scope);
-        _accounts.Set(in key, new CachedAccount(exists, account));
-        return exists;
+    /// <summary>Resolves the account as of <paramref name="block"/>; null when it did not exist there.</summary>
+    internal Account? GetAccount(ulong block, Address address, ReadScope? scope)
+    {
+        AccountAtBlock key = new(block, address);
+        if (_accounts.TryGetValue(in key, out Account? cached)) return cached;
+
+        Account? account = ReadAccount(block, address, out AccountStruct value, scope) ? value.ToAccount() : null;
+        _accounts.Set(in key, account);
+        return account;
     }
 
     [SkipLocalsInit]
@@ -326,8 +331,6 @@ public sealed class HistoryReader
 
         public bool Equals(in SlotAtBlock other) => _block == other._block && _cell.Equals(in other._cell);
     }
-
-    private readonly record struct CachedAccount(bool Exists, AccountStruct Account);
 
     private readonly record struct CachedSlot(bool Exists, UInt256 Value);
 }
