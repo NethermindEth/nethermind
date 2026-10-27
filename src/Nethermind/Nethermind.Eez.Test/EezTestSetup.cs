@@ -11,5 +11,10 @@ namespace Nethermind.Eez.Test;
 public class EezTestSetup
 {
     [OneTimeSetUp]
-    public void RegisterSystemTransactionDecoder() => TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder());
+    public void RegisterSystemTransactionDecoder()
+    {
+        TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder());
+        TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder());
+    }
 }

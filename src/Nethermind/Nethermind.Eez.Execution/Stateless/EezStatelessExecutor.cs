@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -64,7 +65,10 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         EnsureCheckpointsInRange(block, checkpoints);
         AssignSenders(block);
 
-        TransactionCheckpointRecorder? recorder = checkpoints.Length > 0 ? new TransactionCheckpointRecorder(specProvider, checkpoints) : null;
+        NativeHistoryContext? native = rules.UsesNativeContractV3 ? _nativeHistory : null;
+        TransactionCheckpointRecorder? recorder = checkpoints.Length > 0
+            ? new TransactionCheckpointRecorder(specProvider, checkpoints, native is null || checkpoints[0] != EezTransactionCheckpoint.PreExecution ? null : native.ValidateEmptyPrefix)
+            : null;
         StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, recorder, recorder is not null ? recorder.Wrap : null);
         StatelessBlockProcessingResult result = env.Process(block);
         if (!result.IsValid)
@@ -123,7 +127,7 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         return block ?? throw new EezStatelessException(EezStatelessFailure.Rejected, "The block RLP is empty.");
     }
 
-    private static void EnsureCheckpointsInRange(Block block, int[] checkpoints)
+    private void EnsureCheckpointsInRange(Block block, int[] checkpoints)
     {
         for (int i = 0; i < checkpoints.Length; i++)
         {
@@ -132,6 +136,20 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
             {
                 throw new EezStatelessException(EezStatelessFailure.InternalInvariant,
                     $"Checkpoints must be the empty prefix, if any, then strictly increasing transaction indices of block {block.Number}.");
+            }
+        }
+        if (rules.UsesNativeContractV3 && checkpoints.Length > 0)
+        {
+            NativeExecutionGroup group = default;
+            int checkpoint = checkpoints[0] == EezTransactionCheckpoint.PreExecution ? 1 : 0;
+            for (int index = 0; checkpoint < checkpoints.Length && index < block.Transactions.Length; index++)
+            {
+                group = group.After(block.Transactions[index], out _);
+                if (checkpoints[checkpoint] == index)
+                {
+                    group.EnsureComplete();
+                    checkpoint++;
+                }
             }
         }
     }
@@ -159,6 +177,8 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
     {
         TxValidator txValidator = new(specProvider.ChainId);
         txValidator.RegisterValidator(rules.SystemTransactionType, EezTxType.CreateValidator(specProvider.ChainId, rules));
+        if (rules.UsesNativeContractV3)
+            txValidator.RegisterValidator((TxType)NativeHistoryEnvelope.Type, EezTxType.CreateValidator(specProvider.ChainId, rules));
         return txValidator;
     }
 

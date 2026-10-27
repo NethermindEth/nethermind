@@ -200,23 +200,25 @@ public partial class EezL2SystemCallsTests
         new(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), state, scope.Resolve<ISpecProvider>(), NativeRules(),
             HistorySchedule, 99, HistorySource, chain);
 
-    private static void WithHistory(Action<ILifetimeScope, IWorldState, BlockHeader, NativeL1HeaderChain> action) =>
-        WithProcessor(NativeRules(), (scope, state, _, header) =>
+    private static void WithHistory(Action<ILifetimeScope, IWorldState, BlockHeader, NativeL1HeaderChain> action, bool contractV3 = false)
+    {
+        NativeL1HeaderChain chain = new();
+        Hash256 parent = TestItem.KeccakC;
+        for (int index = 0; index < 3; index++)
         {
-            NativeL1HeaderChain chain = new();
-            Hash256 parent = TestItem.KeccakC;
-            for (int index = 0; index < 3; index++)
-            {
-                Hash256 randao = index switch { 0 => TestItem.KeccakA, 1 => TestItem.KeccakB, _ => TestItem.KeccakC };
-                BlockHeader l1 = Build.A.BlockHeader.WithNumber(99 + index).WithTimestamp(108UL + (ulong)index * 6)
-                    .WithParentHash(parent).WithMixHash(randao).TestObject;
-                byte[] raw = Rlp.Encode(l1).Bytes;
-                chain.Append([raw], new NativeL1HeaderRules(null, null, null, null, null));
-                parent = new Hash256(chain.Endpoint.Hash);
-            }
+            Hash256 randao = index switch { 0 => TestItem.KeccakA, 1 => TestItem.KeccakB, _ => TestItem.KeccakC };
+            BlockHeader l1 = Build.A.BlockHeader.WithNumber(99 + index).WithTimestamp(108UL + (ulong)index * 6)
+                .WithParentHash(parent).WithMixHash(randao).TestObject;
+            byte[] raw = Rlp.Encode(l1).Bytes;
+            chain.Append([raw], new NativeL1HeaderRules(null, null, null, null, null));
+            parent = new Hash256(chain.Endpoint.Hash);
+        }
+        EezChainRules rules = contractV3 ? ContractV3HistoryRules(chain) : NativeRules();
+        WithProcessor(rules, (scope, state, _, header) =>
+        {
             state.CreateAccount(EezConstants.L1HistoryAddress, 0, 1);
-            byte[] runtime = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "rollupx", "native-profile-v1", "history-runtime.bin"));
-            Assert.That(ValueKeccak.Compute(runtime), Is.EqualTo(NativeHistoryBlockExecutor.RuntimeHash), "exact unchanged upstream runtime");
+            byte[] runtime = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "rollupx", contractV3 ? "native-offline-v3" : "native-profile-v1", "history-runtime.bin"));
+            Assert.That(ValueKeccak.Compute(runtime), Is.EqualTo(NativeHistoryBlockExecutor.GetRuntimeHash(rules.NativeFormat)), "exact unchanged upstream runtime");
             state.InsertCode(EezConstants.L1HistoryAddress, runtime, Osaka.Instance);
             ulong[] slots = [99, 99, 120, 12, 6, 64];
             for (int index = 0; index < slots.Length; index++)
@@ -228,4 +230,5 @@ public partial class EezL2SystemCallsTests
             state.Commit(Osaka.Instance);
             action(scope, state, header, chain);
         });
+    }
 }

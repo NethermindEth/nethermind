@@ -13,7 +13,7 @@ namespace Nethermind.Eez.Execution;
 
 public static partial class RollupXGenesis
 {
-    internal static (EezChainRules Rules, NativeHistorySchedule History) ReadNative(JsonElement genesis)
+    internal static (EezChainRules Rules, NativeHistorySchedule History) ReadNative(JsonElement genesis, NativeSystemTxFormat format = NativeSystemTxFormat.RecordedV1)
     {
         EnsureNativeDocument(genesis);
         JsonElement config = Required(genesis, "config");
@@ -30,8 +30,8 @@ public static partial class RollupXGenesis
         NativeHistorySchedule history = new(schedule.GenesisTimestamp, schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks, (uint)offset);
         if (schedule.L1Reference.Timestamp > history.BootstrapCutoff)
             throw Invalid("the L1 reference is after the history bootstrap cutoff");
-        EezChainRules rules = EezChainRules.NativeRollupX(schedule, collector);
-        EnsureNativeHistory(genesis, schedule, history);
+        EezChainRules rules = EezChainRules.NativeRollupX(schedule, collector, format, (uint)offset);
+        EnsureNativeHistory(genesis, schedule, history, format);
         return (rules, history);
     }
 
@@ -55,11 +55,11 @@ public static partial class RollupXGenesis
         }
     }
 
-    private static void EnsureNativeHistory(JsonElement genesis, RollupXSchedule schedule, NativeHistorySchedule history)
+    private static void EnsureNativeHistory(JsonElement genesis, RollupXSchedule schedule, NativeHistorySchedule history, NativeSystemTxFormat format)
     {
         JsonElement account = FindAccount(genesis, EezConstants.L1HistoryAddress) ?? throw Invalid("missing native history predeploy");
         if (Quantity(account, "nonce") != 1 || Quantity(account, "balance") != 0 ||
-            ValueKeccak.Compute(Bytes.FromHexString(Required(account, "code").GetString()!)) != NativeHistoryBlockExecutor.RuntimeHash)
+            ValueKeccak.Compute(Bytes.FromHexString(Required(account, "code").GetString()!)) != NativeHistoryBlockExecutor.GetRuntimeHash(format))
             throw Invalid("native history code, nonce or balance differs from the profile");
         JsonElement storage = Required(account, "storage");
         Dictionary<UInt256, UInt256> expected = new(7)

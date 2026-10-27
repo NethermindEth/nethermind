@@ -69,6 +69,30 @@ internal sealed class NativeHistorySchedule
         return execution with { Import = recorded.Value };
     }
 
+    internal NativeHistoryExecution ResolveContractV3(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
+    {
+        NativeHistoryExecution execution = VerifyContractV3(timestamp, in state, chain, selected);
+        return selected.HasValue
+            ? execution with { Import = NativeHistoryCall.Encode(execution.Cutoff, chain, state.Endpoint, execution.OriginNumber) }
+            : execution;
+    }
+
+    internal NativeHistoryExecution VerifyContractV3(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
+    {
+        if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)
+            throw NativeL1Header.Invalid("history requires an aligned post-genesis timestamp");
+        ulong cutoff = SourceCutoff(timestamp);
+        bool updating = timestamp - cutoff == Delay;
+        if (state.FirstNumber > state.Endpoint || state.ScheduleCutoff != FirstCutoff || chain.At(state.Endpoint).Hash != state.EndpointHash)
+            throw NativeL1Header.Invalid("parent history state mismatch");
+        if (!updating && selected.HasValue) throw NativeL1Header.Invalid("off-schedule history transaction");
+        NativeL1Header source = chain.At(selected ?? state.Endpoint);
+        if (source.Timestamp > cutoff) throw NativeL1Header.Invalid("origin is newer than delayed cutoff");
+        if (selected.HasValue && (source.Number <= state.Endpoint || source.Number - state.Endpoint > NativeHistoryCall.MaxHashes))
+            throw NativeL1Header.Invalid("history import exceeds bound or does not advance");
+        return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, default);
+    }
+
     private NativeHistoryExecution ResolveOrigin(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
     {
         if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)
@@ -77,7 +101,7 @@ internal sealed class NativeHistorySchedule
         bool updating = timestamp - cutoff == Delay;
         if (!updating && cutoff > ulong.MaxValue - Interval) throw NativeL1Header.Invalid("next cutoff overflow");
         ulong expectedNext = updating ? cutoff : cutoff + Interval;
-        if (state.FirstNumber > state.Endpoint || state.NextCutoff != expectedNext || chain.At(state.Endpoint).Hash != state.EndpointHash)
+        if (state.FirstNumber > state.Endpoint || state.ScheduleCutoff != expectedNext || chain.At(state.Endpoint).Hash != state.EndpointHash)
             throw NativeL1Header.Invalid("parent history state mismatch");
         if (updating != selected.HasValue) throw NativeL1Header.Invalid("missing or off-schedule history transaction");
         NativeL1Header source = chain.At(selected ?? state.Endpoint);
@@ -93,7 +117,7 @@ internal sealed class NativeHistorySchedule
 }
 
 /// <summary>History values read from the authenticated parent state, rather than an RPC assertion.</summary>
-internal readonly record struct NativeHistoryState(ulong FirstNumber, ulong Endpoint, ValueHash256 EndpointHash, ulong NextCutoff);
+internal readonly record struct NativeHistoryState(ulong FirstNumber, ulong Endpoint, ValueHash256 EndpointHash, ulong ScheduleCutoff);
 
 /// <summary>Recorded origin and pre-execution import; final anchor authorization remains required.</summary>
 internal readonly record struct NativeHistoryExecution(ulong Cutoff, ulong OriginNumber, ValueHash256 OriginHash,

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -17,7 +18,7 @@ namespace Nethermind.Eez.Execution.Stateless;
 /// system calls are committed, and after each selected transaction. Post-execution changes are never included.
 /// </summary>
 /// <param name="positions">Ascending transaction indices, led by <see cref="EezTransactionCheckpoint.PreExecution"/> when selected.</param>
-internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, int[] positions)
+internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, int[] positions, Action<BlockHeader, IWorldState>? validateEmptyPrefix = null)
     : BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
 {
     private int _next;
@@ -45,6 +46,7 @@ internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, 
         }
 
         IWorldState worldState = _worldState!;
+        if (position == EezTransactionCheckpoint.PreExecution) validateEmptyPrefix?.Invoke(header, worldState);
         worldState.Commit(specProvider.GetSpec(header), commitRoots: true);
         worldState.RecalculateStateRoot();
         StateRoots[_next++] = worldState.StateRoot;

@@ -57,18 +57,24 @@ internal sealed class NativeHistoryEnvelope
         }
     }
 
-    internal byte[] Encode()
+    internal int PayloadLength => Rlp.LengthOf(Version) + Rlp.LengthOf(ChainId)
+        + Rlp.LengthOfSequence(_hashes.Length * HashRlpLength);
+
+    internal void EncodePayload<TWriter>(ref TWriter writer) where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int hashesLength = _hashes.Length * HashRlpLength;
-        int length = Rlp.LengthOf(Version) + Rlp.LengthOf(ChainId) + Rlp.LengthOfSequence(hashesLength);
-        byte[] encoded = new byte[1 + Rlp.LengthOfSequence(length)];
-        encoded[0] = Type;
-        RlpWriter writer = new(encoded.AsSpan(1));
-        writer.StartSequence(length);
+        writer.StartSequence(PayloadLength);
         writer.Encode(Version);
         writer.Encode(ChainId);
-        writer.StartSequence(hashesLength);
+        writer.StartSequence(_hashes.Length * HashRlpLength);
         foreach (ValueHash256 hash in _hashes) writer.Encode(hash);
+    }
+
+    internal byte[] Encode()
+    {
+        byte[] encoded = new byte[1 + Rlp.LengthOfSequence(PayloadLength)];
+        encoded[0] = Type;
+        RlpWriter writer = new(encoded.AsSpan(1));
+        EncodePayload(ref writer);
         return encoded;
     }
 

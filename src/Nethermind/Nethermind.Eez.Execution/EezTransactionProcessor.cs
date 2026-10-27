@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -34,6 +35,11 @@ public sealed class EezTransactionProcessor(
     bool parallel = false)
     : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
 {
+    private readonly NativeHistorySchedule? _historySchedule = rules.UsesNativeContractV3
+        ? new(rules.Schedule!.GenesisTimestamp, rules.Schedule.BlockIntervalSeconds, rules.Schedule.SyncIntervalBlocks, rules.NativeHistoryOffset)
+        : null;
+    private BlockHeader? _groupHeader;
+    private NativeExecutionGroup _group;
     private IReleaseSpec? _feeSpecSource;
     private IReleaseSpec? _withoutFeeCollector;
 
@@ -49,8 +55,32 @@ public sealed class EezTransactionProcessor(
             tx.GasLimit = gas;
         }
 
-        return base.Execute(tx, tracer, opts);
+        BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        NativeExecutionGroup next = default;
+        if (rules.UsesNativeContractV3)
+            next = CurrentGroup(header).After(tx, out _);
+        Transaction original = tx;
+        if (tx is NativeHistoryTransaction history)
+        {
+            if (!rules.UsesNativeContractV3 || !tx.HasSystemTransactionFields(rules) || history.IsExecutionView)
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("Invalid dedicated history transaction fields");
+            tx = history.ForExecution(_historySchedule!.SourceCutoff(header.Timestamp));
+        }
+        TransactionResult result = base.Execute(tx, tracer, opts);
+        if (!ReferenceEquals(original, tx) && !opts.HasFlag(ExecutionOptions.Warmup))
+        {
+            original.SpentGas = tx.SpentGas;
+            original.BlockGasUsed = tx.BlockGasUsed;
+        }
+        if (result && rules.UsesNativeContractV3 && !opts.HasFlag(ExecutionOptions.Restore) && !opts.HasFlag(ExecutionOptions.Warmup))
+        {
+            _groupHeader = header;
+            _group = next;
+        }
+        return result;
     }
+
+    private NativeExecutionGroup CurrentGroup(BlockHeader header) => ReferenceEquals(_groupHeader, header) ? _group : default;
 
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         in IntrinsicGas<EthereumGasPolicy> intrinsicGas) =>
@@ -63,13 +93,13 @@ public sealed class EezTransactionProcessor(
         new EezSystemTransactionProcessor(this, _blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
-        tx.Type == EezConstants.NativeSystemTxType
+        (tx.Type == EezConstants.NativeSystemTxType || tx is NativeHistoryTransaction)
             ? TransactionResult.Ok
             : base.IncrementNonce(tx, header, spec, tracer, opts);
 
     protected override void DecrementNonce(Transaction tx)
     {
-        if (tx.Type != EezConstants.NativeSystemTxType) base.DecrementNonce(tx);
+        if (tx.Type != EezConstants.NativeSystemTxType && tx is not NativeHistoryTransaction) base.DecrementNonce(tx);
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
@@ -107,6 +137,16 @@ public sealed class EezTransactionProcessor(
             spec = _withoutFeeCollector!;
         }
         base.PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode);
+        if (rules.UsesNativeContractV3)
+        {
+            CurrentGroup(header).After(tx, out bool completes);
+            if (completes)
+                foreach (Address address in rules.BurnedAtBlockStart)
+                {
+                    UInt256 balance = WorldState.GetBalance(address);
+                    if (!balance.IsZero) WorldState.SubtractFromBalance(address, in balance, spec);
+                }
+        }
     }
 
     private void ValidateNativeFeeCredit(Transaction tx, BlockHeader header, IReleaseSpec spec, in TransactionSubstate substate,

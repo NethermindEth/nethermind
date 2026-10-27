@@ -31,25 +31,29 @@ public sealed class EezChainRules
     private readonly bool _skipConsensusLayerCalls;
 
     private EezChainRules(Address eezl2Address, RollupXSchedule? schedule, Address? feeCollector = null, bool skipConsensusLayerCalls = false,
-        TxType systemTransactionType = EezConstants.SystemTxType)
+        TxType systemTransactionType = EezConstants.SystemTxType, NativeSystemTxFormat nativeFormat = NativeSystemTxFormat.RecordedV1, uint nativeHistoryOffset = 0)
     {
         _skipConsensusLayerCalls = skipConsensusLayerCalls;
         Eezl2Address = eezl2Address;
         Schedule = schedule;
         FeeCollector = feeCollector;
         SystemTransactionType = systemTransactionType;
+        NativeFormat = nativeFormat;
+        NativeHistoryOffset = nativeHistoryOffset;
     }
 
     public static EezChainRules Rollup0 { get; } = new(EezConstants.Eezl2Address, null);
 
     public static EezChainRules RollupX(RollupXSchedule schedule) => new(EezConstants.RollupXEezl2Address, schedule);
 
-    internal static EezChainRules NativeRollupX(RollupXSchedule schedule, Address feeCollector)
+    internal static EezChainRules NativeRollupX(RollupXSchedule schedule, Address feeCollector, NativeSystemTxFormat format = NativeSystemTxFormat.RecordedV1, uint historyOffset = 0)
     {
+        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3))
+            throw new ArgumentOutOfRangeException(nameof(format));
         if (feeCollector == Address.Zero || feeCollector == Address.SystemUser || feeCollector == EezConstants.RollupXEezl2Address)
             throw new ArgumentException("Native fee collector uses a reserved address.", nameof(feeCollector));
         return new EezChainRules(EezConstants.RollupXEezl2Address, schedule, feeCollector,
-            systemTransactionType: EezConstants.NativeSystemTxType);
+            systemTransactionType: EezConstants.NativeSystemTxType, nativeFormat: format, nativeHistoryOffset: historyOffset);
     }
 
     /// <exception cref="InvalidDataException">The genesis has a <c>rollupX</c> section that breaks a RollupX rule.</exception>
@@ -100,6 +104,9 @@ public sealed class EezChainRules
     public Address? FeeCollector { get; }
 
     internal TxType SystemTransactionType { get; }
+    internal NativeSystemTxFormat NativeFormat { get; }
+    internal uint NativeHistoryOffset { get; }
+    internal bool UsesNativeContractV3 => UsesNativeSystemTransactions && NativeFormat == NativeSystemTxFormat.ContractV3;
     internal bool UsesNativeSystemTransactions => SystemTransactionType == EezConstants.NativeSystemTxType;
     internal Address SystemAddress => UsesNativeSystemTransactions ? Address.SystemUser : EezConstants.SystemAddress;
 
@@ -120,7 +127,7 @@ public sealed class EezChainRules
     /// <summary>Whether blocks read deposits and request contracts; RollupX blocks never carry requests.</summary>
     public bool ReadsExecutionRequests => !IsRollupX && !_skipConsensusLayerCalls;
 
-    internal EezChainRules WithoutConsensusLayerCalls() => new(Eezl2Address, Schedule, FeeCollector, true, SystemTransactionType);
+    internal EezChainRules WithoutConsensusLayerCalls() => new(Eezl2Address, Schedule, FeeCollector, true, SystemTransactionType, NativeFormat, NativeHistoryOffset);
 
     /// <summary>
     /// The gas a RollupX system transaction executes with, given the gas the block has used before it: what is left,

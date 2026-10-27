@@ -31,13 +31,13 @@ internal sealed class NativeGenesisSnapshot
         Specs = new EezSpecProvider(new ChainSpecBasedSpecProvider(spec), rules);
     }
 
-    internal static NativeGenesisSnapshot Load(ReadOnlyMemory<byte> input)
+    internal static NativeGenesisSnapshot Load(ReadOnlyMemory<byte> input, NativeSystemTxFormat format = NativeSystemTxFormat.RecordedV1)
     {
         try
         {
             (byte[] normalized, ValueHash256 digest) = NativeChainDocument.Read(input);
             using JsonDocument json = JsonDocument.Parse(normalized);
-            (EezChainRules rules, NativeHistorySchedule history) = RollupXGenesis.ReadNative(json.RootElement);
+            (EezChainRules rules, NativeHistorySchedule history) = RollupXGenesis.ReadNative(json.RootElement, format);
             using MemoryStream stream = new(normalized, writable: false);
             ChainSpec spec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
             BlockHeader header = spec.Genesis!.Header;

@@ -57,7 +57,7 @@ public partial class RollupXGenesisTests
             Assert.That(cutoff, Is.EqualTo(timestamp - 6));
             Assert.That(hashes.IsEmpty, Is.True);
         }
-        NativeHistoryState stale = state with { NextCutoff = state.NextCutoff - 12 };
+        NativeHistoryState stale = state with { ScheduleCutoff = state.ScheduleCutoff - 12 };
         Assert.That(() => schedule.Resolve(timestamp, in stale, chain, 99), Throws.TypeOf<EezSettlementException>());
     }
 
@@ -114,7 +114,7 @@ public partial class RollupXGenesisTests
             case "genesis": timestamp = 120; selected = null; break;
             case "alignment": timestamp = 125; break;
             case "first": state = state with { FirstNumber = 100 }; break;
-            case "next": state = state with { NextCutoff = 132 }; break;
+            case "next": state = state with { ScheduleCutoff = 132 }; break;
             case "endpoint-hash": state = state with { EndpointHash = OfflineHash(0x77) }; break;
             case "missing-selection": selected = null; break;
             case "off-schedule": timestamp = 124; selected = 99; break;
@@ -125,7 +125,7 @@ public partial class RollupXGenesisTests
             case "overflow" or "idle-overflow":
                 bool idle = field == "idle-overflow";
                 schedule = new NativeHistorySchedule(ulong.MaxValue - 6, 2, 6, idle ? 0U : 2U);
-                state = state with { NextCutoff = idle ? 5UL : ulong.MaxValue - 6 };
+                state = state with { ScheduleCutoff = idle ? 5UL : ulong.MaxValue - 6 };
                 timestamp = idle ? ulong.MaxValue - 2 : ulong.MaxValue;
                 selected = idle ? null : 99UL;
                 break;

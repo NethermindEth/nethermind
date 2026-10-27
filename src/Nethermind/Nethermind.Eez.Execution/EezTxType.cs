@@ -16,7 +16,7 @@ public static class EezTxType
     public static ITxDecoder CreateDecoder() => new EezSystemTxDecoder<Transaction>();
 
     internal static ITxDecoder CreateDecoder(EezChainRules rules) =>
-        rules.UsesNativeSystemTransactions ? new EezNativeSystemTxDecoder() : CreateDecoder();
+        rules.UsesNativeSystemTransactions ? new EezNativeSystemTxDecoder(rules.NativeFormat) : CreateDecoder();
 
     /// <summary>Validates chain ID, nonce, gas limit and intrinsic gas for an EEZ system transaction.</summary>
     /// <remarks>
