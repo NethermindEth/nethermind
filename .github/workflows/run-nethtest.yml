@@ -138,9 +138,9 @@ env:
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v2.0.0' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
   # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
-  FRAME_MIN_CASES: '750'
+  FRAME_MIN_CASES: '1391'
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
-  FRAME_TX_MIN_CASES: '99'
+  FRAME_TX_MIN_CASES: '94'
   # nethtest runs with the server GC from its project. A workstation GC + GCConserveMemory=9 override spent more
   # than half of each blockTest chunk in GC pauses. Most of the garbage was a production-sized trie node cache
   # per test, which Ethereum.Test.Base now sizes for EF-test chains.
