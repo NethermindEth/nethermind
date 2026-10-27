@@ -26,7 +26,7 @@ public static class FrameTxSigHash
     public static ValueHash256 ComputeValue(Transaction transaction)
     {
         // SkipTypedWrapping makes the decoder emit exactly FRAME_TX_TYPE || rlp(tx).
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[LengthStack.MaxStackallocLength]);
         scoped KeccakRlpWriter writer = new();
         try
         {

@@ -56,7 +56,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     public static byte[] EncodeToBytes(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[Math.Min(sortedAccounts.Count * 8, LengthStack.MaxStackallocLength)]);
         try
         {
             byte[] bytes = new byte[PopulateLength(sortedAccounts.AsSpan(), ref lengths, rlpBehaviors)];
@@ -77,7 +77,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[Math.Min(sortedAccounts.Count * 8, LengthStack.MaxStackallocLength)]);
         try
         {
             ArrayPoolSpan<byte> bytes = new(PopulateLength(sortedAccounts.AsSpan(), ref lengths, rlpBehaviors));

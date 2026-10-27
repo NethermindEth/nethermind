@@ -30,9 +30,9 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/>
     /// fills exactly the total length <see cref="PopulateLength"/> returns.
     /// </remarks>
-    public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)
     {
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[stackSize]);
         try
         {
             byte[] bytes = GC.AllocateUninitializedArray<byte>(PopulateLength(item, ref lengths, rlpBehaviors));
@@ -45,14 +45,14 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         }
     }
 
-    public virtual Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public virtual Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSizePerItem = 2)
     {
         if (items is null or [])
         {
             return Rlp.OfEmptyList;
         }
 
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[Math.Min(items.Length * stackSizePerItem, LengthStack.MaxStackallocLength)]);
         try
         {
             byte[] bytes = new byte[this.PopulateSequenceLength(items, ref lengths, rlpBehaviors)];
@@ -182,7 +182,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
         return DecodeCompleteNotNull(ref context, rlpBehaviors);
     }
 
-    public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
+    public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthStack.DefaultStackallocLength)
     {
         if (item is null)
         {
@@ -192,7 +192,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             return nullBuffer;
         }
 
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[stackSize]);
         try
         {
             CappedArray<byte> buffer = bufferPool.SafeRent(PopulateLength(item, ref lengths, rlpBehaviors));

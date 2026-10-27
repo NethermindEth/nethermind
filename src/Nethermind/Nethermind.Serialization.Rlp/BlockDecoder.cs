@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ArrayPoolSpan<byte> EncodeToArrayPoolSpan(Block block, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthStack lengths = new(stackalloc int[LengthStack.MaxStackallocLength]);
             try
             {
                 ArrayPoolSpan<byte> buffer = new(PopulateLength(block, ref lengths, rlpBehaviors));

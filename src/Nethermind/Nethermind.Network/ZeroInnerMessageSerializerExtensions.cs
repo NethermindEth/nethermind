@@ -12,9 +12,9 @@ public static class ZeroInnerMessageSerializerExtensions
     extension<T>(IZeroInnerMessageSerializer<T> serializer) where T : MessageBase
     {
         /// <summary>Measures <paramref name="message"/> once, then appends it to <paramref name="byteBuffer"/>.</summary>
-        public void SerializeWithLengths(IByteBuffer byteBuffer, T message)
+        public void SerializeWithLengths(IByteBuffer byteBuffer, T message, int stackSize = LengthStack.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthStack lengths = new(stackalloc int[stackSize]);
             try
             {
                 byteBuffer.EnsureWritable(serializer.PopulateLength(message, ref lengths));
@@ -27,9 +27,9 @@ public static class ZeroInnerMessageSerializerExtensions
             }
         }
 
-        public int GetLength(T message)
+        public int GetLength(T message, int stackSize = LengthStack.DefaultStackallocLength)
         {
-            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            LengthStack lengths = new(stackalloc int[stackSize]);
             try
             {
                 return serializer.PopulateLength(message, ref lengths);

@@ -220,7 +220,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[8]);
         try
         {
             byte[] bytes = new byte[PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId)];

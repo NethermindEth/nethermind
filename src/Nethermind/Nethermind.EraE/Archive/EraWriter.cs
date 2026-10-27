@@ -276,7 +276,7 @@ public sealed class EraWriter : IDisposable
     /// </summary>
     private static ArrayPoolSpan<byte> EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
     {
-        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        LengthStack lengths = new(stackalloc int[Math.Min(receipts.Length * 4, LengthStack.MaxStackallocLength)]);
         scoped RlpWriter writer;
         try
         {

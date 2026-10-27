@@ -11,7 +11,10 @@ namespace Nethermind.Serialization.Rlp;
 public ref struct LengthStack(Span<int> initialBuffer) : IDisposable
 {
     /// <summary>The <c>stackalloc</c> size callers start with; larger items move to a pooled array.</summary>
-    public const int DefaultStackallocLength = 128;
+    public const int DefaultStackallocLength = 16;
+
+    /// <summary>The largest <c>stackalloc</c> size a computed initial size is clamped to.</summary>
+    public const int MaxStackallocLength = 64;
 
     private Span<int> _lengths = initialBuffer;
     private int[]? _rented;

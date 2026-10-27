@@ -34,11 +34,11 @@ public interface IRlpDecoder<T> : IRlpDecoder
     /// Encodes <paramref name="item"/> into a freshly allocated <see cref="byte"/> array,
     /// without wrapping the result in a throwaway <see cref="Rlp"/>.
     /// </summary>
-    byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength);
 
-    Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSizePerItem = 2);
 
-    CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
+    CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null, int stackSize = LengthStack.DefaultStackallocLength);
 
     [return: MaybeNull]
     T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
