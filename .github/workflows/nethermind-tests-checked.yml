@@ -79,7 +79,6 @@ jobs:
               Ethereum.KeyStore.Test
               Ethereum.PoW.Test
               Ethereum.Rlp.Test
-              Nethermind.Abi.Test
               Nethermind.AuRa.Test
               Nethermind.Ethash.Test
               Nethermind.JsonRpc.TraceStore.Test

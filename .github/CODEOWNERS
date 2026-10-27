@@ -6,7 +6,6 @@
 *.md @rubo @LukaszRozmej @MarekM25
 
 /src/Nethermind/Ethereum.Test.Base @flcl42
-/src/Nethermind/Nethermind.Abi @LukaszRozmej
 /src/Nethermind/Nethermind.Blockchain @LukaszRozmej @MarekM25 @flcl42
 /src/Nethermind/Nethermind.Consensus @LukaszRozmej @MarekM25 @flcl42
 /src/Nethermind/Nethermind.Crypto @LukaszRozmej @Marchhill

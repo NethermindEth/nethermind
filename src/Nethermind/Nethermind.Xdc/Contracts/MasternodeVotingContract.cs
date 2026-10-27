@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
-using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -12,6 +10,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using System;
 using System.Runtime.CompilerServices;
@@ -20,55 +19,38 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Xdc.Contracts;
 
 internal class MasternodeVotingContract(
-    IAbiEncoder abiEncoder,
     Address contractAddress,
-    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory) : Contract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition()), IMasternodeVotingContract
+    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory) : Contract(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IMasternodeVotingContract
 {
-    private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
+    private static readonly ContractFunction<Address, UInt256> GetCandidateCapFunction = new AbiSignature("getCandidateCap").With(AbiType.Address).Returns(AbiType.UInt256);
+    private static readonly ContractFunction<Address, Address> GetCandidateOwnerFunction = new AbiSignature("getCandidateOwner").With(AbiType.Address).Returns(AbiType.Address);
+    private static readonly ContractFunction<ValueTuple, Address[]> GetCandidatesFunction = new AbiSignature("getCandidates").With().Returns(AbiType.Array(AbiType.Address));
 
-    private static AbiDefinition CreateAbiDefinition()
-    {
-        AbiDefinitionParser abiDefinitionParser = new();
-        return abiDefinitionParser.Parse(typeof(MasternodeVotingContract));
-    }
+    private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
-        CallInfo callInfo = new(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
         IConstantContract constant = GetConstant(source);
-        object[] result = constant.Call(callInfo);
-        if (result.Length != 1)
-            throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
-
-        return (UInt256)result[0]!;
+        return constant.Call(blockHeader, GetCandidateCapFunction, Address.SystemUser, candidate);
     }
 
     public UInt256 GetCandidateStake(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
-        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateCap", GenerateTransaction<Transaction>(ContractAddress, "getCandidateCap", Address.SystemUser, candidate), true);
-        object[] decoded = DecodeReturnData("getCandidateCap", result);
-        if (decoded.Length != 1)
-            throw new InvalidOperationException("Expected 'getCandidateCap' to return exactly one result.");
-
-        return (UInt256)decoded[0]!;
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, GetCandidateCapFunction.Signature.Name, GenerateTransaction<Transaction>(AbiCodec.Encode(GetCandidateCapFunction.Signature, candidate), Address.SystemUser), true);
+        return DecodeReturnData(GetCandidateCapFunction, result);
     }
 
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
     {
-        CallInfo callInfo = new(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
         IConstantContract constant = GetConstant(source);
-        object[] result = constant.Call(callInfo);
-        if (result.Length != 1)
-            throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
-
-        return (Address)result[0]!;
+        return constant.Call(blockHeader, GetCandidateOwnerFunction, Address.SystemUser, candidate);
     }
 
     public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
     {
-        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateOwner", GenerateTransaction<Transaction>(ContractAddress, "getCandidateOwner", Address.SystemUser, candidate), true);
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, GetCandidateOwnerFunction.Signature.Name, GenerateTransaction<Transaction>(AbiCodec.Encode(GetCandidateOwnerFunction.Signature, candidate), Address.SystemUser), true);
         if (result.Length != 32)
             throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
         return new Address(result.AsSpan().Slice(32 - Address.Size));
@@ -138,18 +120,15 @@ internal class MasternodeVotingContract(
 
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
-        CallInfo callInfo = new(blockHeader, "getCandidates", Address.SystemUser);
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
         IConstantContract constant = GetConstant(source);
-        object[] result = constant.Call(callInfo);
-        return (Address[])result[0]!;
+        return constant.Call(blockHeader, GetCandidatesFunction, Address.SystemUser, default);
     }
 
     public Address[] GetCandidates(ITransactionProcessor transactionProcessor, BlockHeader blockHeader)
     {
-        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidates", GenerateTransaction<Transaction>(ContractAddress, "getCandidates", Address.SystemUser), true);
-        object[] decoded = DecodeReturnData("getCandidates", result);
-        return (Address[])decoded[0]!;
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, GetCandidatesFunction.Signature.Name, GenerateTransaction<Transaction>(AbiCodec.Encode(GetCandidatesFunction.Signature, default), Address.SystemUser), true);
+        return DecodeReturnData(GetCandidatesFunction, result);
     }
 
     /// <summary>

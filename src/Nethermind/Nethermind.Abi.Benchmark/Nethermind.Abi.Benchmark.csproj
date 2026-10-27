@@ -10,7 +10,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
       <ProjectReference Include="..\Nethermind.Experimental.Abi\Nethermind.Experimental.Abi.csproj" />
     </ItemGroup>
 

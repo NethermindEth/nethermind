@@ -3,10 +3,10 @@
 
 using System;
 using System.Buffers.Binary;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using System.Collections.Generic;
@@ -19,19 +19,21 @@ namespace Nethermind.Shutter.Contracts;
 
 public class ValidatorRegistryContract(
     ITransactionProcessor transactionProcessor,
-    IAbiEncoder abiEncoder,
     Address contractAddress,
     ILogManager logManager,
     ulong chainId,
     ulong messageVersion)
-    : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
+    : CallableContract(transactionProcessor, contractAddress), IValidatorRegistryContract
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ValidatorRegistryContract>();
 
-    public UInt256 GetNumUpdates(BlockHeader header) => (UInt256)Call(header, nameof(GetNumUpdates), Address.Zero, [])[0];
+    private static readonly ContractFunction<ValueTuple, UInt256> GetNumUpdatesFunction = new AbiSignature("getNumUpdates").With().Returns(AbiType.UInt256);
+    private static readonly ContractFunction<UInt256, Update> GetUpdateFunction = new AbiSignature("getUpdate").With(AbiType.UInt256).Returns(AbiType.Tuple(AbiType.Bytes, AbiType.Bytes));
+
+    public UInt256 GetNumUpdates(BlockHeader header) => Call(header, GetNumUpdatesFunction, Address.Zero, default);
 
     public Update GetUpdate(BlockHeader header, in UInt256 i)
-        => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
+        => Call(header, GetUpdateFunction, Address.Zero, i);
 
     public bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
         => IsRegistered(GetUpdates(header), validatorsInfo, out unregistered);

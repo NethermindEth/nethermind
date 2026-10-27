@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Experimental.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -14,18 +15,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public class CertifierContract : RegisterBasedContract, ICertifierContract
     {
-        private static readonly object[] MissingCertifiedResult = { false };
+        private static readonly ContractFunction<Address, bool> CertifiedFunction = new AbiSignature("certified").With(AbiType.Address).Returns(AbiType.Bool);
         internal const string ServiceTransactionContractRegistryName = "service_transaction_checker";
 
         private IConstantContract Constant { get; }
 
         public CertifierContract(
-            IAbiEncoder abiEncoder,
             IRegisterContract registerContract,
             IReadOnlyTxProcessorSource readOnlyTransactionProcessorSource)
-            : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName) => Constant = GetConstant(readOnlyTransactionProcessorSource);
+            : base(registerContract, ServiceTransactionContractRegistryName) => Constant = GetConstant(readOnlyTransactionProcessorSource);
 
         public bool Certified(BlockHeader parentHeader, Address sender) =>
-            Constant.Call<bool>(new CallInfo(parentHeader, nameof(Certified), Address.Zero, sender) { MissingContractResult = MissingCertifiedResult });
+            Constant.Call(parentHeader, CertifiedFunction, Address.Zero, sender, missingContractResult: false);
     }
 }

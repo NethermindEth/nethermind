@@ -6,12 +6,12 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -26,12 +26,12 @@ public class SurgeGasPriceOracle : GasPriceOracle
     private const ulong BlobGasPerBlob = Eip4844Constants.GasPerBlob;
 
     // ABI signatures and encoded function selectors for TaikoInbox contract.
-    private static readonly AbiSignature GetCoreStateSignature = new("getCoreState");
-    private static readonly AbiSignature GetConfigSignature = new("getConfig");
+    private static readonly AbiSignature<ValueTuple> GetCoreStateSignature = new AbiSignature("getCoreState").With();
+    private static readonly AbiSignature<ValueTuple> GetConfigSignature = new AbiSignature("getConfig").With();
     private static readonly string GetCoreStateHexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetCoreStateSignature));
+        AbiCodec.Encode(GetCoreStateSignature, default));
     private static readonly string GetConfigHexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetConfigSignature));
+        AbiCodec.Encode(GetConfigSignature, default));
 
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;

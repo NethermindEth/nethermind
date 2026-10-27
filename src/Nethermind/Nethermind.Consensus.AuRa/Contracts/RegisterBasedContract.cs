@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -9,10 +8,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.AuRa.Contracts
 {
     public class RegisterBasedContract(
-        IAbiEncoder abiEncoder,
         IRegisterContract registerContract,
-        string registryKey,
-        AbiDefinition? abiDefinition = null) : Contract(abiEncoder, abiDefinition: abiDefinition)
+        string registryKey) : Contract
     {
         private readonly IRegisterContract _registerContract = registerContract;
         private readonly string _registryKey = registryKey;

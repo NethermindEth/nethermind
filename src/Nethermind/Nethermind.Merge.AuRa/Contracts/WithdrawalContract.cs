@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa.Contracts;
@@ -18,10 +18,12 @@ namespace Nethermind.Merge.AuRa.Contracts;
 /// </summary>
 public class WithdrawalContract(
     ITransactionProcessor transactionProcessor,
-    IAbiEncoder abiEncoder,
-    Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IWithdrawalContract
+    Address contractAddress) : CallableContract(transactionProcessor, contractAddress), IWithdrawalContract
 {
     private const ulong GasLimit = SystemTransactionGasLimit;
+
+    private static readonly ContractFunction<(UInt256, ulong[], Address[]), ValueTuple> ExecuteSystemWithdrawalsFunction =
+        new AbiSignature("executeSystemWithdrawals").With(AbiType.UInt256, AbiType.Array(AbiType.UInt64), AbiType.Array(AbiType.Address)).Returns();
 
     public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)
     {
@@ -29,6 +31,6 @@ public class WithdrawalContract(
         ArgumentNullException.ThrowIfNull(amounts);
         ArgumentNullException.ThrowIfNull(addresses);
 
-        Call(blockHeader, "executeSystemWithdrawals", Address.SystemUser, GasLimit, failedMaxCount, amounts, addresses);
+        Call(blockHeader, ExecuteSystemWithdrawalsFunction, Address.SystemUser, GasLimit, (failedMaxCount, [.. amounts], [.. addresses]));
     }
 }

@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -31,7 +34,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <summary>
         /// Returns a boolean flag indicating whether the `emitInitiateChange` function can be called at the moment. Used by a validator's node and `TxPermission` contract (to deny dummy calling).
         /// </summary>
-        public bool EmitInitiateChangeCallable(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(EmitInitiateChangeCallable), Address.SystemUser);
+        public bool EmitInitiateChangeCallable(BlockHeader parentHeader) => Constant.Call(parentHeader, EmitInitiateChangeCallableFunction, Address.SystemUser, default);
+
+        private static readonly ContractFunction<ValueTuple, bool> EmitInitiateChangeCallableFunction = new AbiSignature("emitInitiateChangeCallable").With().Returns(AbiType.Bool);
 
         /// <summary>
         /// Emits the `InitiateChange` event to pass a new validator set to the validator nodes.
@@ -41,10 +46,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// through the `InitiateChange` event and saved for later use by the `finalizeChange` function.
         /// See https://openethereum.github.io/wiki/Validator-Set.html for more info about the `InitiateChange` event.
         /// </summary>
-        public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(nameof(EmitInitiateChange), _signer.Address);
+        public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(EmitInitiateChangeSignature, default), _signer.Address);
+
+        private static readonly AbiSignature<ValueTuple> EmitInitiateChangeSignature = new AbiSignature("emitInitiateChange").With();
 
         // This was mistakenly put here in POSDAO it should belong to ReportingValidatorContract
         public bool ShouldValidatorReport(BlockHeader parentHeader, Address validatorAddress, Address maliciousMinerAddress, in UInt256 blockNumber) =>
-            Constant.Call<bool>(parentHeader, nameof(ShouldValidatorReport), Address.SystemUser, validatorAddress, maliciousMinerAddress, blockNumber);
+            Constant.Call(parentHeader, ShouldValidatorReportFunction, Address.SystemUser, (validatorAddress, maliciousMinerAddress, blockNumber));
+
+        private static readonly ContractFunction<(Address, Address, UInt256), bool> ShouldValidatorReportFunction =
+            new AbiSignature("shouldValidatorReport").With(AbiType.Address, AbiType.Address, AbiType.UInt256).Returns(AbiType.Bool);
     }
 }

@@ -8,7 +8,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -202,7 +201,7 @@ public class TxPriorityContractTests
         protected override Task AddBlocksOnStart()
         {
 
-            TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
+            TxPriorityContract = new TxPriorityContract(TestItem.AddressA,
                 ReadOnlyTxProcessingEnvFactory.Create());
 
             Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(

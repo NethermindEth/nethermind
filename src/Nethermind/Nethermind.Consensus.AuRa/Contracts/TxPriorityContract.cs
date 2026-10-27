@@ -4,10 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Experimental.Abi;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -21,15 +21,28 @@ namespace Nethermind.Consensus.AuRa.Contracts
     /// </summary>
     public partial class TxPriorityContract : Contract
     {
-        private static readonly object[] MissingSenderWhitelistResult = { Array.Empty<Address>() };
-        private static readonly object[] MissingPrioritiesResult = { Array.Empty<DestinationTuple>() };
+        private static readonly Abi<DestinationTuple[]> DestinationsAbi = AbiType.Array(AbiType.Tuple(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256));
+        private static readonly AbiSignature<Address[]> AddressesData = new AbiSignature().With(AbiType.Array(AbiType.Address));
+        private static readonly AbiSignature<UInt256> DestinationData = new AbiSignature().With(AbiType.UInt256);
+
+        private static readonly ContractFunction<ValueTuple, Address[]> GetSendersWhitelistFunction = new AbiSignature("getSendersWhitelist").With().Returns(AbiType.Array(AbiType.Address));
+        private static readonly ContractFunction<ValueTuple, DestinationTuple[]> GetMinGasPricesFunction = new AbiSignature("getMinGasPrices").With().Returns(DestinationsAbi);
+        private static readonly ContractFunction<ValueTuple, DestinationTuple[]> GetPrioritiesFunction = new AbiSignature("getPriorities").With().Returns(DestinationsAbi);
+
+        private static readonly AbiSignature<(Address, byte[], UInt256)> PrioritySetEvent = new AbiSignature("PrioritySet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+        private static readonly AbiSignature<(Address, byte[], UInt256)> MinGasPriceSetEvent = new AbiSignature("MinGasPriceSet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+        private static readonly AbiSignature<Address[]> SendersWhitelistSetEvent = new AbiSignature("SendersWhitelistSet").With(AbiType.Array(AbiType.Address));
+
+        private static readonly AbiSignature<(Address, byte[], UInt256)> SetPrioritySignature = new AbiSignature("setPriority").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+        private static readonly AbiSignature<Address[]> SetSendersWhitelistSignature = new AbiSignature("setSendersWhitelist").With(AbiType.Array(AbiType.Address));
+        private static readonly AbiSignature<(Address, byte[], UInt256)> SetMinGasPriceSignature = new AbiSignature("setMinGasPrice").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+
         private IConstantContract Constant { get; }
 
         public TxPriorityContract(
-            IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            : base(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Constant = GetConstant(readOnlyTxProcessorSource);
             SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet);
@@ -38,19 +51,19 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public Address[] GetSendersWhitelist(BlockHeader parentHeader) =>
-            Constant.Call<Address[]>(new CallInfo(parentHeader, nameof(GetSendersWhitelist), Address.SystemUser) { MissingContractResult = MissingSenderWhitelistResult });
+            Constant.Call(parentHeader, GetSendersWhitelistFunction, Address.SystemUser, default, missingContractResult: []);
 
         public Destination[] GetMinGasPrices(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetMinGasPrices), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
+            Constant.Call(parentHeader, GetMinGasPricesFunction, Address.SystemUser, default, missingContractResult: [])
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public Destination[] GetPriorities(BlockHeader parentHeader) =>
-            Constant.Call<DestinationTuple[]>(new CallInfo(parentHeader, nameof(GetPriorities), Address.SystemUser) { MissingContractResult = MissingPrioritiesResult })
+            Constant.Call(parentHeader, GetPrioritiesFunction, Address.SystemUser, default, missingContractResult: [])
                 .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
 
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            LogEntry logEntry = GetSearchLogEntry(nameof(PrioritySet));
+            LogEntry logEntry = GetSearchLogEntry(PrioritySetEvent.Hash);
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
@@ -60,7 +73,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public IEnumerable<Destination> MinGasPriceSet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            LogEntry logEntry = GetSearchLogEntry(nameof(MinGasPriceSet));
+            LogEntry logEntry = GetSearchLogEntry(MinGasPriceSetEvent.Hash);
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
@@ -70,7 +83,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public bool SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<Address> items)
         {
-            LogEntry logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
+            LogEntry logEntry = GetSearchLogEntry(SendersWhitelistSetEvent.Hash);
 
             if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry))
             {
@@ -82,17 +95,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return false;
         }
 
-        public Address[] DecodeAddresses(byte[] data)
-        {
-            object[] objects = DecodeReturnData(nameof(GetSendersWhitelist), data);
-            return (Address[])objects[0];
-        }
+        public Address[] DecodeAddresses(byte[] data) => DecodeData(AddressesData, data);
 
-        private static Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
+        private Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
             new(
                 new Address(log.Topics[1]),
                 log.Topics[2].Bytes[..4].ToArray(),
-                AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1,
+                DecodeData(DestinationData, log.Data),
                 DestinationSource.Contract,
                 blockHeader.Number);
 
@@ -101,12 +110,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public IDataContract<Destination> Priorities { get; }
 
         public Transaction SetPriority(Address target, byte[] fnSignature, UInt256 weight) =>
-            GenerateTransaction<GeneratedTransaction>(nameof(SetPriority), ContractAddress, target, fnSignature, weight);
+            GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(SetPrioritySignature, (target, fnSignature, weight)), ContractAddress);
 
         public Transaction SetSendersWhitelist(params Address[] addresses) =>
-            GenerateTransaction<GeneratedTransaction>(nameof(SetSendersWhitelist), ContractAddress, (object)addresses);
+            GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(SetSendersWhitelistSignature, addresses), ContractAddress);
 
         public Transaction SetMinGasPrice(Address target, byte[] fnSignature, UInt256 weight) =>
-            GenerateTransaction<GeneratedTransaction>(nameof(SetMinGasPrice), ContractAddress, target, fnSignature, weight);
+            GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(SetMinGasPriceSignature, (target, fnSignature, weight)), ContractAddress);
     }
 }

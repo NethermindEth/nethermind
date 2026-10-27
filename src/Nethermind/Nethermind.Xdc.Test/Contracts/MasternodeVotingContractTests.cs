@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -159,7 +158,7 @@ internal class MasternodeVotingContractTests
         IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         readOnlyTxProcessingEnvFactory.Create().Returns(autoReadOnlyTxProcessingEnv);
 
-        return (new MasternodeVotingContract(new AbiEncoder(), codeSource, readOnlyTxProcessingEnvFactory),
+        return (new MasternodeVotingContract(codeSource, readOnlyTxProcessingEnvFactory),
             readOnlyTxProcessingEnvFactory, genesis);
     }
 

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Experimental.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -30,8 +30,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
     }
 
-    public sealed class RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ulong transitionBlock) : CallableContract(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IRewardContract
+    public sealed class RewardContract(ITransactionProcessor transactionProcessor, Address contractAddress, ulong transitionBlock) : CallableContract(transactionProcessor, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IRewardContract
     {
+        private static readonly ContractFunction<(Address[], ushort[]), (Address[], UInt256[])> RewardFunction =
+            new AbiSignature("reward").With(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt16)).Returns(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt256));
+
         public ulong Activation { get; } = transitionBlock;
 
         /// <summary>
@@ -49,10 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
-        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
-        {
-            object[] result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, benefactors, kind);
-            return ((Address[])result[0], (UInt256[])result[1]);
-        }
+        public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind) =>
+            Call(blockHeader, RewardFunction, Address.SystemUser, UnlimitedGas, (benefactors, kind));
     }
 }

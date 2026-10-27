@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -42,8 +42,7 @@ public class ExecutionProcessorTests
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
     private static readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
-    private static readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    private static readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
+    private static readonly AbiSignature<(byte[], byte[], byte[], byte[], byte[])> _depositEventData = new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes);
     private const int AbiWordSize = 32;
     private const int DepositEventFieldCount = 5;
     private const int PubkeyHeadWord = 0;
@@ -274,7 +273,7 @@ public class ExecutionProcessorTests
             .WithAddress(DepositContractAddress).TestObject;
 
     private static byte[] EncodeDepositEventData(byte[][] requestDataParts) =>
-        _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts);
+        AbiCodec.Encode(_depositEventData, (requestDataParts[0], requestDataParts[1], requestDataParts[2], requestDataParts[3], requestDataParts[4]));
 
     [TestCase(DepositEventLayoutMutation.SwappedPubkeyAndCredentialsBlocks)]
     [TestCase(DepositEventLayoutMutation.SwappedAmountAndSignatureBlocks)]

@@ -5,10 +5,10 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
@@ -167,7 +167,7 @@ public readonly ref struct DepositLogEventV0
     public bool IsCreation { get; init; }
     public ReadOnlySpan<byte> Data { get; init; }
 
-    private static readonly AbiSignature Signature = new(string.Empty, AbiType.DynamicBytes);
+    private static readonly AbiSignature<byte[]> Signature = new AbiSignature().With(AbiType.Bytes);
 
     public byte[] ToBytes()
     {
@@ -189,14 +189,14 @@ public readonly ref struct DepositLogEventV0
             span.TakeAndMove(1)[0] = (byte)(IsCreation ? 1 : 0);
             Data.CopyTo(span.TakeAndMove(Data.Length));
         }
-        byte[] result = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData[..opaqueDataLength]);
+        byte[] result = AbiCodec.Encode(Signature, opaqueData[..opaqueDataLength]);
         ArrayPool<byte>.Shared.Return(opaqueData);
         return result;
     }
 
     public static DepositLogEventV0 FromBytes(byte[] source) // TODO: Add `ReadOnlySpan<byte>` overloads
     {
-        byte[] opaqueData = (byte[])AbiEncoder.Instance.Decode(AbiEncodingStyle.None, Signature, source)[0];
+        byte[] opaqueData = AbiCodec.Decode(Signature, source);
         Span<byte> span = opaqueData;
 
         return new()

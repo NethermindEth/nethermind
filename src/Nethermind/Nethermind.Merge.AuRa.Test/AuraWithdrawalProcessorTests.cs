@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
@@ -16,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
@@ -107,7 +107,7 @@ public class AuraWithdrawalProcessorTests
         WithWithdrawalContract(Convert.FromHexString("60005400"), (processor, _) =>
         {
             Assert.That(() => processor.ProcessWithdrawals(BuildBlockWithWithdrawal(), Shanghai.Instance),
-                Throws.TypeOf<AbiException>().With.InnerException.SameAs(fault));
+                Throws.TypeOf<ContractException>().With.InnerException.SameAs(fault));
         }, fault);
     }
 
@@ -154,7 +154,7 @@ public class AuraWithdrawalProcessorTests
             state.Commit(Shanghai.Instance);
         }
 
-        WithdrawalContract contract = new(lifetime.Resolve<ITransactionProcessor>(), AbiEncoder.Instance, TestItem.AddressA);
+        WithdrawalContract contract = new(lifetime.Resolve<ITransactionProcessor>(), TestItem.AddressA);
         test(new AuraWithdrawalProcessor(contract, LimboLogs.Instance), state);
     }
 
@@ -208,8 +208,8 @@ public class AuraWithdrawalProcessorTests
 
     private static IEnumerable<Exception> NodeLocalFaults()
     {
-        yield return new AbiException("System call to executeSystemWithdrawals returned an exception", new InvalidOperationException("state read failed"));
-        yield return new AbiException("Cannot encode withdrawal arguments");
+        yield return new ContractException("System call to executeSystemWithdrawals returned an exception", new InvalidOperationException("state read failed"));
+        yield return new AbiException();
         yield return new ArgumentNullException("blockHeader");
     }
 

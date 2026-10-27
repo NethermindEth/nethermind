@@ -1,6 +1,5 @@
 <Solution>
   <Folder Name="/Nethermind/">
-    <Project Path="../../src/Nethermind/Nethermind.Abi/Nethermind.Abi.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
@@ -11,6 +10,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Experimental.Abi/Nethermind.Experimental.Abi.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />

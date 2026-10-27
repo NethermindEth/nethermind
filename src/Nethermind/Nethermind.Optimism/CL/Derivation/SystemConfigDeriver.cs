@@ -3,7 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
-using Nethermind.Abi;
+using Nethermind.Experimental.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -74,12 +74,11 @@ public class SystemConfigDeriver(
 
         if (updateType == SystemConfigUpdate.Batcher)
         {
-            AbiSignature signature = new(nameof(SystemConfigUpdate.Batcher), AbiType.UInt64, AbiType.UInt64, AbiType.Address);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            AbiSignature<(ulong, ulong, Address)> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.Address);
+            (ulong pointer, ulong length, Address address) = AbiCodec.Decode(signature, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            Address address = (Address)decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
 
             systemConfig = systemConfig with
             {
@@ -88,12 +87,11 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
-            AbiSignature signature = new(nameof(SystemConfigUpdate.FeeScalars), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            AbiSignature<(ulong, ulong, byte[])> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.BytesM(32));
+            (ulong pointer, ulong length, byte[] data) = AbiCodec.Decode(signature, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            byte[] data = (byte[])decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
             systemConfig = data[0] switch
             {
                 0 => systemConfig with { Scalar = data },
@@ -103,12 +101,11 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
-            AbiSignature signature = new(nameof(SystemConfigUpdate.GasLimit), AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            AbiSignature<(ulong, ulong, ulong)> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
+            (ulong pointer, ulong length, ulong gasLimit) = AbiCodec.Decode(signature, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            ulong gasLimit = (UInt64)decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
 
             systemConfig = systemConfig with
             {
@@ -117,12 +114,11 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.EIP1559Params)
         {
-            AbiSignature signature = new(nameof(SystemConfigUpdate.EIP1559Params), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
-            object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
+            AbiSignature<(ulong, ulong, byte[])> signature = new AbiSignature().With(AbiType.UInt64, AbiType.UInt64, AbiType.BytesM(32));
+            (ulong pointer, ulong length, byte[] eip1559Params) = AbiCodec.Decode(signature, log.Data);
 
-            if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
-            if ((UInt64)decoded[1] != 32) throw new FormatException("Invalid length field");
-            byte[] eip1559Params = (byte[])decoded[2];
+            if (pointer != 32) throw new FormatException("Invalid pointer field");
+            if (length != 32) throw new FormatException("Invalid length field");
 
             systemConfig = systemConfig with
             {

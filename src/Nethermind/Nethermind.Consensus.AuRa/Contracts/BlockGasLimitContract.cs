@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -17,15 +17,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed class BlockGasLimitContract : Contract, IBlockGasLimitContract
     {
+        private static readonly ContractFunction<ValueTuple, UInt256> BlockGasLimitFunction = new AbiSignature("blockGasLimit").With().Returns(AbiType.UInt256);
+
         private IConstantContract Constant { get; }
         public ulong Activation { get; }
 
         public BlockGasLimitContract(
-            IAbiEncoder abiEncoder,
             Address contractAddress,
             ulong transitionBlock,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            : base(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Activation = transitionBlock;
             Constant = GetConstant(readOnlyTxProcessorSource);
@@ -34,9 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public UInt256? BlockGasLimit(BlockHeader parentHeader)
         {
             this.BlockActivationCheck(parentHeader);
-            string function = nameof(BlockGasLimit);
-            object[] returnData = Constant.Call(new CallInfo(parentHeader, function, Address.Zero));
-            return (returnData?.Length ?? 0) == 0 ? (UInt256?)null : (UInt256)returnData[0];
+            return Constant.Call(parentHeader, BlockGasLimitFunction, Address.Zero, default);
         }
     }
 }

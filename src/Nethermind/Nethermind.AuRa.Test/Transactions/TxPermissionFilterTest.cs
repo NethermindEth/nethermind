@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -246,7 +245,7 @@ public class TxPermissionFilterTest
     [TestCase(3UL, ExpectedResult = true)]
     public bool allows_transactions_before_transitions(ulong blockNumber)
     {
-        VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
+        VersionedTransactionPermissionContract transactionPermissionContract = new(
             TestItem.AddressA,
             5,
             Substitute.For<IReadOnlyTxProcessorSource>(), new LruCache<ValueHash256, UInt256>(100, "TestCache"),
@@ -269,7 +268,7 @@ public class TxPermissionFilterTest
                 .AddSingleton<ISealer>(NullSealEngine.Instance) // Sealer not configured in test
                 .AddSingleton<PermissionBasedTxFilter, IReadOnlyTxProcessingEnvFactory, ISpecProvider, AuraStatefulComponents, PermissionBasedTxFilter.Cache>((envFactory, specProvider, auraStatefulComponents, txFilterCache) =>
                 {
-                    VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
+                    VersionedTransactionPermissionContract transactionPermissionContract = new(_contractAddress, 1,
                         envFactory.Create(), auraStatefulComponents.TransactionPermissionContractVersions, LimboLogs.Instance, specProvider);
 
                     return new PermissionBasedTxFilter(transactionPermissionContract, txFilterCache, LimboLogs.Instance);

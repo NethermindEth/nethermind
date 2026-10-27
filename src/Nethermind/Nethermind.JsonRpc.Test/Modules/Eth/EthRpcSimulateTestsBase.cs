@@ -4,9 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -16,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Experimental.Abi;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Logging;
@@ -76,47 +75,11 @@ public class EthRpcSimulateTestsBase
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
-    private static string GetECRecoverContractJsonAbi(string name = "recover") => $@"
-[
-  {{
-    ""payable"": false,
- 	""inputs"": [
-		{{
-			""internalType"": ""bytes32"",
-			""name"": ""hash"",
-			""type"": ""bytes32""
-		}},
-		{{
-			""internalType"": ""uint8"",
-			""name"": ""v"",
-			""type"": ""uint8""
+    private static readonly AbiSignature<(byte[], byte, byte[], byte[])> RecoverSignature =
+        new AbiSignature("recover").With(AbiType.BytesM(32), AbiType.UInt8, AbiType.BytesM(32), AbiType.BytesM(32));
+    private static readonly AbiSignature<Address> RecoverReturns = new AbiSignature().With(AbiType.Address);
 
-        }},
-		{{
-			""internalType"": ""bytes32"",
-			""name"": ""r"",
-			""type"": ""bytes32""
-		}},
-		{{
-			""internalType"": ""bytes32"",
-			""name"": ""s"",
-			""type"": ""bytes32""
-		}}
-	],
-	""name"": ""{name}"",
-	""outputs"": [
-		{{
-			""internalType"": ""address"",
-			""name"": """",
-			""type"": ""address""
-		}}
-	],
-	""stateMutability"": ""pure"",
-	""type"": ""function""
-  }}
-]";
-
-    public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
+    public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account)
     {
         // Step 1: Hash the message
         ValueHash256 messageHash = ValueKeccak.Compute("Hello, world!");
@@ -124,7 +87,7 @@ public class EthRpcSimulateTestsBase
         Signature signature = chain.EthereumEcdsa.Sign(account, in messageHash);
 
         //Check real address
-        return GenerateTransactionDataForECRecover(new Hash256(messageHash), signature, name);
+        return GenerateTransactionDataForECRecover(new Hash256(messageHash), signature);
     }
 
     public static async Task<Address> DeployECRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)
@@ -198,19 +161,10 @@ public class EthRpcSimulateTestsBase
         return createContractTxReceipt.ContractAddress!;
     }
 
-    protected static byte[] GenerateTransactionDataForECRecover(Hash256 keccak, Signature signature, string name = "recover")
-    {
-        AbiDefinition call = new AbiDefinitionParser().Parse(GetECRecoverContractJsonAbi(name));
-        AbiEncodingInfo functionInfo = call.GetFunction(name).GetCallInfo();
-        return AbiEncoder.Instance.Encode(functionInfo.EncodingStyle, functionInfo.Signature, keccak, signature.V, signature.R.ToArray(), signature.S.ToArray());
-    }
+    protected static byte[] GenerateTransactionDataForECRecover(Hash256 keccak, Signature signature) =>
+        AbiCodec.Encode(RecoverSignature, (keccak.BytesToArray(), (byte)signature.V, signature.R.ToArray(), signature.S.ToArray()));
 
-    private static Address? ParseECRecoverAddress(byte[] data, string name = "recover")
-    {
-        AbiDefinition call = new AbiDefinitionParser().Parse(GetECRecoverContractJsonAbi(name));
-        AbiEncodingInfo functionInfo = call.GetFunction(name).GetReturnInfo();
-        return AbiEncoder.Instance.Decode(functionInfo.EncodingStyle, functionInfo.Signature, data).FirstOrDefault() as Address;
-    }
+    private static Address? ParseECRecoverAddress(byte[] data) => AbiCodec.Decode(RecoverReturns, data);
 
     public static Address? ECRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
     {

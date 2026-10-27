@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Security;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm;
+using Nethermind.Experimental.Abi;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
@@ -24,7 +25,7 @@ public partial class BlockProducerBaseTests
 {
     public static class BadContract
     {
-        public static AbiSignature Divide { get; } = new("divide"); // divide
+        public static AbiSignature<ValueTuple> Divide { get; } = new AbiSignature("divide").With(); // divide
     }
 
     public static partial class BaseFeeTestScenario
@@ -32,7 +33,6 @@ public partial class BlockProducerBaseTests
         public partial class ScenarioBuilder
         {
             private readonly Address _address = TestItem.Addresses[0];
-            private readonly IAbiEncoder _abiEncoder = new AbiEncoder();
 
             private Address _contractAddress = null!;
             private TestRpcBlockchain _testRpcBlockchain = null!;
@@ -116,9 +116,7 @@ public partial class BlockProducerBaseTests
             private async Task<ScenarioBuilder> SendTransactionAsync(ulong gasLimit, UInt256 gasPrice, ulong feeCap, bool serviceTransaction, ulong? nonce = null)
             {
                 await ExecuteAntecedentIfNeeded();
-                byte[] txData = _abiEncoder.Encode(
-                    AbiEncodingStyle.IncludeSignature,
-                    BadContract.Divide);
+                byte[] txData = AbiCodec.Encode(BadContract.Divide, default);
                 Transaction tx = new()
                 {
                     Value = 0,
