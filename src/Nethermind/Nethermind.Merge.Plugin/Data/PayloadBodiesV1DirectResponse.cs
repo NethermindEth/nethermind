@@ -11,6 +11,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -239,13 +240,8 @@ internal static class PayloadBodiesDirectResponseWriter
 
     public static void WriteTransaction(IBufferWriter<byte> writer, Transaction transaction)
     {
-        int length = TxDecoder.Instance.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-
-        RlpWriter rlpWriter = new(buffer);
-        TxDecoder.Instance.Encode(ref rlpWriter, transaction, RlpBehaviors.SkipTypedWrapping);
-        HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > HexChunkThreshold);
-        ArrayPool<byte>.Shared.Return(buffer);
+        using ArrayPoolSpan<byte> encodedTransaction = TxDecoder.Instance.EncodeToArrayPoolSpan(transaction, RlpBehaviors.SkipTypedWrapping);
+        HexWriter.WriteHexString(writer, encodedTransaction, chunked: encodedTransaction.Length > HexChunkThreshold);
     }
 
     public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)

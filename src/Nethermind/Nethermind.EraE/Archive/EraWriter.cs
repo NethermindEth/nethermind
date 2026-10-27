@@ -276,53 +276,51 @@ public sealed class EraWriter : IDisposable
     /// </summary>
     private static ArrayPoolSpan<byte> EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
     {
-        int totalLength = 0;
-        foreach (TxReceipt receipt in receipts)
-            totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
-
-        ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        scoped RlpWriter writer;
         try
         {
-            RlpWriter writer = new(bytes);
-            writer.StartSequence(totalLength);
-            foreach (TxReceipt receipt in receipts)
-                WriteReceipt(ref writer, receipt, isEip658);
-            return bytes;
+            int totalLength = 0;
+            for (int i = receipts.Length - 1; i >= 0; i--)
+                totalLength += Rlp.LengthOfSequence(PopulateReceiptContentLength(receipts[i], isEip658, ref lengths));
+
+            ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
+            try
+            {
+                writer = new(bytes);
+                writer.StartSequence(totalLength);
+                foreach (TxReceipt receipt in receipts)
+                    WriteReceipt(ref writer, receipt, isEip658, ref lengths);
+                return bytes;
+            }
+            catch
+            {
+                bytes.Dispose();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            bytes.Dispose();
-            throw;
+            lengths.Dispose();
         }
     }
 
-    private static int GetReceiptContentLength(TxReceipt receipt, bool isEip658)
+    private static int PopulateReceiptContentLength(TxReceipt receipt, bool isEip658, ref LengthStack lengths)
     {
-        int logsLength = 0;
-        if (receipt.Logs is not null)
-            foreach (LogEntry log in receipt.Logs)
-                logsLength += LogEntryDecoder.Instance.GetLength(log);
+        int logsLength = LogEntryDecoder.Instance.PopulateSequenceAndPeek(receipt.Logs ?? [], ref lengths);
 
         // txType: 0x80 (empty = legacy) or single self-encoding byte (type 1/2/3) — always 1 byte
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
 
-        return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
+        int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + logsLength;
+        lengths.Push(contentLength);
+        return contentLength;
     }
 
-    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658)
+    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658, ref LengthStack lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int logsLength = 0;
-        if (receipt.Logs is not null)
-        {
-            foreach (LogEntry log in receipt.Logs)
-                logsLength += LogEntryDecoder.Instance.GetLength(log);
-        }
-
-        int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
-        int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
-
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
 
         // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
         if (receipt.TxType == TxType.Legacy)
@@ -340,12 +338,7 @@ public sealed class EraWriter : IDisposable
 
         writer.Encode(receipt.GasUsedTotal);
 
-        writer.StartSequence(logsLength);
-        if (receipt.Logs is not null)
-        {
-            foreach (LogEntry log in receipt.Logs)
-                LogEntryDecoder.Instance.Encode(ref writer, log);
-        }
+        LogEntryDecoder.Instance.EncodeSequence(receipt.Logs ?? [], ref lengths, ref writer);
     }
 
     private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)

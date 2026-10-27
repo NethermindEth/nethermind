@@ -347,7 +347,7 @@ public class FrameTxReceiptDecoderTests
     }
 
     /// <summary>Both halves of the wire pair refuse it, not just the length half. Every message encoder happens to
-    /// call <c>GetPayloadLength</c> first today, so the throw lands there — a call order, not a codec invariant.</summary>
+    /// call <c>PopulatePayloadLength</c> first today, so the throw lands there — a call order, not a codec invariant.</summary>
     [Test]
     public void EncodePayload_FrameTxReceiptWithoutPayer_IsRefusedWithoutMeasuringItFirst()
     {
@@ -358,7 +358,8 @@ public class FrameTxReceiptDecoderTests
         Assert.That(() =>
         {
             RlpWriter writer = new(new byte[1024]);
-            FrameReceiptRlp.EncodePayload(ref writer, payerless, framesLength: 0);
+            LengthStack lengths = new(default);
+            FrameReceiptRlp.EncodePayload(ref writer, payerless, ref lengths);
         }, Throws.InstanceOf<RlpException>());
     }
 

@@ -77,10 +77,7 @@ public class L1OriginStore([KeyFilter(L1OriginStore.L1OriginDbName)] IDb db, Rlp
         Span<byte> key = stackalloc byte[KeyBytesLength];
         CreateL1OriginKey(blockId, key);
 
-        int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
-        using ArrayPoolSpan<byte> buffer = new(encodedL1OriginLength);
-        RlpWriter writer = new(buffer);
-        decoder.Encode(ref writer, l1Origin);
+        using ArrayPoolSpan<byte> buffer = decoder.EncodeToArrayPoolSpan(l1Origin);
         db.PutSpan(key, buffer);
     }
 

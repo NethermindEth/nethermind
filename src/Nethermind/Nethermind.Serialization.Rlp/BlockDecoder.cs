@@ -18,21 +18,31 @@ namespace Nethermind.Serialization.Rlp
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
 
-        private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
+        public override void PopulateLength(Block? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
+            if (item is null)
+            {
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
+            }
 
-            byte[][]? encodedTxs = item.EncodedTransactions;
-            (int txs, int uncles, int? withdrawals) = encodedTxs is null
-                ? _blockBodyDecoder.GetBodyComponentLength(item.Body)
-                : _blockBodyDecoder.GetBodyComponentLength(item.Body, GetPreEncodedTxLength(item.Transactions, encodedTxs));
+            int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoder.PopulateSequenceAndPeek(withdrawals, ref lengths) : 0;
+            contentLength += _headerDecoder.PopulateSequenceAndPeek(item.Uncles, ref lengths);
+            if (item.EncodedTransactions is { } encodedTxs)
+            {
+                int txsLength = GetPreEncodedTxLength(item.Transactions, encodedTxs);
+                lengths.Push(txsLength);
+                lengths.Push(Rlp.LengthOfSequence(txsLength));
+                contentLength += Rlp.LengthOfSequence(txsLength);
+            }
+            else
+            {
+                contentLength += TxDecoder.Instance.PopulateSequenceAndPeek(item.Transactions, ref lengths);
+            }
 
-            int contentLength =
-                headerLength +
-                Rlp.LengthOfSequence(txs) +
-                Rlp.LengthOfSequence(uncles) +
-                (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
-            return (contentLength, txs, uncles, withdrawals);
+            contentLength += _headerDecoder.PopulateAndPeek(item.Header, ref lengths, rlpBehaviors);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         private static int GetPreEncodedTxLength(Transaction[] txs, byte[][] encodedTxs)
@@ -43,16 +53,6 @@ namespace Nethermind.Serialization.Rlp
                 sum += TxDecoder.GetWrappedTxLength(txs[i].Type, encodedTxs[i].Length);
             }
             return sum;
-        }
-
-        public override int GetLength(Block? item, RlpBehaviors rlpBehaviors)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList.Length;
-            }
-
-            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
         protected override Block? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -75,59 +75,46 @@ namespace Nethermind.Serialization.Rlp
             return block;
         }
 
-        public override Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(item, rlpBehaviors);
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(lengths.Total));
-            RlpWriter writer = new(bytes);
-            EncodeContent(ref writer, item, lengths);
-            return new(bytes);
-        }
-
         public ArrayPoolSpan<byte> EncodeToArrayPoolSpan(Block block, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            (int Total, int Txs, int Uncles, int? Withdrawals) lengths = GetContentLength(block, rlpBehaviors);
-            ArrayPoolSpan<byte> buffer = new(Rlp.LengthOfSequence(lengths.Total));
+            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
             try
             {
-                RlpWriter writer = new(buffer);
-                EncodeContent(ref writer, block, lengths);
-                return buffer;
+                PopulateLength(block, ref lengths, rlpBehaviors);
+                ArrayPoolSpan<byte> buffer = new(lengths.Peek());
+                try
+                {
+                    RlpEncoderExtensions.EncodeTo(this, block, ref lengths, buffer, rlpBehaviors);
+                    return buffer;
+                }
+                catch
+                {
+                    buffer.Dispose();
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                buffer.Dispose();
-                throw;
+                lengths.Dispose();
             }
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(Block? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();
                 return;
             }
 
-            EncodeContent(ref writer, item, GetContentLength(item, rlpBehaviors));
-        }
+            writer.StartSequence(lengths.Pop());
+            _headerDecoder.Encode(item.Header, ref lengths, ref writer, rlpBehaviors);
 
-        private void EncodeContent<TWriter>(ref TWriter writer, Block item, (int Total, int Txs, int Uncles, int? Withdrawals) lengths)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
-        {
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = lengths;
-            writer.StartSequence(contentLength);
-            _headerDecoder.Encode(ref writer, item.Header);
-            writer.StartSequence(txsLength);
-
-            byte[][]? encodedTxs = item.EncodedTransactions;
-            if (encodedTxs is not null)
+            if (item.EncodedTransactions is { } encodedTxs)
             {
+                lengths.Pop();
+                writer.StartSequence(lengths.Pop());
                 for (int i = 0; i < encodedTxs.Length; i++)
                 {
                     TxDecoder.WriteWrappedFormat(ref writer, item.Transactions[i].Type, encodedTxs[i]);
@@ -135,27 +122,13 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                for (int i = 0; i < item.Transactions.Length; i++)
-                {
-                    TxDecoder.Instance.Encode(ref writer, item.Transactions[i]);
-                }
+                TxDecoder.Instance.EncodeSequence(item.Transactions, ref lengths, ref writer);
             }
 
-            writer.StartSequence(unclesLength);
-            for (int i = 0; i < item.Uncles.Length; i++)
-            {
-                _headerDecoder.Encode(ref writer, item.Uncles[i]);
-            }
-
+            _headerDecoder.EncodeSequence(item.Uncles, ref lengths, ref writer);
             if (item.Withdrawals is { } withdrawals)
             {
-                writer.StartSequence(withdrawalsLength
-                    ?? throw new RlpException("Withdrawal payload length is missing."));
-
-                for (int i = 0; i < withdrawals.Length; i++)
-                {
-                    _withdrawalDecoder.Encode(ref writer, withdrawals[i]);
-                }
+                _withdrawalDecoder.EncodeSequence(withdrawals, ref lengths, ref writer);
             }
         }
 

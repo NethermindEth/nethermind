@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -67,37 +66,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             public void Dispose() => t_knownTransactionFilter = null;
         }
 
-        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
-        {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-            writer.StartSequence(contentLength);
-            foreach (Transaction tx in message.Transactions.AsSpan())
-            {
-                TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
-            }
+        public void PopulateLength(TransactionsMessage message, ref LengthStack lengths) =>
+            TxDecoder.PopulateSequenceLength(message.Transactions.AsSpan(), ref lengths, RlpBehaviors.InMempoolForm);
+
+        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message, ref LengthStack lengths)
+        {
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            TxDecoder.EncodeSequence(message.Transactions.AsSpan(), ref lengths, ref writer, RlpBehaviors.InMempoolForm);
         }
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(_deserializeTransactionsMessage);
-
-        public int GetLength(TransactionsMessage message, out int contentLength)
-        {
-            contentLength = 0;
-            for (int i = 0; i < message.Transactions.Count; i++)
-            {
-                Transaction tx = message.Transactions[i];
-                int txLength = tx.MayHaveNetworkForm
-                    ? TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)
-                    : TransactionDecoder.GetWrappedTxLength(tx.Type, tx.GetLength());
-                Debug.Assert(txLength == TxDecoder.GetLength(tx, RlpBehaviors.InMempoolForm), "cached transaction length is stale");
-                contentLength += txLength;
-            }
-
-            return Rlp.LengthOfSequence(contentLength);
-        }
 
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
             DeserializeTxs(ref ctx, long.MaxValue, knownFilter: null, out _);

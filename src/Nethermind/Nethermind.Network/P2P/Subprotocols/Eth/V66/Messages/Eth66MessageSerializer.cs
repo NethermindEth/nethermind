@@ -17,14 +17,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
 
-        public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
+        public void Serialize(IByteBuffer byteBuffer, TEth66Message message) => this.SerializeWithLengths(byteBuffer, message);
+
+        public void PopulateLength(TEth66Message message, ref LengthStack lengths)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
+            _ethMessageSerializer.PopulateLength(message.EthMessage, ref lengths);
+            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Peek();
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, TEth66Message message, ref LengthStack lengths)
+        {
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             writer.Encode(message.RequestId);
-            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
+            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage, ref lengths);
         }
 
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
@@ -45,16 +54,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
 
             return eth66Message;
-        }
-
-        public int GetLength(TEth66Message message, out int contentLength)
-        {
-            int innerMessageLength = _ethMessageSerializer.GetLength(message.EthMessage, out _);
-            contentLength =
-                Rlp.LengthOf(message.RequestId) +
-                innerMessageLength;
-
-            return Rlp.LengthOfSequence(contentLength);
         }
 
         [DoesNotReturn, StackTraceHidden]

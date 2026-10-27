@@ -94,19 +94,33 @@ namespace Nethermind.Serialization.Rlp
             return topics.ToArray();
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                lengths.Push(1);
+                return;
+            }
+
+            (int total, int topics) = GetContentLength(item);
+            lengths.Push(topics);
+            lengths.Push(total);
+            lengths.Push(Rlp.LengthOfSequence(total));
+        }
+
+        public override void Encode<TWriter>(LogEntry? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            lengths.Pop();
             if (item is null)
             {
                 writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
-            (int total, int topics) = GetContentLength(item);
-            writer.StartSequence(total);
+            writer.StartSequence(lengths.Pop());
 
             writer.Encode(item.Address);
-            writer.StartSequence(topics);
+            writer.StartSequence(lengths.Pop());
 
             for (int i = 0; i < item.Topics.Length; i++)
             {
@@ -117,16 +131,6 @@ namespace Nethermind.Serialization.Rlp
             int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
             writer.Encode(dataZeroPrefix);
             writer.Encode(withoutLeadingZero);
-        }
-
-        public override int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return 1;
-            }
-
-            return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
         /// <summary>Decodes the leading-zero-stripped log data.</summary>

@@ -89,9 +89,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((Transaction Tx, string Description) testCase)
         {
-            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _txDecoder.Encode(ref writer, testCase.Tx);
+            byte[] bytes = _txDecoder.EncodeAsBytes(testCase.Tx);
             RlpReader ctx = new(bytes);
             Transaction? decoded = _txDecoder.Decode(ref ctx);
             decoded!.SenderAddress =
@@ -103,9 +101,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_RlpReader((Transaction Tx, string Description) testCase)
         {
-            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _txDecoder.Encode(ref writer, testCase.Tx);
+            byte[] bytes = _txDecoder.EncodeAsBytes(testCase.Tx);
 
             RlpReader decoderContext = new(bytes);
             Transaction? decoded = _txDecoder.Decode(ref decoderContext);
@@ -118,9 +114,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_RlpReader_WithOffsetSlice((Transaction Tx, string Description) testCase)
         {
-            byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _txDecoder.Encode(ref writer, testCase.Tx);
+            byte[] bytes = _txDecoder.EncodeAsBytes(testCase.Tx);
 
             byte[] envelope = new byte[bytes.Length + 2];
             envelope[0] = 0xfe;
@@ -148,9 +142,7 @@ namespace Nethermind.Core.Test.Encoding
                 .SignedAndResolved()
                 .TestObject;
 
-            byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _txDecoder.Encode(ref writer, tx);
+            byte[] bytes = _txDecoder.EncodeAsBytes(tx);
 
             RlpReader decoderContext = new(bytes.AsMemory());
             Transaction decoded = _txDecoder.Decode(ref decoderContext)!;
@@ -180,13 +172,11 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Assert.That(decoded.CalculateHash(), Is.EqualTo(testCase.Hash));
 
-            byte[] ourRlpOutput = new byte[_txDecoder.GetLength(decoded, RlpBehaviors.None)];
-            RlpWriter writer = new(ourRlpOutput);
-            _txDecoder.Encode(ref writer, decoded);
+            byte[] ourRlpOutput = _txDecoder.EncodeAsBytes(decoded);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(writer.Position, Is.EqualTo(incomingTxRlpBytes.Length));
+                Assert.That(ourRlpOutput.Length, Is.EqualTo(incomingTxRlpBytes.Length));
                 Assert.That(ourRlpOutput.ToHexString(), Is.EqualTo(testCase.IncomingRlpHex));
             }
         }
@@ -462,12 +452,16 @@ namespace Nethermind.Core.Test.Encoding
                 decoderContext.Position = txSequenceStart + transactionSequence.Length;
             }
 
-            public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-                where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(Encoding);
+            public void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) => lengths.Push(Encoding.Length);
 
-            public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
-                bool isEip155Enabled = false, ulong chainId = 0) => Encoding.Length;
+            public void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+                where TWriter : struct, IRlpWriteBackend, allows ref struct
+            {
+                lengths.Pop();
+                writer.Write(Encoding);
+            }
         }
 
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()

@@ -8,16 +8,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public abstract class SnapSerializerBase<T> : IZeroInnerMessageSerializer<T> where T : MessageBase
     {
-        public abstract void Serialize(IByteBuffer byteBuffer, T message);
+        public void Serialize(IByteBuffer byteBuffer, T message) => this.SerializeWithLengths(byteBuffer, message);
+        public abstract void PopulateLength(T message, ref LengthStack lengths);
+        public abstract void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths);
         protected abstract T Deserialize(ref RlpReader ctx);
-        public abstract int GetLength(T message, out int contentLength);
 
-        protected ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, T msg)
+        /// <summary>Pops the total and the content length pushed last by <see cref="PopulateLength"/> and starts the message sequence.</summary>
+        protected static ByteBufferRlpWriter GetRlpWriterAndStartSequence(IByteBuffer byteBuffer, ref LengthStack lengths)
         {
-            int totalLength = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
 
             return writer;
         }

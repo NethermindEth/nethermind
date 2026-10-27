@@ -14,9 +14,13 @@ namespace Nethermind.Serialization.Rlp
 
         protected override Hash256? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccakOrNull();
 
-        public override int GetLength(Hash256? item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
+        public override void PopulateLength(Hash256? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(Rlp.LengthOf(item));
 
-        public override void Encode<TWriter>(ref TWriter writer, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(item);
+        public override void Encode<TWriter>(Hash256? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            lengths.Pop();
+            writer.Encode(item);
+        }
 
         public override Rlp Encode(Hash256? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.Encode(item);
 

@@ -183,7 +183,7 @@ public class ReceiptsMessageSerializerTests
         using ReceiptsMessage message = new(data.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1).AsDisposable();
+        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message) + 1).AsDisposable();
         buffer.WriteByte(Rlp.OfEmptyList[0]);
         buffer.ReadByte();
 

@@ -15,12 +15,12 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
     private static readonly RlpLimit RlpLimit =
         RlpLimit.For<GetReceiptsMessage70>(NethermindSyncLimits.MaxHashesFetch, nameof(GetReceiptsMessage70.Hashes));
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message, ref LengthStack lengths)
     {
+        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.Encode(message.FirstBlockReceiptIndex);
-        int hashesContentLength = GetHashesContentLength(message.Hashes);
-        writer.StartSequence(hashesContentLength);
+        writer.StartSequence(lengths.Pop());
 
         foreach (Hash256 hash in message.Hashes.AsSpan())
         {
@@ -43,8 +43,12 @@ public class GetReceiptsMessageSerializer70 : Eth66SerializerBase<GetReceiptsMes
         return new GetReceiptsMessage70(requestId, firstIndex, hashes);
     }
 
-    protected override int GetLengthInternal(GetReceiptsMessage70 message) =>
-        Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes));
+    protected override void PopulateLengthInternal(GetReceiptsMessage70 message, ref LengthStack lengths)
+    {
+        int hashesContentLength = GetHashesContentLength(message.Hashes);
+        lengths.Push(hashesContentLength);
+        lengths.Push(Rlp.LengthOf(message.FirstBlockReceiptIndex) + Rlp.LengthOfSequence(hashesContentLength));
+    }
 
     private static int GetHashesContentLength(IOwnedReadOnlyList<Hash256> hashes)
     {

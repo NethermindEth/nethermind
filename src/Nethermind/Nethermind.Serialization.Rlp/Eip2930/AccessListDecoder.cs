@@ -70,16 +70,16 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             return accessListBuilder.Build();
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, AccessList? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(AccessList? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            lengths.Pop();
             if (item is null)
             {
                 writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
-            int contentLength = GetContentLength(item);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             foreach ((Address? address, AccessList.StorageKeysEnumerable storageKeys) in item)
             {
                 // {} brackets applied to show the content structure
@@ -88,11 +88,11 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                 //   Index2
                 //   ...
                 //   IndexN
-                AccessItemLengths lengths = new(storageKeys.Count);
-                writer.StartSequence(lengths.ContentLength);
+                AccessItemLengths itemLengths = new(storageKeys.Count);
+                writer.StartSequence(itemLengths.ContentLength);
                 {
                     writer.Encode(address);
-                    writer.StartSequence(lengths.IndexesContentLength);
+                    writer.StartSequence(itemLengths.IndexesContentLength);
                     {
                         foreach (UInt256 index in storageKeys)
                         {
@@ -104,15 +104,17 @@ namespace Nethermind.Serialization.Rlp.Eip2930
             }
         }
 
-        public override int GetLength(AccessList? accessList, RlpBehaviors rlpBehaviors)
+        public override void PopulateLength(AccessList? accessList, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (accessList is null)
             {
-                return 1;
+                lengths.Push(1);
+                return;
             }
 
             int contentLength = GetContentLength(accessList);
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         /// <summary>

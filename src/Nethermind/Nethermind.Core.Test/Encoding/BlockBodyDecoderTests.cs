@@ -71,10 +71,7 @@ public class BlockBodyDecoderTests
     [TestCaseSource(nameof(ValidBodies))]
     public void Roundtrip(BlockBody body)
     {
-        int length = BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None);
-        byte[] bytes = new byte[length];
-        RlpWriter writer = new(bytes);
-        BlockBodyDecoder.Instance.Encode(ref writer, body);
+        byte[] bytes = BlockBodyDecoder.Instance.EncodeAsBytes(body);
         RlpReader ctx = new(bytes);
         BlockBody decodedBody = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref ctx);
 

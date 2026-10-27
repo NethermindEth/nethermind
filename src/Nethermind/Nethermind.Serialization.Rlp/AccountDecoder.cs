@@ -97,15 +97,29 @@ namespace Nethermind.Serialization.Rlp
             return position;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(Account? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                lengths.Push(1);
+                return;
+            }
+
+            int contentLength = GetContentLength(item);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public override void Encode<TWriter>(Account? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();
                 return;
             }
 
-            Encode(item, ref writer);
+            Encode(item, ref writer, lengths.Pop());
         }
 
         public void Encode<TWriter>(Account account, ref TWriter writer, int? contentLength = null)
@@ -217,20 +231,10 @@ namespace Nethermind.Serialization.Rlp
 
             for (int i = 0; i < accounts.Length; i++)
             {
-                length += GetLength(accounts[i]);
+                length += Rlp.LengthOfSequence(GetContentLength(accounts[i]));
             }
 
             return length;
-        }
-
-        public override int GetLength(Account? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return 1;
-            }
-
-            return Rlp.LengthOfSequence(GetContentLength(item));
         }
 
         public int GetContentLength(Account? item)

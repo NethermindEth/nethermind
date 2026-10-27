@@ -124,7 +124,7 @@ namespace Nethermind.Xdc.Test
             (XdcBlockHeader? header, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // compare to GetLength
-            int expectedTotal = codec.GetLength(header, RlpBehaviors.None);
+            int expectedTotal = codec.GetEncodedLength(header);
             Assert.That(encodedBytes.Length, Is.EqualTo(expectedTotal), "Encoded total length should match GetLength().");
         }
 

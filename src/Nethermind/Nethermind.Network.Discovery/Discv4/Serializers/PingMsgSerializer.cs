@@ -15,17 +15,19 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 {
     protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
 
-    public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, PingMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
+
+    public void Serialize(IByteBuffer byteBuffer, PingMsg msg, ref LengthStack lengths)
     {
-        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
+        int totalLength = lengths.Pop();
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         writer.Encode(msg.Version);
-        Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, sourceAddressLength);
-        Encode(ref writer, msg.DestinationAddress, msg.DestinationTcpPort, destinationAddressLength);
+        Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, lengths.Pop());
+        Encode(ref writer, msg.DestinationAddress, msg.DestinationTcpPort, lengths.Pop());
         writer.Encode(msg.ExpirationTime);
 
         if (msg.EnrSequence.HasValue)
@@ -94,29 +96,22 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         return msg;
     }
 
-    public int GetLength(PingMsg msg, out int contentLength)
-    {
-        (int totalLength, contentLength, int _, int _) =
-            GetLength(msg);
-        return totalLength;
-    }
-
-
-    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
+    public void PopulateLength(PingMsg msg, ref LengthStack lengths)
     {
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress, msg.SourceTcpPort);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress, msg.DestinationTcpPort);
-
         int contentLength = Rlp.LengthOf(msg.Version)
                        + Rlp.LengthOfSequence(sourceAddressLength)
                        + Rlp.LengthOfSequence(destinationAddressLength)
                        + Rlp.LengthOf(msg.ExpirationTime);
-
         if (msg.EnrSequence.HasValue)
         {
             contentLength += Rlp.LengthOf(msg.EnrSequence.Value);
         }
 
-        return (Rlp.LengthOfSequence(contentLength), contentLength, sourceAddressLength, destinationAddressLength);
+        lengths.Push(destinationAddressLength);
+        lengths.Push(sourceAddressLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

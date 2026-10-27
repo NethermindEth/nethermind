@@ -17,11 +17,17 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
-    public override int GetLength(ReadOnlyBlockAccessList? item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
+    public override void PopulateLength(ReadOnlyBlockAccessList item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        AccountChangesDecoder.Instance.PopulateSequenceLength(item.AccountChanges.AsSpan(), ref lengths, rlpBehaviors);
+    }
 
-    public int GetLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override void Encode<TWriter>(ReadOnlyBlockAccessList item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        AccountChangesDecoder.Instance.EncodeSequence(item.AccountChanges.AsSpan(), ref lengths, ref writer, rlpBehaviors);
+    }
 
     protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
@@ -51,17 +57,23 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     }
 
     /// <summary>
-    /// One-pass RLP encode of a generated BAL into a freshly allocated byte buffer.
+    /// RLP encode of a generated BAL into a freshly allocated byte buffer.
     /// </summary>
     public static byte[] EncodeToBytes(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
-        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
-        PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
-        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
-        EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
-        return bytes;
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        try
+        {
+            PopulateLength(sortedAccounts.AsSpan(), ref lengths, rlpBehaviors);
+            byte[] bytes = new byte[lengths.Peek()];
+            EncodeTo(sortedAccounts.AsSpan(), ref lengths, bytes, rlpBehaviors);
+            return bytes;
+        }
+        finally
+        {
+            lengths.Dispose();
+        }
     }
 
     /// <summary>
@@ -72,141 +84,61 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
-        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
-        PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
-        ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            RlpWriter writer = new(bytes);
-            EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
-            return bytes;
+            PopulateLength(sortedAccounts.AsSpan(), ref lengths, rlpBehaviors);
+            ArrayPoolSpan<byte> bytes = new(lengths.Peek());
+            try
+            {
+                EncodeTo(sortedAccounts.AsSpan(), ref lengths, bytes, rlpBehaviors);
+                return bytes;
+            }
+            catch
+            {
+                bytes.Dispose();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            bytes.Dispose();
-            throw;
+            lengths.Dispose();
         }
     }
 
     /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
     public static byte[] EncodeToBytes(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => Instance.EncodeAsBytes(item, rlpBehaviors);
+
+    private static void PopulateLength(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
-        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
-        PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
-        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
-        EncodeReadOnlyPrepared(ref writer, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
-        return bytes;
-    }
-
-    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
-        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
-        PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
-        EncodeReadOnlyPrepared(ref writer, accounts, accountLengths.AsSpan(), contentLength, rlpBehaviors);
-    }
-
-    public void Encode<TWriter>(ref TWriter writer, GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        using ArrayPoolListRef<GeneratedAccountChanges> sortedAccounts = item.GetSortedAccountChanges();
-        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(sortedAccounts.Count, sortedAccounts.Count);
-        PrepareGeneratedLengths(sortedAccounts.AsSpan(), accountLengths.AsSpan(), rlpBehaviors, out int contentLength);
-        EncodeGeneratedPrepared(ref writer, sortedAccounts.AsSpan(), accountLengths.AsSpan(), contentLength, rlpBehaviors);
-    }
-
-    private static int GetContentLength(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors)
-    {
-        AccountChangesDecoder decoder = AccountChangesDecoder.Instance;
-        int contentLength = 0;
-        foreach (ReadOnlyAccountChanges a in item.AccountChanges)
-        {
-            contentLength += decoder.GetLength(a, rlpBehaviors);
-        }
-        return contentLength;
-    }
-
-    private static int GetContentLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
-    {
-        AccountChangesDecoder decoder = AccountChangesDecoder.Instance;
-        int contentLength = 0;
-        foreach (GeneratedAccountChanges a in item.AccountChanges)
-        {
-            contentLength += decoder.GetLength(a, rlpBehaviors);
-        }
-        return contentLength;
-    }
-
-    private static void PrepareReadOnlyLengths(
-        scoped ReadOnlySpan<ReadOnlyAccountChanges> accounts,
-        scoped Span<AccountChangesDecoder.EncodingLengths> accountLengths,
-        RlpBehaviors rlpBehaviors,
-        out int contentLength)
-    {
-        Debug.Assert(accountLengths.Length >= accounts.Length);
-
-        contentLength = 0;
-        for (int i = 0; i < accounts.Length; i++)
-        {
-            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(accounts[i], rlpBehaviors);
-            accountLengths[i] = accountLength;
-            contentLength += Rlp.LengthOfSequence(accountLength.ContentLength);
-        }
-    }
-
-    private static void PrepareGeneratedLengths(
-        scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
-        scoped Span<AccountChangesDecoder.EncodingLengths> accountLengths,
-        RlpBehaviors rlpBehaviors,
-        out int contentLength)
-    {
-        Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
-
-        contentLength = 0;
-        for (int i = 0; i < sortedAccounts.Length; i++)
-        {
-            AccountChangesDecoder.EncodingLengths accountLength = AccountChangesDecoder.PrepareEncodingLengths(sortedAccounts[i], rlpBehaviors);
-            accountLengths[i] = accountLength;
-            contentLength += Rlp.LengthOfSequence(accountLength.ContentLength);
-        }
-    }
-
-    private static void EncodeReadOnlyPrepared<TWriter>(
-        ref TWriter writer,
-        scoped ReadOnlySpan<ReadOnlyAccountChanges> accounts,
-        scoped ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
-        int contentLength,
-        RlpBehaviors rlpBehaviors)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        Debug.Assert(accountLengths.Length >= accounts.Length);
-
-        writer.StartSequence(contentLength);
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
-        for (int i = 0; i < accounts.Length; i++)
+        int contentLength = 0;
+        for (int i = sortedAccounts.Length - 1; i >= 0; i--)
         {
-            accountChangesDecoder.EncodePrepared(ref writer, accounts[i], in accountLengths[i], rlpBehaviors);
+            accountChangesDecoder.PopulateLength(sortedAccounts[i], ref lengths, rlpBehaviors);
+            contentLength += lengths.Peek();
         }
+
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    private static void EncodeGeneratedPrepared<TWriter>(
-        ref TWriter writer,
-        scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts,
-        scoped ReadOnlySpan<AccountChangesDecoder.EncodingLengths> accountLengths,
-        int contentLength,
-        RlpBehaviors rlpBehaviors)
+    private static void EncodeTo(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, Span<byte> destination, RlpBehaviors rlpBehaviors)
+    {
+        RlpWriter writer = new(destination);
+        Encode(sortedAccounts, ref lengths, ref writer, rlpBehaviors);
+    }
+
+    private static void Encode<TWriter>(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        Debug.Assert(accountLengths.Length >= sortedAccounts.Length);
-
-        writer.StartSequence(contentLength);
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
         for (int i = 0; i < sortedAccounts.Length; i++)
         {
-            accountChangesDecoder.EncodePrepared(ref writer, sortedAccounts[i], in accountLengths[i], rlpBehaviors);
+            accountChangesDecoder.Encode(sortedAccounts[i], ref lengths, ref writer, rlpBehaviors);
         }
     }
 

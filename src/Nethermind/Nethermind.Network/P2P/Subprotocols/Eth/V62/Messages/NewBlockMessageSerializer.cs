@@ -10,27 +10,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private readonly BlockDecoder _blockDecoder = blockDecoder ?? new();
 
-        public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
-        {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+        public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-            writer.StartSequence(contentLength);
-            _blockDecoder.Encode(ref writer, message.Block);
+        public void PopulateLength(NewBlockMessage message, ref LengthStack lengths)
+        {
+            int contentLength = _blockDecoder.PopulateAndPeek(message.Block, ref lengths) + Rlp.LengthOf(message.TotalDifficulty);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message, ref LengthStack lengths)
+        {
+            lengths.Pop();
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(lengths.Pop());
+            _blockDecoder.Encode(message.Block, ref lengths, ref writer);
             writer.Encode(message.TotalDifficulty);
         }
 
         public NewBlockMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
-
-        public int GetLength(NewBlockMessage message, out int contentLength)
-        {
-            contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) +
-                            Rlp.LengthOf(message.TotalDifficulty);
-
-            return Rlp.LengthOfSequence(contentLength);
-        }
 
         private NewBlockMessage Deserialize(ref RlpReader ctx)
         {

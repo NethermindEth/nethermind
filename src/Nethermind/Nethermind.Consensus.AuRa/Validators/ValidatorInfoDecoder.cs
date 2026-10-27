@@ -37,26 +37,38 @@ namespace Nethermind.Consensus.AuRa.Validators
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(ValidatorInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                lengths.Push(1);
+                return;
+            }
+
+            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
+            lengths.Push(validatorLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public override void Encode<TWriter>(ValidatorInfo? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();
                 return;
             }
 
-            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             writer.Encode(item.FinalizingBlockNumber);
             writer.Encode(item.PreviousFinalizingBlockNumber);
-            writer.StartSequence(validatorLength);
+            writer.StartSequence(lengths.Pop());
             for (int i = 0; i < item.Validators.Length; i++)
             {
                 writer.Encode(item.Validators[i]);
             }
         }
-
-        public override int GetLength(ValidatorInfo? item, RlpBehaviors rlpBehaviors) => item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Validators) GetContentLength(ValidatorInfo item, RlpBehaviors rlpBehaviors)
         {

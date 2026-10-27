@@ -572,22 +572,31 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     private static void SaveProcessedTransactions(IWriteBatch batch, Span<byte> key, ReadOnlySpan<Transaction> transactions)
     {
         const RlpBehaviors behaviors = RlpBehaviors.InMempoolForm | RlpBehaviors.Storage;
-        int maxLength = 0;
-        foreach (Transaction transaction in transactions)
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        scoped RlpWriter writer;
+        try
         {
-            maxLength = Math.Max(maxLength, _txDecoder.GetLength(transaction, behaviors));
-        }
+            int maxLength = 0;
+            for (int i = transactions.Length - 1; i >= 0; i--)
+            {
+                maxLength = Math.Max(maxLength, _txDecoder.PopulateAndPeek(transactions[i], ref lengths, behaviors));
+            }
 
-        using ArrayPoolSpan<byte> rented = new(maxLength);
-        Span<byte> buffer = rented;
-        Span<byte> transactionIndex = key.Slice(sizeof(ulong), sizeof(int));
-        int index = 0;
-        foreach (Transaction transaction in transactions)
+            using ArrayPoolSpan<byte> rented = new(maxLength);
+            Span<byte> buffer = rented;
+            Span<byte> transactionIndex = key.Slice(sizeof(ulong), sizeof(int));
+            int index = 0;
+            foreach (Transaction transaction in transactions)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(transactionIndex, index++);
+                writer = new(buffer);
+                _txDecoder.Encode(transaction, ref lengths, ref writer, behaviors);
+                batch.PutSpan(key, buffer[..writer.Position]);
+            }
+        }
+        finally
         {
-            BinaryPrimitives.WriteInt32BigEndian(transactionIndex, index++);
-            RlpWriter writer = new(buffer);
-            _txDecoder.EncodeTx(ref writer, transaction, behaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-            batch.PutSpan(key, buffer[..writer.Position]);
+            lengths.Dispose();
         }
     }
 

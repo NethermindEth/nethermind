@@ -33,39 +33,39 @@ internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
         return new SyncInfo(highestQuorumCert, highestTimeoutCert);
     }
 
-    public override Rlp Encode(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptyList;
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
 
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-
-        return new Rlp(bytes);
+        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(SyncInfo item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
 
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
-        _quorumCertificateDecoder.Encode(ref writer, item.HighestQuorumCert, rlpBehaviors);
-        _timeoutCertificateDecoder.Encode(ref writer, item.HighestTimeoutCert, rlpBehaviors);
+        writer.StartSequence(lengths.Pop());
+        _quorumCertificateDecoder.Encode(item.HighestQuorumCert, ref lengths, ref writer, rlpBehaviors);
+        _timeoutCertificateDecoder.Encode(item.HighestTimeoutCert, ref lengths, ref writer, rlpBehaviors);
     }
 
-    public override int GetLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public int GetContentLength(SyncInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private int PopulateContentLength(SyncInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
             return 0;
 
-        return _quorumCertificateDecoder.GetLength(item.HighestQuorumCert, rlpBehaviors)
-               + _timeoutCertificateDecoder.GetLength(item.HighestTimeoutCert, rlpBehaviors);
+        return _timeoutCertificateDecoder.PopulateAndPeek(item.HighestTimeoutCert, ref lengths, rlpBehaviors)
+               + _quorumCertificateDecoder.PopulateAndPeek(item.HighestQuorumCert, ref lengths, rlpBehaviors);
     }
 }

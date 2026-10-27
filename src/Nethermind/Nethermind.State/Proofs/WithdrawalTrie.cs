@@ -40,8 +40,8 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.SmallValues;
         // Empty signals uncached data; the codec always writes a nonempty RLP, even for null.
         public ReadOnlySpan<byte> GetEncodedValue(Withdrawal item) => default;
-        public int GetLength(Withdrawal item) => _codec.GetLength(item, RlpBehaviors.None);
+        public int GetLength(Withdrawal item) => _codec.GetEncodedLength(item);
         public void Encode<TWriter>(ref TWriter writer, Withdrawal item) where TWriter : struct, IRlpWriteBackend, allows ref struct =>
-            _codec.Encode(ref writer, item);
+            _codec.PopulateAndEncode(ref writer, item);
     }
 }

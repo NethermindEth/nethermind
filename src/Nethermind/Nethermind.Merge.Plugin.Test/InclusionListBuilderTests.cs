@@ -129,7 +129,7 @@ public class InclusionListBuilderTests
         using (Assert.EnterMultipleScope())
         {
             // The scenario is a short remaining budget, not a transaction too big for any list.
-            Assert.That(TxDecoder.Instance.GetLength(skipped, RlpBehaviors.SkipTypedWrapping),
+            Assert.That(TxDecoder.Instance.GetEncodedLength(skipped, RlpBehaviors.SkipTypedWrapping),
                 Is.LessThan(Eip7805Constants.MaxBytesPerInclusionList));
             Assert.That(il.Select(b => Decode(b).Hash), Is.EquivalentTo(expected));
             Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));

@@ -16,16 +16,16 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
 {
     private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa, nodeKey.Generate());
 
-    public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
+
+    public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg, ref LengthStack lengths)
     {
-        int contentLength = Rlp.LengthOfKeccakRlp;
-        contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
-        int totalLength = Rlp.LengthOfSequence(contentLength);
+        int totalLength = lengths.Pop();
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         writer.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(ref writer);
 
@@ -53,10 +53,11 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
         return msg;
     }
 
-    public int GetLength(EnrResponseMsg msg, out int contentLength)
+    public void PopulateLength(EnrResponseMsg msg, ref LengthStack lengths)
     {
-        contentLength = Rlp.LengthOfKeccakRlp;
+        int contentLength = Rlp.LengthOfKeccakRlp;
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
-        return Rlp.LengthOfSequence(contentLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

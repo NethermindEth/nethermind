@@ -34,12 +34,8 @@ public sealed class AuRaBlockHeader(
     public byte[]? AuRaSignature { get; set; }
 
     /// <inheritdoc/>
-    public ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this, behaviors);
-        return writer.GetValueHash();
-    }
+    public ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None) =>
+        _headerDecoder.CalculateValueHash(this, behaviors);
 
     public override BlockHeader CloneForProcessing()
     {

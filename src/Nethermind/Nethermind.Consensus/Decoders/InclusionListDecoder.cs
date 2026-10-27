@@ -34,25 +34,12 @@ public class InclusionListDecoder(
         return txs;
     }
 
-    private static byte[] Encode(Transaction transaction)
-    {
-        TxDecoder decoder = TxDecoder.Instance;
-        byte[] buffer = new byte[decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = new(buffer);
-        decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
-        return buffer;
-    }
+    private static byte[] Encode(Transaction transaction) =>
+        TxDecoder.Instance.EncodeAsBytes(transaction, RlpBehaviors.SkipTypedWrapping);
 
     /// <summary>Encodes one entry into a pooled buffer the caller owns and must dispose.</summary>
-    public static ArrayPoolList<byte> EncodePooled(Transaction transaction)
-    {
-        TxDecoder decoder = TxDecoder.Instance;
-        int length = decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping);
-        ArrayPoolList<byte> result = new(length, length);
-        RlpWriter writer = new(result.AsSpan());
-        decoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
-        return result;
-    }
+    public static ArrayPoolList<byte> EncodePooled(Transaction transaction) =>
+        TxDecoder.Instance.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping);
 
     /// <summary>Encodes a decoded list back into the entries the engine API carries.</summary>
     public static byte[][] Encode(Transaction[] transactions)

@@ -129,15 +129,16 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            lengths.Pop();
             if (item is null)
             {
                 writer.WriteByte(Rlp.EmptyListByte);
                 return;
             }
 
-            (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+            int totalContentLength = lengths.Pop();
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
@@ -175,13 +176,7 @@ namespace Nethermind.Serialization.Rlp
                 writer.Encode(item.GasUsedTotal);
                 writer.Encode(item.Bloom);
 
-                writer.StartSequence(logsLength);
-
-                LogEntry[] logs = GetLogs(item);
-                for (int i = 0; i < logs.Length; i++)
-                {
-                    LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
-                }
+                LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
 
                 if (supportTxHash)
                 {
@@ -196,13 +191,7 @@ namespace Nethermind.Serialization.Rlp
                 writer.Encode(item.GasUsedTotal);
                 writer.Encode(item.Bloom);
 
-                writer.StartSequence(logsLength);
-
-                LogEntry[] logs = GetLogs(item);
-                for (int i = 0; i < logs.Length; i++)
-                {
-                    LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
-                }
+                LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
 
                 writer.Encode(item.Error);
             }
@@ -211,17 +200,20 @@ namespace Nethermind.Serialization.Rlp
             {
                 // Repeats the logs the top-level union already holds: DecodeStructRef hands eth_getLogs one
                 // contiguous LogsRlp span, which N per-frame sequences cannot supply.
-                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, LogEntryDecoder.Instance);
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, LogEntryDecoder.Instance, ref lengths);
             }
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+        /// <summary>Populates the receipt and returns its content length.</summary>
+        private int PopulateContentLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
         {
             int contentLength = 0;
-            if (item is null)
+            if (item.TxType == TxType.FrameTx)
             {
-                return (contentLength, 0);
+                contentLength += FrameReceiptRlp.PopulateStoredExtensionLength(item, LogEntryDecoder.Instance, ref lengths);
             }
+
+            contentLength += LogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
 
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
 
@@ -240,9 +232,6 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
             contentLength += Rlp.LengthOf(item.Bloom);
 
-            int logsLength = GetLogsLength(item);
-            contentLength += Rlp.LengthOfSequence(logsLength);
-
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
             if (isEip658Receipts)
@@ -256,24 +245,7 @@ namespace Nethermind.Serialization.Rlp
 
             contentLength += Rlp.LengthOf(item.Error);
 
-            if (item.TxType == TxType.FrameTx)
-            {
-                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, LogEntryDecoder.Instance);
-            }
-
-            return (contentLength, logsLength);
-        }
-
-        private static int GetLogsLength(TxReceipt item)
-        {
-            int logsLength = 0;
-            LogEntry[] logs = GetLogs(item);
-            for (int i = 0; i < logs.Length; i++)
-            {
-                logsLength += Rlp.LengthOf(logs[i]);
-            }
-
-            return logsLength;
+            return contentLength;
         }
 
         private static LogEntry[] GetLogs(TxReceipt item)
@@ -282,23 +254,24 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+        public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
             }
 
-            (int Total, _) = GetContentLength(item, rlpBehaviors);
-            int receiptPayloadLength = Rlp.LengthOfSequence(Total);
+            int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+            int receiptPayloadLength = Rlp.LengthOfSequence(contentLength);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
-            int result = item.TxType != TxType.Legacy
+            lengths.Push(contentLength);
+            lengths.Push(item.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
                     : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || ReceiptPayload)
-                : receiptPayloadLength;
-            return result;
+                : receiptPayloadLength);
         }
 
         public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,

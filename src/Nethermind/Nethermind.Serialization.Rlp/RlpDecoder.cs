@@ -10,9 +10,9 @@ namespace Nethermind.Serialization.Rlp;
 
 public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
-    public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    public abstract void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public abstract void Encode<TWriter>(ref TWriter stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public abstract void Encode<TWriter>(T item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     [return: MaybeNull]
@@ -27,15 +27,23 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <remarks>
     /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
     /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
-    /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, RlpBehaviors)"/>
-    /// fills exactly <see cref="GetLength(T, RlpBehaviors)"/> bytes.
+    /// allocated uninitialized because <see cref="Encode{TWriter}(T, ref LengthStack, ref TWriter, RlpBehaviors)"/>
+    /// fills exactly the total length <see cref="PopulateLength"/> pushed last.
     /// </remarks>
     public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = GC.AllocateUninitializedArray<byte>(GetLength(item, rlpBehaviors));
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return bytes;
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        try
+        {
+            PopulateLength(item, ref lengths, rlpBehaviors);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(lengths.Peek());
+            RlpEncoderExtensions.EncodeTo(this, item, ref lengths, bytes, rlpBehaviors);
+            return bytes;
+        }
+        finally
+        {
+            lengths.Dispose();
+        }
     }
 
     public virtual Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -45,10 +53,18 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             return Rlp.OfEmptyList;
         }
 
-        byte[] bytes = new byte[GetLength(items, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, items, rlpBehaviors);
-        return new Rlp(bytes);
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        try
+        {
+            this.PopulateSequenceLength(items, ref lengths, rlpBehaviors);
+            byte[] bytes = new byte[lengths.Peek()];
+            RlpEncoderExtensions.EncodeSequenceTo(this, items, ref lengths, bytes, rlpBehaviors);
+            return new Rlp(bytes);
+        }
+        finally
+        {
+            lengths.Dispose();
+        }
     }
 
     [DoesNotReturn]
@@ -170,75 +186,30 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 
     public virtual CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
     {
-        int size = GetNullableLength(item, rlpBehaviors);
-        CappedArray<byte> buffer = bufferPool.SafeRent(size);
-        RlpWriter writer = new(in buffer);
         if (item is null)
         {
-            writer.EncodeNullObject();
+            CappedArray<byte> nullBuffer = bufferPool.SafeRent(Rlp.OfEmptyList.Length);
+            RlpWriter nullWriter = new(in nullBuffer);
+            nullWriter.EncodeNullObject();
+            return nullBuffer;
         }
-        else
+
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        try
         {
-            Encode(ref writer, item, rlpBehaviors);
+            PopulateLength(item, ref lengths, rlpBehaviors);
+            CappedArray<byte> buffer = bufferPool.SafeRent(lengths.Peek());
+            RlpEncoderExtensions.EncodeTo(this, item, ref lengths, buffer.AsSpan(), rlpBehaviors);
+            return buffer;
         }
-        return buffer;
-    }
-
-    public virtual void Encode<TWriter>(ref TWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (items is null)
+        finally
         {
-            writer.WriteByte(Rlp.EmptyListByte);
-            return;
+            lengths.Dispose();
         }
-
-        writer.StartSequence(GetContentLength(items, behaviors));
-        for (int index = 0; index < items.Length; index++)
-        {
-            T? item = items[index];
-            if (item is null)
-            {
-                writer.WriteByte(Rlp.EmptyListByte);
-            }
-            else
-            {
-                Encode(ref writer, item, behaviors);
-            }
-        }
-    }
-
-    public virtual int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        if (items is null)
-        {
-            return 0;
-        }
-
-        int contentLength = 0;
-        for (int i = 0; i < items.Length; i++)
-        {
-            contentLength += GetNullableLength(items[i], behaviors);
-        }
-
-        return contentLength;
-    }
-
-    public virtual int GetLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        if (items is null)
-        {
-            return Rlp.OfEmptyList.Length;
-        }
-
-        return Rlp.LengthOfSequence(GetContentLength(items, behaviors));
     }
 
     [DoesNotReturn]
     [StackTraceHidden]
     private static T ThrowNullDecodedValue()
         => throw new RlpException($"{typeof(T).Name} decoding returned null");
-
-    private int GetNullableLength(T? item, RlpBehaviors behaviors)
-        => item is null ? Rlp.OfEmptyList.Length : GetLength(item, behaviors);
 }

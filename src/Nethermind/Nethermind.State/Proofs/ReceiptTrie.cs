@@ -89,7 +89,7 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
     {
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.MultiBlock;
         public ReadOnlySpan<byte> GetEncodedValue(TxReceipt item) => default;
-        public int GetLength(TxReceipt item) => decoder.GetLength(item, behavior);
-        public void Encode<TWriter>(ref TWriter writer, TxReceipt item) where TWriter : struct, IRlpWriteBackend, allows ref struct => decoder.Encode(ref writer, item, behavior);
+        public int GetLength(TxReceipt item) => decoder.GetEncodedLength(item, behavior);
+        public void Encode<TWriter>(ref TWriter writer, TxReceipt item) where TWriter : struct, IRlpWriteBackend, allows ref struct => decoder.PopulateAndEncode(ref writer, item, behavior);
     }
 }

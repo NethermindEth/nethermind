@@ -14,12 +14,12 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 {
     private readonly ReceiptsMessageInnerSerializer69 _receiptsSerializer = new(specProvider);
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message, ref LengthStack lengths)
     {
+        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.Encode(message.LastBlockIncomplete ? 1 : 0);
-        ReceiptsInnerMessage69 inner = new(message.TxReceipts);
-        _receiptsSerializer.Serialize(byteBuffer, inner);
+        _receiptsSerializer.Serialize(byteBuffer, new ReceiptsInnerMessage69(message.TxReceipts), ref lengths);
     }
 
     protected override ReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)
@@ -35,11 +35,9 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
         return new ReceiptsMessage70(requestId, inner.TxReceipts, lastBlockIncomplete is 1);
     }
 
-    protected override int GetLengthInternal(ReceiptsMessage70 message)
+    protected override void PopulateLengthInternal(ReceiptsMessage70 message, ref LengthStack lengths)
     {
-        ReceiptsInnerMessage69 inner = new(message.TxReceipts);
-        int receiptsLength = _receiptsSerializer.GetLength(inner, out _);
-
-        return Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + receiptsLength;
+        _receiptsSerializer.PopulateLength(new ReceiptsInnerMessage69(message.TxReceipts), ref lengths);
+        lengths.Push(Rlp.LengthOf(message.LastBlockIncomplete ? 1 : 0) + lengths.Peek());
     }
 }

@@ -135,8 +135,22 @@ namespace Nethermind.Serialization.Rlp
         protected virtual int GetSealLength(BlockHeader header) =>
             Rlp.LengthOf(header.MixHash ?? Keccak.Zero) + Rlp.LengthOfNonce(header.Nonce);
 
-        public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(BlockHeader? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
+            }
+
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public override void Encode<TWriter>(BlockHeader? header, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            lengths.Pop();
             if (header is null)
             {
                 writer.EncodeNullObject();
@@ -144,7 +158,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-            writer.StartSequence(GetContentLength(header, rlpBehaviors));
+            writer.StartSequence(lengths.Pop());
             writer.Encode(header.ParentHash ?? Keccak.Zero);
             writer.Encode(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
             writer.Encode(header.Beneficiary ?? Address.Zero);
@@ -177,27 +191,8 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
-        public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private int GetContentLength(BlockHeader item, RlpBehaviors rlpBehaviors)
         {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-            RlpWriter writer = new(bytes);
-            Encode(ref writer, item, rlpBehaviors);
-
-            return new Rlp(bytes);
-        }
-
-        private int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
-        {
-            if (item is null)
-            {
-                return 0;
-            }
-
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             int contentLength = 0
                                 + Rlp.LengthOf(item.ParentHash ?? Keccak.Zero)
@@ -251,8 +246,5 @@ namespace Nethermind.Serialization.Rlp
                 requiredItems[i] |= requiredItems[i + 1];
             }
         }
-
-        public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
-            => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 }

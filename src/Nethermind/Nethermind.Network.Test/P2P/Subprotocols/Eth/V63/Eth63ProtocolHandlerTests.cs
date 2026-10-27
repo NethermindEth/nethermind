@@ -174,7 +174,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(response.TxReceipts, Is.Not.Empty);
-                Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
+                Assert.That(_ctx._receiptMessageSerializer.GetLength(response),
                     Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
             }
         }

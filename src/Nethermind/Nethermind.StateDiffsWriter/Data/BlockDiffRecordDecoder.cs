@@ -13,22 +13,38 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 {
     public static BlockDiffRecordDecoder Instance { get; } = new();
 
-    public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
+        int slotChangesContent = GetSlotCountChangesContentLength(item.SlotCountChanges);
+        int contentLength = GetContentLength(item, codeChangesContent, slotChangesContent);
+        lengths.Push(slotChangesContent);
+        lengths.Push(codeChangesContent);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(BlockDiffRecord? item, ref LengthStack lengths, ref TWriter stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        lengths.Pop();
         if (item is null)
         {
             stream.EncodeNullObject();
             return;
         }
 
-        int contentLength = GetContentLength(item);
-        stream.StartSequence(contentLength);
+        stream.StartSequence(lengths.Pop());
 
         stream.Encode(item.BlockNumber);
         stream.Encode(item.StateRoot);
 
-        int codeChangesContent = GetCodeHashChangesContentLength(item.CodeHashChanges);
-        stream.StartSequence(codeChangesContent);
+        stream.StartSequence(lengths.Pop());
         foreach (CodeHashEntry entry in item.CodeHashChanges)
         {
             int entryContent = GetCodeHashEntryContentLength(entry);
@@ -38,8 +54,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
             stream.Encode(entry.NewCodeSize);
         }
 
-        int slotChangesContent = GetSlotCountChangesContentLength(item.SlotCountChanges);
-        stream.StartSequence(slotChangesContent);
+        stream.StartSequence(lengths.Pop());
         foreach (SlotCountEntry entry in item.SlotCountChanges)
         {
             int entryContent = GetSlotCountEntryContentLength(entry);
@@ -55,9 +70,6 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         stream.Encode(item.StorageTrieBytesDelta);
         stream.Encode(item.AccountsAddedDelta);
     }
-
-    public override int GetLength(BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 
     protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -148,11 +160,11 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         return total;
     }
 
-    private static int GetContentLength(BlockDiffRecord item)
+    private static int GetContentLength(BlockDiffRecord item, int codeChangesContent, int slotChangesContent)
         => Rlp.LengthOf(item.BlockNumber)
            + Rlp.LengthOf(item.StateRoot)
-           + Rlp.LengthOfSequence(GetCodeHashChangesContentLength(item.CodeHashChanges))
-           + Rlp.LengthOfSequence(GetSlotCountChangesContentLength(item.SlotCountChanges))
+           + Rlp.LengthOfSequence(codeChangesContent)
+           + Rlp.LengthOfSequence(slotChangesContent)
            + Rlp.LengthOf(item.AccountTrieBytesDelta)
            + Rlp.LengthOf(item.StorageTrieBytesDelta)
            + Rlp.LengthOf(item.AccountsAddedDelta);

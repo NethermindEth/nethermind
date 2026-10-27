@@ -28,20 +28,32 @@ internal sealed class XdcBlockInfoDecoder : RlpDecoder<BlockRoundInfo>
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(BlockRoundInfo item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = GetContentLength(item, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(BlockRoundInfo item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.StartSequence(lengths.Pop());
         writer.Encode(item.Hash);
         writer.Encode(item.Round);
         writer.Encode(item.BlockNumber);
     }
-
-    public override int GetLength(BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private static int GetContentLength(BlockRoundInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

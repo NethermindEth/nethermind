@@ -10,35 +10,30 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp;
 
 /// <remarks>
-/// The guest encodes every receipt of a block for its receipts root. The generic encoder measures the logs again for
-/// each receipt it writes and hands every field to the writer on its own, so the guest measures them once and writes the
-/// receipt straight into the writer's buffer. Each write returns the reference past the bytes it wrote, which stays in a
-/// register where a position held by reference would not.
+/// The guest encodes every receipt of a block for its receipts root. The generic encoder hands every field to the
+/// writer on its own, so the guest writes the receipt straight into the writer's buffer from the lengths populated
+/// for it. Each write returns the reference past the bytes it wrote, which stays in a register where a position held
+/// by reference would not.
 /// </remarks>
 public sealed partial class ReceiptMessageDecoder
 {
-    partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length)
-    {
-        if (IsOnePass(item, rlpBehaviors))
-            length = GetOnePassLength(item, rlpBehaviors, out _, out _);
-    }
-
-    partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded)
+    partial void EncodeInOnePass<TWriter>(TxReceipt item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, ref bool encoded)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (typeof(TWriter) != typeof(RlpWriter) || !IsOnePass(item, rlpBehaviors)) return;
 
-        int length = GetOnePassLength(item, rlpBehaviors, out int contentLength, out int logsLength);
-        ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(length));
+        ref byte destination = ref MemoryMarshal.GetReference(Unsafe.As<TWriter, RlpWriter>(ref writer).Reserve(lengths.Pop()));
+        int contentLength = lengths.Pop();
 
         if (item.TxType != TxType.Legacy) destination = ref WriteByte(ref destination, (byte)item.TxType);
         destination = ref WriteSequencePrefix(ref destination, contentLength);
         destination = ref WriteStatus(ref destination, item.StatusCode);
         destination = ref WriteUInt64(ref destination, item.GasUsedTotal);
         destination = ref WriteBloom(ref destination, GetBloom(item, rlpBehaviors));
-        destination = ref WriteSequencePrefix(ref destination, logsLength);
+        lengths.Pop();
+        destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
         foreach (LogEntry log in item.Logs!)
-            destination = ref WriteLog(ref destination, log);
+            destination = ref WriteLog(ref destination, log, ref lengths);
 
         encoded = true;
     }
@@ -49,26 +44,13 @@ public sealed partial class ReceiptMessageDecoder
         (rlpBehaviors & RlpBehaviors.Eip658Receipts) != 0 &&
         (item.TxType == TxType.Legacy || (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0);
 
-    private static int GetOnePassLength(TxReceipt item, RlpBehaviors rlpBehaviors, out int contentLength, out int logsLength)
-    {
-        logsLength = 0;
-        foreach (LogEntry log in item.Logs!)
-            logsLength += log is null ? 1 : Rlp.LengthOfSequence(GetLogContentLength(log));
-
-        contentLength = Rlp.LengthOf(item.StatusCode) + Rlp.LengthOf(item.GasUsedTotal) +
-            Rlp.LengthOf(GetBloom(item, rlpBehaviors)) + Rlp.LengthOfSequence(logsLength);
-        return (item.TxType == TxType.Legacy ? 0 : 1) + Rlp.LengthOfSequence(contentLength);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetLogContentLength(LogEntry log) =>
-        Rlp.LengthOf(log.Address) + Rlp.LengthOfSequence(log.Topics.Length * Rlp.LengthOfKeccakRlp) + Rlp.LengthOf(log.Data);
-
-    private static ref byte WriteLog(ref byte destination, LogEntry? log)
+    /// <remarks>Pops the lengths <see cref="LogEntryDecoder"/> populated for <paramref name="log"/>; a <see langword="null"/> one has none.</remarks>
+    private static ref byte WriteLog(ref byte destination, LogEntry? log, scoped ref LengthStack lengths)
     {
         if (log is null) return ref WriteByte(ref destination, 0xc0);
 
-        destination = ref WriteSequencePrefix(ref destination, GetLogContentLength(log));
+        lengths.Pop();
+        destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
         Address? address = log.Address;
         if (address is null)
         {

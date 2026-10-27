@@ -43,7 +43,7 @@ public class GuestReceiptEncodingTests
         try
         {
             ByteBufferRlpWriter writer = new(buffer);
-            Decoder.Encode(ref writer, receipt, behaviors);
+            Decoder.PopulateAndEncode(ref writer, receipt, behaviors);
             return buffer.ReadAllBytesAsArray();
         }
         finally

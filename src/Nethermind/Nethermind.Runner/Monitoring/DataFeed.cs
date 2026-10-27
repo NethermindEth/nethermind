@@ -408,7 +408,7 @@ public class DataFeed
                         Hash = head.Hash ?? Hash256.Zero,
                         Beneficiary = head.Beneficiary ?? Address.Zero,
                         Number = head.Number,
-                        Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
+                        Size = _blockDecoder.GetEncodedLength(head),
                         Timestamp = head.Timestamp,
                         BaseFeePerGas = head.BaseFeePerGas,
                         BlobGasUsed = head.BlobGasUsed ?? 0,

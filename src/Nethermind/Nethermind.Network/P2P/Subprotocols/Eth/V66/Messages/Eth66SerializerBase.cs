@@ -12,15 +12,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     public abstract class Eth66SerializerBase<TMessage> : IZeroInnerMessageSerializer<TMessage>
         where TMessage : Eth66MessageBase
     {
-        public void Serialize(IByteBuffer byteBuffer, TMessage message)
-        {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
+        public void Serialize(IByteBuffer byteBuffer, TMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
+        public void PopulateLength(TMessage message, ref LengthStack lengths)
+        {
+            PopulateLengthInternal(message, ref lengths);
+            int contentLength = Rlp.LengthOf(message.RequestId) + lengths.Peek();
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths)
+        {
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             writer.Encode(message.RequestId);
-            SerializeInternal(byteBuffer, message);
+            SerializeInternal(byteBuffer, message, ref lengths);
         }
 
         public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
@@ -44,14 +52,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             }
         }
 
-        public int GetLength(TMessage message, out int contentLength)
-        {
-            contentLength = Rlp.LengthOf(message.RequestId) + GetLengthInternal(message);
-            return Rlp.LengthOfSequence(contentLength);
-        }
+        /// <summary>Pushes the lengths <see cref="SerializeInternal"/> needs, then the length of the payload after the request id.</summary>
+        protected abstract void PopulateLengthInternal(TMessage message, ref LengthStack lengths);
 
-        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message);
+        /// <summary>Pops the payload length <see cref="PopulateLengthInternal"/> pushed last, then the rest, and writes the payload.</summary>
+        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message, ref LengthStack lengths);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
-        protected abstract int GetLengthInternal(TMessage message);
     }
 }

@@ -106,7 +106,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
         Func<T> factory = transactionFactory ?? (static () => new T());
-        // Each type registered here needs an arm in the Decode, EncodeTx and GetLength switches, or it falls back to interface dispatch.
+        // Each type registered here needs an arm in the Decode, EncodeTx and PopulateTxLength switches, or it falls back to interface dispatch.
         RegisterDecoder(TxType.Legacy, new LegacyTxDecoder(factory));
         RegisterDecoder(TxType.AccessList, new AccessListTxDecoder(factory));
         RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder(factory));
@@ -215,35 +215,43 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         }
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    public override void PopulateLength(T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
-    public override Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new Rlp(bytes);
-    }
+    public override void Encode<TWriter>(T? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => EncodeTx(item, ref lengths, ref writer, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId)];
-        RlpWriter writer = new(bytes);
-        EncodeTx(ref writer, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        return new Rlp(bytes);
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        try
+        {
+            PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+            byte[] bytes = new byte[lengths.Peek()];
+            EncodeTxTo(item, ref lengths, bytes, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+            return new Rlp(bytes);
+        }
+        finally
+        {
+            lengths.Dispose();
+        }
+    }
+
+    private void EncodeTxTo(T? item, ref LengthStack lengths, Span<byte> destination, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    {
+        RlpWriter writer = new(destination);
+        EncodeTx(item, ref lengths, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
     }
 
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public override int GetLength(T? tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-
-    public void EncodeTx<TWriter>(ref TWriter writer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    public void EncodeTx<TWriter>(T? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (item is null)
         {
+            lengths.Pop();
             writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
@@ -255,46 +263,61 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         switch ((item.Type, decoder))
         {
             case (TxType.EIP1559, EIP1559TxDecoder):
-                EIP1559TxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                EIP1559TxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
                 break;
             case (TxType.Legacy, LegacyTxDecoder):
-                LegacyTxDecoder.EncodeTransaction(item, ref writer, forSigning, isEip155Enabled, chainId);
+                LegacyTxDecoder.EncodeTransaction(item, ref lengths, ref writer, forSigning, isEip155Enabled, chainId);
                 break;
             case (TxType.Blob, BlobTxDecoder):
-                BlobTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                BlobTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
                 break;
             case (TxType.SetCode, SetCodeTxDecoder):
-                SetCodeTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                SetCodeTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
                 break;
             case (TxType.AccessList, AccessListTxDecoder):
-                AccessListTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                AccessListTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
                 break;
             case (TxType.FrameTx, FrameTxDecoder):
-                FrameTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                FrameTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
                 break;
             default:
-                decoder.Encode(item, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+                decoder.Encode(item, ref lengths, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
                 break;
         }
     }
 
-    private int GetLength(T? tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    public void PopulateTxLength(T? tx, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
         if (tx is null)
         {
-            return Rlp.LengthOfNull;
+            lengths.Push(Rlp.LengthOfNull);
+            return;
         }
 
         ITxDecoder decoder = GetDecoder(tx.Type);
-        return (tx.Type, decoder) switch
+        switch ((tx.Type, decoder))
         {
-            (TxType.EIP1559, EIP1559TxDecoder) => EIP1559TxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            (TxType.Legacy, LegacyTxDecoder) => LegacyTxDecoder.GetTransactionLength(tx, forSigning, isEip155Enabled, chainId),
-            (TxType.Blob, BlobTxDecoder) => BlobTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            (TxType.SetCode, SetCodeTxDecoder) => SetCodeTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            (TxType.AccessList, AccessListTxDecoder) => AccessListTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            (TxType.FrameTx, FrameTxDecoder) => FrameTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            _ => decoder.GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId)
-        };
+            case (TxType.EIP1559, EIP1559TxDecoder):
+                EIP1559TxDecoder.PopulateTransactionLength(tx, ref lengths, rlpBehaviors, forSigning);
+                break;
+            case (TxType.Legacy, LegacyTxDecoder):
+                LegacyTxDecoder.PopulateTransactionLength(tx, ref lengths, forSigning, isEip155Enabled, chainId);
+                break;
+            case (TxType.Blob, BlobTxDecoder):
+                BlobTxDecoder.PopulateTransactionLength(tx, ref lengths, rlpBehaviors, forSigning);
+                break;
+            case (TxType.SetCode, SetCodeTxDecoder):
+                SetCodeTxDecoder.PopulateTransactionLength(tx, ref lengths, rlpBehaviors, forSigning);
+                break;
+            case (TxType.AccessList, AccessListTxDecoder):
+                AccessListTxDecoder.PopulateTransactionLength(tx, ref lengths, rlpBehaviors, forSigning);
+                break;
+            case (TxType.FrameTx, FrameTxDecoder):
+                FrameTxDecoder.PopulateTransactionLength(tx, ref lengths, rlpBehaviors, forSigning);
+                break;
+            default:
+                decoder.PopulateLength(tx, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+                break;
+        }
     }
 }

@@ -250,12 +250,8 @@ internal class QuorumCertificateManager : IQuorumCertificateManager, IDisposable
         return true;
     }
 
-    private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber)
-    {
-        KeccakRlpWriter writer = new();
-        _voteDecoder.Encode(ref writer, new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
-        return writer.GetValueHash();
-    }
+    private static ValueHash256 VoteHash(BlockRoundInfo proposedBlockInfo, ulong gapNumber) =>
+        _voteDecoder.CalculateValueHash(new Vote(proposedBlockInfo, gapNumber), RlpBehaviors.ForSealing);
 
     public void Initialize(XdcBlockHeader current)
     {

@@ -167,10 +167,9 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         return length;
     }
 
-    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node)
+    protected static void SerializeNode<TWriter>(ref TWriter writer, Node node, int length)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int length = GetLengthSerializeNode(node);
         writer.StartSequence(length);
         IPAddressRlp.Encode(ref writer, node.Address.Address);
         writer.Encode(node.DiscoveryPort);

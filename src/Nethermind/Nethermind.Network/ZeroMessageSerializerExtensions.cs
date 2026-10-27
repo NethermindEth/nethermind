@@ -13,7 +13,7 @@ namespace Nethermind.Network
         {
             IByteBuffer byteBuffer = UnpooledByteBufferAllocator.Default.Buffer(
                 serializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
-                    ? zeroInnerMessageSerializer.GetLength(message, out _)
+                    ? zeroInnerMessageSerializer.GetLength(message)
                     : 64);
             try
             {

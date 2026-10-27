@@ -88,9 +88,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip((string TestName, AccessList? AccessList) testCase)
         {
-            byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _decoder.Encode(ref writer, testCase.AccessList);
+            byte[] bytes = _decoder.EncodeAsBytes(testCase.AccessList);
             RlpReader ctx = new(bytes);
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
@@ -106,9 +104,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCaseSource(nameof(TestCaseSource))]
         public void Roundtrip_value((string TestName, AccessList? AccessList) testCase)
         {
-            byte[] bytes = new byte[_decoder.GetLength(testCase.AccessList, RlpBehaviors.None)];
-            RlpWriter writer = new(bytes);
-            _decoder.Encode(ref writer, testCase.AccessList);
+            byte[] bytes = _decoder.EncodeAsBytes(testCase.AccessList);
             RlpReader ctx = new(bytes.AsSpan());
             AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
@@ -122,7 +118,7 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Get_length_returns_1_for_null() => Assert.That(_decoder.GetLength((AccessList?)null, RlpBehaviors.None), Is.EqualTo(1));
+        public void Get_length_returns_1_for_null() => Assert.That(_decoder.GetEncodedLength((AccessList?)null), Is.EqualTo(1));
 
         [Test]
         public void Rejects_entry_missing_storage_keys_array()

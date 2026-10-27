@@ -46,7 +46,7 @@ public class HeaderDecoderTests
     public void Get_length_null()
     {
         HeaderDecoder decoder = new();
-        Assert.That(decoder.GetLength((BlockHeader?)null, RlpBehaviors.None), Is.EqualTo(1));
+        Assert.That(decoder.GetEncodedLength(null!), Is.EqualTo(1));
     }
 
     [Test]

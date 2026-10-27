@@ -488,7 +488,7 @@ public class TxTrieCodecTests
         using TestTxDecoder decoder = new();
         Transaction[] transactions = new Transaction[128];
         Array.Fill(transactions, Build.A.Transaction.WithType(decoder.Type).TestObject);
-        int length = transactions.Length * decoder.GetLength(transactions[0], RlpBehaviors.SkipTypedWrapping);
+        int length = transactions.Length * TxDecoder.Instance.GetEncodedLength(transactions[0], RlpBehaviors.SkipTypedWrapping);
         byte[] scratch = ArrayPool<byte>.Shared.Rent(length);
         ArrayPool<byte>.Shared.Return(scratch);
         int calls = 0;
@@ -538,18 +538,19 @@ public class TxTrieCodecTests
         public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
             ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
 
-        public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
-            bool isEip155Enabled = false, ulong chainId = 0)
+        public void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+            bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
         {
             Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
-            return 3;
+            lengths.Push(3);
         }
 
-        public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        public void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             Assert.That(Environment.CurrentManagedThreadId, Is.EqualTo(_threadId));
+            lengths.Pop();
             Assert.That(rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping), Is.True);
             writer.WriteByte((byte)Type);
             OnEncode?.Invoke();

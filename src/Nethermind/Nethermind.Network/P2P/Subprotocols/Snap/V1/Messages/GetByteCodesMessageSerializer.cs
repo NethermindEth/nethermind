@@ -9,9 +9,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetByteCodesMessageSerializer : SnapSerializerBase<GetByteCodesMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetByteCodesMessage message)
+        public override void Serialize(IByteBuffer byteBuffer, GetByteCodesMessage message, ref LengthStack lengths)
         {
-            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, ref lengths);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.Hashes);
@@ -30,13 +30,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return message;
         }
 
-        public override int GetLength(GetByteCodesMessage message, out int contentLength)
+        public override void PopulateLength(GetByteCodesMessage message, ref LengthStack lengths)
         {
-            contentLength = Rlp.LengthOf(message.RequestId);
+            int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.Hashes, true);
             contentLength += Rlp.LengthOf(message.Bytes);
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
     }
 }

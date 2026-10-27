@@ -89,26 +89,17 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
             => throw new RlpException("Unexpected receipt field");
     }
 
-    /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
-    /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
-    private (int Total, int Inner) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+    /// <summary>Populates the receipt and returns its content length.</summary>
+    private int PopulateContentLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
     {
-        if (item is null)
-        {
-            return (0, 0);
-        }
-
         if (item.TxType == TxType.FrameTx)
         {
-            return (Rlp.LengthOf((byte)item.TxType) + FrameReceiptRlp.GetPayloadLength(item, out int framesLength), framesLength);
+            return Rlp.LengthOf((byte)item.TxType) + FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
         }
 
-        int contentLength = 0;
+        int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
         contentLength += Rlp.LengthOf((byte)item.TxType);
         contentLength += Rlp.LengthOf(item.GasUsedTotal);
-
-        int logsLength = GetLogsLength(item);
-        contentLength += Rlp.LengthOfSequence(logsLength);
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
@@ -119,47 +110,41 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
                 : Rlp.LengthOf(item.PostTransactionState);
         }
 
-        return (contentLength, logsLength);
-    }
-
-    private static int GetLogsLength(TxReceipt item)
-    {
-        int logsLength = 0;
-        LogEntry[] logs = GetLogs(item);
-        for (int i = 0; i < logs.Length; i++)
-        {
-            logsLength += Rlp.LengthOf(logs[i]);
-        }
-
-        return logsLength;
+        return contentLength;
     }
 
     private static LogEntry[] GetLogs(TxReceipt item) =>
         item.Logs ?? throw new RlpException("Receipt logs are null.");
 
-    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        (int total, _) = GetContentLength(item, rlpBehaviors);
-        return Rlp.LengthOfSequence(total);
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        lengths.Pop();
         if (item is null)
         {
             writer.WriteByte(Rlp.EmptyListByte);
             return;
         }
 
-        (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
-
-        writer.StartSequence(totalContentLength);
+        writer.StartSequence(lengths.Pop());
 
         writer.Encode((byte)item.TxType);
 
         if (item.TxType == TxType.FrameTx)
         {
-            FrameReceiptRlp.EncodePayload(ref writer, item, innerLength);
+            FrameReceiptRlp.EncodePayload(ref writer, item, ref lengths);
             return;
         }
 
@@ -177,11 +162,6 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         writer.Encode(item.GasUsedTotal);
 
-        writer.StartSequence(innerLength);
-        LogEntry[] logs = GetLogs(item);
-        for (int i = 0; i < logs.Length; i++)
-        {
-            LogEntryDecoder.Instance.Encode(ref writer, logs[i]);
-        }
+        LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
     }
 }

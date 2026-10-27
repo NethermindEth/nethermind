@@ -13,7 +13,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private const int ForkHashLength = 5;
 
-        public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
+        public void Serialize(IByteBuffer byteBuffer, StatusMessage message) => this.SerializeWithLengths(byteBuffer, message);
+
+        public void Serialize(IByteBuffer byteBuffer, StatusMessage message, ref LengthStack lengths)
         {
             Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
             Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
@@ -25,10 +27,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
             }
 
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);
             writer.Encode(message.TotalDifficulty);
@@ -45,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public int GetLength(StatusMessage message, out int contentLength)
+        public void PopulateLength(StatusMessage message, ref LengthStack lengths)
         {
             Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
             Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
@@ -57,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdSequenceLength = Rlp.LengthOfSequence(forkIdContentLength);
             }
 
-            contentLength =
+            int contentLength =
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.NetworkId) +
                 Rlp.LengthOf(message.TotalDifficulty) +
@@ -65,7 +66,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Rlp.LengthOf(genesisHash) +
                 forkIdSequenceLength;
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         public StatusMessage Deserialize(IByteBuffer byteBuffer) =>

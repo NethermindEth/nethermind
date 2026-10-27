@@ -17,14 +17,7 @@ namespace Nethermind.StateDiffsWriter.Test.Data;
 [TestFixture]
 public class BlockDiffRecordDecoderTests
 {
-    private static byte[] Encode(BlockDiffRecord record)
-    {
-        int length = BlockDiffRecordDecoder.Instance.GetLength(record);
-        byte[] buffer = new byte[length];
-        RlpWriter writer = new(buffer);
-        BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
-        return buffer;
-    }
+    private static byte[] Encode(BlockDiffRecord record) => BlockDiffRecordDecoder.Instance.EncodeAsBytes(record);
 
     private static BlockDiffRecord Decode(byte[] bytes)
     {
@@ -170,7 +163,7 @@ public class BlockDiffRecordDecoderTests
             CodeHashChanges: [new CodeHashEntry(TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256, 42)],
             SlotCountChanges: [new SlotCountEntry(TestItem.KeccakD.ValueHash256, 1, 2)]);
 
-        int reported = BlockDiffRecordDecoder.Instance.GetLength(record);
+        int reported = BlockDiffRecordDecoder.Instance.GetEncodedLength(record);
         byte[] encoded = Encode(record);
 
         Assert.That(encoded, Has.Length.EqualTo(reported));

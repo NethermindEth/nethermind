@@ -7,6 +7,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -184,14 +185,9 @@ internal static class GetPayloadDirectResponseWriter
 
     private static void WriteBlockAccessList(IBufferWriter<byte> writer, ReadOnlyBlockAccessList blockAccessList)
     {
-        BlockAccessListDecoder decoder = BlockAccessListDecoder.Instance;
-        int length = decoder.GetLength(blockAccessList, RlpBehaviors.None);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-
-        RlpWriter rlpWriter = new(buffer);
-        decoder.Encode(ref rlpWriter, blockAccessList);
-        HexWriter.WriteHexString(writer, buffer.AsSpan(0, length), chunked: length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
-        ArrayPool<byte>.Shared.Return(buffer);
+        IRlpDecoder<ReadOnlyBlockAccessList> decoder = BlockAccessListDecoder.Instance;
+        using ArrayPoolSpan<byte> encodedBlockAccessList = decoder.EncodeToArrayPoolSpan(blockAccessList);
+        HexWriter.WriteHexString(writer, encodedBlockAccessList, chunked: encodedBlockAccessList.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
     }
 
     private static async ValueTask<bool> WriteBlobsBundleAsync(

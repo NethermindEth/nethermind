@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Estimate_tx_size_matches_encoded_length()
         {
             Transaction tx = Build.A.Transaction.TestObject;
-            Assert.That(MessageSizeEstimator.EstimateSize(tx), Is.EqualTo((ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None)));
+            Assert.That(MessageSizeEstimator.EstimateSize(tx), Is.EqualTo((ulong)TxDecoder.Instance.GetEncodedLength(tx)));
         }
 
         [Test]
@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             ulong estimate = MessageSizeEstimator.EstimateSize(tx);
 
-            Assert.That(estimate, Is.EqualTo((ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None)));
+            Assert.That(estimate, Is.EqualTo((ulong)TxDecoder.Instance.GetEncodedLength(tx)));
             // Independent of the estimator internals: dataLength extra calldata bytes encode to
             // dataLength extra bytes, so the estimate must grow by exactly that — guarding against a
             // regression to a constant or to a heuristic that drops the field.
@@ -88,7 +88,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             // The previous "100 + data length" heuristic ignored the access list and would massively
             // under-count this transaction; the encoded length includes it.
-            Assert.That(estimate, Is.EqualTo((ulong)TxDecoder.Instance.GetLength(tx, RlpBehaviors.None)));
+            Assert.That(estimate, Is.EqualTo((ulong)TxDecoder.Instance.GetEncodedLength(tx)));
             Assert.That(estimate, Is.GreaterThan(1000UL * Hash256.Size));
         }
 
@@ -102,7 +102,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             ];
 
             using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
-            new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).GetLength(message, out int contentLength);
+            RlpReader reader = new(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).Serialize(message));
+            int contentLength = reader.ReadSequenceLength();
 
             // The outgoing size caps are only sound if a block's estimate covers every byte the
             // serializer writes for that block, framing included.

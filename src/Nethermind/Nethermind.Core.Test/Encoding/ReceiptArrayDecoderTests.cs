@@ -83,7 +83,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             const int boundaryContentLength = 56;
             TxReceipt finalReceipt = Build.A.Receipt.WithLogs().TestObject;
-            int finalReceiptLength = CompactReceiptStorageDecoder.Instance.GetLength(
+            int finalReceiptLength = CompactReceiptStorageDecoder.Instance.GetEncodedLength(
                 finalReceipt,
                 RlpBehaviors.Storage);
             TxReceipt[] receipts = new TxReceipt[boundaryContentLength - finalReceiptLength + 1];
@@ -108,11 +108,11 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt[] receipts = new TxReceipt[contentLength];
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
-            int encodedLength = decoder.GetLength(receipts, RlpBehaviors.Storage);
+            int encodedLength = decoder.GetEncodedLength(receipts, RlpBehaviors.Storage);
             byte[] encoded = new byte[encodedLength];
             RlpWriter writer = new(encoded);
 
-            decoder.Encode(ref writer, receipts, RlpBehaviors.Storage);
+            decoder.PopulateAndEncode(ref writer, receipts, RlpBehaviors.Storage);
 
             Assert.That(writer.Position, Is.EqualTo(encodedLength));
         }
@@ -128,7 +128,7 @@ namespace Nethermind.Core.Test.Encoding
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes));
-                Assert.That(encoded, Has.Length.EqualTo(decoder.GetLength(receipts, RlpBehaviors.Storage)));
+                Assert.That(encoded, Has.Length.EqualTo(decoder.GetEncodedLength(receipts, RlpBehaviors.Storage)));
             }
 
             RlpReader reader = new(encoded);
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Test.Encoding
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
-                Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetLength(receipts, RlpBehaviors.Storage)));
+                Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetEncodedLength(receipts, RlpBehaviors.Storage)));
                 Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
             }
         }

@@ -236,10 +236,9 @@ public static class PersistedSnapshotBuilder
                 }
                 else
                 {
-                    int rlpLen = AccountDecoder.Slim.GetLength(account);
                     RlpWriter rlpWriter = new(rlpBuffer);
                     AccountDecoder.Slim.Encode(account, ref rlpWriter);
-                    table.Add(keyBuf[..len], rlpBuffer[..rlpLen]);
+                    table.Add(keyBuf[..len], rlpBuffer[..rlpWriter.Position]);
                 }
             }
 

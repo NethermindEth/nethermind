@@ -51,14 +51,50 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         return new TxFrameSignature(scheme, signer, msg, signature);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        Encode(ref writer, item, elideCanonicalSignatureBytes: false);
+    public override void PopulateLength(TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        int contentLength = GetContentLength(item, elideCanonicalSignatureBytes: false);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
 
-    public void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, bool elideCanonicalSignatureBytes)
+    public override void Encode<TWriter>(TxFrameSignature item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
+        EncodeContent(ref writer, item, elide: false);
+    }
+
+    /// <summary>Populates the sequence of <paramref name="items"/>, a <see langword="null"/> one taking an empty list, and returns its total.</summary>
+    public int PopulateArrayLength(TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
+    {
+        int contentLength = items is null ? 0 : GetArrayContentLength(items, elideCanonicalSignatureBytes);
+        lengths.Push(contentLength);
+        int length = Rlp.LengthOfSequence(contentLength);
+        lengths.Push(length);
+        return length;
+    }
+
+    /// <summary>Writes a sequence populated by <see cref="PopulateArrayLength"/>.</summary>
+    public void EncodeArray<TWriter>(TxFrameSignature[]? items, ref LengthStack lengths, ref TWriter writer, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        bool elide = elideCanonicalSignatureBytes && item.SignsCanonicalHash;
-        writer.StartSequence(GetContentLength(item, elide));
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
+        if (items is null) return;
+
+        for (int i = 0; i < items.Length; i++)
+        {
+            TxFrameSignature item = items[i];
+            bool elide = elideCanonicalSignatureBytes && item.SignsCanonicalHash;
+            writer.StartSequence(GetContentLength(item, elide));
+            EncodeContent(ref writer, item, elide);
+        }
+    }
+
+    private static void EncodeContent<TWriter>(ref TWriter writer, TxFrameSignature item, bool elide)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
         writer.Encode((ulong)item.Scheme);
         writer.Encode(item.Signer);
         writer.Encode(item.Msg);
@@ -71,28 +107,6 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
             writer.Encode(item.Signature);
         }
     }
-
-    public void EncodeArray<TWriter>(ref TWriter writer, TxFrameSignature[]? items, bool elideCanonicalSignatureBytes)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (items is null)
-        {
-            writer.WriteByte(Rlp.EmptyListByte);
-            return;
-        }
-
-        writer.StartSequence(GetArrayContentLength(items, elideCanonicalSignatureBytes));
-        for (int i = 0; i < items.Length; i++)
-        {
-            Encode(ref writer, items[i], elideCanonicalSignatureBytes);
-        }
-    }
-
-    public override int GetLength(TxFrameSignature item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOfSequence(GetContentLength(item, elideCanonicalSignatureBytes: false));
-
-    public int GetArrayLength(TxFrameSignature[]? items, bool elideCanonicalSignatureBytes) =>
-        items is null ? 1 : Rlp.LengthOfSequence(GetArrayContentLength(items, elideCanonicalSignatureBytes));
 
     private static int GetArrayContentLength(TxFrameSignature[] items, bool elideCanonicalSignatureBytes)
     {

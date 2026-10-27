@@ -114,7 +114,7 @@ public class BlockValidatorTests
 
         validator.ValidateSuggestedBlock(block, header, out _);
 
-        Assert.That(block.EncodedSize, Is.EqualTo(new BlockDecoder().GetLength(block, RlpBehaviors.None)));
+        Assert.That(block.EncodedSize, Is.EqualTo(new BlockDecoder().GetEncodedLength(block)));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

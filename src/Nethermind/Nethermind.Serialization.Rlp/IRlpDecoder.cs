@@ -9,16 +9,21 @@ namespace Nethermind.Serialization.Rlp;
 
 public interface IRlpDecoder;
 
+/// <remarks>
+/// Encoding takes two passes that measure every nested item only once.
+/// <see cref="PopulateLength"/> pushes the lengths <see cref="Encode{TWriter}(T, ref LengthStack, ref TWriter, RlpBehaviors)"/>
+/// needs in the reverse of the order it pops them, and pushes the total encoded length of the item last.
+/// <see cref="Encode{TWriter}(T, ref LengthStack, ref TWriter, RlpBehaviors)"/> pops that total first, then the rest,
+/// and writes exactly that many bytes at the writer position.
+/// Lengths that are cheap to recompute, such as fixed-width fields, are not pushed but are still part of the total.
+/// A parent populates its children last to first, so each child's lengths sit directly under that child's total.
+/// </remarks>
 public interface IRlpDecoder<T> : IRlpDecoder
 {
-    int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    int GetLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
-
-    int GetContentLength(T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None);
-
-
-    void Encode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="writer">A writer with room for the total length <see cref="PopulateLength"/> pushed last.</param>
+    void Encode<TWriter>(T item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
@@ -32,11 +37,6 @@ public interface IRlpDecoder<T> : IRlpDecoder
     Rlp Encode(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
     CappedArray<byte> EncodeToCappedArray(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null);
-
-    void Encode<TWriter>(ref TWriter writer, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct;
-
-
 
     [return: MaybeNull]
     T Decode(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

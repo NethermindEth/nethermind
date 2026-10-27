@@ -33,11 +33,18 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(AuthorizationTuple item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        int contentLength = GetContentLength(item ?? throw new ArgumentNullException(nameof(item)));
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(AuthorizationTuple item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        int contentLength = GetContentLength(item);
-        writer.StartSequence(contentLength);
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
         writer.Encode(item.ChainId);
         writer.Encode(item.CodeAddress);
         writer.Encode(item.Nonce);
@@ -62,33 +69,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         writer.WriteByte(Eip7702Constants.Magic);
         EncodeWithoutSignature(ref writer, chainId, codeAddress, nonce);
     }
-
-    public void EncodeArray<TWriter>(ref TWriter writer, AuthorizationTuple[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (items is null)
-        {
-            writer.WriteByte(Rlp.EmptyListByte);
-            return;
-        }
-
-        writer.StartSequence(GetContentLength(items, rlpBehaviors));
-        for (int i = 0; i < items.Length; i++)
-        {
-            AuthorizationTuple? item = items[i];
-            if (item is null)
-            {
-                writer.WriteByte(Rlp.EmptyListByte);
-            }
-            else
-            {
-                Encode(ref writer, item, rlpBehaviors);
-            }
-        }
-    }
-
-    public override int GetLength(AuthorizationTuple? item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item))));
 
     private static int GetContentLength(AuthorizationTuple tuple) =>
         GetContentLengthWithoutSig(tuple.ChainId, tuple.CodeAddress, tuple.Nonce)

@@ -74,7 +74,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         {
             Transaction transaction = transactions[i];
             ReadOnlyMemory<byte> value = transaction.PreHash;
-            int length = value.IsEmpty ? _txDecoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping) : value.Length;
+            int length = value.IsEmpty ? _txDecoder.GetEncodedLength(transaction, RlpBehaviors.SkipTypedWrapping) : value.Length;
             if (length > Array.MaxLength - totalLength)
                 return new IndexedTrieRoot.Calculator<Transaction, TransactionEncoder>(transactions, default).Calculate(canBeParallel: false);
             lengths[i] = length;
@@ -82,28 +82,39 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         }
 
         using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
-        int offset = 0;
-        for (int i = 0; i < transactions.Length; i++)
+        LengthStack lengthStack = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        scoped RlpWriter writer;
+        try
         {
-            int length = lengths[i];
-            Memory<byte> value = buffer.AsMemory(offset, length);
-            // An earlier codec can release this transaction's cached RLP by reading its Hash.
-            ReadOnlySpan<byte> cached = transactions[i].PreHash.Span;
-            if (cached.IsEmpty)
+            int offset = 0;
+            for (int i = 0; i < transactions.Length; i++)
             {
-                RlpWriter writer = new(value.Span);
-                // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
-                _txDecoder.Encode(ref writer, transactions[i], RlpBehaviors.SkipTypedWrapping);
-                Debug.Assert(writer.Position == length);
+                int length = lengths[i];
+                Memory<byte> value = buffer.AsMemory(offset, length);
+                // An earlier codec can release this transaction's cached RLP by reading its Hash.
+                ReadOnlySpan<byte> cached = transactions[i].PreHash.Span;
+                if (cached.IsEmpty)
+                {
+                    writer = new(value.Span);
+                    // Registered transaction codecs retain caller-thread encoding; only hashing fans out.
+                    _txDecoder.PopulateLength(transactions[i], ref lengthStack, RlpBehaviors.SkipTypedWrapping);
+                    _txDecoder.Encode(transactions[i], ref lengthStack, ref writer, RlpBehaviors.SkipTypedWrapping);
+                    Debug.Assert(writer.Position == length);
+                }
+                else
+                {
+                    // Reading Transaction.Hash can release PreHash's owner before the workers finish.
+                    cached.CopyTo(value.Span);
+                }
+                encoded[i] = value;
+                offset += length;
             }
-            else
-            {
-                // Reading Transaction.Hash can release PreHash's owner before the workers finish.
-                cached.CopyTo(value.Span);
-            }
-            encoded[i] = value;
-            offset += length;
         }
+        finally
+        {
+            lengthStack.Dispose();
+        }
+
         return new IndexedTrieRoot.Calculator<ReadOnlyMemory<byte>, EncodedMemoryEncoder>(encoded.AsSpan(), default).Calculate();
     }
 
@@ -138,8 +149,8 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     {
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.None;
         public ReadOnlySpan<byte> GetEncodedValue(Transaction item) => item.PreHash.Span;
-        public int GetLength(Transaction item) => _txDecoder.GetLength(item, RlpBehaviors.SkipTypedWrapping);
-        public void Encode<TWriter>(ref TWriter writer, Transaction item) where TWriter : struct, IRlpWriteBackend, allows ref struct => _txDecoder.Encode(ref writer, item, RlpBehaviors.SkipTypedWrapping);
+        public int GetLength(Transaction item) => _txDecoder.GetEncodedLength(item, RlpBehaviors.SkipTypedWrapping);
+        public void Encode<TWriter>(ref TWriter writer, Transaction item) where TWriter : struct, IRlpWriteBackend, allows ref struct => _txDecoder.PopulateAndEncode(ref writer, item, RlpBehaviors.SkipTypedWrapping);
     }
 
     private readonly struct EncodedTransactionEncoder : IndexedTrieRoot.IValueEncoder<byte[]>

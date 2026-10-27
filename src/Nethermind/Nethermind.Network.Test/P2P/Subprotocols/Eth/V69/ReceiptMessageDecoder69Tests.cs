@@ -119,12 +119,12 @@ public class ReceiptMessageDecoder69Tests
         {
             if (operation == "length")
             {
-                decoder.GetLength(receipt);
+                decoder.GetEncodedLength(receipt);
                 return;
             }
 
             RlpWriter writer = new(new byte[64]);
-            decoder.Encode(ref writer, receipt);
+            decoder.PopulateAndEncode(ref writer, receipt);
         }
     }
 
@@ -259,9 +259,7 @@ public class ReceiptMessageDecoder69Tests
 
     private static byte[] Encode(ReceiptMessageDecoder69 decoder, TxReceipt receipt)
     {
-        byte[] encoded = new byte[decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts)];
-        RlpWriter writer = new(encoded);
-        decoder.Encode(ref writer, receipt, RlpBehaviors.Eip658Receipts);
+        byte[] encoded = decoder.EncodeAsBytes(receipt, RlpBehaviors.Eip658Receipts);
         return encoded;
     }
 

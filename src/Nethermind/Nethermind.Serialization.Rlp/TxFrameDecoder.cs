@@ -49,9 +49,17 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         return new TxFrame((FrameMode)mode, (FrameFlags)flags, target, executionGasLimit, stateGasLimit, value, data);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, TxFrame item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(GetContentLength(item));
+        int contentLength = GetContentLength(item);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(TxFrame item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
         writer.Encode((ulong)item.Mode);
         writer.Encode((ulong)item.Flags);
         writer.Encode(item.Target);
@@ -60,37 +68,6 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         writer.Encode(item.StateGasLimit);
         writer.Encode(item.Value);
         writer.Encode(item.Data);
-    }
-
-    public void EncodeArray<TWriter>(ref TWriter writer, TxFrame[]? items)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-    {
-        if (items is null)
-        {
-            writer.WriteByte(Rlp.EmptyListByte);
-            return;
-        }
-
-        writer.StartSequence(GetArrayContentLength(items));
-        for (int i = 0; i < items.Length; i++)
-        {
-            Encode(ref writer, items[i]);
-        }
-    }
-
-    public override int GetLength(TxFrame item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));
-
-    public int GetArrayLength(TxFrame[]? items) => items is null ? 1 : Rlp.LengthOfSequence(GetArrayContentLength(items));
-
-    private int GetArrayContentLength(TxFrame[] items)
-    {
-        int length = 0;
-        for (int i = 0; i < items.Length; i++)
-        {
-            length += GetLength(items[i], RlpBehaviors.None);
-        }
-
-        return length;
     }
 
     private static int GetContentLength(TxFrame item) =>

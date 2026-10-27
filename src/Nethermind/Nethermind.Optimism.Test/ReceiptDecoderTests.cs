@@ -153,9 +153,7 @@ public class ReceiptDecoderTests
             RlpReader ctx = new(rlp);
             OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
 
-            byte[] encodedBytes = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            RlpWriter writer = new(encodedBytes);
-            decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            byte[] encodedBytes = decoder.EncodeAsBytes(decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             Assert.Multiple(() =>
             {
@@ -171,9 +169,7 @@ public class ReceiptDecoderTests
         {
             OptimismCompactReceiptStorageDecoder decoder = new();
 
-            byte[] encodedRlp = new byte[decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            RlpWriter writer = new(encodedRlp);
-            decoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            byte[] encodedRlp = decoder.EncodeAsBytes(decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             RlpReader reader = new(encodedRlp);
             OptimismTxReceipt decodedStorageReceipt = (OptimismTxReceipt)decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
@@ -190,10 +186,7 @@ public class ReceiptDecoderTests
         static void TestTrieEncoding(OptimismTxReceipt decodedReceipt, bool shouldIncludeNonceAndVersionForTxTrie)
         {
             OptimismReceiptTrieDecoder trieDecoder = new();
-            byte[] encodedTrieRlp = new byte[trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping)];
-            RlpWriter writer = new(encodedTrieRlp);
-
-            trieDecoder.Encode(ref writer, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            byte[] encodedTrieRlp = trieDecoder.EncodeAsBytes(decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             RlpReader trieReader = new(encodedTrieRlp);
             OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.DecodeGuardNotNull(ref trieReader, RlpBehaviors.SkipTypedWrapping);

@@ -38,12 +38,8 @@ public class XdcSubnetBlockHeader(
         set { _nextValidatorsAddress = value; }
     }
 
-    public override ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
-    {
-        KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this, behaviors);
-        return writer.GetHash();
-    }
+    public override ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None) =>
+        _headerDecoder.CalculateValueHash(this, behaviors);
 
     /// <inheritdoc />
     public override BlockHeader CreateSimulatedChild(ulong timestamp)

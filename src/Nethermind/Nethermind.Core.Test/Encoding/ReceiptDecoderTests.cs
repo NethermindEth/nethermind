@@ -306,7 +306,7 @@ namespace Nethermind.Core.Test.Encoding
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decoded.Bloom, Is.SameAs(Bloom.ZeroLength));
-                Assert.That(decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts), Is.EqualTo(encoded.Length));
+                Assert.That(decoder.GetEncodedLength(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts), Is.EqualTo(encoded.Length));
             }
         }
 

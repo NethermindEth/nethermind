@@ -40,21 +40,23 @@ public sealed class NeighborsMsgSerializer(
         return new Node(new PublicKey(id), address, discoveryAddress.Port);
     }
 
-    public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
+
+    public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg, ref LengthStack lengths)
     {
-        (int totalLength, int contentLength, int nodesContentLength) = GetLength(msg);
+        int totalLength = lengths.Pop();
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         if (msg.Nodes.Count != 0)
         {
-            writer.StartSequence(nodesContentLength);
+            writer.StartSequence(lengths.Pop());
             for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
-                SerializeNode(ref writer, node);
+                SerializeNode(ref writer, node, lengths.Pop());
             }
         }
         else
@@ -102,38 +104,29 @@ public sealed class NeighborsMsgSerializer(
         return msg;
     }
 
-    private static int GetNodesLength(ArraySegment<Node> nodes, out int contentLength)
+    public void PopulateLength(NeighborsMsg msg, ref LengthStack lengths)
     {
-        contentLength = 0;
-        for (int i = 0; i < nodes.Count; i++)
-        {
-            Node node = nodes[i];
-            contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node));
-        }
-        return Rlp.LengthOfSequence(contentLength);
-    }
-
-    public int GetLength(NeighborsMsg msg, out int contentLength)
-    {
-        (int totalLength, contentLength, int _) = GetLength(msg);
-        return totalLength;
-    }
-
-    private static (int totalLength, int contentLength, int nodesContentLength) GetLength(NeighborsMsg msg)
-    {
-        int nodesContentLength = 0;
-        int contentLength = 0;
+        int contentLength;
         if (msg.Nodes.Count != 0)
         {
-            contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
+            int nodesContentLength = 0;
+            for (int i = msg.Nodes.Count - 1; i >= 0; i--)
+            {
+                int nodeLength = GetLengthSerializeNode(msg.Nodes[i]);
+                lengths.Push(nodeLength);
+                nodesContentLength += Rlp.LengthOfSequence(nodeLength);
+            }
+
+            lengths.Push(nodesContentLength);
+            contentLength = Rlp.LengthOfSequence(nodesContentLength);
         }
         else
         {
-            contentLength += Rlp.OfEmptyList.Bytes.Length;
+            contentLength = Rlp.OfEmptyList.Bytes.Length;
         }
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
-
-        return (Rlp.LengthOfSequence(contentLength), contentLength, nodesContentLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

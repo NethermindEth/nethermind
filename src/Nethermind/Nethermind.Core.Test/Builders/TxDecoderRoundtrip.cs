@@ -13,9 +13,7 @@ public static class TxDecoderRoundtrip
     public static Transaction Roundtrip(Transaction transaction)
     {
         TxDecoder decoder = TxDecoder.Instance;
-        byte[] bytes = new byte[decoder.GetLength(transaction, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, transaction);
+        byte[] bytes = decoder.EncodeAsBytes(transaction);
         RlpReader reader = new(bytes);
         return decoder.Decode(ref reader)!;
     }

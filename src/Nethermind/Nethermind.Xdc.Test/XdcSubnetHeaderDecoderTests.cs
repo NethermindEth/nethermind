@@ -38,7 +38,7 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // compare to GetLength
-            int expectedTotal = codec.GetLength(original, RlpBehaviors.None);
+            int expectedTotal = codec.GetEncodedLength(original);
             Assert.That(encodedBytes.Length, Is.EqualTo(expectedTotal), "Encoded total length should match GetLength().");
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, true);
 
             // compare to GetLength
-            int expectedTotal = codec.GetLength(original, RlpBehaviors.ForSealing);
+            int expectedTotal = codec.GetEncodedLength(original, RlpBehaviors.ForSealing);
             Assert.That(encodedBytes.Length, Is.EqualTo(expectedTotal), "Encoded total length should match GetLength().");
         }
 

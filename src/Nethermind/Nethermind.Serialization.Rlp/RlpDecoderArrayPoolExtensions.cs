@@ -22,17 +22,25 @@ public static class RlpDecoderArrayPoolExtensions
             return EmptyListSpan();
         }
 
-        ArrayPoolSpan<byte> buffer = new(decoder.GetLength(item, rlpBehaviors));
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            RlpWriter writer = new(buffer);
-            decoder.Encode(ref writer, item, rlpBehaviors);
-            return buffer;
+            decoder.PopulateLength(item, ref lengths, rlpBehaviors);
+            ArrayPoolSpan<byte> buffer = new(lengths.Peek());
+            try
+            {
+                RlpEncoderExtensions.EncodeTo(decoder, item, ref lengths, buffer, rlpBehaviors);
+                return buffer;
+            }
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            buffer.Dispose();
-            throw;
+            lengths.Dispose();
         }
     }
 
@@ -41,40 +49,25 @@ public static class RlpDecoderArrayPoolExtensions
     /// </summary>
     public static ArrayPoolSpan<byte> EncodeToArrayPoolSpan<T>(this IRlpDecoder<T> decoder, scoped ReadOnlySpan<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
     {
-        int totalLength = 0;
-        for (int i = 0; i < items.Length; i++)
-        {
-            T? item = items[i];
-            totalLength += item is null ? Rlp.OfEmptyList.Length : decoder.GetLength(item, behaviors);
-        }
-
-        int bufferLength = Rlp.LengthOfSequence(totalLength);
-
-        ArrayPoolSpan<byte> buffer = new(bufferLength);
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            RlpWriter writer = new(buffer);
-            writer.StartSequence(totalLength);
-
-            for (int i = 0; i < items.Length; i++)
+            decoder.PopulateSequenceLength(items, ref lengths, behaviors);
+            ArrayPoolSpan<byte> buffer = new(lengths.Peek());
+            try
             {
-                T? item = items[i];
-                if (item is null)
-                {
-                    writer.EncodeNullObject();
-                }
-                else
-                {
-                    decoder.Encode(ref writer, item, behaviors);
-                }
+                RlpEncoderExtensions.EncodeSequenceTo(decoder, items, ref lengths, buffer, behaviors);
+                return buffer;
             }
-
-            return buffer;
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            buffer.Dispose();
-            throw;
+            lengths.Dispose();
         }
     }
 
@@ -101,18 +94,26 @@ public static class RlpDecoderArrayPoolExtensions
     /// </summary>
     public static ArrayPoolList<byte> EncodeToArrayPoolList<T>(this IRlpDecoder<T> decoder, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int length = decoder.GetLength(item, rlpBehaviors);
-        ArrayPoolList<byte> buffer = new(length, length);
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            RlpWriter writer = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
-            decoder.Encode(ref writer, item, rlpBehaviors);
-            return buffer;
+            decoder.PopulateLength(item, ref lengths, rlpBehaviors);
+            int length = lengths.Peek();
+            ArrayPoolList<byte> buffer = new(length, length);
+            try
+            {
+                RlpEncoderExtensions.EncodeTo(decoder, item, ref lengths, buffer.AsSpan(), rlpBehaviors);
+                return buffer;
+            }
+            catch
+            {
+                buffer.Dispose();
+                throw;
+            }
         }
-        catch
+        finally
         {
-            buffer.Dispose();
-            throw;
+            lengths.Dispose();
         }
     }
 

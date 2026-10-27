@@ -12,10 +12,6 @@ namespace Nethermind.Crypto
         private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
         public static Hash256 CalculateHash(this Transaction transaction)
-        {
-            KeccakRlpWriter writer = new();
-            _txDecoder.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
-            return writer.GetHash();
-        }
+            => _txDecoder.CalculateHash(transaction, RlpBehaviors.SkipTypedWrapping);
     }
 }

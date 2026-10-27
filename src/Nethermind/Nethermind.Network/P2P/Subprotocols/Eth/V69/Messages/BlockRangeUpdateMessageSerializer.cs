@@ -9,12 +9,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 public class BlockRangeUpdateMessageSerializer :
     IZeroInnerMessageSerializer<BlockRangeUpdateMessage>
 {
-    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message)
+    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message) => this.SerializeWithLengths(byteBuffer, message);
+
+    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message, ref LengthStack lengths)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
+        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
 
         writer.Encode(message.EarliestBlock);
         writer.Encode(message.LatestBlock);
@@ -36,13 +37,14 @@ public class BlockRangeUpdateMessageSerializer :
         };
     }
 
-    public int GetLength(BlockRangeUpdateMessage message, out int contentLength)
+    public void PopulateLength(BlockRangeUpdateMessage message, ref LengthStack lengths)
     {
-        contentLength =
+        int contentLength =
             Rlp.LengthOf(message.EarliestBlock) +
             Rlp.LengthOf(message.LatestBlock) +
             Rlp.LengthOf(message.LatestBlockHash);
 
-        return Rlp.LengthOfSequence(contentLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

@@ -199,17 +199,11 @@ internal class EraSlimReceiptDecoderTests
     /// </remarks>
     private static byte[] EncodeGethReceiptArchive(ReadOnlySpan<LogEntry?> logs)
     {
-        LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
-        int logsLength = 0;
-        foreach (LogEntry? log in logs)
-        {
-            logsLength += logEntryDecoder.GetLength(log);
-        }
-
+        Rlp logsRlp = LogEntryDecoder.Instance.Encode(logs.ToArray());
         int receiptLength = Rlp.LengthOf((byte)TxType.Legacy)
                             + Rlp.LengthOf((byte)1)
                             + Rlp.LengthOf(GasUsedTotal)
-                            + Rlp.LengthOfSequence(logsLength);
+                            + logsRlp.Length;
         int outerLength = Rlp.LengthOfSequence(receiptLength);
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(outerLength)];
@@ -219,11 +213,7 @@ internal class EraSlimReceiptDecoderTests
         writer.Encode((byte)TxType.Legacy);
         writer.Encode((byte)1);
         writer.Encode(GasUsedTotal);
-        writer.StartSequence(logsLength);
-        foreach (LogEntry? log in logs)
-        {
-            logEntryDecoder.Encode(ref writer, log);
-        }
+        writer.Encode(logsRlp);
 
         return bytes;
     }

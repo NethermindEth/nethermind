@@ -85,9 +85,7 @@ public class SyncInfoDecoderTests
         );
 
         SyncInfoDecoder decoder = new();
-        byte[] bytes = new byte[decoder.GetLength(syncInfo, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, syncInfo);
+        byte[] bytes = decoder.EncodeAsBytes(syncInfo);
 
         RlpReader decoderContext = new(bytes);
         SyncInfo decoded = decoder.DecodeGuardNotNull(ref decoderContext);
@@ -114,7 +112,7 @@ public class SyncInfoDecoderTests
         SyncInfoDecoder decoder = new();
         Rlp encoded = decoder.Encode(syncInfo);
 
-        int expectedTotal = decoder.GetLength(syncInfo, RlpBehaviors.None);
+        int expectedTotal = decoder.GetEncodedLength(syncInfo);
         Assert.That(encoded.Bytes.Length, Is.EqualTo(expectedTotal),
             "Encoded total length should match GetLength().");
     }

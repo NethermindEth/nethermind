@@ -80,14 +80,13 @@ public class TransactionsMessageSerializerTests
         Transaction transaction = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
 
-        int length = serializer.GetLength(message, out int contentLength);
+        int length = serializer.GetLength(message);
         IByteBuffer buffer = Unpooled.Buffer();
         serializer.Serialize(buffer, message);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(contentLength, Is.EqualTo(2 * TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm)));
-            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(2 * TxDecoder.Instance.GetEncodedLength(transaction, RlpBehaviors.InMempoolForm))));
             Assert.That(buffer.ReadableBytes, Is.EqualTo(length));
         }
     }

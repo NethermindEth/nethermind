@@ -33,10 +33,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         Span<byte> blockKey = stackalloc byte[BlockKeyLength];
         BinaryPrimitives.WriteUInt64BigEndian(blockKey, (ulong)record.BlockNumber);
 
-        int length = BlockDiffRecordDecoder.Instance.GetLength(record);
-        byte[] payload = new byte[length];
-        RlpWriter writer = new(payload);
-        BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
+        byte[] payload = BlockDiffRecordDecoder.Instance.EncodeAsBytes(record);
 
         using IColumnsWriteBatch<BlockDiffsColumns> batch = _db.StartWriteBatch();
         IWriteBatch defaultBatch = batch.GetColumnBatch(BlockDiffsColumns.Default);
@@ -64,7 +61,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
             }
         }
 
-        return length;
+        return payload.Length;
     }
 
     /// <summary>

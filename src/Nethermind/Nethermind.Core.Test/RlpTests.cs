@@ -852,15 +852,8 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Encode_stream_with_null_items_produces_empty_list()
-        {
-            byte[] buffer = new byte[Rlp.OfEmptyList.Length];
-            RlpWriter writer = new(buffer);
-            TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
-
-            Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
-            Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
-        }
+        public void Encode_stream_with_null_items_produces_empty_list() =>
+            Assert.That(TxDecoder.Instance.Encode((Transaction[]?)null).Bytes, Is.EqualTo(Rlp.OfEmptyList.Bytes));
 
         [Test]
         public void Encode_array_with_null_items_produces_empty_list()

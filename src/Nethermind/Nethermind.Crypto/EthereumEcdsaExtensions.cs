@@ -47,9 +47,7 @@ public static class EthereumEcdsaExtensions
             tx.ChainId = ecdsa.ChainId;
         }
 
-        KeccakRlpWriter writer = new();
-        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, ecdsa.ChainId);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = CalculateSigningHash(tx, isEip155Enabled, ecdsa.ChainId);
         tx.Signature = ecdsa.Sign(privateKey, in hash);
 
         if (tx.Type == TxType.Legacy && isEip155Enabled)
@@ -166,10 +164,23 @@ public static class EthereumEcdsaExtensions
     {
         (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
 
-        KeccakRlpWriter writer = new();
-        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+        return CalculateSigningHash(tx, applyEip155, chainId);
+    }
 
-        return writer.GetValueHash();
+    private static ValueHash256 CalculateSigningHash(Transaction tx, bool isEip155Enabled, ulong chainId)
+    {
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        scoped KeccakRlpWriter writer = new();
+        try
+        {
+            _txDecoder.PopulateTxLength(tx, ref lengths, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
+            _txDecoder.EncodeTx(tx, ref lengths, ref writer, RlpBehaviors.SkipTypedWrapping, true, isEip155Enabled, chainId);
+            return writer.GetValueHash();
+        }
+        finally
+        {
+            lengths.Dispose();
+        }
     }
 
     /// <summary>Resolves whether the EIP-155 chain id triplet is part of the signed payload, and which chain id it carries.</summary>

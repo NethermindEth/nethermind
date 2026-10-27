@@ -43,28 +43,39 @@ namespace Nethermind.Consensus.AuRa.Validators
             return result;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null)
+            {
+                lengths.Push(1);
+                return;
+            }
+
+            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
+            lengths.Push(addressesLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
+        }
+
+        public override void Encode<TWriter>(PendingValidators item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            lengths.Pop();
             if (item is null)
             {
                 writer.EncodeNullObject();
                 return;
             }
 
-            (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             writer.Encode(item.BlockNumber);
             writer.Encode(item.BlockHash);
-            writer.StartSequence(addressesLength);
+            writer.StartSequence(lengths.Pop());
             for (int i = 0; i < item.Addresses.Length; i++)
             {
                 writer.Encode(item.Addresses[i]);
             }
             writer.Encode(item.AreFinalized);
         }
-
-        public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
-            item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
         {

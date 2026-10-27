@@ -12,9 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangeMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
+        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message, ref LengthStack lengths)
         {
-            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, ref lengths);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.StorageRange.RootHash);
@@ -48,11 +48,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             return message;
         }
 
-        public override int GetLength(GetStorageRangeMessage message, out int contentLength)
+        public override void PopulateLength(GetStorageRangeMessage message, ref LengthStack lengths)
         {
             Hash256 rootHash = message.StorageRange.RootHash
                 ?? throw new InvalidOperationException("A storage range request requires a root hash.");
-            contentLength = Rlp.LengthOf(message.RequestId);
+            int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(rootHash);
             int accountsCount = message.StorageRange.Accounts.Count;
             int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
@@ -61,7 +61,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             contentLength += Rlp.LengthOf(message.StorageRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
     }
 }

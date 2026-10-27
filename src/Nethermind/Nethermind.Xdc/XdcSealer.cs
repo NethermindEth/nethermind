@@ -29,9 +29,7 @@ internal class XdcSealer(ISigner signer, IHeaderDecoder headerDecoder, ILogManag
         if (block.IsGenesis)
             throw new InvalidOperationException("Can't sign genesis block");
 
-        KeccakRlpWriter writer = new();
-        headerDecoder.Encode(ref writer, xdcBlockHeader, RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = headerDecoder.CalculateValueHash(xdcBlockHeader, RlpBehaviors.ForSealing);
         if (!signer.TrySign(in hash, out Signature signature))
         {
             if (_logger.IsWarn) _logger.Warn($"XDC signer {signer.Address} could not sign block {block.Number} — skipping seal.");

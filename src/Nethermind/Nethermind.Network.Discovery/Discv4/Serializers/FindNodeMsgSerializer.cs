@@ -12,14 +12,16 @@ namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
 public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<FindNodeMsg>
 {
-    public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
+
+    public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg, ref LengthStack lengths)
     {
-        int length = GetLength(msg, out int contentLength);
+        int length = lengths.Pop();
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         writer.Encode(msg.SearchedNodeId);
         writer.Encode(msg.ExpirationTime);
 
@@ -40,11 +42,12 @@ public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPri
         return findNodeMsg;
     }
 
-    public int GetLength(FindNodeMsg msg, out int contentLength)
+    public void PopulateLength(FindNodeMsg msg, ref LengthStack lengths)
     {
-        contentLength = Rlp.LengthOf(msg.SearchedNodeId);
+        int contentLength = Rlp.LengthOf(msg.SearchedNodeId);
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
 
-        return Rlp.LengthOfSequence(contentLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

@@ -57,9 +57,7 @@ public class VoteDecoderTests
         );
 
         VoteDecoder decoder = new();
-        byte[] bytes = new byte[decoder.GetLength(vote, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, vote);
+        byte[] bytes = decoder.EncodeAsBytes(vote);
 
         RlpReader decoderContext = new(bytes);
         Vote decoded = decoder.DecodeGuardNotNull(ref decoderContext);
@@ -79,7 +77,7 @@ public class VoteDecoderTests
         VoteDecoder decoder = new();
         Rlp encoded = decoder.Encode(vote);
 
-        int expectedTotal = decoder.GetLength(vote, RlpBehaviors.None);
+        int expectedTotal = decoder.GetEncodedLength(vote);
         Assert.That(encoded.Bytes.Length, Is.EqualTo(expectedTotal),
             "Encoded total length should match GetLength().");
     }
@@ -153,8 +151,8 @@ public class VoteDecoderTests
 
         VoteDecoder decoder = new();
 
-        int normalLength = decoder.GetLength(vote, RlpBehaviors.None);
-        int sealingLength = decoder.GetLength(vote, RlpBehaviors.ForSealing);
+        int normalLength = decoder.GetEncodedLength(vote);
+        int sealingLength = decoder.GetEncodedLength(vote, RlpBehaviors.ForSealing);
 
         Assert.That(sealingLength, Is.LessThan(normalLength),
             "ForSealing length should be shorter as signature is omitted.");

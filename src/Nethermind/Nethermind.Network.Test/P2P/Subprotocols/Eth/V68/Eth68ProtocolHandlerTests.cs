@@ -1224,7 +1224,7 @@ public class Eth68ProtocolHandlerTests
                 .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
 
             types.Add((byte)tx.Type);
-            sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
+            sizes.Add(txDecoder.GetEncodedLength(tx));
             hashes.Add(tx.Hash);
             txs.Add(tx);
         }

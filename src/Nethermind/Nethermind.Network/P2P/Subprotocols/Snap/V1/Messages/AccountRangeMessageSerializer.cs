@@ -105,7 +105,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     PathWithAccount pwa = pathsWithAccounts[i];
                     int itemLength = Rlp.LengthOf(pwa.Path);
-                    itemLength += _decoder.GetLength(pwa.Account);
+                    itemLength += Rlp.LengthOfSequence(_decoder.GetContentLength(pwa.Account));
 
                     pwasLength += Rlp.LengthOfSequence(itemLength);
                 }

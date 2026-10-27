@@ -51,30 +51,33 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         }
     }
 
-    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
+        PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
-    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        GetTransactionLength(transaction, rlpBehaviors, forSigning);
+    public override void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        EncodeTransaction(transaction, ref lengths, ref writer, rlpBehaviors, forSigning);
 
-    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int contentLength = GetContentLength(transaction, forSigning);
+        lengths.Pop();
+        int bodyContentLength = lengths.Pop();
         ShardBlobNetworkWrapper? wrapper = (rlpBehaviors & RlpBehaviors.InMempoolForm) != 0 ? GetNetworkWrapper(transaction) : null;
-        int bodyContentLength = wrapper is null ? contentLength : GetShardBlobNetworkWrapperLength(wrapper, contentLength, rlpBehaviors);
 
         StartTypedTransaction(ref writer, TxType.Blob, Rlp.LengthOfSequence(bodyContentLength), rlpBehaviors);
 
         // The mempool form wraps the canonical payload together with the sidecar.
+        int contentLength = bodyContentLength;
         if (wrapper is not null)
         {
             writer.StartSequence(bodyContentLength);
+            contentLength = lengths.Pop();
         }
 
         writer.StartSequence(contentLength);
-        EncodeEip1559Fields(transaction, ref writer, rlpBehaviors);
+        EncodeEip1559Fields(transaction, ref lengths, ref writer);
         writer.Encode(GetMaxFeePerBlobGas(transaction));
         EncodeBlobVersionedHashes(ref writer, GetBlobVersionedHashes(transaction));
         EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
@@ -85,25 +88,24 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         }
     }
 
-    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void PopulateTransactionLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
     {
-        int contentLength = GetContentLength(transaction, forSigning);
+        int contentLength = PopulateEip1559FieldsLength(transaction, ref lengths)
+            + Rlp.LengthOf(GetMaxFeePerBlobGas(transaction))
+            + GetBlobVersionedHashesLength(GetBlobVersionedHashes(transaction))
+            + GetTypedSignatureLength(transaction.Signature, forSigning);
+
         if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
         {
+            lengths.Push(contentLength);
             contentLength = GetShardBlobNetworkWrapperLength(GetNetworkWrapper(transaction), contentLength, rlpBehaviors);
         }
 
-        return GetTypedTransactionLength(Rlp.LengthOfSequence(contentLength), rlpBehaviors);
+        PushTypedTransactionLength(contentLength, ref lengths, rlpBehaviors);
     }
 
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, int networkWrapperCheck) =>
         transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, networkWrapperCheck, rlpBehaviors);
-
-    private static int GetContentLength(Transaction transaction, bool forSigning) =>
-        GetEip1559FieldsLength(transaction)
-        + Rlp.LengthOf(GetMaxFeePerBlobGas(transaction))
-        + GetBlobVersionedHashesLength(GetBlobVersionedHashes(transaction))
-        + GetTypedSignatureLength(transaction.Signature, forSigning);
 
     private static int GetShardBlobNetworkWrapperLength(ShardBlobNetworkWrapper wrapper, int txContentLength, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOfSequence(txContentLength) + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);

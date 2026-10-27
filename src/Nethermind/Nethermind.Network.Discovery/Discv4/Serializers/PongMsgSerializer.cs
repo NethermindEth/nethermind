@@ -12,20 +12,22 @@ namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
 public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PongMsg>
 {
-    public void Serialize(IByteBuffer byteBuffer, PongMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, PongMsg msg) => this.SerializeWithLengths(byteBuffer, msg);
+
+    public void Serialize(IByteBuffer byteBuffer, PongMsg msg, ref LengthStack lengths)
     {
         if (msg.FarAddress is null)
         {
             throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.", NetworkExceptionType.Discovery);
         }
 
-        (int totalLength, int contentLength, int farAddressLength) = GetLength(msg);
+        int totalLength = lengths.Pop();
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
-        Encode(ref writer, msg.FarAddress, farAddressLength);
+        writer.StartSequence(lengths.Pop());
+        Encode(ref writer, msg.FarAddress, lengths.Pop());
         ValueHash256? pingMdc = msg.PingMdc;
         writer.Encode(in pingMdc);
         writer.Encode(msg.ExpirationTime);
@@ -77,13 +79,7 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         return msg;
     }
 
-    public int GetLength(PongMsg message, out int contentLength)
-    {
-        (int totalLength, contentLength, int _) = GetLength(message);
-        return totalLength;
-    }
-
-    private static (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
+    public void PopulateLength(PongMsg message, ref LengthStack lengths)
     {
         if (message.FarAddress is null)
         {
@@ -101,6 +97,8 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
             contentLength += Rlp.LengthOf(message.EnrSequence.Value);
         }
 
-        return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
+        lengths.Push(farAddressLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 }

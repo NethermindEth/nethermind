@@ -55,18 +55,12 @@ public static class ReceiptRlpBuilder
 
     private static byte[] Encode(ReadOnlySpan<LogEntry?> logs, TxType? txType, bool includeBloom, ReadOnlySpan<byte> firstItem)
     {
-        LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
-        int logsLength = 0;
-        foreach (LogEntry? log in logs)
-        {
-            logsLength += logEntryDecoder.GetLength(log);
-        }
-
+        Rlp logsRlp = LogEntryDecoder.Instance.Encode(logs.ToArray());
         int contentLength = (txType is null ? 0 : Rlp.LengthOf((byte)txType.Value))
                             + Rlp.LengthOf(firstItem)
                             + Rlp.LengthOf(GasUsedTotal)
                             + (includeBloom ? Rlp.LengthOf(Bloom.Empty) : 0)
-                            + Rlp.LengthOfSequence(logsLength);
+                            + logsRlp.Length;
 
         byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
         RlpWriter writer = new(bytes);
@@ -83,11 +77,7 @@ public static class ReceiptRlpBuilder
             writer.Encode(Bloom.Empty);
         }
 
-        writer.StartSequence(logsLength);
-        foreach (LogEntry? log in logs)
-        {
-            logEntryDecoder.Encode(ref writer, log);
-        }
+        writer.Encode(logsRlp);
 
         return bytes;
     }

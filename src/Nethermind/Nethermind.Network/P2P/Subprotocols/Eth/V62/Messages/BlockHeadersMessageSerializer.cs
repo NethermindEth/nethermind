@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using System;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -14,34 +13,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(NethermindSyncLimits.MaxHeaderFetch, nameof(BlockHeadersMessage.BlockHeaders));
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
 
-        public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
-        {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+        public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-            writer.StartSequence(contentLength);
-            ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
-            for (int i = 0; i < blockHeaders.Length; i++)
-            {
-                _headerDecoder.Encode(ref writer, blockHeaders[i]);
-            }
+        public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message, ref LengthStack lengths)
+        {
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            _headerDecoder.EncodeSequence(message.BlockHeaders.AsSpan(), ref lengths, ref writer);
         }
 
         public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public int GetLength(BlockHeadersMessage message, out int contentLength)
-        {
-            contentLength = 0;
-            ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
-            for (int i = 0; i < blockHeaders.Length; i++)
-            {
-                contentLength += _headerDecoder.GetLength(blockHeaders[i], RlpBehaviors.None);
-            }
-
-            return Rlp.LengthOfSequence(contentLength);
-        }
+        public void PopulateLength(BlockHeadersMessage message, ref LengthStack lengths) =>
+            _headerDecoder.PopulateSequenceLength(message.BlockHeaders.AsSpan(), ref lengths);
 
         public BlockHeadersMessage Deserialize(ref RlpReader ctx)
         {

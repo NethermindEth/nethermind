@@ -11,9 +11,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     {
         internal static readonly RlpLimit RlpLimit = RlpLimit.For<NodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NodeDataMessage.Data));
 
-        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
+        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message) => this.SerializeWithLengths(byteBuffer, message);
+
+        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message, ref LengthStack lengths)
         {
-            byteBuffer.EnsureWritable(GetLength(message, out _));
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.WriteByteArrayList(message.Data);
         }
@@ -21,15 +23,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
             new(byteBuffer.DecodeRlpByteArrayList(RlpLimit));
 
-        public int GetLength(NodeDataMessage message, out int contentLength)
+        public void PopulateLength(NodeDataMessage message, ref LengthStack lengths)
         {
-            contentLength = 0;
+            int contentLength = 0;
             for (int i = 0; i < message.Data.Count; i++)
             {
                 contentLength += Rlp.LengthOf(message.Data[i]);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
     }
 }

@@ -35,13 +35,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
         }
 
-        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
-        {
-            int totalLength = GetLength(message, out int contentLength);
+        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-            byteBuffer.EnsureWritable(totalLength);
+        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message, ref LengthStack lengths)
+        {
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
 
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
@@ -54,8 +54,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     continue;
                 }
 
-                int innerLength = GetInnerLength(txReceipts);
-                writer.StartSequence(innerLength);
+                writer.StartSequence(lengths.Pop());
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
                     // Only fetch a new spec when the block number changes
@@ -66,7 +65,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                     }
 
-                    _decoder.Encode(ref writer, txReceipt, behaviors);
+                    _decoder.Encode(txReceipt, ref lengths, ref writer, behaviors);
                 }
             }
         }
@@ -93,23 +92,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             return new ReceiptsMessage(data);
         }
 
-        public int GetLength(ReceiptsMessage message, out int contentLength)
+        public void PopulateLength(ReceiptsMessage message, ref LengthStack lengths)
         {
-            contentLength = 0;
+            int contentLength = 0;
 
             ReadOnlySpan<TxReceipt[]?> txReceiptsSpan = message.TxReceipts.AsSpan();
-            for (int i = 0; i < txReceiptsSpan.Length; i++)
+            for (int i = txReceiptsSpan.Length - 1; i >= 0; i--)
             {
                 TxReceipt[]? txReceipts = txReceiptsSpan[i];
-                contentLength += txReceipts is null
-                    ? Rlp.OfEmptyList.Length
-                    : Rlp.LengthOfSequence(GetInnerLength(txReceipts));
+                if (txReceipts is null)
+                {
+                    contentLength += Rlp.OfEmptyList.Length;
+                    continue;
+                }
+
+                int innerLength = PopulateInnerLength(txReceipts, ref lengths);
+                lengths.Push(innerLength);
+                contentLength += Rlp.LengthOfSequence(innerLength);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
-        private int GetInnerLength(TxReceipt[] txReceipts)
+        private int PopulateInnerLength(TxReceipt[] txReceipts, ref LengthStack lengths)
         {
             if (txReceipts.Length == 0)
                 return 0;
@@ -119,7 +125,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
-            for (int i = 0; i < txReceipts.Length; i++)
+            for (int i = txReceipts.Length - 1; i >= 0; i--)
             {
                 TxReceipt receipt = txReceipts[i];
 
@@ -131,7 +137,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 }
 
-                contentLength += _decoder.GetLength(receipt, behaviors);
+                contentLength += _decoder.PopulateAndPeek(receipt, ref lengths, behaviors);
             }
 
             return contentLength;

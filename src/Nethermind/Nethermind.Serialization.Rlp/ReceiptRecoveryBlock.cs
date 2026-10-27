@@ -101,9 +101,7 @@ public struct ReceiptRecoveryBlock
         Hash256? transactionHash = transaction.Hash;
         if (transactionHash is null)
         {
-            KeccakRlpWriter writer = new();
-            TxDecoder.Instance.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
-            transaction.Hash = transactionHash = writer.GetHash();
+            transaction.Hash = transactionHash = TxDecoder.Instance.CalculateHash(transaction, RlpBehaviors.SkipTypedWrapping);
         }
 
         return transactionHash;

@@ -32,13 +32,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref RlpReader ctx, RlpLimit? limit = null) => ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
-        public void Serialize(IByteBuffer byteBuffer, T message)
-        {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+        public void Serialize(IByteBuffer byteBuffer, T message) => this.SerializeWithLengths(byteBuffer, message);
 
-            writer.StartSequence(contentLength);
+        public void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths)
+        {
+            lengths.Pop();
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(lengths.Pop());
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
@@ -47,16 +47,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         public abstract T Deserialize(IByteBuffer byteBuffer);
-        public int GetLength(T message, out int contentLength)
+        public void PopulateLength(T message, ref LengthStack lengths)
         {
-            contentLength = 0;
+            int contentLength = 0;
             ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
             for (int i = 0; i < hashes.Length; i++)
             {
                 contentLength += Rlp.LengthOf(hashes[i]);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
     }
 }

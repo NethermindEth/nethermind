@@ -34,13 +34,13 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         _cellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(maxCellsPerTransaction, nameof(CellsMessage72.Cells));
     }
 
-    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message)
-    {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
+    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message) => this.SerializeWithLengths(byteBuffer, message);
 
+    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message, ref LengthStack lengths)
+    {
+        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         writer.Encode(message.RequestId);
 
         int hashesLength = checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp);
@@ -51,15 +51,14 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
             writer.Encode(hash);
         }
 
-        int cellsLength = GetCellsContentLength(message.Cells);
-        writer.StartSequence(cellsLength);
+        writer.StartSequence(lengths.Pop());
 
         int cellIndexCount = message.CellMask.Length == BlobCellMask.FixedByteLength
             ? BlobCellMask.FromBytes(message.CellMask).Count
             : 0;
         foreach (byte[][] cells in message.Cells)
         {
-            EncodeCellGroup(ref writer, cells, cellIndexCount);
+            EncodeCellGroup(ref writer, cells, cellIndexCount, lengths.Pop());
         }
 
         writer.Encode(message.CellMask);
@@ -114,28 +113,27 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public int GetLength(CellsMessage72 message, out int contentLength)
+    public void PopulateLength(CellsMessage72 message, ref LengthStack lengths)
     {
-        contentLength = Rlp.LengthOf(message.RequestId)
-            + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
-            + Rlp.LengthOfSequence(GetCellsContentLength(message.Cells))
-            + Rlp.LengthOf(message.CellMask);
-        return Rlp.LengthOfSequence(contentLength);
-    }
-
-    private static int GetCellsContentLength(byte[][][] cellsByTx)
-    {
-        int contentLength = 0;
-
-        for (int i = 0; i < cellsByTx.Length; i++)
+        byte[][][] cellsByTx = message.Cells;
+        int cellsContentLength = 0;
+        for (int i = cellsByTx.Length - 1; i >= 0; i--)
         {
-            contentLength += Rlp.LengthOf(cellsByTx[i]);
+            int cellGroupContentLength = GetCellGroupContentLength(cellsByTx[i]);
+            lengths.Push(cellGroupContentLength);
+            cellsContentLength += Rlp.LengthOfSequence(cellGroupContentLength);
         }
 
-        return contentLength;
+        lengths.Push(cellsContentLength);
+        int contentLength = Rlp.LengthOf(message.RequestId)
+            + Rlp.LengthOfSequence(checked(message.Hashes.Length * Rlp.LengthOfKeccakRlp))
+            + Rlp.LengthOfSequence(cellsContentLength)
+            + Rlp.LengthOf(message.CellMask);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] blobMajorCells, int cellIndexCount)
+    private static int GetCellGroupContentLength(byte[][] blobMajorCells)
     {
         int contentLength = 0;
         for (int i = 0; i < blobMajorCells.Length; i++)
@@ -143,6 +141,11 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
             contentLength += Rlp.LengthOf(blobMajorCells[i]);
         }
 
+        return contentLength;
+    }
+
+    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] blobMajorCells, int cellIndexCount, int contentLength)
+    {
         writer.StartSequence(contentLength);
         if (cellIndexCount == 0 || blobMajorCells.Length % cellIndexCount != 0)
         {

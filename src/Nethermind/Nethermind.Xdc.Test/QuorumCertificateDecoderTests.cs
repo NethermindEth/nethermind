@@ -30,9 +30,7 @@ internal class QuorumCertificateDecoderTests
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
-        byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, quorumCert);
+        byte[] bytes = decoder.EncodeAsBytes(quorumCert);
         RlpReader ctx = new(bytes);
         QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref ctx);
 
@@ -44,9 +42,7 @@ internal class QuorumCertificateDecoderTests
     {
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
-        byte[] bytes = new byte[decoder.GetLength(quorumCert, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, quorumCert);
+        byte[] bytes = decoder.EncodeAsBytes(quorumCert);
         RlpReader decoderContext = new(bytes);
         QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 

@@ -22,17 +22,13 @@ internal static partial class XdcExtensions
 
     public static Signature Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, XdcBlockHeader header)
     {
-        KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, header, RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = _headerDecoder.CalculateValueHash(header, RlpBehaviors.ForSealing);
         return ecdsa.Sign(privateKey, in hash);
     }
 
     public static Address RecoverVoteSigner(this IEthereumEcdsa ecdsa, Vote vote)
     {
-        KeccakRlpWriter writer = new();
-        _voteDecoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = _voteDecoder.CalculateValueHash(vote, RlpBehaviors.ForSealing);
         return ecdsa.RecoverAddress(vote.Signature, in hash);
     }
 

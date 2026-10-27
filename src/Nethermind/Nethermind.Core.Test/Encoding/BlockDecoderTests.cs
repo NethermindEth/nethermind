@@ -245,7 +245,7 @@ public class BlockDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
-            Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
+            Assert.That(decoder.GetEncodedLength(blockWithEncoded), Is.EqualTo(standard.Bytes.Length));
         }
     }
 
@@ -456,7 +456,7 @@ public class BlockDecoderTests
     public void Get_length_null()
     {
         BlockDecoder decoder = new();
-        Assert.That(decoder.GetLength((Block?)null, RlpBehaviors.None), Is.EqualTo(1));
+        Assert.That(decoder.GetEncodedLength(null!), Is.EqualTo(1));
     }
 
     public static byte[][] MalformedInput =

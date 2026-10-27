@@ -85,20 +85,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
     private static void AppendWithdrawals(IncrementalHash hasher, Withdrawal[] withdrawals)
     {
         WithdrawalDecoder codec = new();
-        int contentLength = 0;
-        foreach (Withdrawal withdrawal in withdrawals)
-        {
-            contentLength += codec.GetLength(withdrawal, RlpBehaviors.None);
-        }
-
-        using ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
-        RlpWriter writer = new(bytes);
-        writer.StartSequence(contentLength);
-        foreach (Withdrawal withdrawal in withdrawals)
-        {
-            codec.Encode(ref writer, withdrawal);
-        }
-
+        using ArrayPoolSpan<byte> bytes = codec.EncodeToArrayPoolSpan(withdrawals.AsSpan());
         hasher.AppendData(bytes);
     }
 

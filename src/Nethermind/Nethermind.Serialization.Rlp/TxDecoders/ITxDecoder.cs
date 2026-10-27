@@ -12,8 +12,10 @@ public interface ITxDecoder
 
     void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct;
+    /// <summary>Pushes the lengths <see cref="Encode{TWriter}"/> pops, the total encoded length last.</summary>
+    /// <remarks>Follows the <see cref="IRlpDecoder{T}"/> length stack contract.</remarks>
+    void PopulateLength(Transaction transaction, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
-    int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
+    void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 }

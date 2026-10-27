@@ -146,9 +146,7 @@ internal class XdcSealValidator(
             if (!signature.HasLowS())
                 return false;
 
-            KeccakRlpWriter writer = new();
-            HeaderDecoder.Encode(ref writer, xdcHeader, RlpBehaviors.ForSealing);
-            ValueHash256 hash = writer.GetValueHash();
+            ValueHash256 hash = HeaderDecoder.CalculateValueHash(xdcHeader, RlpBehaviors.ForSealing);
             Address signer = _ethereumEcdsa.RecoverAddress(signature, in hash);
 
             header.Author = signer;

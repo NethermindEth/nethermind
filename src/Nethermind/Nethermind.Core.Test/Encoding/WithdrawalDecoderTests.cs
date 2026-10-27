@@ -54,10 +54,7 @@ public class WithdrawalDecoderTests
             AmountInGwei = ulong.MaxValue
         };
         WithdrawalDecoder codec = new();
-        byte[] bytes = new byte[codec.GetLength(withdrawal, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-
-        codec.Encode(ref writer, withdrawal);
+        byte[] bytes = codec.EncodeAsBytes(withdrawal);
 
         RlpReader decoderContext = new(bytes);
         Withdrawal? decoded = codec.Decode(ref decoderContext);

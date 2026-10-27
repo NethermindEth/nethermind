@@ -36,9 +36,7 @@ public class RlpDecoderTests
     {
         Transaction tx = BuildDepositTx();
 
-        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
-        _decoder.Encode(ref writer, tx);
+        byte[] rlp = _decoder.EncodeAsBytes(tx);
 
         Assert.That(rlp.ToHexString(), Is.EqualTo(DepositTxRlpHex));
 
@@ -53,9 +51,7 @@ public class RlpDecoderTests
     {
         Transaction tx = BuildDepositTx();
 
-        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
-        _decoder.Encode(ref writer, tx);
+        byte[] rlp = _decoder.EncodeAsBytes(tx);
 
         Transaction? decodedTx = Rlp.Decode<Transaction?>(rlp);
 
@@ -67,9 +63,7 @@ public class RlpDecoderTests
     {
         Transaction tx = BuildDepositTransaction(to: null);
 
-        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(rlp);
-        _decoder.Encode(ref writer, tx);
+        byte[] rlp = _decoder.EncodeAsBytes(tx);
 
         RlpReader ctx = new(rlp);
         Transaction? decodedTx = _decoder.Decode(ref ctx);

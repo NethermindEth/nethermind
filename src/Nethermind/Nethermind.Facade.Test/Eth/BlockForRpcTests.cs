@@ -27,7 +27,7 @@ public class BlockForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.EncodedSize, Is.Not.Null);
-            Assert.That(new BlockForRpc(decoded, false, MainnetSpecProvider.Instance).Size, Is.EqualTo(decoder.GetLength(block, RlpBehaviors.None)));
+            Assert.That(new BlockForRpc(decoded, false, MainnetSpecProvider.Instance).Size, Is.EqualTo(decoder.GetEncodedLength(block)));
             Assert.That(new BlockForRpc(block, false, MainnetSpecProvider.Instance).Size, Is.EqualTo(decoded.EncodedSize));
         }
     }
@@ -38,7 +38,7 @@ public class BlockForRpcTests
         Block block = Build.A.Block.WithNumber(1)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject)
             .TestObject;
-        int expected = new BlockDecoder().GetLength(block, RlpBehaviors.None);
+        int expected = new BlockDecoder().GetEncodedLength(block);
         Assert.That(block.EncodedSize, Is.Null, "precondition: a block that was not decoded has no recorded size");
 
         BlockForRpc rpc = new(block, false, MainnetSpecProvider.Instance);

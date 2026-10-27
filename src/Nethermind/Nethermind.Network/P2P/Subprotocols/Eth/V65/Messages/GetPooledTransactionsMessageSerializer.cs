@@ -18,18 +18,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<T>(NethermindSyncLimits.MaxHashesFetch, nameof(GetPooledTransactionsMessage.Hashes));
 
-        public void Serialize(IByteBuffer byteBuffer, T message)
+        public void Serialize(IByteBuffer byteBuffer, T message) => this.SerializeWithLengths(byteBuffer, message);
+
+        public void Serialize(IByteBuffer byteBuffer, T message, ref LengthStack lengths)
         {
-            byteBuffer.EnsureWritable(GetLength(message, out int contentLength));
+            lengths.Pop();
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
+            writer.StartSequence(lengths.Pop());
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);
         }
 
-        public int GetLength(T message, out int contentLength)
+        public void PopulateLength(T message, ref LengthStack lengths)
         {
-            contentLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-            return Rlp.LengthOfSequence(contentLength);
+            int contentLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         public T Deserialize(IByteBuffer byteBuffer)

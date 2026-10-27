@@ -43,20 +43,23 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
 
-    public override Rlp Encode(L1Origin? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(L1Origin? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptyList;
+        {
+            lengths.Push(1);
+            return;
+        }
 
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new(bytes);
+        int contentLength = GetContentLength(item, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(L1Origin item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
 
         writer.Encode(item.BlockId);
         writer.Encode(item.L2BlockHash);
@@ -104,9 +107,6 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             writer.Encode(item.Signature);
         }
     }
-
-    public override int GetLength(L1Origin? item, RlpBehaviors rlpBehaviors) =>
-        item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {

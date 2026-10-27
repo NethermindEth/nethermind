@@ -38,15 +38,29 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         return new Vote(proposedBlockInfo, gapNumber, signature);
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(Vote item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
-        _xdcBlockInfoDecoder.Encode(ref writer, item.ProposedBlockInfo, rlpBehaviors);
+        writer.StartSequence(lengths.Pop());
+        _xdcBlockInfoDecoder.Encode(item.ProposedBlockInfo, ref lengths, ref writer, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             Span<byte> sigBuffer = stackalloc byte[Signature.Size];
@@ -56,21 +70,7 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         writer.Encode(item.GapNumber);
     }
 
-    public override Rlp Encode(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-
-        return new Rlp(bytes);
-    }
-
-    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public int GetContentLength(Vote item, RlpBehaviors rlpBehaviors) => ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
+    private int PopulateContentLength(Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors) => ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)
-            + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
+            + _xdcBlockInfoDecoder.PopulateAndPeek(item.ProposedBlockInfo, ref lengths, rlpBehaviors);
 }

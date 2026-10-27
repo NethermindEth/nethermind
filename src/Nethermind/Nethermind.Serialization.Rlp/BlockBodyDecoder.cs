@@ -32,64 +32,19 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     private static BlockBodyDecoder? _instance;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    public override int GetLength(BlockBody? item, RlpBehaviors rlpBehaviors)
-        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetBodyLength(item));
-
-    public int GetBodyLength(BlockBody b)
+    public override void PopulateLength(BlockBody? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        (int txs, int uncles, int? withdrawals) = GetBodyComponentLength(b);
-        return Rlp.LengthOfSequence(txs) +
-               Rlp.LengthOfSequence(uncles) +
-               (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
-    }
-
-    public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
-        GetBodyComponentLength(b, GetTxLength(b.Transactions));
-
-    internal (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b, int transactionLength) =>
-    (
-        transactionLength,
-        GetUnclesLength(b.Uncles),
-        b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
-    );
-
-    private int GetTxLength(Transaction[] transactions)
-    {
-        if (transactions.Length == 0) return 0;
-
-        int sum = 0;
-        foreach (Transaction tx in transactions)
+        if (item is null)
         {
-            sum += _txDecoder.GetLength(tx, RlpBehaviors.None);
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
         }
 
-        return sum;
-    }
-
-    private int GetUnclesLength(BlockHeader[] headers)
-    {
-        if (headers.Length == 0) return 0;
-
-        int sum = 0;
-        foreach (BlockHeader header in headers)
-        {
-            sum += _headerDecoder.GetLength(header, RlpBehaviors.None);
-        }
-
-        return sum;
-    }
-
-    private int GetWithdrawalsLength(Withdrawal[] withdrawals)
-    {
-        if (withdrawals.Length == 0) return 0;
-
-        int sum = 0;
-        foreach (Withdrawal withdrawal in withdrawals)
-        {
-            sum += _withdrawalDecoderDecoder.GetLength(withdrawal, RlpBehaviors.None);
-        }
-
-        return sum;
+        int contentLength = item.Withdrawals is { } withdrawals ? _withdrawalDecoderDecoder.PopulateSequenceAndPeek(withdrawals, ref lengths) : 0;
+        contentLength += _headerDecoder.PopulateSequenceAndPeek(item.Uncles, ref lengths);
+        contentLength += _txDecoder.PopulateSequenceAndPeek(item.Transactions, ref lengths);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     protected override BlockBody? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -174,28 +129,21 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         }
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(BlockBody? body, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        writer.StartSequence(GetBodyLength(body));
-        writer.StartSequence(GetTxLength(body.Transactions));
-        foreach (Transaction? txn in body.Transactions)
+        lengths.Pop();
+        if (body is null)
         {
-            _txDecoder.Encode(ref writer, txn);
+            writer.EncodeNullObject();
+            return;
         }
 
-        writer.StartSequence(GetUnclesLength(body.Uncles));
-        foreach (BlockHeader? uncle in body.Uncles)
+        writer.StartSequence(lengths.Pop());
+        _txDecoder.EncodeSequence(body.Transactions, ref lengths, ref writer);
+        _headerDecoder.EncodeSequence(body.Uncles, ref lengths, ref writer);
+        if (body.Withdrawals is { } withdrawals)
         {
-            _headerDecoder.Encode(ref writer, uncle);
-        }
-
-        if (body.Withdrawals is not null)
-        {
-            writer.StartSequence(GetWithdrawalsLength(body.Withdrawals));
-            foreach (Withdrawal? withdrawal in body.Withdrawals)
-            {
-                _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);
-            }
+            _withdrawalDecoderDecoder.EncodeSequence(withdrawals, ref lengths, ref writer);
         }
     }
 }

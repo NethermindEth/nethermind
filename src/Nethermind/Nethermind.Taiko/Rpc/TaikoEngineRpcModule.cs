@@ -453,33 +453,16 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return false;
         }
 
-        private readonly int GetTxLength(Transaction tx) => txDecoder.GetLength(tx, RlpBehaviors.None);
-
         public readonly ulong GetCompressedTxsLength()
         {
-            int contentLength = Transactions.Sum(GetTxLength);
-            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(data);
-
-            writer.StartSequence(contentLength);
-            foreach (Transaction tx in Transactions.AsSpan())
-            {
-                txDecoder.Encode(ref writer, tx);
-            }
-
-            return GetCompressedLength(data.Slice(0, writer.Position));
+            using ArrayPoolSpan<byte> data = txDecoder.EncodeToArrayPoolSpan(Transactions.AsSpan());
+            return GetCompressedLength(data);
         }
 
         public static ulong EstimateTxLength(Transaction tx, IRlpDecoder<Transaction> txDecoder)
         {
-            int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
-            using ArrayPoolSpan<byte> data = new(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(data);
-
-            writer.StartSequence(contentLength);
-            txDecoder.Encode(ref writer, tx);
-
-            return GetCompressedLength(data.Slice(0, writer.Position));
+            using ArrayPoolSpan<byte> data = txDecoder.EncodeToArrayPoolSpan([tx]);
+            return GetCompressedLength(data);
         }
 
         private static ulong GetCompressedLength(ReadOnlySpan<byte> data)

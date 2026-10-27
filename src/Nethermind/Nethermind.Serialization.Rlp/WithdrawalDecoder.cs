@@ -38,29 +38,33 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         return withdrawal;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(Withdrawal? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item is null)
+        {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        int contentLength = GetContentLength(item);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(Withdrawal? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        lengths.Pop();
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
 
-        int contentLength = GetContentLength(item);
-
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         writer.Encode(item.Index);
         writer.Encode(item.ValidatorIndex);
         writer.Encode(item.Address);
         writer.Encode(item.AmountInGwei);
-    }
-
-    public override Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new(bytes);
     }
 
     private static int GetContentLength(Withdrawal item) =>
@@ -68,7 +72,4 @@ public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
         Rlp.LengthOf(item.ValidatorIndex) +
         Rlp.LengthOfAddressRlp +
         Rlp.LengthOf(item.AmountInGwei);
-
-    public override int GetLength(Withdrawal? item, RlpBehaviors _)
-        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 }

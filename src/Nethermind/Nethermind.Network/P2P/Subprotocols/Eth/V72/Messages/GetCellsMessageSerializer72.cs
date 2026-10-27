@@ -15,13 +15,13 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
     // The wire limit remains permissive, but only the locally supported prefix is materialized.
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(GetCellsMessage72.Hashes));
 
-    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message)
-    {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
+    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message) => this.SerializeWithLengths(byteBuffer, message);
 
+    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message, ref LengthStack lengths)
+    {
+        lengths.Pop();
         ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        writer.StartSequence(lengths.Pop());
         writer.Encode(message.RequestId);
 
         int hashesLength = GetHashesContentLength(message.Hashes);
@@ -65,12 +65,13 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         return new GetCellsMessage72(requestId, hashes, cellMask, hashCount);
     }
 
-    public int GetLength(GetCellsMessage72 message, out int contentLength)
+    public void PopulateLength(GetCellsMessage72 message, ref LengthStack lengths)
     {
-        contentLength = Rlp.LengthOf(message.RequestId)
+        int contentLength = Rlp.LengthOf(message.RequestId)
             + Rlp.LengthOfSequence(GetHashesContentLength(message.Hashes))
             + Rlp.LengthOf(message.CellMask);
-        return Rlp.LengthOfSequence(contentLength);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
     private static int GetHashesContentLength(ValueHash256[] hashes)

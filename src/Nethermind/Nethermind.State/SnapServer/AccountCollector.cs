@@ -27,6 +27,6 @@ public class AccountCollector : RangeQueryVisitor.ILeafValueCollector
         Account accnt = AccountDecoder.Instance.Decode(ref ctx)
             ?? throw new TrieException("An account leaf must contain a decodable account value.");
         Accounts.Add(new PathWithAccount(path, accnt));
-        return 32 + AccountDecoder.Slim.GetLength(accnt);
+        return 32 + Rlp.LengthOfSequence(AccountDecoder.Slim.GetContentLength(accnt));
     }
 }

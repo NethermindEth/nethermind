@@ -177,9 +177,7 @@ public class FrameTransactionSigningTests
     private static Transaction EncodeDecode(Transaction transaction)
     {
         TxDecoder decoder = TxDecoder.Instance;
-        byte[] bytes = new byte[decoder.GetLength(transaction, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, transaction, RlpBehaviors.None);
+        byte[] bytes = decoder.EncodeAsBytes(transaction);
         RlpReader reader = new(bytes);
         return decoder.Decode(ref reader, RlpBehaviors.None)!;
     }

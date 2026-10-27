@@ -27,22 +27,23 @@ public static class FrameReceiptRlp
 
     private static readonly RlpLimit FrameReceiptsRlpLimit = RlpLimit.For<TxReceipt>(Eip8141Constants.MaxFrames, nameof(TxReceipt.FrameReceipts));
 
-    /// <summary>The content length of the frames list, its own header excluded.</summary>
-    private static int GetFramesLength(TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder)
+    /// <summary>Populates the frames list and returns its length, its own header included.</summary>
+    private static int PopulateFramesLength(TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder, ref LengthStack lengths)
     {
         int framesLength = 0;
-        for (int i = 0; i < frameReceipts.Length; i++)
+        for (int i = frameReceipts.Length - 1; i >= 0; i--)
         {
-            framesLength += Rlp.LengthOfSequence(GetFrameLength(frameReceipts[i], logDecoder));
+            TxFrameReceipt frameReceipt = frameReceipts[i];
+            int frameLength = Rlp.LengthOf((ulong)frameReceipt.Status)
+                              + Rlp.LengthOfSequence(GetGasUsedLength(frameReceipt))
+                              + logDecoder.PopulateSequenceAndPeek(frameReceipt.Logs, ref lengths);
+            lengths.Push(frameLength);
+            framesLength += Rlp.LengthOfSequence(frameLength);
         }
 
-        return framesLength;
+        lengths.Push(framesLength);
+        return Rlp.LengthOfSequence(framesLength);
     }
-
-    /// <summary>Writes the frames list, its header included.</summary>
-    private static void EncodeFrames<TWriter>(ref TWriter writer, TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-        => EncodeFrames(ref writer, frameReceipts, logDecoder, GetFramesLength(frameReceipts, logDecoder));
 
     /// <summary>Decodes the frames list of a stored receipt's <c>[payer, [frame_receipt, ...]]</c> extension.</summary>
     /// <remarks>Lenient by design: the data is locally written, and it may predate the 2D <c>gas_used</c>.</remarks>
@@ -70,22 +71,22 @@ public static class FrameReceiptRlp
         return frameReceipts.ToArray();
     }
 
-    /// <summary>The content length of a stored receipt's trailing <c>[payer, frames]</c> extension.</summary>
+    /// <summary>Populates a stored receipt's trailing <c>[payer, frames]</c> extension and returns its content length.</summary>
     /// <exception cref="RlpException">The receipt is one no read path would take back.</exception>
-    internal static int GetStoredExtensionLength(TxReceipt receipt, IRlpDecoder<LogEntry?> logDecoder)
+    internal static int PopulateStoredExtensionLength(TxReceipt receipt, IRlpDecoder<LogEntry?> logDecoder, ref LengthStack lengths)
     {
         TxFrameReceipt[] frameReceipts = GuardEncodable(receipt);
-        return Rlp.LengthOf(receipt.Payer) + Rlp.LengthOfSequence(GetFramesLength(frameReceipts, logDecoder));
+        return Rlp.LengthOf(receipt.Payer) + PopulateFramesLength(frameReceipts, logDecoder, ref lengths);
     }
 
     /// <summary>Writes a stored receipt's trailing <c>[payer, frames]</c> extension.</summary>
     /// <exception cref="RlpException">The receipt is one no read path would take back.</exception>
-    internal static void EncodeStoredExtension<TWriter>(ref TWriter writer, TxReceipt receipt, IRlpDecoder<LogEntry?> logDecoder)
+    internal static void EncodeStoredExtension<TWriter>(ref TWriter writer, TxReceipt receipt, IRlpDecoder<LogEntry?> logDecoder, ref LengthStack lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         TxFrameReceipt[] frameReceipts = GuardEncodable(receipt);
         writer.Encode(receipt.Payer);
-        EncodeFrames(ref writer, frameReceipts, logDecoder);
+        EncodeFrames(ref writer, frameReceipts, logDecoder, ref lengths);
     }
 
     /// <summary>Rejects a receipt whose shape a read path would refuse, rather than writing it.</summary>
@@ -136,28 +137,25 @@ public static class FrameReceiptRlp
         }
     }
 
-    /// <summary>The content length of the payload fields <c>[cumulative_gas_used, payer, frames]</c>,
+    /// <summary>Populates the payload fields <c>[cumulative_gas_used, payer, frames]</c> and returns their content length,
     /// the sequence enclosing them excluded.</summary>
     /// <param name="receipt">The frame-transaction receipt to measure.</param>
-    /// <param name="framesLength">The content length of the frames list, to hand back to the encoder.</param>
+    /// <param name="lengths">Receives the lengths <see cref="EncodePayload{TWriter}"/> pops.</param>
     /// <exception cref="RlpException">The receipt is one no read path would take back.</exception>
-    public static int GetPayloadLength(TxReceipt receipt, out int framesLength)
-    {
-        framesLength = GetFramesLength(GuardEncodable(receipt), LogEntryDecoder.Instance);
-        return Rlp.LengthOf(receipt.GasUsedTotal)
-               + Rlp.LengthOf(receipt.Payer)
-               + Rlp.LengthOfSequence(framesLength);
-    }
+    public static int PopulatePayloadLength(TxReceipt receipt, ref LengthStack lengths) =>
+        Rlp.LengthOf(receipt.GasUsedTotal)
+        + Rlp.LengthOf(receipt.Payer)
+        + PopulateFramesLength(GuardEncodable(receipt), LogEntryDecoder.Instance, ref lengths);
 
-    /// <summary>Writes the payload fields; the caller owns the sequence enclosing them.</summary>
+    /// <summary>Writes the payload fields populated by <see cref="PopulatePayloadLength"/>; the caller owns the sequence enclosing them.</summary>
     /// <exception cref="RlpException">The receipt is one no read path would take back.</exception>
-    public static void EncodePayload<TWriter>(ref TWriter writer, TxReceipt receipt, int framesLength)
+    public static void EncodePayload<TWriter>(ref TWriter writer, TxReceipt receipt, ref LengthStack lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         TxFrameReceipt[] frameReceipts = GuardEncodable(receipt);
         writer.Encode(receipt.GasUsedTotal);
         writer.Encode(receipt.Payer);
-        EncodeFrames(ref writer, frameReceipts, LogEntryDecoder.Instance, framesLength);
+        EncodeFrames(ref writer, frameReceipts, LogEntryDecoder.Instance, ref lengths);
     }
 
     /// <summary>Decodes the payload fields into <paramref name="receipt"/>, deriving its status and logs from
@@ -283,46 +281,23 @@ public static class FrameReceiptRlp
         }
     }
 
-    private static void EncodeFrames<TWriter>(ref TWriter writer, TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder, int framesLength)
+    /// <summary>Writes the frames list populated by <see cref="PopulateFramesLength"/>, its header included.</summary>
+    private static void EncodeFrames<TWriter>(ref TWriter writer, TxFrameReceipt[] frameReceipts, IRlpDecoder<LogEntry?> logDecoder, ref LengthStack lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        writer.StartSequence(framesLength);
+        writer.StartSequence(lengths.Pop());
         for (int i = 0; i < frameReceipts.Length; i++)
         {
             TxFrameReceipt frameReceipt = frameReceipts[i];
-            int gasUsedLength = GetGasUsedLength(frameReceipt);
-            int logsLength = GetLogsLength(frameReceipt, logDecoder);
-            writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status)
-                                 + Rlp.LengthOfSequence(gasUsedLength)
-                                 + Rlp.LengthOfSequence(logsLength));
+            writer.StartSequence(lengths.Pop());
             writer.Encode((ulong)frameReceipt.Status);
-            writer.StartSequence(gasUsedLength);
+            writer.StartSequence(GetGasUsedLength(frameReceipt));
             writer.Encode(frameReceipt.ExecutionGasUsed);
             writer.Encode(frameReceipt.StateGasUsed);
-            writer.StartSequence(logsLength);
-            for (int j = 0; j < frameReceipt.Logs.Length; j++)
-            {
-                logDecoder.Encode(ref writer, frameReceipt.Logs[j]);
-            }
+            logDecoder.EncodeSequence(frameReceipt.Logs, ref lengths, ref writer);
         }
     }
-
-    private static int GetFrameLength(TxFrameReceipt frameReceipt, IRlpDecoder<LogEntry?> logDecoder) =>
-        Rlp.LengthOf((ulong)frameReceipt.Status)
-        + Rlp.LengthOfSequence(GetGasUsedLength(frameReceipt))
-        + Rlp.LengthOfSequence(GetLogsLength(frameReceipt, logDecoder));
 
     private static int GetGasUsedLength(TxFrameReceipt frameReceipt) =>
         Rlp.LengthOf(frameReceipt.ExecutionGasUsed) + Rlp.LengthOf(frameReceipt.StateGasUsed);
-
-    private static int GetLogsLength(TxFrameReceipt frameReceipt, IRlpDecoder<LogEntry?> logDecoder)
-    {
-        int logsLength = 0;
-        for (int i = 0; i < frameReceipt.Logs.Length; i++)
-        {
-            logsLength += logDecoder.GetLength(frameReceipt.Logs[i]);
-        }
-
-        return logsLength;
-    }
 }

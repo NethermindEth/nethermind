@@ -30,23 +30,27 @@ namespace Nethermind.Consensus.Clique
             return snapshot;
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(Snapshot item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int signersLength, int votesLength, int tallyLength) =
                 GetContentLength(item, rlpBehaviors);
-            writer.StartSequence(contentLength);
-            writer.Encode(item.Number);
-            writer.Encode(item.Hash);
-            EncodeSigners(ref writer, item.Signers, signersLength);
-            EncodeVotes(ref writer, item.Votes, votesLength);
-            EncodeTally(ref writer, item.Tally, tallyLength);
-
+            lengths.Push(tallyLength);
+            lengths.Push(votesLength);
+            lengths.Push(signersLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
-        public override int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
+        public override void Encode<TWriter>(Snapshot item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            (int contentLength, int _, int _, int _) = GetContentLength(item, rlpBehaviors);
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Pop();
+            writer.StartSequence(lengths.Pop());
+            writer.Encode(item.Number);
+            writer.Encode(item.Hash);
+            EncodeSigners(ref writer, item.Signers, lengths.Pop());
+            EncodeVotes(ref writer, item.Votes, lengths.Pop());
+            EncodeTally(ref writer, item.Tally, lengths.Pop());
+
         }
 
         private static (int contentLength, int signersLength, int votesLength, int tallyLength) GetContentLength(Snapshot item,

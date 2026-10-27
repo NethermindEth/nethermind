@@ -509,7 +509,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
         }
 
-        return (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
+        return (ulong)ReceiptMessageDecoder.GetEncodedLength(receipt, behaviors);
     }
 
     private static ulong GetRlpSequenceSize(ulong contentSize) =>
@@ -615,7 +615,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         block is { IsBodyMissing: false } ? block.Transactions : null;
 
     private static ulong GetReceiptSize(TxReceipt receipt, RlpBehaviors behaviors) =>
-        (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
+        (ulong)ReceiptMessageDecoder.GetEncodedLength(receipt, behaviors);
 
     /// <returns>The block's gas used up to and including <paramref name="receipt"/>.</returns>
     /// <remarks>An EIP-8116 receipt holds its transaction's own gas used, so the running total is summed here.</remarks>

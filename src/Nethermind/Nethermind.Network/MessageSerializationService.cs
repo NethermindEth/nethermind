@@ -78,23 +78,39 @@ public class MessageSerializationService : IMessageSerializationService
         }
 
         int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
-        int length = zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
-            ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
-            : 64;
-
-        allocator ??= NethermindBuffers.Default;
-        IByteBuffer byteBuffer = allocator.Buffer(length);
-
+        IZeroInnerMessageSerializer<T>? zeroInnerMessageSerializer = zeroMessageSerializer as IZeroInnerMessageSerializer<T>;
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            WriteAdaptivePacketType(byteBuffer);
-            zeroMessageSerializer.Serialize(byteBuffer, message);
-            return byteBuffer;
+            zeroInnerMessageSerializer?.PopulateLength(message, ref lengths);
+            int length = zeroInnerMessageSerializer is null ? 64 : lengths.Peek() + p2pMessageLength;
+
+            allocator ??= NethermindBuffers.Default;
+            IByteBuffer byteBuffer = allocator.Buffer(length);
+
+            try
+            {
+                WriteAdaptivePacketType(byteBuffer);
+                if (zeroInnerMessageSerializer is null)
+                {
+                    zeroMessageSerializer.Serialize(byteBuffer, message);
+                }
+                else
+                {
+                    zeroInnerMessageSerializer.Serialize(byteBuffer, message, ref lengths);
+                }
+
+                return byteBuffer;
+            }
+            catch (Exception)
+            {
+                byteBuffer.SafeRelease();
+                throw;
+            }
         }
-        catch (Exception)
+        finally
         {
-            byteBuffer.SafeRelease();
-            throw;
+            lengths.Dispose();
         }
     }
 

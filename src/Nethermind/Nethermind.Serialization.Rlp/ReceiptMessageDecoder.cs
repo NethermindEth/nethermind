@@ -102,27 +102,18 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException("Unexpected receipt field");
         }
 
-        /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
-        /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
-        private (int Total, int Inner) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        /// <summary>Populates the receipt and returns its content length.</summary>
+        private int PopulateContentLength(TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
         {
-            if (item is null)
-            {
-                return (0, 0);
-            }
-
             if (item.TxType == TxType.FrameTx)
             {
-                return (FrameReceiptRlp.GetPayloadLength(item, out int framesLength), framesLength);
+                return FrameReceiptRlp.PopulatePayloadLength(item, ref lengths);
             }
 
-            int contentLength = 0;
+            int contentLength = LogEntryDecoder.Instance.PopulateSequenceAndPeek(GetLogs(item), ref lengths);
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
             if (!skipBloom)
                 contentLength += Rlp.LengthOf(GetBloom(item, rlpBehaviors));
-
-            int logsLength = GetLogsLength(item);
-            contentLength += Rlp.LengthOfSequence(logsLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
@@ -133,19 +124,7 @@ namespace Nethermind.Serialization.Rlp
                     : Rlp.LengthOf(item.PostTransactionState);
             }
 
-            return (contentLength, logsLength);
-        }
-
-        private static int GetLogsLength(TxReceipt item)
-        {
-            int logsLength = 0;
-            LogEntry[] logs = GetLogs(item);
-            for (int i = 0; i < logs.Length; i++)
-            {
-                logsLength += Rlp.LengthOf(logs[i]);
-            }
-
-            return logsLength;
+            return contentLength;
         }
 
         private static Bloom GetBloom(TxReceipt item, RlpBehaviors rlpBehaviors)
@@ -157,61 +136,47 @@ namespace Nethermind.Serialization.Rlp
         /// <summary>
         /// https://eips.ethereum.org/EIPS/eip-2718
         /// </summary>
-        public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+        public override void PopulateLength(TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptyList.Length;
+                lengths.Push(Rlp.OfEmptyList.Length);
+                return;
             }
 
-            int length = -1;
-            if (!skipStateAndStatus && !skipBloom) GetLengthInOnePass(item, rlpBehaviors, ref length);
-            if (length >= 0) return length;
-
-            (int Total, _) = GetContentLength(item, rlpBehaviors);
-            int receiptPayloadLength = Rlp.LengthOfSequence(Total);
+            int contentLength = PopulateContentLength(item, ref lengths, rlpBehaviors);
+            int receiptPayloadLength = Rlp.LengthOfSequence(contentLength);
 
             bool isForTxRoot = (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping;
-            int result = item.TxType != TxType.Legacy
+            lengths.Push(contentLength);
+            lengths.Push(item.TxType != TxType.Legacy
                 ? isForTxRoot
                     ? (1 + receiptPayloadLength)
                     : Rlp.LengthOfSequence(1 + receiptPayloadLength) // Rlp(TransactionType || TransactionPayload)
-                : receiptPayloadLength;
-            return result;
+                : receiptPayloadLength);
         }
 
-        public byte[] EncodeNew(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptyList.Bytes;
-            }
+        public byte[] EncodeNew(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            item is null ? Rlp.OfEmptyList.Bytes : EncodeAsBytes(item, rlpBehaviors);
 
-            int length = GetLength(item, rlpBehaviors);
-            byte[] bytes = new byte[length];
-            RlpWriter writer = new(bytes);
-            Encode(ref writer, item, rlpBehaviors);
-            return bytes;
-        }
-
-        partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length);
-
-        partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded)
+        partial void EncodeInOnePass<TWriter>(TxReceipt item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, ref bool encoded)
             where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-        public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
+                lengths.Pop();
                 writer.EncodeNullObject();
                 return;
             }
 
             bool encoded = false;
-            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(ref writer, item, rlpBehaviors, ref encoded);
+            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(item, ref lengths, ref writer, rlpBehaviors, ref encoded);
             if (encoded) return;
 
-            (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
+            lengths.Pop();
+            int totalContentLength = lengths.Pop();
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -230,7 +195,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                FrameReceiptRlp.EncodePayload(ref writer, item, innerLength);
+                FrameReceiptRlp.EncodePayload(ref writer, item, ref lengths);
                 return;
             }
 
@@ -250,13 +215,7 @@ namespace Nethermind.Serialization.Rlp
             if (!skipBloom)
                 writer.Encode(GetBloom(item, rlpBehaviors));
 
-            writer.StartSequence(innerLength);
-            LogEntry[] logs = GetLogs(item);
-            LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
-            for (int i = 0; i < logs.Length; i++)
-            {
-                logEntryDecoder.Encode(ref writer, logs[i]);
-            }
+            LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
         }
     }
 }

@@ -32,26 +32,17 @@ public class RlpDecoderTests
         WithdrawalDecoder decoder = new();
         Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoder.GetContentLength(null), Is.Zero);
-            Assert.That(decoder.GetLength(null), Is.EqualTo(Rlp.OfEmptyList.Length));
-        }
-
-        int contentLength = decoder.GetContentLength(withdrawals);
+        byte[] bytes = decoder.Encode(withdrawals).Bytes;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(contentLength, Is.EqualTo(
-                decoder.GetLength(withdrawals[0]!, RlpBehaviors.None) +
+            Assert.That(decoder.GetEncodedLength(null!), Is.EqualTo(Rlp.OfEmptyList.Length));
+            Assert.That(bytes, Has.Length.EqualTo(Rlp.LengthOfSequence(
+                decoder.GetEncodedLength(withdrawals[0]!) +
                 Rlp.OfEmptyList.Length +
-                decoder.GetLength(withdrawals[2]!, RlpBehaviors.None)));
-            Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
+                decoder.GetEncodedLength(withdrawals[2]!))));
         }
 
-        byte[] bytes = new byte[decoder.GetLength(withdrawals)];
-        RlpWriter writer = new(bytes);
-        decoder.Encode(ref writer, withdrawals);
         RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
@@ -300,15 +291,16 @@ public class RlpDecoderTests
 
     private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
     {
-        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void PopulateLength(NonNullableItem? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            return Rlp.OfEmptyByteArray.Length;
+            lengths.Push(Rlp.OfEmptyByteArray.Length);
         }
 
-        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(NonNullableItem item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
+            lengths.Pop();
             writer.Encode(Rlp.OfEmptyByteArray);
         }
 

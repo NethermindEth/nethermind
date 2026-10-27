@@ -94,7 +94,7 @@ public class BlockAccessListsMessageSerializerTests
         byte[]?[] blockAccessLists = new byte[]?[GethSyncLimits.MaxBodyFetch + 1];
 
         using BlockAccessListsMessage msg = BuildMessage(45, blockAccessLists);
-        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
+        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg));
         serializer.Serialize(payload, msg);
         return payload;
     }

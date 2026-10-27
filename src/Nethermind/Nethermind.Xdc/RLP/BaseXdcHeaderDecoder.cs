@@ -97,10 +97,31 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         return header;
     }
 
-    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void PopulateLength(BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
+            lengths.Push(Rlp.OfEmptyList.Length);
+            return;
+        }
+
+        if (header is not TH h)
+        {
+            EnsurePlainFallbackAllowed(header);
+            FallbackDecoder.PopulateLength(header, ref lengths, rlpBehaviors);
+            return;
+        }
+
+        int contentLength = GetContentLength(h, rlpBehaviors);
+        lengths.Push(contentLength);
+        lengths.Push(Rlp.LengthOfSequence(contentLength));
+    }
+
+    public override void Encode<TWriter>(BlockHeader? header, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (header is null)
+        {
+            lengths.Pop();
             writer.EncodeNullObject();
             return;
         }
@@ -108,11 +129,12 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         if (header is not TH h)
         {
             EnsurePlainFallbackAllowed(header);
-            FallbackDecoder.Encode(ref writer, header, rlpBehaviors);
+            FallbackDecoder.Encode(header, ref lengths, ref writer, rlpBehaviors);
             return;
         }
 
-        writer.StartSequence(GetContentLength(h, rlpBehaviors));
+        lengths.Pop();
+        writer.StartSequence(lengths.Pop());
 
         // Common fields
         writer.Encode(h.ParentHash ?? Keccak.Zero);
@@ -132,36 +154,6 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         writer.Encode(h.Nonce, NonceLength);
 
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
-    }
-
-    public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-        {
-            return Rlp.OfEmptyList;
-        }
-
-        if (item is not TH header)
-        {
-            EnsurePlainFallbackAllowed(item);
-            return FallbackDecoder.Encode(item, rlpBehaviors);
-        }
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-        return new Rlp(bytes);
-    }
-
-    public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
-    {
-        if (item is not TH header)
-        {
-            EnsurePlainFallbackAllowed(item);
-            return FallbackDecoder.GetLength(item, rlpBehaviors);
-        }
-
-        return Rlp.LengthOfSequence(GetContentLength(header, rlpBehaviors));
     }
 
     // Only a genuine base BlockHeader may take the plain-shape fallback. Any other BlockHeader subtype

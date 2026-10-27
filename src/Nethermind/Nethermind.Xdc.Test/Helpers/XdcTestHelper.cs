@@ -124,9 +124,7 @@ internal static class XdcTestHelper
 
     public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        KeccakRlpWriter writer = new();
-        decoder.Encode(ref writer, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
-        ValueHash256 hash = writer.GetValueHash();
+        ValueHash256 hash = decoder.CalculateValueHash(new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
         Signature[] signatures = new Signature[keys.Length];
         Parallel.For(0, keys.Length, i => signatures[i] = ecdsa.Sign(keys[i], hash));
         return signatures;
@@ -154,9 +152,7 @@ internal static class XdcTestHelper
     public static Vote BuildSignedVote(BlockRoundInfo info, ulong gap, PrivateKey key)
     {
         Vote vote = new(info, gap);
-        KeccakRlpWriter writer = new();
-        decoder.Encode(ref writer, vote, RlpBehaviors.ForSealing);
-        vote.Signature = ecdsa.Sign(key, writer.GetValueHash());
+        vote.Signature = ecdsa.Sign(key, decoder.CalculateValueHash(vote, RlpBehaviors.ForSealing));
         vote.Signer = key.Address;
         return vote;
     }

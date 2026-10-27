@@ -120,9 +120,7 @@ public class FrameTxDecoderTests
         tx.NetworkWrapper = null;
 
         // The plain form is byte-identical to the consensus form.
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+        byte[] bytes = _txDecoder.EncodeAsBytes(tx, RlpBehaviors.SkipTypedWrapping);
 
         Assert.That(() =>
         {
@@ -393,9 +391,7 @@ public class FrameTxDecoderTests
     {
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [1];
-        byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, keyed);
+        byte[] bytes = _txDecoder.EncodeAsBytes(keyed);
         // The one-byte key `01` and the empty list `c0` occupy the same slot, so no length changes.
         int keyIndex = Array.IndexOf(bytes, (byte)0xc1) + 1;
         bytes[keyIndex] = 0xc0;
@@ -411,9 +407,7 @@ public class FrameTxDecoderTests
     {
         Transaction keyed = CreateFrameTx();
         keyed.NonceKeys = [300];
-        byte[] bytes = new byte[_txDecoder.GetLength(keyed, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, keyed);
+        byte[] bytes = _txDecoder.EncodeAsBytes(keyed);
 
         // `c3 82 01 2c` is the whole nonce_keys list; `c1` under-declares it without moving any other byte.
         ReadOnlySpan<byte> canonical = [0xc3, 0x82, 0x01, 0x2c];
@@ -688,9 +682,7 @@ public class FrameTxDecoderTests
 
     private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, tx, rlpBehaviors);
+        byte[] bytes = _txDecoder.EncodeAsBytes(tx, rlpBehaviors);
         RlpReader reader = new(bytes);
         return _txDecoder.Decode(ref reader, rlpBehaviors)!;
     }
@@ -700,9 +692,7 @@ public class FrameTxDecoderTests
 
     private static byte[] EncodeConsensusPayload(Transaction tx)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+        byte[] bytes = _txDecoder.EncodeAsBytes(tx, RlpBehaviors.SkipTypedWrapping);
         return bytes;
     }
 

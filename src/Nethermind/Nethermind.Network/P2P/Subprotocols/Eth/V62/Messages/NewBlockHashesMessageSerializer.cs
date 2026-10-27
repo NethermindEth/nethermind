@@ -12,13 +12,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NewBlockHashesMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NewBlockHashesMessage.BlockHashes));
 
-        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
-        {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message) => this.SerializeWithLengths(byteBuffer, message);
 
-            writer.StartSequence(contentLength);
+        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message, ref LengthStack lengths)
+        {
+            lengths.Pop();
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(lengths.Pop());
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
@@ -32,9 +32,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        public int GetLength(NewBlockHashesMessage message, out int contentLength)
+        public void PopulateLength(NewBlockHashesMessage message, ref LengthStack lengths)
         {
-            contentLength = 0;
+            int contentLength = 0;
             for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
@@ -42,7 +42,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 contentLength += Rlp.LengthOfSequence(miniContentLength);
             }
 
-            return Rlp.LengthOfSequence(contentLength);
+            lengths.Push(contentLength);
+            lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
         private static NewBlockHashesMessage Deserialize(ref RlpReader ctx)

@@ -17,5 +17,5 @@ public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate hi
     public bool IsMine { get; } = isMine;
 
     protected override void Encode(ref KeccakRlpWriter writer) =>
-        _decoder.Encode(ref writer, this, RlpBehaviors.None);
+        _decoder.PopulateAndEncode(ref writer, this);
 }

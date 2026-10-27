@@ -40,7 +40,7 @@ namespace Nethermind.Core.Test.Encoding
             Account account = new(nonce, balance);
             if (hasStorageAndCode) account = account.WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new(slim);
-            byte[] expected = new byte[decoder.GetLength(account)];
+            byte[] expected = new byte[decoder.GetEncodedLength(account)];
             RlpWriter writer = new(expected);
             decoder.Encode(account, ref writer);
 
@@ -116,9 +116,7 @@ namespace Nethermind.Core.Test.Encoding
 
         private static RlpReader Encode(AccountDecoder decoder, Account account)
         {
-            byte[] bytes = new byte[decoder.GetLength(account)];
-            RlpWriter writer = new(bytes);
-            decoder.Encode(ref writer, account);
+            byte[] bytes = decoder.EncodeAsBytes(account);
             return new RlpReader(bytes);
         }
     }

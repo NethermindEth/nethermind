@@ -14,39 +14,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = blockBodyDecoder ?? BlockBodyDecoder.Instance;
 
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message) => this.SerializeWithLengths(byteBuffer, message);
+
+        public void PopulateLength(BlockBodiesMessage message, ref LengthStack lengths) =>
+            _blockBodyDecoder.PopulateSequenceLength(message.Bodies.Bodies, ref lengths);
+
+        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message, ref LengthStack lengths)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
             ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(contentLength);
-            foreach (BlockBody? body in message.Bodies.Bodies)
-            {
-                if (body is null)
-                {
-                    writer.Encode(Rlp.OfEmptyList);
-                }
-                else
-                {
-                    _blockBodyDecoder.Encode(ref writer, body);
-                }
-            }
-        }
-
-        public int GetLength(BlockBodiesMessage message, out int contentLength)
-        {
-            int length = 0;
-            foreach (BlockBody? body in message.Bodies.Bodies)
-            {
-                length += body switch
-                {
-                    null => Rlp.OfEmptyList.Length,
-                    _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
-                };
-            }
-
-            contentLength = length;
-            return Rlp.LengthOfSequence(length);
+            _blockBodyDecoder.EncodeSequence(message.Bodies.Bodies, ref lengths, ref writer);
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)

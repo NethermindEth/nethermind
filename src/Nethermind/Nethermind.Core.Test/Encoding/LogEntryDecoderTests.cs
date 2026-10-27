@@ -57,7 +57,7 @@ public class LogEntryDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LogEntryDecoder.Instance.GetLength(logEntry), Is.EqualTo(rlp.Bytes.Length));
+            Assert.That(LogEntryDecoder.Instance.GetEncodedLength(logEntry), Is.EqualTo(rlp.Bytes.Length));
             Assert.That(LogEntryDecoder.Instance.Decode(ref ctx), Is.EqualTo(logEntry).UsingPropertiesComparer());
         }
     }

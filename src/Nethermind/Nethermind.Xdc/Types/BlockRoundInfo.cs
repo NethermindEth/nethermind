@@ -15,10 +15,5 @@ public class BlockRoundInfo(Hash256 hash256, ulong round, ulong number)
     public ulong Round { get; set; } = round;
     public ulong BlockNumber { get; set; } = number;
 
-    public Hash256 SigHash()
-    {
-        KeccakRlpWriter writer = new();
-        _decoder.Encode(ref writer, this);
-        return writer.GetHash();
-    }
+    public Hash256 SigHash() => _decoder.CalculateHash(this);
 }

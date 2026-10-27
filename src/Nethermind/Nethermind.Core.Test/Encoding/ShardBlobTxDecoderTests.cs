@@ -99,9 +99,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, testCase.Tx);
+        byte[] bytes = _txDecoder.EncodeAsBytes(testCase.Tx);
         RlpReader ctx = new(bytes);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
         decoded!.SenderAddress =
@@ -127,9 +125,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_RlpReader_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, testCase.Tx);
+        byte[] bytes = _txDecoder.EncodeAsBytes(testCase.Tx);
 
         Span<byte> spanIncomingTxRlp = bytes.AsSpan();
         RlpReader decoderContext = new(spanIncomingTxRlp);
@@ -158,9 +154,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TamperedTestCaseSource))]
     public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, tx);
+        byte[] bytes = _txDecoder.EncodeAsBytes(tx);
         // Tamper with sequence length
         {
             int itemsLength = 0;

@@ -12,12 +12,12 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
 {
     private static readonly VoteDecoder _voteDecoder = new();
 
-    public void Serialize(IByteBuffer byteBuffer, VoteMsg message)
+    public void Serialize(IByteBuffer byteBuffer, VoteMsg message) => this.SerializeWithLengths(byteBuffer, message);
+
+    public void Serialize(IByteBuffer byteBuffer, VoteMsg message, ref LengthStack lengths)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
         ByteBufferRlpWriter writer = new(byteBuffer);
-        _voteDecoder.Encode(ref writer, message.Vote);
+        _voteDecoder.Encode(message.Vote, ref lengths, ref writer);
     }
 
     public VoteMsg Deserialize(IByteBuffer byteBuffer)
@@ -28,9 +28,6 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
         return new() { Vote = vote };
     }
 
-    public int GetLength(VoteMsg message, out int contentLength)
-    {
-        contentLength = _voteDecoder.GetContentLength(message.Vote, RlpBehaviors.None);
-        return _voteDecoder.GetLength(message.Vote, RlpBehaviors.None);
-    }
+    public void PopulateLength(VoteMsg message, ref LengthStack lengths) =>
+        _voteDecoder.PopulateLength(message.Vote, ref lengths);
 }
