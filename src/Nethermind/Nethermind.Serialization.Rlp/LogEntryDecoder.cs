@@ -93,7 +93,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            writer.StartSequence(lengths.Pop());
+            writer.StartSequence(GetContentLength(item));
 
             writer.Encode(item.Address);
             writer.StartSequence(GetTopicsLength(item));
@@ -106,19 +106,12 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(item.Data);
         }
 
-        public override int PopulateLength(LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return 1;
-            }
+        /// <remarks>Pushes nothing: encoding recomputes the content length, which takes only the field lengths.</remarks>
+        public override int PopulateLength(LogEntry? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item));
 
-            int contentLength = Rlp.LengthOf(item.Address)
-                + Rlp.LengthOfSequence(GetTopicsLength(item))
-                + Rlp.LengthOf(item.Data);
-            lengths.Push(contentLength);
-            return Rlp.LengthOfSequence(contentLength);
-        }
+        internal static int GetContentLength(LogEntry item) =>
+            Rlp.LengthOf(item.Address) + Rlp.LengthOfSequence(GetTopicsLength(item)) + Rlp.LengthOf(item.Data);
 
         // Every topic is a 32-byte word, as the decoder's topic count also assumes.
         private static int GetTopicsLength(LogEntry item)

@@ -33,7 +33,7 @@ public sealed partial class ReceiptMessageDecoder
         destination = ref WriteBloom(ref destination, GetBloom(item, rlpBehaviors));
         destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
         foreach (LogEntry log in item.Logs!)
-            destination = ref WriteLog(ref destination, log, ref lengths);
+            destination = ref WriteLog(ref destination, log);
 
         encoded = true;
     }
@@ -44,12 +44,11 @@ public sealed partial class ReceiptMessageDecoder
         (rlpBehaviors & RlpBehaviors.Eip658Receipts) != 0 &&
         (item.TxType == TxType.Legacy || (rlpBehaviors & RlpBehaviors.SkipTypedWrapping) != 0);
 
-    /// <remarks>Pops the lengths <see cref="LogEntryDecoder"/> populated for <paramref name="log"/>; a <see langword="null"/> one has none.</remarks>
-    private static ref byte WriteLog(ref byte destination, LogEntry? log, scoped ref LengthStack lengths)
+    private static ref byte WriteLog(ref byte destination, LogEntry? log)
     {
         if (log is null) return ref WriteByte(ref destination, 0xc0);
 
-        destination = ref WriteSequencePrefix(ref destination, lengths.Pop());
+        destination = ref WriteSequencePrefix(ref destination, LogEntryDecoder.GetContentLength(log));
         Address? address = log.Address;
         if (address is null)
         {
