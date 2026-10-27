@@ -13,7 +13,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
