@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Int256;
 
@@ -39,11 +37,7 @@ public static partial class RollupXGenesis
 
     private static void EnsureNativeDocument(JsonElement genesis)
     {
-        EnsureOnly(genesis, "alloc", "baseFeePerGas", "blobGasUsed", "coinbase", "config", "difficulty", "excessBlobGas",
-            "extraData", "gasLimit", "mixHash", "nonce", "number", "parentHash", "timestamp");
-        if ((genesis.TryGetProperty("number", out JsonElement number) && ParseQuantity(number, "number") != 0) ||
-            (genesis.TryGetProperty("parentHash", out _) && Hash(genesis, "parentHash") != Keccak.Zero))
-            throw Invalid("genesis number and parent hash must be zero");
+        NativeChainDocument.ValidateGenesis(genesis);
         JsonElement config = Required(genesis, "config");
         EnsureOnly(config, "chainId", "homesteadBlock", "daoForkBlock", "daoForkSupport", "eip150Block", "eip155Block",
             "eip158Block", "byzantiumBlock", "constantinopleBlock", "petersburgBlock", "istanbulBlock", "muirGlacierBlock", "berlinBlock",
@@ -58,25 +52,6 @@ public static partial class RollupXGenesis
             EnsureOnly(blobs, "cancun", "prague", "osaka");
             foreach (JsonProperty fork in blobs.EnumerateObject())
                 EnsureOnly(fork.Value, "target", "max", "baseFeeUpdateFraction");
-        }
-        JsonElement allocations = Required(genesis, "alloc");
-        if (allocations.ValueKind != JsonValueKind.Object) throw Invalid("alloc must be an object");
-        HashSet<Address> addresses = new(allocations.GetPropertyCount());
-        foreach (JsonProperty entry in allocations.EnumerateObject())
-        {
-            string name = entry.Name.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? entry.Name : "0x" + entry.Name;
-            if (!Address.TryParse(name, out Address? address) || address is null || !addresses.Add(address)) throw Invalid("invalid or duplicate account address");
-            EnsureOnly(entry.Value, "balance", "nonce", "code", "storage");
-            if (entry.Value.TryGetProperty("storage", out JsonElement storage) && storage.ValueKind != JsonValueKind.Null)
-            {
-                if (storage.ValueKind != JsonValueKind.Object) throw Invalid("storage must be an object");
-                HashSet<UInt256> keys = new(storage.GetPropertyCount());
-                foreach (JsonProperty slot in storage.EnumerateObject())
-                {
-                    if (!keys.Add(StorageWord(slot.Name))) throw Invalid("duplicate storage slot");
-                    _ = StorageWord(slot.Value.GetString()!);
-                }
-            }
         }
     }
 
@@ -101,18 +76,11 @@ public static partial class RollupXGenesis
             throw Invalid("native history genesis storage differs from the profile");
         foreach (JsonProperty entry in storage.EnumerateObject())
         {
-            UInt256 key = StorageWord(entry.Name);
-            UInt256 value = StorageWord(entry.Value.GetString()!);
+            UInt256 key = NativeChainDocument.StorageWord(entry.Name);
+            UInt256 value = NativeChainDocument.StorageWord(entry.Value.GetString());
             if (!expected.Remove(key, out UInt256 wanted) || value != wanted)
                 throw Invalid("native history genesis storage differs from the profile");
         }
     }
 
-    private static UInt256 StorageWord(string? text)
-    {
-        if (text is null || !text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) throw Invalid("storage words must be hex values");
-        byte[] bytes = Bytes.FromHexString(text);
-        if (bytes.Length > AbiWord.Size) throw Invalid("storage words exceed 256 bits");
-        return new UInt256(bytes, isBigEndian: true);
-    }
 }

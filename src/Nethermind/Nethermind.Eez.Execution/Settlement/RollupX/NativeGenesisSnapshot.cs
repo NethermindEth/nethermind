@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -36,10 +35,7 @@ internal sealed class NativeGenesisSnapshot
     {
         try
         {
-            ReadOnlyMemory<byte> canonical = RollupXCanonicalJson.Encode(input.ToArray());
-            JsonObject document = JsonNode.Parse(canonical.Span)?.AsObject() ?? throw new InvalidDataException("Missing native genesis document.");
-            NormalizeMixHash(document);
-            byte[] normalized = JsonSerializer.SerializeToUtf8Bytes(document);
+            (byte[] normalized, ValueHash256 digest) = NativeChainDocument.Read(input);
             using JsonDocument json = JsonDocument.Parse(normalized);
             (EezChainRules rules, NativeHistorySchedule history) = RollupXGenesis.ReadNative(json.RootElement);
             using MemoryStream stream = new(normalized, writable: false);
@@ -48,7 +44,6 @@ internal sealed class NativeGenesisSnapshot
             string? error = RollupXHeaderValidator.ProfileMismatch(header, rules.Schedule!);
             if (error is not null || header.ExtraData.Length > 32)
                 throw new InvalidDataException($"Invalid native genesis header: {error ?? "extra data exceeds 32 bytes"}.");
-            ValueHash256 digest = ValueKeccak.Compute(canonical.Span);
             return new NativeGenesisSnapshot(rules, history, spec, in digest);
         }
         catch (Exception exception) when (exception is JsonException or ArgumentException or InvalidOperationException or FormatException or OverflowException)
@@ -57,14 +52,4 @@ internal sealed class NativeGenesisSnapshot
         }
     }
 
-    private static void NormalizeMixHash(JsonObject document)
-    {
-        if (!document.TryGetPropertyValue("mixhash", out JsonNode? alias)) return;
-        document.Remove("mixhash");
-        if (document.TryGetPropertyValue("mixHash", out JsonNode? value))
-        {
-            if (!JsonNode.DeepEquals(value, alias)) throw new InvalidDataException("Genesis mixHash and mixhash disagree.");
-        }
-        else document["mixHash"] = alias;
-    }
 }
