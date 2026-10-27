@@ -1248,6 +1248,7 @@ namespace Nethermind.Trie
                 const int headerLength = FullBranchRlpLength - BranchesCount * Rlp.LengthOfKeccakRlp - 1;
                 // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
                 Debug.Assert(nodeRlp[^1] == 128);
+                Debug.Assert(nodeRlp[0] == 0xf9);
                 Bytes.Copy(nodeRlp, destination);
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
