@@ -30,9 +30,13 @@ public partial class GasEstimator
     /// reservation, so balance-dependent frame code observes the pre-escrow balance during the search. A final probe
     /// checks the filled limits with normal approval and settlement.</remarks>
     /// <param name="context">The block the estimate runs in; each probe runs in a copy of its header.</param>
+    /// <param name="maxFeeAt">For a call priced per gas, the <c>max_fee</c> its prices buy over a given <c>max_gas</c>:
+    /// the search runs at the tip it buys over the least <c>max_gas</c>, and the final probe at the budget it buys over
+    /// the filled limits; <see langword="null"/> keeps the transaction's fees.</param>
     /// <param name="executionReverted">Whether the failure is a frame of an otherwise valid transaction reverting.</param>
     public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
-        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, CancellationToken token, out bool executionReverted)
+        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt, CancellationToken token,
+        out bool executionReverted)
     {
         executionReverted = false;
         if (errorMargin < 0 || errorMargin >= MaxErrorMargin)
@@ -47,7 +51,7 @@ public partial class GasEstimator
         tx.Nonce = stateProvider.GetNonce(tx.SenderAddress);
 
         Span<FrameReservation> reservations = stackalloc FrameReservation[Eip8141Constants.MaxFrames];
-        FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, token,
+        FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, token,
             reservations[..frames.Length]);
         if (!search.TryPartitionRooms(out string? error)) return Result<TxFrame[]>.Fail(error);
         search.ReserveEvenSplit();
@@ -97,6 +101,8 @@ public partial class GasEstimator
         private readonly FrameEstimateTracer _tracer = new();
         private readonly CancellationTxTracer _probeTracer;
         private readonly CancellationToken _token;
+        private readonly Func<ulong, UInt256>? _maxFeeAt;
+        private UInt256 _searchTip;
         private readonly ulong _gasCap;
         private readonly ulong _executionCap;
         private readonly ulong _stateCap;
@@ -115,7 +121,8 @@ public partial class GasEstimator
         private (int? Frame, EvmExceptionType? Error) _reservationFailure;
 
         public FrameGasSearch(ITransactionProcessor processor, Transaction tx, in BlockExecutionContext context, bool[] fillExecution,
-            bool[] fillState, ulong gasCap, int errorMargin, CancellationToken token, Span<FrameReservation> reservations)
+            bool[] fillState, ulong gasCap, int errorMargin, Func<ulong, UInt256>? maxFeeAt, CancellationToken token,
+            Span<FrameReservation> reservations)
         {
             _processor = processor;
             _tx = tx;
@@ -128,6 +135,8 @@ public partial class GasEstimator
             _probeContext = new BlockExecutionContext(_probeHeader, _spec, new UInt256(context.BlobBaseFee.Bytes, isBigEndian: true));
             _probeTracer = _tracer.WithCancellation(token);
             _token = token;
+            _maxFeeAt = maxFeeAt;
+            _searchTip = tx.MaxPriorityFeePerGas;
             _gasCap = gasCap;
             _executionCap = Math.Min(gasCap, Math.Min(context.Header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap));
             _stateCap = Math.Min(gasCap, context.Header.GasLimit);
@@ -151,6 +160,7 @@ public partial class GasEstimator
                 error = $"{GasExceedsAllowanceMsgPrefix} ({_gasCap})";
                 return false;
             }
+            if (_maxFeeAt is not null) _searchTip = TipBoughtAt(totalGas);
             if (!TryReserveBlockRooms(out ulong reservedExecution, out ulong reservedState)) return false;
             ulong fixedGas = FixedGas();
 
@@ -171,6 +181,21 @@ public partial class GasEstimator
             }
             error = null;
             return true;
+        }
+
+        /// <summary>The tip per gas the call's budget buys over <paramref name="maxGas"/>, the least the filled limits
+        /// can reserve, so the search runs at the most the call can pay rather than a price that falls as probes grow.</summary>
+        private readonly UInt256 TipBoughtAt(ulong maxGas)
+        {
+            UInt256 blobBaseFee = new(_probeContext.BlobBaseFee.Bytes, isBigEndian: true);
+            if (maxGas == 0
+                || UInt256.MultiplyOverflow((UInt256)BlobGasCalculator.CalculateBlobGas(_tx), blobBaseFee, out UInt256 blobFee)
+                || !FrameTxFeeBudget.TryCalculate(_maxFeeAt!(maxGas), in _tx.MaxPriorityFeePerGas, maxGas, _probeHeader.BaseFeePerGas, in blobFee,
+                    out UInt256 requiredMaxFee, out UInt256 maxCost))
+            {
+                return _tx.MaxPriorityFeePerGas;
+            }
+            return maxCost > requiredMaxFee ? (maxCost - requiredMaxFee) / maxGas : UInt256.Zero;
         }
 
         public void ReserveEvenSplit()
@@ -431,6 +456,17 @@ public partial class GasEstimator
             Transaction probe = new();
             _tx.CopyTo(probe, copyHash: false);
             probe.GasLimit = FrameTxValidation.TotalGasLimit(_frames);
+            if (_maxFeeAt is not null && !verifying)
+            {
+                probe.MaxFee = UInt256.MaxValue;
+                probe.GasPrice = _searchTip;
+            }
+            else if (_maxFeeAt is not null)
+            {
+                probe.MaxFee = FrameTxValidation.TryCalculateGasBudget(probe, _spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
+                    ? _maxFeeAt(maxGas)
+                    : UInt256.MaxValue;
+            }
             _probeHeader.GasUsed = 0;
             _tracer.Clear();
             _processor.SetBlockExecutionContext(in _probeContext);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -63,16 +64,8 @@ public partial class EthRpcModule
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
         if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out error)) return Result<FrameForRpc[]>.Fail(error!);
-        // The search picks the frame limits, so a call priced per gas is searched at the budget its prices buy over the
-        // gas cap; the call then runs at the budget they buy over the limits the search filled.
         ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
-        if (request.PerGasBudget(tx, gasCap) is { } searchBudget)
-        {
-            tx.MaxFee = searchBudget;
-            UInt256 feeCap = request.MaxFeePerGas ?? request.GasPrice ?? UInt256.Zero;
-            UInt256 baseFee = request.ShouldSetBaseFee() ? (blockOverride?.ApplyTo(header) ?? header).BaseFeePerGas : UInt256.Zero;
-            tx.GasPrice = UInt256.Min(tx.GasPrice, feeCap > baseFee ? feeCap - baseFee : UInt256.Zero);
-        }
+        Func<ulong, UInt256>? maxFeeAt = request.PerGasBudget(tx, gasCap) is null ? null : maxGas => request.PerGasBudget(tx, maxGas)!.Value;
 
         FrameForRpc[] input = request.Frames!;
         bool[] fillExecution = new bool[input.Length];
@@ -89,7 +82,7 @@ public partial class EthRpcModule
             if (blockOverride?.BaseFeePerGas is not null) blockOverride = blockOverride.WithBaseFee(0);
         }
         Result<TxFrame[]> result = _blockchainBridge.EstimateFrameGas(executionHeader, tx, fillExecution, fillState,
-            gasCap, _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, token, out bool executionReverted);
+            gasCap, _rpcConfig.EstimateErrorMargin, maxFeeAt, stateOverride, blockOverride, token, out bool executionReverted);
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);
