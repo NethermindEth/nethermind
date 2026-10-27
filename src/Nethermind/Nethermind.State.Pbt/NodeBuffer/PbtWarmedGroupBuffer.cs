@@ -39,13 +39,11 @@ public sealed class PbtWarmedGroupBuffer(int capacity) : IDisposable
     }
 
     /// <returns>True when the path holds a record.</returns>
-    /// <param name="pointer">The pointer to the record, or zero on a miss.</param>
-    public bool TryGet(in PbtStorageNodePath path, out PbtGroupRecord record, out ulong pointer)
+    public bool TryGet(in PbtStorageNodePath path, out PbtGroupRecord record)
     {
-        if (_pointers.TryGetValue(path, out pointer) && TryLocate(pointer, out record)) return true;
+        if (_pointers.TryGetValue(path, out ulong pointer) && TryLocate(pointer, out record)) return true;
 
         record = default;
-        pointer = 0;
         return false;
     }
 

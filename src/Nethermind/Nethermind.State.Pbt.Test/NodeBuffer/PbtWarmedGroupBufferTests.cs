@@ -31,7 +31,7 @@ public class PbtWarmedGroupBufferTests
         ulong repeatedPointer = PbtSnapshotTestExtensions.Warm(warmed, path, payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmed.TryGet(path, out PbtGroupRecord record, out ulong indexed) && record.Path.Equals(path) && indexed == repeatedPointer, Is.True, "indexed at its path");
+            Assert.That(warmed.TryGet(path, out PbtGroupRecord record) && record.Path.Equals(path), Is.True, "indexed at its path");
             Assert.That(Get(warmed, path), Is.EqualTo(payload), "written payload");
             Assert.That(repeatedPointer, Is.Not.EqualTo(pointer), "a repeated write writes a new record");
             Assert.That(warmed.Count, Is.EqualTo(1), "one path");
@@ -88,7 +88,7 @@ public class PbtWarmedGroupBufferTests
         {
             PbtStorageNodePath path = Path(samePosition ? 0 : i);
             PbtSnapshotTestExtensions.Warm(warmed, path, payload);
-            complete[i] = warmed.TryGet(path, out PbtGroupRecord current, out _) && current.Payload.Span.SequenceEqual(payload) && current.Path.Equals(path);
+            complete[i] = warmed.TryGet(path, out PbtGroupRecord current) && current.Payload.Span.SequenceEqual(payload) && current.Path.Equals(path);
         });
 
         using (Assert.EnterMultipleScope())
@@ -101,5 +101,5 @@ public class PbtWarmedGroupBufferTests
     public static PbtStorageNodePath Path(int seed) => PbtTestPaths.Prefix<PbtStorageNodePath>(ValueKeccak.Compute(BitConverter.GetBytes(seed)).Bytes, 255);
 
     private static byte[]? Get(PbtWarmedGroupBuffer warmed, in PbtStorageNodePath path) =>
-        warmed.TryGet(path, out PbtGroupRecord record, out _) ? record.Payload.ToArray() : null;
+        warmed.TryGet(path, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
 }

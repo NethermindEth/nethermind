@@ -28,7 +28,7 @@ public class PbtTransientResourceTests
 
         resource.Reset();
 
-        bool foundAfterReset = warmedGroupBuffer.TryGet(PbtWarmedGroupBufferTests.Path(0), out _, out _);
+        bool foundAfterReset = warmedGroupBuffer.TryGet(PbtWarmedGroupBufferTests.Path(0), out _);
         byte[] payload = PbtGroupRecordBufferTests.Payload(0, 64);
         ulong newPointer = PbtSnapshotTestExtensions.Warm(warmedGroupBuffer, PbtWarmedGroupBufferTests.Path(0), payload);
         using (Assert.EnterMultipleScope())
@@ -37,7 +37,7 @@ public class PbtTransientResourceTests
             Assert.That(foundAfterReset, Is.False);
             Assert.That(resource.GetSize().NodeGroupsCacheSize, Is.EqualTo(groupCount));
             Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "a reset never reuses a pointer");
-            Assert.That(warmedGroupBuffer.TryGet(PbtWarmedGroupBufferTests.Path(0), out PbtGroupRecord record, out _) && record.Payload.Span.SequenceEqual(payload), Is.True);
+            Assert.That(warmedGroupBuffer.TryGet(PbtWarmedGroupBufferTests.Path(0), out PbtGroupRecord record) && record.Payload.Span.SequenceEqual(payload), Is.True);
         }
     }
 }

@@ -847,38 +847,6 @@ public static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>The source position standing for the frame's input, which no group position addresses.</summary>
-    /// <summary>Finds the first physical group below <paramref name="key"/>'s boundary slot of <paramref name="record"/>'s group, which a fold of the key opens next.</summary>
-    /// <remarks>
-    /// Resolves the slot as the fold does, past the absent groups a spanning branch compresses, so the found group is the one the
-    /// link at <paramref name="slot"/> names. Misses where the key's path ends in this group, or leaves the spanning branch above
-    /// the found group.
-    /// </remarks>
-    /// <param name="input">The group's root node: the tree root's for the root group, otherwise the boundary node its parent found.</param>
-    /// <param name="slot">The key's boundary slot of the group.</param>
-    /// <param name="child">The boundary node at <paramref name="slot"/>, which is the found group's input, with its link as <see cref="BoundaryNode.GroupPointer"/>.</param>
-    /// <param name="childDepth">The found group's bit depth.</param>
-    [SkipLocalsInit]
-    public static bool TryFindChildGroup(PbtGroupRecord record, in BoundaryNode input, TKey key, out int slot, out BoundaryNode child, out int childDepth)
-    {
-        GroupFrameReader<TKey, TPath> reader = new(record);
-        int slotDepth = reader.BitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
-        slot = 0;
-        child = default;
-        childDepth = slotDepth;
-        if (slotDepth >= key.BitLength) return false;
-
-        Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(PbtStorageNodePath.MaxBitDepth)];
-        StoredGroupHashes.Open(out StoredGroupHashes hashes);
-        SortedWalk<GroupFrameReader<TKey, TPath>> resolver = new(default, ref reader, ref hashes, null!, PbtTraversalPath.FromPath(pathBuffer, record.Path), input, default);
-        slot = BoundarySlot(key.Bytes, reader.BitDepth);
-        child = resolver.Boundary(resolver.CoverAt(slot), slot);
-        if (OwnsNoGroup(child)) return false;
-
-        while (IsAbsentGroupBelow(child, childDepth)) childDepth += PbtThreeLevelGroupGeometry.LevelsPerGroup;
-        // A cover is anchored at or above the slot it holds, and only on the side of the key's slot bits, so the key matches it down to the slot.
-        return childDepth < key.BitLength && child.FirstDifferingBit(default, key, slotDepth) >= childDepth;
-    }
-
     private const int RootSource = PbtThreeLevelGroupGeometry.PositionCount;
 
     private enum CoverKind : byte

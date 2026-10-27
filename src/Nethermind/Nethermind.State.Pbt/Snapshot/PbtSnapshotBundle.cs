@@ -169,39 +169,68 @@ public sealed class PbtSnapshotBundle(
     /// <remarks>
     /// Hands over the record warmed for this block at the path, otherwise the payload in the persisted snapshots or persistence.
     /// The groups of this bundle's changes and of every in-memory snapshot are in the buffer, which their pins keep readable,
-    /// and <see cref="TryLocate"/> resolves warmed groups by pointer, so this source only fetches groups the buffers reach by no pointer.
+    /// so this source only fetches groups the buffer reaches by no pointer.
     /// </remarks>
     /// <returns>False, without calling <paramref name="action"/>, when no layer holds a group at <paramref name="path"/>.</returns>
     public bool TryLoadNodeGroup<TArg>(in PbtStorageNodePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        if (!_transientResource.WarmedGroupBuffer.TryGet(path, out PbtGroupRecord record, out _))
+        if (!_transientResource.WarmedGroupBuffer.TryGet(path, out PbtGroupRecord record))
             return readOnlyBundle.TryLoadPersistedNodeGroup(path, action, arg);
 
         action(record.Span, arg);
         return true;
     }
 
-    /// <summary>Warms the groups on the path to <paramref name="key"/> that the group record buffer does not hold, for this block's folds.</summary>
+    /// <summary>Copies the group at <paramref name="path"/> from the persisted snapshots or persistence into the warmed groups, for this block's folds.</summary>
     /// <remarks>
-    /// Reads only the buffer, the warmed groups and persistence, never this bundle's changes. The transient resource holding the
-    /// warmed groups is leased for the walk, so it cannot be recycled until the walk ends. Does nothing once the bundle is being torn down.
+    /// Checks neither the group record buffer nor the warmed groups first, so a group either holds is read and warmed again.
+    /// The transient resource holding the warmed groups is leased for the read, so it cannot be recycled until the read ends.
+    /// Does nothing once the bundle is being torn down.
     /// </remarks>
-    public void WarmUp<TKey, TPath>(TKey key)
-        where TKey : unmanaged, IPbtKey<TKey>
-        where TPath : struct, IPbtNodePath<TPath>
+    /// <param name="descendantBytes">Receives the group's descendant sizes by boundary slot when it is found; empty to skip them.</param>
+    public void WarmUp(in PbtStorageNodePath path, Span<long> descendantBytes)
     {
         PbtTransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null) return;
 
         try
         {
-            PbtBufferWarmUp.WarmUp<TKey, TPath>(CreateCacheableGroupRecordBuffer(transientResource), transientResource.WarmedGroupBuffer, readOnlyBundle, (TreeRoot, RootGroupPointer), key);
+            readOnlyBundle.TryLoadPersistedNodeGroup(path, WarmGroupState.Write, new WarmGroupState(transientResource.WarmedGroupBuffer, in path, descendantBytes));
         }
         finally
         {
             transientResource.ReleaseLease();
+        }
+    }
+
+    /// <summary>Writes the persisted payload handed to it into the warmed groups as the requested group, then indexes it.</summary>
+    /// <remarks>The payload is trusted to be the group its parent references, as warm-up trusts it.</remarks>
+    private readonly ref struct WarmGroupState
+    {
+        public static readonly ReadOnlySpanAction<byte, WarmGroupState> Write = static (payload, state) =>
+        {
+            ulong pointer;
+            using (IPbtGroupRecordWriteBatch batch = state._warmed.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))))
+            {
+                payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, state._path, default, payload.Length));
+                pointer = batch.BasePointer;
+            }
+
+            state._warmed.Index(state._path, pointer);
+            if (!state._descendantBytes.IsEmpty) PbtNodeGroupCodec.ReadDescendantBytes(payload, state._descendantBytes);
+        };
+
+        private readonly PbtWarmedGroupBuffer _warmed;
+        private readonly ref readonly PbtStorageNodePath _path;
+        private readonly Span<long> _descendantBytes;
+
+        public WarmGroupState(PbtWarmedGroupBuffer warmed, ref readonly PbtStorageNodePath path, Span<long> descendantBytes)
+        {
+            _warmed = warmed;
+            _path = ref path;
+            _descendantBytes = descendantBytes;
         }
     }
 
