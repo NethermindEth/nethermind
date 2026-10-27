@@ -48,6 +48,7 @@
             command = "nethermind --version";
           };
           smoke = pkgs.callPackage ./nix/smoke.nix { inherit nethermind; };
+          precompile-smoke = pkgs.callPackage ./nix/precompile-smoke.nix { inherit nethermind; };
         }
       );
 
