@@ -34,9 +34,13 @@ def prepare(args):
         raise ValueError("upstream no longer supports the candidate prover image")
     main = package / "main.star"
     original = main.read_text()
-    if 'exec eez-proof-signer' not in original or not any(endpoint in original for endpoint in (
+    direct_prover = any(endpoint in original for endpoint in (
         '"EEZ_PROVER_URL": "http://eez-proof-signer:',
-        '"EEZ_PROVER_URL": "http://{}:{}".format(prover_service, PROOF_SIGNER_GRPC_PORT)')):
+        '"EEZ_PROVER_URL": "http://{}:{}".format(prover_service, PROOF_SIGNER_GRPC_PORT)'))
+    native_prover_url = native and original.count(
+        '    prover_url = "http://eez-proof-signer:{}".format(PROOF_SIGNER_GRPC_PORT)\n') == 1 and original.count(
+        '"EEZ_PROVER_URL": prover_url,') == 1
+    if 'exec eez-proof-signer' not in original or not (direct_prover or native_prover_url):
         raise ValueError("upstream prover deployment seam changed")
     if "nethermind.add_initial" in original:
         raise ValueError("the integration overlay was already applied")

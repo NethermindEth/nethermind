@@ -66,6 +66,43 @@ class NativePreparationTests(unittest.TestCase):
         names = json.loads((self.root / "scenario-hooks.json").read_text())
         self.assertEqual(names, ["verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e"])
 
+    def test_native_prover_url_variable_preserves_the_upstream_route(self):
+        path = self.package / "main.star"
+        original = path.read_text().replace(
+            '    env = {"EEZ_PROVER_URL": "http://eez-proof-signer:50061"}\n',
+            '    prover_url = "http://eez-proof-signer:{}".format(PROOF_SIGNER_GRPC_PORT)\n'
+            '    env = {"EEZ_PROVER_URL": prover_url,}\n')
+        path.write_text(original)
+        self.prepare()
+        expected = original.replace(
+            "ethereum_package.run(resources.relay_startup_plan(plan), eth_args)",
+            "ethereum_package.run(nethermind.relay_plan(resources.relay_startup_plan(plan)), eth_args)")
+        self.assertIn(expected, path.read_text(), "the original signer command and composer route are unchanged")
+        self.assertNotIn("prove_capture_image", self.args.output.read_text(), "the adapter does not enable an upstream capture proxy")
+        self.assertIn("verify_real_proof_path", (self.package / "run-ci.sh").read_text())
+
+    def test_changed_native_prover_url_route_rejects_before_overlay(self):
+        path = self.package / "main.star"
+        original = path.read_text().replace(
+            '    env = {"EEZ_PROVER_URL": "http://eez-proof-signer:50061"}\n',
+            '    prover_url = "http://eez-proof-signer:{}".format(PROOF_SIGNER_GRPC_PORT)\n'
+            '    env = {"EEZ_PROVER_URL": prover_url,}\n')
+        for marker, replacement in (
+            ("http://eez-proof-signer:{}", "http://other:{}"),
+            ('"EEZ_PROVER_URL": prover_url,', '"EEZ_PROVER_URL": other_url,'),
+            ('    prover_url = ', '    another_url = '),
+            ('    prover_url = "http://eez-proof-signer:{}".format(PROOF_SIGNER_GRPC_PORT)\n',
+                '    prover_url = "http://eez-proof-signer:{}".format(PROOF_SIGNER_GRPC_PORT)\n' * 2),
+            ('"EEZ_PROVER_URL": prover_url,', '"EEZ_PROVER_URL": prover_url, "EEZ_PROVER_URL": prover_url,'),
+            ("exec eez-proof-signer", "exec other-prover"),
+        ):
+            with self.subTest(marker=marker, replacement=replacement):
+                changed = original.replace(marker, replacement)
+                path.write_text(changed)
+                with self.assertRaisesRegex(ValueError, "prover deployment seam"):
+                    self.prepare()
+                self.assertEqual(path.read_text(), changed, "unsupported routes fail before writing the overlay")
+
     def test_native_large_evidence_avoids_os_argument_limits_without_changing_json(self):
         self.prepare()
         directory = self.root / "evidence with spaces"
