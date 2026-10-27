@@ -35,9 +35,6 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     public void EnsureAvailable() { }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
-    /// <summary>When set, recursive STARK checks throw this instead of returning a verdict.</summary>
-    public Exception? Throws { get; set; }
-
     /// <summary>When set, recursive STARK checks wait for it, as a slow verification would.</summary>
     public ManualResetEventSlim? Hold { get; set; }
 
@@ -45,7 +42,6 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     {
         Interlocked.Increment(ref _calls);
         Hold?.Wait(TimeSpan.FromSeconds(10));
-        if (Throws is { } exception) throw exception;
         return Valid;
     }
 
@@ -60,12 +56,8 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public string Description => name;
 
-    /// <summary>Runs on the sending thread before a message is recorded.</summary>
-    public Action<P2PMessage>? OnSend { get; set; }
-
     public void Send(P2PMessage message)
     {
-        OnSend?.Invoke(message);
         lock (_sent) _sent.Add(message);
     }
 

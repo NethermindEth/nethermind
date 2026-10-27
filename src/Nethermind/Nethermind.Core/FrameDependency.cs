@@ -10,7 +10,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// 32-byte public key (leanSPHINCS) or the public commitment and bytecode hash (leanSTARK).
+/// 32-byte public key (leanSPHINCS); leanSTARK is reserved.
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -179,27 +179,14 @@ public static class Eip8288Dependencies
     /// dependency digest. The digest omits the scheme, so it is defined only for leanSPHINCS lists (see
     /// <see cref="IsAcceptedScheme"/>).</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
-        => ComputeListDepsHash(Canonicalize(dependencies));
-
-    /// <summary><c>get_deps_hash</c> over <paramref name="dependencies"/> exactly as given, without sorting or deduplication.</summary>
-    public static ValueHash256 ComputeListDepsHash(IReadOnlyList<FrameDependency> dependencies)
     {
+        dependencies = Canonicalize(dependencies);
         Blake2s hash = Blake2s.Create();
         for (int i = 0; i < dependencies.Count; i++)
         {
             hash.Update(dependencies[i].DataHash.Bytes);
             hash.Update(dependencies[i].VerificationKey.Bytes);
         }
-
-        return hash.Finish();
-    }
-
-    /// <summary><c>get_deps_hash</c> over a <c>96·k</c>-byte concatenation of encoded dependencies exactly as given.</summary>
-    public static ValueHash256 ComputeListDepsHash(ReadOnlySpan<byte> encoded)
-    {
-        Blake2s hash = Blake2s.Create();
-        for (int offset = 0; offset + Eip8288Constants.DependencyTripleLength <= encoded.Length; offset += Eip8288Constants.DependencyTripleLength)
-            hash.Update(encoded.Slice(offset + 32, 64));
 
         return hash.Finish();
     }

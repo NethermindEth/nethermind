@@ -45,12 +45,6 @@ public sealed class ProofVerdictCache
         get { lock (_gate) return _aggregate.Count; }
     }
 
-    /// <summary>Direct-witness verdicts held.</summary>
-    public int DirectCount
-    {
-        get { lock (_gate) return _direct.Count; }
-    }
-
     /// <summary>Verifies a recursive aggregate proof against <paramref name="depsHash"/> under <paramref name="forkVerifier"/>'s
     /// <c>AGGREGATED_VK</c>.</summary>
     public static bool VerifyRecursive(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, in ValueHash256 depsHash, byte[] proof)

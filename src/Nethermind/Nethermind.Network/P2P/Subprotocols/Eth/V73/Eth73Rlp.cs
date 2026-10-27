@@ -5,7 +5,6 @@ using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
@@ -77,39 +76,11 @@ public ref struct Eth73RlpReader
         return value;
     }
 
-    public uint ReadUInt32()
-    {
-        ulong value = ReadUInt64();
-        if (value > uint.MaxValue) throw new RlpException("Integer exceeds 32 bits");
-        return (uint)value;
-    }
-
-    public byte ReadUInt8()
-    {
-        ulong value = ReadUInt64();
-        if (value > byte.MaxValue) throw new RlpException("Integer exceeds 8 bits");
-        return (byte)value;
-    }
-
-    /// <summary>Reads an unsigned integer below <c>2**256</c>.</summary>
-    public UInt256 ReadUInt256()
-    {
-        ReadOnlySpan<byte> bytes = ReadBytes();
-        if (bytes.Length > 32) throw new RlpException("Integer exceeds 256 bits");
-        if (bytes.Length > 0 && bytes[0] == 0) throw new RlpException("Integer has a leading zero");
-        return new UInt256(bytes, true);
-    }
-
     public ValueHash256 ReadHash()
     {
         ReadOnlySpan<byte> bytes = ReadBytes();
         if (bytes.Length != ValueHash256.MemorySize) throw new RlpException("Hash must be exactly 32 bytes");
         return new ValueHash256(bytes);
-    }
-
-    public void ReadEmptyBytes()
-    {
-        if (ReadBytes().Length != 0) throw new RlpException("Expected an empty byte string");
     }
 
     /// <summary>Counts the remaining items without decoding them, failing once <paramref name="max"/> is exceeded.</summary>
@@ -211,22 +182,11 @@ public static class Eth73Rlp
 
     public static int WriteListPrefix(Span<byte> destination, int contentLength) => WritePrefix(destination, contentLength, 0xc0);
 
-    /// <summary>Writes the prefix of a string that is not a single byte below 0x80.</summary>
-    public static int WriteStringPrefix(Span<byte> destination, int length) => WritePrefix(destination, length, 0x80);
-
     public static byte[] EncodeBytes(ReadOnlySpan<byte> value)
     {
         byte[] result = new byte[LengthOfBytes(value)];
         WriteBytes(result, value);
         return result;
-    }
-
-    public static byte[] EncodeUInt256(in UInt256 value)
-    {
-        if (value.IsZero) return [0x80];
-        Span<byte> bytes = stackalloc byte[32];
-        value.ToBigEndian(bytes);
-        return EncodeBytes(bytes.WithoutLeadingZeros());
     }
 
     public static byte[] EncodeUInt(ulong value)

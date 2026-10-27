@@ -13,7 +13,6 @@ using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
-using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
