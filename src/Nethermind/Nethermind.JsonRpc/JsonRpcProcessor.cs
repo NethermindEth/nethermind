@@ -603,6 +603,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private void DebugRequest(JsonRpcRequest request, JsonRpcContext context) =>
         _logger.Debug($"JSON RPC request {request.Method}{DescribeRemoteAddress(context)}");
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void DebugBatchRequest(JsonRpcRequest request, JsonRpcContext context, int requestIndex, int requestCount) =>
+        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.Method}{DescribeRemoteAddress(context)}");
+
     /// <summary>Runs one JSON-RPC batch: size limit, then decode-dispatch-write per item, then close the array.</summary>
     /// <remarks>
     /// One loop for both transports: the raw-bytes and parsed-document paths differ only in how items are
@@ -623,8 +627,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             await WriteBatchSizeLimitErrorAsync(requestCount, sink, cancellationToken);
             return;
         }
-
-        if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests{DescribeRemoteAddress(context)}");
 
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -673,14 +675,14 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         executedResponse = CreateBatchResponseLimitEntry(executed);
                     }
 
-                    await WriteBatchResponseAsync(executed, executedResponse, requestIndex, requestCount, sink, cancellationToken);
+                    await WriteBatchResponseAsync(executed, executedResponse, context, requestIndex, requestCount, sink, cancellationToken);
                     isStopped |= sink.StopRequested;
                     continue;
                 }
 
                 if (request is null)
                 {
-                    if (decodeException is not null) LogInvalidBatchItem(decodeException);
+                    if (_logger.IsDebug) LogInvalidBatchItem(requestIndex, requestCount, context, decodeException);
                     await WriteBatchEntryAsync(CreateInvalidRequestEntry(startTime), sink, cancellationToken);
                     // The entry still counts against the response body: skipping this read would let the next
                     // valid element be dispatched in full after the sink already asked to stop.
@@ -694,7 +696,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                     ? CreateBatchResponseLimitEntry(request)
                     : await HandleSingleRequest(request, context);
 
-                await WriteBatchResponseAsync(request, response, requestIndex, requestCount, sink, cancellationToken);
+                await WriteBatchResponseAsync(request, response, context, requestIndex, requestCount, sink, cancellationToken);
                 isStopped |= sink.StopRequested;
                 hasNext = source.TryGetNext(out request, out decodeException);
                 if (hasNext && request is not null) batchRequestJsonLifetime.TrackUntilBatchEnd(request);
@@ -731,11 +733,13 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private ValueTask WriteBatchResponseAsync(
         JsonRpcRequest request,
         JsonRpcResult.Entry response,
+        JsonRpcContext context,
         int requestIndex,
         int requestCount,
         IJsonRpcResponseSink sink,
         CancellationToken cancellationToken)
     {
+        if (_logger.IsDebug) DebugBatchRequest(request, context, requestIndex, requestCount);
         if (_logger.IsTrace)
         {
             _logger.Trace($"  {requestIndex}/{requestCount} JSON RPC request - {request} handled after {response.Report.HandlingTimeMicroseconds}");
@@ -745,10 +749,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return WriteBatchEntryAsync(response, sink, cancellationToken);
     }
 
-    private void LogInvalidBatchItem(Exception exception)
-    {
-        if (_logger.IsDebug) _logger.Debug($"Invalid JSON-RPC batch item.{Environment.NewLine}{exception}");
-    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogInvalidBatchItem(int requestIndex, int requestCount, JsonRpcContext context, Exception? exception) =>
+        _logger.Debug(exception is null
+            ? $"Invalid JSON-RPC batch item {requestIndex}/{requestCount}{DescribeRemoteAddress(context)}."
+            : $"Invalid JSON-RPC batch item {requestIndex}/{requestCount}{DescribeRemoteAddress(context)}.{Environment.NewLine}{exception}");
 
     private ValueTask WriteInvalidRequestAsync(
         IJsonRpcResponseSink sink,
