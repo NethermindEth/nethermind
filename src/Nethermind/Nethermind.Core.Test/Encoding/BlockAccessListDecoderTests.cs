@@ -244,26 +244,29 @@ public class BlockAccessListDecoderTests
         Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
     }
 
+    /// <summary>A change at the pre-execution index, at every transaction index and at the post-execution one.</summary>
+    private static int MaxChangesPerList => BlockBodyDecoder.TransactionsCountLimit.Limit + 2;
+
     [Test]
-    public void Decode_slot_changes_rejects_storage_change_count_above_max_txs()
+    public void Decode_slot_changes_rejects_storage_change_count_above_limit()
     {
-        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(Eip7928Constants.MaxTxs + 1);
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(MaxChangesPerList + 1);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpLimitException>()
-                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+                .With.Message.Contains($"over limit {MaxChangesPerList}"));
     }
 
     [Test]
-    public void Decode_account_changes_rejects_change_count_above_max_txs([Range(2, 4)] int balanceNonceOrCodeField)
+    public void Decode_account_changes_rejects_change_count_above_limit([Range(2, 4)] int balanceNonceOrCodeField)
     {
-        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, balanceNonceOrCodeField, Eip7928Constants.MaxTxs + 1);
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, balanceNonceOrCodeField, MaxChangesPerList + 1);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpLimitException>()
-                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+                .With.Message.Contains($"over limit {MaxChangesPerList}"));
     }
 
     /// <summary>

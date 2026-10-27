@@ -7,9 +7,6 @@ public static class Eip7928Constants
 {
     // Max buffer lengths for RLP decoding
 
-    // max number of changes to one account field or storage slot
-    public const int MaxTxs = 1_000_000;
-
     // max number of slots changed / read in one account
     public const int MaxSlots = 1_000_000;
 
