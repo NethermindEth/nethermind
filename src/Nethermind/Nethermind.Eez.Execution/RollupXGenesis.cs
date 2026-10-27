@@ -18,7 +18,7 @@ namespace Nethermind.Eez.Execution;
 /// zero and nothing later, sit on the L1 slot grid of its reference, carry the reference's RANDAO, start at a
 /// 1 gwei base fee and hold the EIP-2935 history predeploy.
 /// </summary>
-public static class RollupXGenesis
+public static partial class RollupXGenesis
 {
     public const string SectionName = "rollupX";
 
@@ -53,6 +53,11 @@ public static class RollupXGenesis
     private static RollupXSchedule ReadSchedule(JsonElement section, ulong genesisTimestamp)
     {
         EnsureOnly(section, "blockIntervalSeconds", "syncIntervalBlocks", "l1Reference");
+        return ReadScheduleValues(section, genesisTimestamp);
+    }
+
+    private static RollupXSchedule ReadScheduleValues(JsonElement section, ulong genesisTimestamp)
+    {
         JsonElement reference = Required(section, "l1Reference");
         EnsureOnly(reference, "chainId", "number", "hash", "timestamp", "prevRandao");
         ulong syncInterval = Number(section, "syncIntervalBlocks");
