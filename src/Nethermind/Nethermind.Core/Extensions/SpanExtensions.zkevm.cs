@@ -216,9 +216,15 @@ namespace Nethermind.Core.Extensions
         /// The lane keys have to stay independent per position: sharing one across words would leave the
         /// sum invariant under permuting them.
         /// </remarks>
+        /// <remarks>
+        /// Airbender computes the same lanes as 32-bit values: there the masks are free and the product of two of them
+        /// one widening multiply, where the masked 64-bit form adds with carries and multiplies all four halves.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixLanes(ulong word, ulong key, ulong mask)
-            => ((word + key) & mask) * (((word >> 32) + (key >> 32)) & mask);
+            => AirbenderFlag.IsActive
+                ? Math.BigMul((uint)word + (uint)key, (uint)(word >> 32) + (uint)(key >> 32))
+                : ((word + key) & mask) * (((word >> 32) + (key >> 32)) & mask);
 
         /// <inheritdoc />
         /// <remarks>Hand-rolled from 32-bit products: ILC has no <c>mulhu</c> intrinsic on this target.</remarks>
