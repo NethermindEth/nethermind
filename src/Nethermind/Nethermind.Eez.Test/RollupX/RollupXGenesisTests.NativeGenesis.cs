@@ -137,7 +137,7 @@ public partial class RollupXGenesisTests
             case "collector-system": section["feeCollector"] = Address.SystemUser.ToString(); break;
             case "collector-manager": section["feeCollector"] = EezConstants.RollupXEezl2Address.ToString(); break;
             case "unknown-top": document["gasLmit"] = "0x1c9c380"; break;
-            case "unknown-config": document["config"]!["osakaTiem"] = 0; break;
+            case "unknown-config": document["config"]!["futureFork"] = 0; break;
             case "dao-type": document["config"]!["daoForkSupport"] = new JsonArray(); break;
             case "unknown-eip150-hash": document["config"]!["eip150Hash"] = Keccak.Zero.ToString(); break;
             case "unknown-extension": section["historyOffset"] = 2; break;
