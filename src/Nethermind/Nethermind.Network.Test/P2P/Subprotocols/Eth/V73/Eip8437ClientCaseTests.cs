@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
@@ -92,6 +93,23 @@ public class Eip8437ClientCaseTests
             Assert.That(link.Sent<NewProofWrapperHashesMessage>(), Is.Empty);
             Assert.That(link.Penalties, Is.Empty);
         }
+    }
+
+    // A peer connected before activation exchanges wrappers once EIP-8288 activates.
+    [Test]
+    public void Peer_connected_before_activation_is_announced_to_after_it()
+    {
+        using WrapperTestNode node = new();
+        node.Tree.Head.Returns((Block?)null);
+        FakeWrapperLink link = new();
+        node.Transport.Accept(link);
+        node.Tick(WrapperTransportLimits.Tick);
+        node.Tree.Head.Returns(Build.A.Block.WithNumber(10).TestObject);
+        node.Tick(WrapperTransportLimits.Tick);
+        byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
+        node.Tick(WrapperTransportLimits.Tick);
+        Assert.That(AnnouncedTo(link), Is.EqualTo(new[] { Describe(wrapper).Hash }));
     }
 
     // Discard a wrapper failing proof or dependency validation without penalizing its sender; malformed transport or

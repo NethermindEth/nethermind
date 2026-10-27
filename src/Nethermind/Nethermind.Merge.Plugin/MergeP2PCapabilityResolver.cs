@@ -24,7 +24,6 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private readonly IChainHeadSpecProvider? _specProvider;
     private readonly IChainHeadInfoProvider? _chainHeadInfoProvider;
     private bool _eip7594Enabled;
-    private bool _eip8288Enabled;
 
     public event Action? Changed;
 
@@ -57,7 +56,6 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         _specProvider = specProvider ?? chainHeadInfoProvider?.SpecProvider;
         _chainHeadInfoProvider = chainHeadInfoProvider;
         _eip7594Enabled = IsEip7594Enabled();
-        _eip8288Enabled = IsEip8288Enabled();
         _poSSwitcher.TerminalBlockReached += OnTerminalBlockReached;
         if (_chainHeadInfoProvider is not null)
         {
@@ -80,8 +78,10 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
             && IsEip7594Enabled())
         {
             capabilities.Add(new Capability(Protocol.Eth, 72));
-            // EIP-8437 eth/73 extends eth/72 with proof wrapper propagation once EIP-8288 is active.
-            if (IsEip8288Enabled()) capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth73));
+            // EIP-8437 eth/73 extends eth/72 with proof wrapper propagation. It is advertised once EIP-8288 is scheduled,
+            // not active: a session keeps its negotiated version, so a peer connected before the fork would otherwise stay on
+            // eth/72 and never exchange wrappers. The transport ignores wrapper messages until EIP-8288 activates.
+            if (IsEip8288Scheduled()) capabilities.Add(new Capability(Protocol.Eth, EthVersions.Eth73));
         }
     }
 
@@ -90,18 +90,16 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
     {
         bool eip7594Enabled = IsEip7594Enabled();
-        bool eip8288Enabled = IsEip8288Enabled();
-        if (eip7594Enabled != _eip7594Enabled || eip8288Enabled != _eip8288Enabled)
+        if (eip7594Enabled != _eip7594Enabled)
         {
             _eip7594Enabled = eip7594Enabled;
-            _eip8288Enabled = eip8288Enabled;
             Changed?.Invoke();
         }
     }
 
     private bool IsEip7594Enabled() => _specProvider?.GetCurrentHeadSpec().IsEip7594Enabled ?? false;
 
-    private bool IsEip8288Enabled() => _specProvider?.GetCurrentHeadSpec().IsEip8288Enabled ?? false;
+    private bool IsEip8288Scheduled() => _specProvider?.GetFinalSpec().IsEip8288Enabled ?? false;
 
     public void Dispose()
     {
