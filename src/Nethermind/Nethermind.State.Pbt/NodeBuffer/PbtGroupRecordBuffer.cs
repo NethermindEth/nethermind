@@ -194,7 +194,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     /// <inheritdoc/>
     public bool TryLocate(ulong pointer, out PbtGroupRecord record)
     {
-        if (pointer == 0)
+        if (pointer == 0 || PbtGroupRecordCodec.IsTransient(pointer))
         {
             record = default;
             return false;
@@ -278,7 +278,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     /// <exception cref="InvalidOperationException">Generation ids are exhausted.</exception>
     public static ulong NextGeneration(ulong current)
     {
-        if (current >= uint.MaxValue) throw new InvalidOperationException("PBT group record buffer generation IDs exhausted.");
+        if (current >= PbtGroupRecordCodec.TransientGenerationMask - 1) throw new InvalidOperationException("PBT group record buffer generation IDs exhausted.");
         return current + 1;
     }
 

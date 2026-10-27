@@ -22,9 +22,6 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
-    private const int AccountGroupDepth = PbtNodeGroupLayout.AccountTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
-    private const int StorageGroupDepth = PbtNodeGroupLayout.StemTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
-    private const long AverageNodeGroupBytes = 512;
     private const int SlotChunkLength = 64;
 
     private static long _nextScopeId;
@@ -190,68 +187,38 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     /// <summary>Reads the node groups the fold of the writes in <paramref name="keys"/> walks into, so the bundle keeps the persisted ones for the fold.</summary>
     /// <remarks>
-    /// Reads the first group below the top node groups of each account zone written, and per account writing its storage
-    /// zone, the first storage group and then the groups below each written slot, as deep as the slot's estimated remaining
-    /// group levels: a boundary slot of the first storage group holds about <c>descendantBytes / 512 B</c> groups, so its
-    /// remaining depth is about <c>log8</c> of that many group levels. Code leaves are left out: they are content
-    /// addressed, so a deployment rarely finds their groups stored.
+    /// Walks the path of each account zone key written, and per account writing its storage zone, of each written slot in key order.
+    /// Code leaves are left out: they are content addressed, so a deployment rarely finds their groups stored.
     /// </remarks>
     private static void PrefetchNodeGroups(PbtSnapshotBundle bundle, BalKeys keys, CancellationToken cancellation)
     {
-        HashSet<PbtStorageNodePath> accountGroups = [];
+        using ArrayPoolList<PbtPath> accountKeys = new(keys.Accounts.Count + keys.HeaderWrites.Count);
         foreach (PbtWriteOperation<PbtPath> account in keys.Accounts)
         {
-            PbtPath key = account.Key;
-            if (keys.Bal.AccountChanges.AsSpan()[(int)account.Value.ToUInt256().u0].HasBalanceNonceOrCodeChanges) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+            if (keys.Bal.AccountChanges.AsSpan()[(int)account.Value.ToUInt256().u0].HasBalanceNonceOrCodeChanges) accountKeys.Add(account.Key);
         }
         foreach (PbtWriteOperation<PbtPath> slot in keys.HeaderWrites)
         {
-            PbtPath key = slot.Key;
-            if (!keys.WritesNothing(Eip8297KeyDerivation.AddressHashOf(key), out _)) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+            if (!keys.WritesNothing(Eip8297KeyDerivation.AddressHashOf(slot.Key), out _)) accountKeys.Add(slot.Key);
         }
-        PbtStorageNodePath[] accountGroupPaths = [.. accountGroups];
         using ArrayPoolList<Range> storageAccounts = keys.StorageAccounts();
-        ParallelUnbalancedWork.For(0, accountGroupPaths.Length + storageAccounts.Count, (bundle, keys, accountGroupPaths, storageAccounts, cancellation), static (item, state) =>
+        ParallelUnbalancedWork.For(0, accountKeys.Count + storageAccounts.Count, (bundle, keys, accountKeys, storageAccounts, cancellation), static (item, state) =>
         {
             if (state.cancellation.IsCancellationRequested) return state;
-            if (item < state.accountGroupPaths.Length) state.bundle.WarmUp(state.accountGroupPaths[item], []);
-            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountGroupPaths.Length]], state.cancellation);
+            if (item < state.accountKeys.Count) state.bundle.WarmUp<PbtPath, PbtNodePath>(state.accountKeys[item]);
+            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountKeys.Count]], state.cancellation);
             return state;
         });
     }
 
-    /// <summary>Reads the first storage group of one account and the groups below its sorted written slots.</summary>
-    /// <remarks>A group shared with the previous slot's path is read for that slot already, as both lie under one boundary slot and so share their depth.</remarks>
+    /// <summary>Reads the groups on the paths of one account's sorted written slots.</summary>
     private static void PrefetchStorageGroups(PbtSnapshotBundle bundle, ReadOnlySpan<PbtWriteOperation<PbtStoragePath>> slots, CancellationToken cancellation)
     {
-        PbtStoragePath previous = slots[0].Key;
-        Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
-        bundle.WarmUp(GroupOf(previous.Bytes, StorageGroupDepth), descendantBytes);
-
-        for (int position = 0; position < slots.Length; position++)
+        foreach (PbtWriteOperation<PbtStoragePath> slot in slots)
         {
-            PbtStoragePath key = slots[position].Key;
-            int sharedBits = position == 0 ? StorageGroupDepth : previous.FirstDifferingBit(key, 0);
-            previous = key;
-            long subtreeBytes = descendantBytes[TrieUpdater.BoundarySlot(key.Bytes, StorageGroupDepth)];
-            int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, PbtThreeLevelGroupGeometry.BoundarySlots));
-            for (int level = 1; level <= levels; level++)
-            {
-                int depth = StorageGroupDepth + level * PbtThreeLevelGroupGeometry.LevelsPerGroup;
-                if (depth <= sharedBits) continue;
-                if (cancellation.IsCancellationRequested) return;
-                bundle.WarmUp(GroupOf(key.Bytes, depth), []);
-            }
+            if (cancellation.IsCancellationRequested) return;
+            bundle.WarmUp<PbtStoragePath, PbtStorageNodePath>(slot.Key);
         }
-    }
-
-    /// <summary>The path of the group at <paramref name="depth"/> above the leaf at <paramref name="key"/>.</summary>
-    private static PbtStorageNodePath GroupOf(ReadOnlySpan<byte> key, int depth)
-    {
-        Span<byte> path = stackalloc byte[(depth + 7) / 8];
-        key[..path.Length].CopyTo(path);
-        if (depth % 8 != 0) path[^1] &= (byte)(0xFF << (8 - depth % 8));
-        return new PbtStorageNodePath(path, depth);
     }
 
     /// <summary>Reads the slot and forwards it to <paramref name="sink"/> when the sink still needs it.</summary>

@@ -307,14 +307,16 @@ public class PbtSnapshotBundleTests
     public void Only_the_warm_up_warms_groups_which_stay_warmed_until_collect_retires_the_transient_resource()
     {
         PbtStorageNodePath path = new([], 0);
-        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
-        Reader reader = new(default, null) { GroupPayload = encoding };
+        // A single-leaf tree, so a walk to its leaf reads only the root group.
+        PbtPath key = new(PbtStoreTestExtensions.ZoneKey("00"));
+        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, PbtTreeHarness.EncodeLeaf(key))], default);
+        Reader reader = new(default, null) { GroupPayload = encoding, CurrentRoot = TestItem.KeccakA.ValueHash256 };
         PbtSnapshotBundle bundle = CreateBundle(reader);
         byte[]? Load() => PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(path, action, groups));
 
         byte[]?[] loads = [Load(), Load()];
         int loadReads = reader.GroupReadCount;
-        bundle.WarmUp(path, []);
+        bundle.WarmUp<PbtPath, PbtNodePath>(key);
         byte[]? warmedLoad = Load();
         int warmUpReads = reader.GroupReadCount;
         (PbtSnapshot snapshot, PbtTransientResource retired) = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
@@ -324,7 +326,7 @@ public class PbtSnapshotBundleTests
         byte[]? loadAfterCollect = Load();
         int readsAfterCollect = reader.GroupReadCount;
         bundle.Dispose();
-        bundle.WarmUp(path, []);
+        bundle.WarmUp<PbtPath, PbtNodePath>(key);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(new[] { loads[0], loads[1], warmedLoad, loadAfterCollect }, Is.All.EqualTo(encoding));

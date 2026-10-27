@@ -56,10 +56,11 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Generation_ids_stop_at_the_pointer_generation_width()
     {
-        ulong last = PbtGroupRecordBuffer.NextGeneration(uint.MaxValue - 1UL);
+        // The top generation bit tags the warmed groups' transient pointers.
+        ulong last = PbtGroupRecordBuffer.NextGeneration(PbtGroupRecordCodec.TransientGenerationMask - 2UL);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(last, Is.EqualTo((ulong)uint.MaxValue));
+            Assert.That(last, Is.EqualTo(PbtGroupRecordCodec.TransientGenerationMask - 1UL));
             Assert.That(() => PbtGroupRecordBuffer.NextGeneration(last), Throws.InvalidOperationException);
             Assert.That(() => PbtGroupRecordBuffer.NextGeneration(ulong.MaxValue), Throws.InvalidOperationException, "cannot wrap");
         }

@@ -125,7 +125,12 @@ public static partial class TrieUpdater<TKey, TPath>
             descendantBytes[slot] = reader.DescendantBytes(slot) + delta;
             deltaTotal += delta;
             if (descendantBytes[slot] == 0) links[slot] = 0;
-            else surviving = links[slot];
+            else
+            {
+                surviving = links[slot];
+                // A committed record drops the warmed groups' transient links, which do not outlive the block.
+                links[slot] = PbtGroupRecordCodec.PersistentPointer(surviving);
+            }
         }
         int length = writer.GetPayloadLength(descendantBytes, candidateSlots);
         ulong pointer = surviving;

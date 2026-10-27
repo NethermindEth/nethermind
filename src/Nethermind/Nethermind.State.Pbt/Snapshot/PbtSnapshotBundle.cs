@@ -45,6 +45,8 @@ public sealed class PbtSnapshotBundle(
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
     private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
+    // Created over the first transient resource on first use, as a field initializer cannot read _transientResource.
+    private PbtWarmedGroupRecordBuffer? _cacheableGroupRecordBuffer;
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
     // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
@@ -57,6 +59,13 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>The group record buffer of this branch's write buffers and local snapshots.</summary>
     public IPbtGroupRecordBuffer GroupRecordBuffer => groupRecordBuffer;
+
+    /// <summary>The group record buffer, also resolving the groups warmed for the current block.</summary>
+    /// <remarks>Replaced when <see cref="CollectSnapshot"/> retires the block's transient resource, so read it for each operation.</remarks>
+    private PbtWarmedGroupRecordBuffer CacheableGroupRecordBuffer => _cacheableGroupRecordBuffer ??= CreateCacheableGroupRecordBuffer(_transientResource);
+
+    private PbtWarmedGroupRecordBuffer CreateCacheableGroupRecordBuffer(PbtTransientResource transientResource) =>
+        new(groupRecordBuffer, transientResource.WarmedGroupBuffer);
 
     /// <summary>The pointer of the root group this branch last published, else of its tree root's indexed root group, or 0 when neither is in the buffer.</summary>
     public ulong RootGroupPointer
@@ -153,76 +162,46 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
+    /// <summary>Finds a record by pointer in the group record buffer or among the groups warmed for the current block.</summary>
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record) => CacheableGroupRecordBuffer.TryLocate(pointer, out record);
+
     /// <summary>Loads a group the fold reaches by no pointer, by its path, as <see cref="IPbtStore.TryLoad{TArg}"/> does.</summary>
     /// <remarks>
     /// Hands over the record warmed for this block at the path, otherwise the payload in the persisted snapshots or persistence.
     /// The groups of this bundle's changes and of every in-memory snapshot are in the buffer, which their pins keep readable,
-    /// so this source only fetches groups the buffer reaches by no pointer.
+    /// and <see cref="TryLocate"/> resolves warmed groups by pointer, so this source only fetches groups the buffers reach by no pointer.
     /// </remarks>
     /// <returns>False, without calling <paramref name="action"/>, when no layer holds a group at <paramref name="path"/>.</returns>
     public bool TryLoadNodeGroup<TArg>(in PbtStorageNodePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        if (!_transientResource.WarmedGroupBuffer.TryGet(path, out PbtGroupRecord record))
+        if (!_transientResource.WarmedGroupBuffer.TryGet(path, out PbtGroupRecord record, out _))
             return readOnlyBundle.TryLoadPersistedNodeGroup(path, action, arg);
 
         action(record.Span, arg);
         return true;
     }
 
-    /// <summary>Warms the group at <paramref name="path"/> when the branch's buffer does not hold it, for this block's folds.</summary>
+    /// <summary>Warms the groups on the path to <paramref name="key"/> that the group record buffer does not hold, for this block's folds.</summary>
     /// <remarks>
-    /// The transient resource holding the warmed groups is leased for the read, so it cannot be recycled until the read ends.
-    /// Does nothing once the bundle is being torn down.
+    /// Reads only the buffer, the warmed groups and persistence, never this bundle's changes. The transient resource holding the
+    /// warmed groups is leased for the walk, so it cannot be recycled until the walk ends. Does nothing once the bundle is being torn down.
     /// </remarks>
-    /// <param name="descendantBytes">Receives the group's descendant sizes by boundary slot when it is found; empty to skip them.</param>
-    public void WarmUp(in PbtStorageNodePath path, Span<long> descendantBytes)
+    public void WarmUp<TKey, TPath>(TKey key)
+        where TKey : unmanaged, IPbtKey<TKey>
+        where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null) return;
 
         try
         {
-            PbtWarmedGroupBuffer warmed = transientResource.WarmedGroupBuffer;
-            if (!GroupRecordBuffer.TryFindGroup(RootGroupPointer, path, out PbtGroupRecord record)
-                && !warmed.TryGet(path, out record)
-                && !readOnlyBundle.TryLoadPersistedNodeGroup(path, WarmGroupState.Write, new WarmGroupState(warmed, in path, ref record))) return;
-            if (!descendantBytes.IsEmpty) PbtNodeGroupCodec.ReadDescendantBytes(record.Payload.Span, descendantBytes);
+            PbtBufferWarmUp.WarmUp<TKey, TPath>(CreateCacheableGroupRecordBuffer(transientResource), transientResource.WarmedGroupBuffer, readOnlyBundle, (TreeRoot, RootGroupPointer), key);
         }
         finally
         {
             transientResource.ReleaseLease();
-        }
-    }
-
-    /// <summary>Writes the persisted payload handed to it into the warmed groups as the requested group, then indexes it.</summary>
-    /// <remarks>The payload is trusted to be the group its parent references, as warm-up trusts it.</remarks>
-    private readonly ref struct WarmGroupState
-    {
-        public static readonly ReadOnlySpanAction<byte, WarmGroupState> Write = static (payload, state) =>
-        {
-            ulong pointer;
-            using (IPbtGroupRecordWriteBatch batch = state._warmed.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))))
-            {
-                payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, state._path, default, payload.Length));
-                pointer = batch.BasePointer;
-            }
-
-            state._warmed.Index(state._path, pointer);
-            state._warmed.TryGet(state._path, out state._record);
-        };
-
-        private readonly PbtWarmedGroupBuffer _warmed;
-        private readonly ref readonly PbtStorageNodePath _path;
-        private readonly ref PbtGroupRecord _record;
-
-        /// <param name="record">Set to the written record.</param>
-        public WarmGroupState(PbtWarmedGroupBuffer warmed, ref readonly PbtStorageNodePath path, ref PbtGroupRecord record)
-        {
-            _warmed = warmed;
-            _path = ref path;
-            _record = ref record;
         }
     }
 
@@ -451,7 +430,12 @@ public sealed class PbtSnapshotBundle(
         return (snapshot, transientResource);
     }
 
-    private void SwapTransientResource() => Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
+    private void SwapTransientResource()
+    {
+        PbtTransientResource transientResource = resourcePool.GetCachedResource(usage);
+        _cacheableGroupRecordBuffer = CreateCacheableGroupRecordBuffer(transientResource);
+        Volatile.Write(ref _transientResource, transientResource);
+    }
 
     private static PbtSnapshotContent RentWriteBuffer(IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, IPbtGroupRecordBuffer groupRecordBuffer)
     {

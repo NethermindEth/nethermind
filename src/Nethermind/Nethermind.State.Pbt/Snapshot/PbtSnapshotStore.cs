@@ -59,13 +59,14 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
         if (!loaded.TryLoad(this, new PbtTraversalPath(Span<byte>.Empty), out PbtGroupRecord record))
             throw new InvalidDataException("A referenced PBT node group is missing.");
 
-        using IPbtGroupRecordWriteBatch batch = StartWriteBatch(PbtGroupRecordCodec.AlignedLength(record.Span.Length));
-        record.Span.CopyTo(batch.Bytes);
+        ReadOnlySpan<byte> payload = record.Payload.Span;
+        using IPbtGroupRecordWriteBatch batch = StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length)));
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, record.Path, default, payload.Length));
         return batch.BasePointer;
     }
 
     /// <inheritdoc/>
-    public bool TryLocate(ulong pointer, out PbtGroupRecord record) => Buffer.TryLocate(pointer, out record);
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record) => bundle.TryLocate(pointer, out record);
 
     /// <inheritdoc/>
     public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct

@@ -28,6 +28,13 @@ public static class PbtGroupRecordCodec
     public const int RootKeyLength = 56;
     public const int RecordAlignment = 8;
 
+    public const uint TransientGenerationMask = 1u << 31;
+    public const ulong TransientPointerMask = (ulong)TransientGenerationMask << OffsetBits;
+
+    public static bool IsTransient(ulong pointer) => (pointer & TransientPointerMask) != 0;
+
+    public static ulong PersistentPointer(ulong pointer) => IsTransient(pointer) ? 0 : pointer;
+
     public static readonly int HeaderLength = Unsafe.SizeOf<PbtGroupRecordHeader>();
 
     /// <summary>Length of the record that starts with <paramref name="header"/>.</summary>

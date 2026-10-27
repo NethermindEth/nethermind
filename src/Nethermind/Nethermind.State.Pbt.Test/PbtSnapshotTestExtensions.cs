@@ -107,6 +107,14 @@ internal static class PbtSnapshotTestExtensions
         content.AddNodeGroups(count, bytes);
     }
 
+    /// <inheritdoc cref="SetPhysicalTree(PbtSnapshotContent, IEnumerable{PbtPhysicalPayload})"/>
+    internal static void SetPhysicalTree(this PbtSnapshotBundle bundle, IEnumerable<PbtPhysicalPayload> groups)
+    {
+        (ulong root, int count, long bytes) = BuildTree(bundle.GroupRecordBuffer,
+            [.. groups.Select(static group => (group.Key, (byte[]?)group.Payload.ToArray()))], fillAncestors: false);
+        bundle.PublishTreeRoot((default, root), count, bytes);
+    }
+
     /// <inheritdoc cref="SetTree(PbtSnapshotContent, ValueTuple{PbtStorageNodePath, byte[]}[])"/>
     internal static void SetTree(this PbtSnapshotBundle bundle, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {

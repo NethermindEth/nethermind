@@ -82,7 +82,7 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer
         _globalPin.Dispose();
     }
 
-    private bool IsLocal(ulong pointer) => pointer >= _globalBoundary;
+    private bool IsLocal(ulong pointer) => pointer >= _globalBoundary && !PbtGroupRecordCodec.IsTransient(pointer);
 
     private OverlayPin CombinePin(IPbtGroupRecordBufferPin localPin, IPbtGroupRecordBufferPin globalPin)
     {

@@ -31,13 +31,17 @@ public class PbtWarmedGroupBufferTests
         ulong repeatedPointer = PbtSnapshotTestExtensions.Warm(warmed, path, payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmed.TryGet(path, out PbtGroupRecord record) && record.Path.Equals(path), Is.True, "indexed at its path");
+            Assert.That(warmed.TryGet(path, out PbtGroupRecord record, out ulong indexed) && record.Path.Equals(path) && indexed == repeatedPointer, Is.True, "indexed at its path");
             Assert.That(Get(warmed, path), Is.EqualTo(payload), "written payload");
             Assert.That(repeatedPointer, Is.Not.EqualTo(pointer), "a repeated write writes a new record");
             Assert.That(warmed.Count, Is.EqualTo(1), "one path");
             Assert.That(Get(warmed, Path(1)), Is.Null, "other path");
             PbtSnapshotTestExtensions.Warm(warmed, Path(4), oversizedPayload);
             Assert.That(Get(warmed, Path(4)), Is.EqualTo(oversizedPayload), "a record larger than a generation");
+            Assert.That(PbtGroupRecordCodec.IsTransient(pointer), Is.True, "warmed pointers are transient");
+            Assert.That(warmed.TryLocate(pointer, out _), Is.True, "a transient pointer resolves");
+            Assert.That(warmed.TryLocate(pointer & ~PbtGroupRecordCodec.TransientPointerMask, out _), Is.False, "a pointer without the transient prefix misses");
+            Assert.That(PbtSnapshotTestExtensions.DefaultGroupRecordBuffer.TryLocate(pointer, out _), Is.False, "the global buffer rejects transient pointers");
         }
 
         PbtSnapshotTestExtensions.Warm(warmed, path, otherPayload);
@@ -59,6 +63,7 @@ public class PbtWarmedGroupBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmed.Count, Is.Zero, "count after reset");
+            Assert.That(warmed.TryLocate(pointer, out _), Is.False, "a reset makes earlier pointers unreachable");
             Assert.That(Get(warmed, path), Is.Null, "nothing remains");
             Assert.That(Enumerable.Range(0, LargeRecordCount).Select(i => Get(warmed, Path(1000 + i))), Is.All.Null, "nothing remains");
         }
@@ -83,7 +88,7 @@ public class PbtWarmedGroupBufferTests
         {
             PbtStorageNodePath path = Path(samePosition ? 0 : i);
             PbtSnapshotTestExtensions.Warm(warmed, path, payload);
-            complete[i] = warmed.TryGet(path, out PbtGroupRecord current) && current.Payload.Span.SequenceEqual(payload) && current.Path.Equals(path);
+            complete[i] = warmed.TryGet(path, out PbtGroupRecord current, out _) && current.Payload.Span.SequenceEqual(payload) && current.Path.Equals(path);
         });
 
         using (Assert.EnterMultipleScope())
@@ -96,5 +101,5 @@ public class PbtWarmedGroupBufferTests
     public static PbtStorageNodePath Path(int seed) => PbtTestPaths.Prefix<PbtStorageNodePath>(ValueKeccak.Compute(BitConverter.GetBytes(seed)).Bytes, 255);
 
     private static byte[]? Get(PbtWarmedGroupBuffer warmed, in PbtStorageNodePath path) =>
-        warmed.TryGet(path, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
+        warmed.TryGet(path, out PbtGroupRecord record, out _) ? record.Payload.ToArray() : null;
 }
