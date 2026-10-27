@@ -203,6 +203,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         tier.EnsureInMemory();
         if (tier == SnapshotTier.InMemoryBase)
         {
+            snapshot.BuildFilters();
             if (_snapshots.TryAdd(snapshot.To, snapshot))
             {
                 Interlocked.Increment(ref _snapshotCount);
