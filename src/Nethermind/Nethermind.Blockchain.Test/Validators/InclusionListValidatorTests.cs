@@ -174,8 +174,8 @@ public class InclusionListValidatorTests
     // EIP-8288: omission is permitted only when EIP-7805 excuses it. No block dependency count or weighted budget, local proof
     // envelope or wrapper limit is an omission ground, however large the block's dependency union already is.
     [TestCase(Eip8288Constants.MaxProofDependencies, false, TestName = "Full proof envelope is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, true, TestName = "Dependency already in a large block")]
+    [TestCase(4096, false, TestName = "Large dependency union is no omission ground")]
+    [TestCase(4096, true, TestName = "Dependency already in a large block")]
     public void No_dependency_capacity_excuses_an_omission(int blockDependencies, bool present)
     {
         FrameDependency[] blockDeps = new FrameDependency[blockDependencies];

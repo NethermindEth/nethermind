@@ -21,8 +21,7 @@ public static class Eip8288Constants
     public const int MaxDependenciesPerFrame = 256;
 
     /// <summary>Maximum distinct dependencies covered by one proof of the pinned native backend.</summary>
-    /// <remarks>Below <see cref="MaxDepsPerAggregateWrapper"/>: a local proving and verification bound, not a consensus or FOCIL omission
-    /// bound. EIP-8288 has no block dependency quota; wrappers within its limits but above this envelope are refused locally,
+    /// <remarks>A local proving and verification bound, not a consensus or FOCIL omission bound. EIP-8288 has no block dependency quota; wrappers within its limits but above this envelope are refused locally,
     /// never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
 
@@ -75,10 +74,6 @@ public static class Eip8288Constants
 
     /// <summary>Dependencies per mempool wrapper, in either mode: both per-scheme limits together.</summary>
     public const int MaxDepsPerWrapper = MaxLeanSigDepsPerWrapper + MaxLeanStarkDepsPerWrapper;
-
-    /// <summary>Local bound on an inclusion-list proof's <c>proof_deps</c>.</summary>
-    /// <remarks>No longer an EIP-8288 wrapper limit: wrappers are bounded by <see cref="MaxDepsPerWrapper"/> in both modes.</remarks>
-    public const int MaxDepsPerAggregateWrapper = 4096;
 
     /// <summary>EIP-8288 <c>MAX_WRAPPER_BYTES</c>: the complete canonical wrapper encoding, full transactions included, in either
     /// mode. Equal to the <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>

@@ -50,14 +50,8 @@ public class LeanProofCapacityTests
     }
 
     [Test]
-    public void Local_proof_envelope_is_below_the_aggregate_wrapper_ceiling()
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Eip8288Constants.MaxProofDependencies, Is.LessThan(Eip8288Constants.MaxDepsPerAggregateWrapper));
-            Assert.That(LeanProofCapacity.CapacityError(Distinct(Eip8288Constants.MaxProofDependencies + 1)), Is.Not.Null);
-        }
-    }
+    public void Local_proof_bound_is_enforced()
+        => Assert.That(LeanProofCapacity.CapacityError(Distinct(Eip8288Constants.MaxProofDependencies + 1)), Is.Not.Null);
 
     private static HashSet<FrameDependency> Distinct(int count)
     {
