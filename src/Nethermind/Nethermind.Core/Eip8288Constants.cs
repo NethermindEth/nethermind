@@ -67,23 +67,21 @@ public static class Eip8288Constants
     /// <summary>Mempool aggregation cadence in milliseconds.</summary>
     public const int AggregationInterval = 1_000;
 
-    /// <summary>Mode-0 (direct witness) leanSPHINCS dependencies per wrapper (<c>MAX_LEANSIG_DEPS_PER_DIRECT_WRAPPER</c>).</summary>
-    public const int MaxLeanSigDepsPerDirectWrapper = 16;
+    /// <summary>leanSPHINCS dependencies per mempool wrapper, in either mode (<c>MAX_LEANSIG_DEPS_PER_WRAPPER</c>).</summary>
+    public const int MaxLeanSigDepsPerWrapper = 16;
 
-    /// <summary>Mode-0 (direct witness) leanSTARK dependencies per wrapper (<c>MAX_LEANSTARK_DEPS_PER_DIRECT_WRAPPER</c>).</summary>
-    public const int MaxLeanStarkDepsPerDirectWrapper = 1;
+    /// <summary>leanSTARK dependencies per mempool wrapper, in either mode (<c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>).</summary>
+    public const int MaxLeanStarkDepsPerWrapper = 1;
 
-    /// <summary>Mode-1 (aggregate) dependencies per wrapper (<c>MAX_DEPS_PER_AGGREGATE_WRAPPER</c>), independent of scheme; mode-0
-    /// witness limits do not apply.</summary>
-    /// <remarks>A provisional mempool bound: it does not limit blocks or inclusion lists and never excuses an omission.</remarks>
+    /// <summary>Dependencies per mempool wrapper, in either mode: both per-scheme limits together.</summary>
+    public const int MaxDepsPerWrapper = MaxLeanSigDepsPerWrapper + MaxLeanStarkDepsPerWrapper;
+
+    /// <summary>Local bound on an inclusion-list proof's <c>proof_deps</c>.</summary>
+    /// <remarks>No longer an EIP-8288 wrapper limit: wrappers are bounded by <see cref="MaxDepsPerWrapper"/> in both modes.</remarks>
     public const int MaxDepsPerAggregateWrapper = 4096;
 
-    /// <summary>Transactions per wrapper, in either mode (<c>MAX_TXS_PER_WRAPPER</c>).</summary>
-    public const int MaxTxsPerWrapper = 4096;
-
-    /// <summary>Serialized wrapper ceiling, in either mode, in the EIP-8288 wrapper encoding (<c>MAX_WRAPPER_BYTES</c>): the
-    /// <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
-    /// <remarks>A policy ceiling: clients may refuse smaller wrappers under local limits.</remarks>
+    /// <summary>EIP-8288 <c>MAX_WRAPPER_BYTES</c>: the complete canonical wrapper encoding, full transactions included, in either
+    /// mode. Equal to the <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
     public const int MaxWrapperBytes = 2 * 1024 * 1024;
 
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>

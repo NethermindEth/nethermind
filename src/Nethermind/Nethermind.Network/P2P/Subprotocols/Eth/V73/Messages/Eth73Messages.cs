@@ -16,27 +16,33 @@ public abstract class Eth73Message : P2PMessage
     public override string Protocol => "eth";
 }
 
-/// <summary><c>NewProofWrapperHashes (0x16) = [[length, hash], ...]</c>: 1 to 64 held wrappers in strictly ascending hash order.</summary>
+/// <summary><c>NewProofWrapperHashes (0x16) = [[mode, length, hash], ...]</c>: 1 to 64 held wrappers in strictly ascending hash order.</summary>
 public sealed class NewProofWrapperHashesMessage(WrapperAnnouncement[] announcements) : Eth73Message
 {
     public override int PacketType => Eth73MessageCode.NewProofWrapperHashes;
     public WrapperAnnouncement[] Announcements { get; } = announcements;
 }
 
-/// <summary><c>GetProofWrappers (0x17) = [request-id, [hash, ...]]</c>: 1 to 64 distinct hashes.</summary>
-public sealed class GetProofWrappersMessage(long requestId, ValueHash256[] hashes) : Eth73Message
+/// <summary><c>GetProofWrappers (0x17) = [request-id, full, [hash, ...]]</c>: 1 to 32 distinct hashes.</summary>
+/// <param name="full">Whether every transaction encoding must be sent in full; <c>false</c> permits hash references.</param>
+public sealed class GetProofWrappersMessage(long requestId, bool full, ValueHash256[] hashes) : Eth73Message
 {
     public override int PacketType => Eth73MessageCode.GetProofWrappers;
     public long RequestId { get; } = requestId;
+    public bool Full { get; } = full;
     public ValueHash256[] Hashes { get; } = hashes;
 }
 
-/// <summary><c>ProofWrappers (0x18) = [request-id, [wrapper, ...]]</c>, each wrapper embedded as its own RLP item.</summary>
-public sealed class ProofWrappersMessage(long requestId, byte[][] wrappers) : Eth73Message
+/// <summary>A ProofWrappers entry <c>[hash, wrapper]</c>: the canonical wrapper hash and the wrapper as sent, embedded as its
+/// own RLP item.</summary>
+public readonly record struct ProofWrapperEntry(ValueHash256 Hash, byte[] Wrapper);
+
+/// <summary><c>ProofWrappers (0x18) = [request-id, [[hash, wrapper], ...]]</c>.</summary>
+public sealed class ProofWrappersMessage(long requestId, ProofWrapperEntry[] entries) : Eth73Message
 {
     public override int PacketType => Eth73MessageCode.ProofWrappers;
     public long RequestId { get; } = requestId;
-    public byte[][] Wrappers { get; } = wrappers;
+    public ProofWrapperEntry[] Entries { get; } = entries;
 }
 
 /// <summary>Strict framing shared by the wrapper messages: a size bound before parsing, one outer list, no trailing bytes.</summary>
@@ -110,12 +116,15 @@ public sealed class GetProofWrappersMessageSerializer() : Eth73MessageSerializer
     {
         byte[][] ids = new byte[message.Hashes.Length][];
         for (int i = 0; i < ids.Length; i++) ids[i] = Eth73Rlp.EncodeBytes(message.Hashes[i].Bytes);
-        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)message.RequestId), Eth73Rlp.EncodeList(ids));
+        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)message.RequestId), Eth73Rlp.EncodeUInt(message.Full ? 1UL : 0UL),
+            Eth73Rlp.EncodeList(ids));
     }
 
     protected override GetProofWrappersMessage Decode(ref Eth73RlpReader fields)
     {
         long requestId = ReadRequestId(ref fields);
+        ulong full = fields.ReadUInt64();
+        if (full > 1) throw new RlpException("The full flag must be 0 or 1");
         Eth73RlpReader list = fields.ReadList();
         int count = list.CountRemaining(Eth73Protocol.MaxWrappersPerRequest);
         if (count == 0) throw new RlpException("Empty wrapper request");
@@ -124,53 +133,38 @@ public sealed class GetProofWrappersMessageSerializer() : Eth73MessageSerializer
         for (int i = 0; i < count; i++)
             if (!distinct.Add(ids[i] = list.ReadHash())) throw new RlpException("Requested hashes are not distinct");
         list.End();
-        return new(requestId, ids);
+        return new(requestId, full == 1, ids);
     }
 }
 
 public sealed class ProofWrappersMessageSerializer() : Eth73MessageSerializer<ProofWrappersMessage>(Eth73Protocol.LocalMaxResponseBytes)
 {
     // A wrapper is spliced in as its own RLP item: exactly the bytes its hash covers.
-    public override byte[] Encode(ProofWrappersMessage message) =>
-        Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)message.RequestId), Eth73Rlp.EncodeList(message.Wrappers));
+    public override byte[] Encode(ProofWrappersMessage message)
+    {
+        byte[][] entries = new byte[message.Entries.Length][];
+        for (int i = 0; i < entries.Length; i++)
+            entries[i] = Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes(message.Entries[i].Hash.Bytes), message.Entries[i].Wrapper);
+        return Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)message.RequestId), Eth73Rlp.EncodeList(entries));
+    }
 
     protected override ProofWrappersMessage Decode(ref Eth73RlpReader fields)
     {
         long requestId = ReadRequestId(ref fields);
         Eth73RlpReader list = fields.ReadList();
         int count = list.CountRemaining(Eth73Protocol.MaxWrappersPerRequest);
-        byte[][] wrappers = new byte[count][];
+        ProofWrapperEntry[] entries = new ProofWrapperEntry[count];
         for (int i = 0; i < count; i++)
         {
-            ReadOnlySpan<byte> wrapper = list.ReadItem();
+            Eth73RlpReader entry = list.ReadList();
+            ValueHash256 hash = entry.ReadHash();
+            ReadOnlySpan<byte> wrapper = entry.ReadItem();
+            entry.End();
             if (wrapper[0] < 0xc0) throw new RlpException("A wrapper is an RLP list");
             if (wrapper.Length > Eth73Protocol.MaxWrapperBytes) throw new RlpException("Wrapper exceeds MAX_WRAPPER_BYTES");
-            wrappers[i] = wrapper.ToArray();
+            entries[i] = new(hash, wrapper.ToArray());
         }
         list.End();
-        return new(requestId, wrappers);
-    }
-}
-
-/// <summary>Splits a PooledTransactions (<c>0x0a</c>) response to an envelope-recovery request into its transaction items.</summary>
-/// <remarks>Each item is a transaction in its PooledTransactions form, which for a blob-carrying transaction includes the network
-/// wrapper; the requester decodes it and matches its transaction hash. At most <see cref="Eth73Protocol.MaxEnvelopesPerRequest"/>
-/// items are read, since no more are ever requested.</remarks>
-public static class PooledEnvelopes
-{
-    public static (long RequestId, byte[][] Items) Decode(ReadOnlySpan<byte> data)
-    {
-        Eth73RlpReader outer = new(data);
-        Eth73RlpReader fields = outer.ReadList();
-        outer.End();
-        ulong requestId = fields.ReadUInt64();
-        if (requestId > long.MaxValue) throw new RlpException("Request ID exceeds 63 bits");
-        Eth73RlpReader list = fields.ReadList();
-        int count = list.CountRemaining(Eth73Protocol.MaxEnvelopesPerRequest);
-        byte[][] items = new byte[count][];
-        for (int i = 0; i < count; i++) items[i] = list.ReadItem().ToArray();
-        list.End();
-        fields.End();
-        return ((long)requestId, items);
+        return new(requestId, entries);
     }
 }

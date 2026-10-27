@@ -142,7 +142,7 @@ namespace Nethermind.Network
         public static long ProofWrapperFetches { get; set; }
 
         [GaugeMetric]
-        [Description("Bytes charged to proof wrapper responses, received wrappers and recovered envelopes.")]
+        [Description("Bytes charged to outstanding proof wrapper responses and received wrappers awaiting validation.")]
         public static long ProofWrapperChargedBytes { get; set; }
     }
 }

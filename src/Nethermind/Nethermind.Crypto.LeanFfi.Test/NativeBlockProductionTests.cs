@@ -63,7 +63,7 @@ public class NativeBlockProductionTests
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([resolved]);
         MempoolWrapper wrapper = new()
         {
-            Transactions = [new WrapperTransaction(transaction)],
+            Transactions = [transaction],
             Deps = [resolved],
             Mode = mode,
             Proofs = mode == MempoolWrapper.ModeDirect ? [witness] : null,
@@ -72,8 +72,7 @@ public class NativeBlockProductionTests
                 : null
         };
         ProofWrapperAcceptance acceptance = await chain.Container.Resolve<ProofWrapperService>().AcceptDetailedAsync(
-            MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes,
-            new Dictionary<ValueHash256, Transaction> { [transaction.Hash!.ValueHash256] = transaction });
+            MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes);
         Assert.That(acceptance.Result.IsSuccess, Is.True, acceptance.Result.Error);
         using CancellationTokenSource provingBudget = new(TimeSpan.FromMinutes(3));
         if (mode == MempoolWrapper.ModeDirect)
@@ -106,7 +105,7 @@ public class NativeBlockProductionTests
         changed.Hash = changed.CalculateHash();
         MempoolWrapper changedWrapper = new()
         {
-            Transactions = [new WrapperTransaction(changed)],
+            Transactions = [changed],
             Deps = wrapper.Deps,
             Mode = wrapper.Mode,
             Proofs = wrapper.Proofs,

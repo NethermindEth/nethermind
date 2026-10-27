@@ -13,8 +13,8 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <remarks>
 /// <c>L = (head.timestamp - parent.timestamp) // (head.slot_number - parent.slot_number)</c>, integer division over the
 /// EIP-7843 slot numbers, is a local estimate for mempool validation only. Slot length is variable, so no configured slot length
-/// is used: a head and parent straddling a slot-length change can give a stale or averaged estimate, which the EIP-8437 fork
-/// grace window absorbs. Without a parent, or when slot numbers do not increase, the target fork is the head's fork; so too,
+/// is used: a head and parent straddling a slot-length change can give a stale or averaged estimate. Proof failures from peers
+/// never incur penalties under EIP-8437, so such a misestimate only discards wrappers. Without a parent, or when slot numbers do not increase, the target fork is the head's fork; so too,
 /// defensively, without slot numbers, which EIP-8288 never meets since it activates after EIP-7843.
 /// </remarks>
 public static class WrapperTargetFork

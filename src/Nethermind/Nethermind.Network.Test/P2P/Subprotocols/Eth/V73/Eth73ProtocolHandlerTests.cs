@@ -36,12 +36,11 @@ using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
 using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
-using PooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
 using PooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
 
-/// <summary>EIP-8437 envelope recovery and serving through the <c>eth/73</c> handler's GetPooledTransactions path.</summary>
+/// <summary>EIP-8437 wrapper exchange and transaction-message rules through the <c>eth/73</c> handler.</summary>
 public class Eth73ProtocolHandlerTests
 {
     private WrapperTestNode _node = null!;
@@ -108,66 +107,56 @@ public class Eth73ProtocolHandlerTests
 
     private T[] Delivered<T>() { lock (_delivered) return [.. _delivered.OfType<T>()]; }
 
+    // EIP-8437: GetPooledTransactions treats dependency-bearing transactions as unavailable on every eth version, eth/73
+    // included; other pooled transactions are served as usual.
     [Test]
-    public void Dependency_bearing_envelopes_are_served_from_the_pool_and_the_wrapper_envelope_cache()
+    public void Dependency_bearing_transactions_are_unavailable_through_get_pooled_transactions()
     {
-        Transaction cached = FrameTransaction(1), pooled = FrameTransaction(2);
-        _node.Pending.Add(cached);
-        Assert.That(_node.Transport.PublishWrapper(Wrapper(64, cached)), Is.True);
-        _node.Pending.Clear();
-        _node.Pool.TryGetPendingTransactionWithoutBlobs(pooled.Hash!, out Arg.Any<Transaction?>())
-            .Returns(call => { call[1] = pooled; return true; });
+        Transaction dependent = FrameTransaction(1);
+        Transaction plain = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().TestObject;
+        foreach (Transaction transaction in new[] { dependent, plain })
+            _node.Pool.TryGetPendingTransactionWithoutBlobs(transaction.Hash!, out Arg.Any<Transaction?>())
+                .Returns(call => { call[1] = transaction; return true; });
 
-        using GetPooledTransactionsMessage66 request = new(new ArrayPoolList<ValueHash256>(3) { cached.Hash!.ValueHash256, TestItem.KeccakA.ValueHash256, pooled.Hash!.ValueHash256 });
+        using GetPooledTransactionsMessage66 request = new(new ArrayPoolList<ValueHash256>(2) { dependent.Hash!.ValueHash256, plain.Hash!.ValueHash256 });
         Handle(request, Eth66MessageCode.GetPooledTransactions);
 
         PooledTransactionsMessage66 response = Delivered<PooledTransactionsMessage66>().Single();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(response.RequestId, Is.EqualTo(request.RequestId));
-            Assert.That(response.EthMessage.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { cached.Hash, pooled.Hash }),
-                "served in request order, the unknown hash omitted");
-        }
+        Assert.That(response.EthMessage.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { plain.Hash }));
     }
 
     [Test]
-    public async Task Envelope_recovery_round_trips_through_get_pooled_transactions()
+    public async Task Wrapper_retrieval_round_trips_without_envelope_requests()
     {
         Transaction transaction = FrameTransaction(1);
         byte[] wrapper = Wrapper(64, transaction);
         using NewProofWrapperHashesMessage announce = new([Describe(wrapper)]);
         Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
         GetProofWrappersMessage wrapperRequest = Delivered<GetProofWrappersMessage>().Single();
-        using ProofWrappersMessage wrapperResponse = new(wrapperRequest.RequestId, [wrapper]);
+        Assert.That(wrapperRequest.Full, Is.True);
+        using ProofWrappersMessage wrapperResponse = new(wrapperRequest.RequestId, [Entry(wrapper)]);
         Handle(wrapperResponse, Eth73MessageCode.ProofWrappers);
 
-        await WrapperTestNode.Until(() => Delivered<GetPooledTransactionsMessage66>().Length == 1);
-        GetPooledTransactionsMessage66 envelopeRequest = Delivered<GetPooledTransactionsMessage66>().Single();
-        Assert.That(envelopeRequest.EthMessage.Hashes.AsSpan().ToArray(), Is.EqualTo(new[] { transaction.Hash!.ValueHash256 }));
-
-        // An uncorrelated response stays with the eth/72 handling, which ignores it.
-        using PooledTransactionsMessage66 stray = new(envelopeRequest.RequestId + 1, new PooledTransactionsMessage65(new ArrayPoolList<Transaction>(1) { transaction }));
-        Handle(stray, Eth66MessageCode.PooledTransactions);
-        Assert.That(_node.Pending, Is.Empty);
-
-        using PooledTransactionsMessage66 response = new(envelopeRequest.RequestId, new PooledTransactionsMessage65(new ArrayPoolList<Transaction>(1) { transaction }));
-        Handle(response, Eth66MessageCode.PooledTransactions);
         await WrapperTestNode.Until(() => _node.Transport.IsStored(Describe(wrapper).Hash) && _node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { transaction.Hash }));
+            Assert.That(Delivered<GetPooledTransactionsMessage66>(), Is.Empty);
             _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
     }
 
-    // EIP-8437: on eth/73 pooled dependency-bearing transactions propagate through Transactions and NewPooledTransactionHashes.
+    // EIP-8437: dependency-bearing transactions never appear in Transactions or NewPooledTransactionHashes, eth/73 included.
     [Test]
-    public void Dependency_bearing_transactions_propagate_on_eth73()
+    public void Dependency_bearing_transactions_do_not_propagate_on_eth73([Values] bool sendFullTx)
     {
         Transaction transaction = FrameTransaction(1);
-        _handler.SendNewTransactions([transaction], sendFullTx: true);
-        Assert.That(Delivered<TransactionsMessage>().SelectMany(static m => m.Transactions).Select(static t => t.Hash),
-            Is.EqualTo(new[] { transaction.Hash }));
+        _handler.SendNewTransactions([transaction], sendFullTx);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Delivered<TransactionsMessage>(), Is.Empty);
+            Assert.That(Delivered<NewPooledTransactionHashesMessage72>(), Is.Empty);
+        }
     }
 
     private void EnableFrameTransactions()
@@ -177,9 +166,9 @@ public class Eth73ProtocolHandlerTests
         _specProvider.GetCurrentHeadSpec().Returns(spec);
     }
 
-    // A pushed dependency-bearing envelope is retained for a covering wrapper and not admitted on its own.
+    // A pushed dependency-bearing transaction is ignored: only a proof wrapper carries it.
     [Test]
-    public void Pushed_dependency_bearing_envelopes_are_retained_not_admitted()
+    public void Pushed_dependency_bearing_transactions_are_ignored()
     {
         EnableFrameTransactions();
         Transaction transaction = FrameTransaction(1);
@@ -187,37 +176,26 @@ public class Eth73ProtocolHandlerTests
         Handle(message, Eth62MessageCode.Transactions);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_node.Transport.IsRetained(transaction.Hash!.ValueHash256), Is.True);
             _node.Pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
     }
 
-    // EIP-8437 / EIP-5793: a recovered envelope is checked against the type and size the serving peer announced for it.
+    // EIP-8437: until EIP-8288 is enabled for local mempool validation, received wrapper messages are ignored without
+    // penalties, malformed ones included, and none is sent.
     [Test]
-    public async Task Recovered_envelope_disagreeing_with_its_announced_size_disconnects_the_peer()
+    public void Wrapper_messages_are_ignored_without_penalty_while_eip8288_is_inactive()
     {
-        EnableFrameTransactions();
-        _node.Pool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
-            .Returns(AnnounceResult.RequestRequired);
-        Transaction transaction = FrameTransaction(1);
-        using NewPooledTransactionHashesMessage72 hashes = new([(byte)transaction.Type], [transaction.GetLength() + 1],
-            [transaction.Hash!.ValueHash256], BlobCellMask.Empty.ToBytes());
-        Handle(hashes, Eth72MessageCode.NewPooledTransactionHashes);
-        Assert.That(Delivered<GetPooledTransactionsMessage66>(), Has.Length.EqualTo(1), "the announcement is fetched as usual");
-        byte[] wrapper = Wrapper(64, transaction);
-        using NewProofWrapperHashesMessage announce = new([Describe(wrapper)]);
+        _node.Tree.Head.Returns((Block?)null);
+        using NewProofWrapperHashesMessage announce = new([Describe(Wrapper(64, FrameTransaction(1)))]);
         Handle(announce, Eth73MessageCode.NewProofWrapperHashes);
-        using ProofWrappersMessage wrapperResponse = new(Delivered<GetProofWrappersMessage>().Single().RequestId, [wrapper]);
-        Handle(wrapperResponse, Eth73MessageCode.ProofWrappers);
-        await WrapperTestNode.Until(() => Delivered<GetPooledTransactionsMessage66>().Length == 2);
-        GetPooledTransactionsMessage66 envelopeRequest = Delivered<GetPooledTransactionsMessage66>()[^1];
-        using PooledTransactionsMessage66 response = new(envelopeRequest.RequestId, new PooledTransactionsMessage65(new ArrayPoolList<Transaction>(1) { transaction }));
-        Handle(response, Eth66MessageCode.PooledTransactions);
-        await WrapperTestNode.Until(() => _node.Transport.FetchCount == 0);
+        using GetProofWrappersMessage request = new(1, true, [TestItem.KeccakA.ValueHash256]);
+        Handle(request, Eth73MessageCode.GetProofWrappers);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_node.Transport.IsStored(Describe(wrapper).Hash), Is.False);
-            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Is<string>(r => r.Contains("announced transaction type or size")));
+            Assert.That(Delivered<GetProofWrappersMessage>(), Is.Empty);
+            Assert.That(Delivered<ProofWrappersMessage>(), Is.Empty);
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
     }
 }
