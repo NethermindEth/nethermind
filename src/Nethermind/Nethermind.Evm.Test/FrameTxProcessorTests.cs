@@ -3663,11 +3663,12 @@ public partial class FrameTxProcessorTests
     /// transaction's sig hash, as the default code requires.
     /// </summary>
     /// <remarks>
-    /// compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided), so the entry
-    /// being replaced must already be present, of the same scheme and signer, when the hash is computed.
+    /// compute_sig_hash commits to the signature entries (bytes of empty-msg entries replaced by their length), so
+    /// a placeholder of the final scheme, signer and length is installed at <paramref name="index"/> before hashing.
     /// </remarks>
     private static void SignCanonicalHash(Transaction tx, int index, PrivateKey key, Address? signer)
     {
+        tx.FrameSignatures![index] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = new Ecdsa().Sign(key, in sigHash);
         byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];

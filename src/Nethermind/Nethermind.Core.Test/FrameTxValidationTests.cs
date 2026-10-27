@@ -659,4 +659,29 @@ public class FrameTxValidationTests
             Assert.That(estimated, Is.GreaterThan(original));
         }
     }
+
+    [TestCase(0, true)]
+    [TestCase(32, false)]
+    public void TryCalculateGasBudget_CanonicalHashSignatureBytesPricedByLengthOnly(int msgLength, bool samePrice)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        spec.IsEip7976Enabled.Returns(true);
+        byte[] msg = new byte[msgLength];
+        byte[] ones = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        Array.Fill(ones, (byte)0xff);
+        Transaction zeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, new byte[TxFrameSignature.Secp256k1SignatureLength])]);
+        Transaction nonZeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, ones)]);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(zerosIntrinsic == nonZerosIntrinsic, Is.EqualTo(samePrice));
+            Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
+        }
+    }
 }

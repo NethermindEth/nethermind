@@ -281,8 +281,7 @@ public class FrameTxSignatureValidatorTests
         byte[] qy = Pad32(pub.Q.Y!);
         Address signer = new(Keccak.Compute([.. qx, .. qy]).Bytes[12..]);
 
-        // Install the placeholder (scheme/signer/msg) so the sig hash is fixed before signing.
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, new byte[TxFrameSignature.P256SignatureLength])];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
 
         byte[] raw = new byte[TxFrameSignature.P256SignatureLength];
@@ -346,7 +345,7 @@ public class FrameTxSignatureValidatorTests
         TxFrameSignature invalid = new(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[65]);
         tx.FrameSignatures =
         [
-            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, default),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.PrivateKeyB.Address, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
             invalid,
         ];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
@@ -482,9 +481,7 @@ public class FrameTxSignatureValidatorTests
 
     private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
     {
-        // compute_sig_hash covers scheme/signer/msg and elides only the raw bytes, so the entry must be
-        // installed before hashing.
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = _ecdsa.Sign(key, in sigHash);
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, ToVrs(signature));
