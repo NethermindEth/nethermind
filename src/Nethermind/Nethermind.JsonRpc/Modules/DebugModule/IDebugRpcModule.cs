@@ -113,7 +113,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get Raw Header format.")]
     ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "Get Raw Transaction format.", ResultCanBeNull = true)]
+    [JsonRpcMethod(Description = "Get Raw Transaction format.")]
     ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]

@@ -733,7 +733,7 @@ namespace Nethermind.Facade
             return filter.Id;
         }
 
-        public void UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
+        public bool UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
         public ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId) => filterManager.PollLogs(filterId);
         public ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId) => filterManager.PollBlockHashes(filterId);
 
@@ -989,10 +989,7 @@ namespace Nethermind.Facade
             {
                 try
                 {
-                    IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
-                    IWorldState worldState = scope.Component.WorldState;
-                    worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec);
-                    worldState.Commit(spec, commitRoots: false);
+                    scope.Component.WorldState.ApplyStateOverrides(codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number, merkleize: false);
                 }
                 catch
                 {
