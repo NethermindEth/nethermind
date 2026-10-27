@@ -831,6 +831,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
+            // The mask runs in a handler of its own, which needs a frame: a PUSH1 1 before anything else keeps none.
+            byte following = Unsafe.Add(ref ip, 2);
+            nint next = following == (byte)Instruction.PUSH1 && Unsafe.Add(ref ip, 3) == 1
+                ? Entry(&ExecutePush1OneMask)
+                : Unsafe.Add(ref AlignedTable(handlers)[following], -FollowerHandlersLength);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary><see cref="ExecutePush1OneByFollower"/> where another PUSH1 1 follows: the low-bits mask when the rest of its sequence does.</summary>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static EvmExceptionType ExecutePush1OneMask(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
             ref byte opcode = ref ip;
             byte following = Unsafe.Add(ref opcode, 2);
             if (following == (byte)Instruction.PUSH1 && Unsafe.Add(ref opcode, 3) == 1 && Unsafe.Add(ref opcode, 4) == (byte)Instruction.PUSH1 &&
