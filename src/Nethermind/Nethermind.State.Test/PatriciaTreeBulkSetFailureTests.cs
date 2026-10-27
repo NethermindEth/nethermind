@@ -69,7 +69,8 @@ public class PatriciaTreeBulkSetFailureTests
         Thread worker = new(() =>
         {
             foreach (IThreadPoolWorkItem runner in runners.GetConsumingEnumerable()) runner.Execute();
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         worker.Start();
 
         (Exception? failure, Exception? laterFailure, Hash256 actual) = OnNewThread(() =>
