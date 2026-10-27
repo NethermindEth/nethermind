@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 public sealed record InclusionListProof(byte[] StarkProof, IReadOnlyList<FrameDependency> ProofDeps, ValueHash256 DepsHash, bool HasWideScheme = false)
 {
     public InclusionListProof(byte[] starkProof, IReadOnlyList<FrameDependency> proofDeps)
-        : this(starkProof, proofDeps, Blake2s.Compute(Eip8288Dependencies.Serialize(proofDeps))) { }
+        : this(starkProof, proofDeps, Eip8288Dependencies.ComputeListDepsHash(proofDeps)) { }
 }
 
 /// <summary>The answer of <c>engine_verifyInclusionListProofV1</c> and <c>engine_submitInclusionListProofV1</c>.</summary>

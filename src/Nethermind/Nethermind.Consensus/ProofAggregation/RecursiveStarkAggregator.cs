@@ -14,7 +14,7 @@ public static class RecursiveStarkAggregator
 {
     /// <summary>Target serialized-witness size for each direct proving batch, in bytes.</summary>
     public const long MaxProductionWitnessBytes = 4 * 1024 * 1024;
-    // The pinned prototype guest folds two recursive inputs per step and discards at most MaxProofDependencies per step, while
+    // The pinned guest folds two recursive inputs per step and discards at most MaxProofDependencies per step, while
     // EIP-8288 bounds discards by the sum of a step's input dependency lists. Wider sets, such as the running wrapper aggregate
     // with every inclusion-list proof, fold over bounded steps of a binary tree, pruning each child separately; only the slot
     // deadline bounds the rounds.
@@ -36,20 +36,15 @@ public static class RecursiveStarkAggregator
     // Relative native proving costs measured on a two-core devnet node: folding one leanSPHINCS signature into a leaf
     // costs about 2.2 s and each recursive merge of two proofs about 20 s, so a merge costs about nine signatures.
     private const int SignatureCost = 1;
-    private const int GenericLeafCost = 2;
     private const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
-    /// <remarks>Signatures fold four to a leaf, each generic proof is its own leaf, and every node beyond the first
-    /// needs one recursive merge; a recursive child losing dependencies needs a call of its own unless the whole input
+    /// <remarks>Signatures fold four to a leaf, and every node beyond the first needs one recursive merge; a recursive child losing dependencies needs a call of its own unless the whole input
     /// fits one. The estimate only ranks alternative inputs for the same statement.</remarks>
     public static long EstimatedCost(AggregationInput input)
     {
-        int signatures = 0, generics = 0;
-        foreach (FrameDependency dependency in input.Deps)
-            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generics++;
-            else signatures++;
-        long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + generics + input.RecursiveProofs.Count;
+        int signatures = input.Deps.Count;
+        long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + input.RecursiveProofs.Count;
         long calls = Math.Max(0, nodes - 1);
         if (input.Discards.Count != 0)
         {
@@ -66,7 +61,7 @@ public static class RecursiveStarkAggregator
                         }
             }
         }
-        return (long)signatures * SignatureCost + (long)generics * GenericLeafCost + calls * MergeCost;
+        return (long)signatures * SignatureCost + calls * MergeCost;
     }
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
@@ -222,12 +217,8 @@ public static class RecursiveStarkAggregator
                 if (recursiveCoverage.Contains(dependency))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    bool valid = dependency.Scheme switch
-                    {
-                        Eip8288Constants.LeanSphincsScheme => verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
-                        Eip8288Constants.LeanStarkScheme => verifier.VerifyLeanStark(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span),
-                        _ => false
-                    };
+                    bool valid = dependency.Scheme == Eip8288Constants.LeanSphincsScheme
+                        && verifier.VerifyLeanSphincs(dependency.DataHash, dependency.VerificationKey, input.Witnesses[offset].Span);
                     if (!valid) throw new InvalidOperationException("Invalid direct dependency witness.");
                     cancellationToken.ThrowIfCancellationRequested();
                     offset++;

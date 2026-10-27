@@ -13,7 +13,6 @@ internal sealed class LeanProofBudget
     private readonly HashSet<FrameDependency> _required = [];
     private readonly HashSet<FrameDependency> _coverage = [];
     private readonly HashSet<ValueHash256> _parents = [];
-    private int _genericProofs;
     private AggregationInput? _inclusionListInput;
     private HashSet<FrameDependency>? _inclusionListCoverage;
 
@@ -47,7 +46,7 @@ internal sealed class LeanProofBudget
     {
         contribution = new();
         error = null;
-        error = LeanProofCapacity.CapacityError(_required, _genericProofs, required);
+        error = LeanProofCapacity.CapacityError(_required, required);
         if (error is not null) return false;
         HashSet<FrameDependency> addedCoverage = [];
         List<RecursiveProofInput> parents = [];
@@ -78,7 +77,7 @@ internal sealed class LeanProofBudget
     public void Commit(AggregationInput contribution, IReadOnlyList<FrameDependency> required)
     {
         foreach (FrameDependency dependency in required)
-            if (_required.Add(dependency) && dependency.Scheme == Eip8288Constants.LeanStarkScheme) _genericProofs++;
+            _required.Add(dependency);
         for (int i = 0; i < contribution.Deps.Count; i++) _coverage.Add(contribution.Deps[i]);
         foreach (RecursiveProofInput parent in contribution.RecursiveProofs)
         {
@@ -91,7 +90,6 @@ internal sealed class LeanProofBudget
     {
         LeanProofBudget clone = new()
         {
-            _genericProofs = _genericProofs,
             _inclusionListInput = _inclusionListInput,
             _inclusionListCoverage = _inclusionListCoverage
         };

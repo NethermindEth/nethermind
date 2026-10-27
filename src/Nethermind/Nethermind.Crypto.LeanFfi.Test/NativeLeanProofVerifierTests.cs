@@ -21,11 +21,11 @@ public class NativeLeanProofVerifierTests
 
     private static byte[] CreateMixedProof()
     {
-        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([Dependency("sphincs"), Dependency("stark")]);
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([Dependency("sphincs"), Dependency("second")]);
         AggregationInput input = new()
         {
             Deps = dependencies,
-            Witnesses = [Witness("sphincs"), Witness("stark")]
+            Witnesses = [Witness("sphincs"), Witness("second")]
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
         byte[] proof = RecursiveStarkAggregator.Prove(input, Native, Eip8288Verifier.Pinned, in hash);
@@ -35,38 +35,38 @@ public class NativeLeanProofVerifierTests
     }
 
     internal static byte[] Fixture(string name) => File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.TestDirectory, "lean-vectors", name + ".bin"));
-    internal static FrameDependency Dependency(string scheme) => new(scheme == "sphincs" ? Eip8288Constants.LeanSphincsScheme : Eip8288Constants.LeanStarkScheme,
-        new ValueHash256(Fixture(scheme + "-message")), new ValueHash256(Fixture(scheme + "-key")));
-    internal static byte[] Witness(string scheme) => Fixture(scheme == "sphincs" ? "sphincs-signature" : "stark-proof");
+    /// <summary>A leanSPHINCS claim: <c>"sphincs"</c>, or <c>"second"</c>, the first distinct-key fixture entry.</summary>
+    internal static FrameDependency Dependency(string name) => name == "sphincs"
+        ? new(Eip8288Constants.LeanSphincsScheme, new ValueHash256(Fixture("sphincs-message")), new ValueHash256(Fixture("sphincs-key")))
+        : new(Eip8288Constants.LeanSphincsScheme, new ValueHash256(Fixture("sphincs-multi-keys").AsSpan(0, 32)),
+            new ValueHash256(Fixture("sphincs-multi-keys").AsSpan(32, 32)));
+    internal static byte[] Witness(string name) => name == "sphincs"
+        ? Fixture("sphincs-signature")
+        : Fixture("sphincs-multi-keys").AsSpan(32, Eip8288Constants.LeanSphincsWitnessBytes).ToArray();
 
     [OneTimeSetUp]
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(7u));
+        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(8u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
 
     [TestCase("sphincs")]
-    [TestCase("stark")]
-    public void Real_witness_binds_message_key_and_proof(string scheme)
+    [TestCase("second")]
+    public void Real_witness_binds_message_key_and_proof(string name)
     {
-        FrameDependency dep = Dependency(scheme);
-        byte[] witness = Witness(scheme);
-        bool Verify(ValueHash256 message, ValueHash256 key, byte[] proof) => scheme == "sphincs"
-            ? Native.VerifyLeanSphincs(message, key, proof)
-            : Native.VerifyLeanStark(message, key, proof);
+        FrameDependency dep = Dependency(name);
+        byte[] witness = Witness(name);
+        static bool Verify(ValueHash256 message, ValueHash256 key, byte[] proof) => Native.VerifyLeanSphincs(message, key, proof);
         Assert.That(Verify(dep.DataHash, dep.VerificationKey, witness), Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Verify(default, dep.VerificationKey, witness), Is.False);
             Assert.That(Verify(dep.DataHash, default, witness), Is.False);
-            if (scheme == "sphincs")
-            {
-                // EIP-8288: the leanSPHINCS verification key is the 32-byte public key itself, not its hash.
-                Assert.That(dep.VerificationKey, Is.EqualTo(new ValueHash256(witness.AsSpan(0, 32))));
-                Assert.That(Verify(dep.DataHash, ValueKeccak.Compute(witness.AsSpan(0, 32)), witness), Is.False);
-            }
+            // EIP-8288: the leanSPHINCS verification key is the 32-byte public key itself, not its hash.
+            Assert.That(dep.VerificationKey, Is.EqualTo(new ValueHash256(witness.AsSpan(0, 32))));
+            Assert.That(Verify(dep.DataHash, ValueKeccak.Compute(witness.AsSpan(0, 32)), witness), Is.False);
             Assert.That(Verify(dep.DataHash, dep.VerificationKey, []), Is.False);
             Assert.That(Verify(dep.DataHash, dep.VerificationKey, witness[..^1]), Is.False);
         }
@@ -120,66 +120,76 @@ public class NativeLeanProofVerifierTests
         Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [.. Enumerable.Repeat(child, 15)] }));
     }
 
+    // get_deps_hash omits the scheme, so the backend admits leanSPHINCS only: a reserved leanSTARK claim cannot be proven.
     [Test]
-    public void Mixed_recursive_proof_verifies_generic_leaf_then_union_and_discard()
+    public void Reserved_leanstark_claim_is_rejected_by_the_backend()
     {
         FrameDependency sphincs = Dependency("sphincs");
-        FrameDependency stark = Dependency("stark");
-        ValueHash256 genericHash = Eip8288Dependencies.ComputeDepsHash([stark]);
-        byte[] genericLeaf = Native.ProveRecursiveStark(genericHash, Eip8288Constants.AggregatedVk,
-            new() { Deps = [stark], Witnesses = [Witness("stark")] });
-        Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, genericLeaf), Is.True);
-        AssertBareStarkProof(genericLeaf, [stark]);
+        FrameDependency reserved = new(Eip8288Constants.LeanStarkScheme, sphincs.DataHash, sphincs.VerificationKey);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([reserved]);
+        Assert.That(hash, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([sphincs])));
+        Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
+            new() { Deps = [reserved], Witnesses = [Witness("sphincs")] }));
+    }
+
+    [Test]
+    public void Recursive_proof_verifies_leaf_then_union_and_discard()
+    {
+        FrameDependency sphincs = Dependency("sphincs");
+        FrameDependency second = Dependency("second");
+        ValueHash256 secondHash = Eip8288Dependencies.ComputeDepsHash([second]);
+        byte[] secondLeaf = Native.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk,
+            new() { Deps = [second], Witnesses = [Witness("second")] });
+        Assert.That(Native.VerifyRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, secondLeaf), Is.True);
+        AssertBareStarkProof(secondLeaf, [second]);
         AggregationInput mixedInput = new()
         {
             Deps = [sphincs],
             Witnesses = [Witness("sphincs")],
-            RecursiveProofs = [new RecursiveProofInput([stark], genericLeaf)]
+            RecursiveProofs = [new RecursiveProofInput([second], secondLeaf)]
         };
-        ValueHash256 mixedHash = Eip8288Dependencies.ComputeDepsHash([stark, sphincs]);
+        ValueHash256 mixedHash = Eip8288Dependencies.ComputeDepsHash([second, sphincs]);
         byte[] mixed = Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixedInput);
         Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.True);
-        AssertBareStarkProof(mixed, [stark, sphincs]);
-        byte[] selected = Native.ProveRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, new()
+        AssertBareStarkProof(mixed, [second, sphincs]);
+        byte[] selected = Native.ProveRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, new()
         {
-            RecursiveProofs = [new([stark, sphincs], mixed)],
+            RecursiveProofs = [new([second, sphincs], mixed)],
             Discards = [sphincs]
         });
-        Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, selected), Is.True);
-        AssertBareStarkProof(selected, [stark]);
+        Assert.That(Native.VerifyRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, selected), Is.True);
+        AssertBareStarkProof(selected, [second]);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, selected), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(secondHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
             Assert.That(Native.VerifyRecursiveStark(mixedHash, new byte[32], mixed), Is.False);
             Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, [.. mixed, 0]), Is.False);
             Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed[..^1]), Is.False);
         }
-        AggregationInput missing = new() { RecursiveProofs = [new([stark, sphincs], genericLeaf)] };
+        AggregationInput missing = new() { RecursiveProofs = [new([second, sphincs], secondLeaf)] };
         Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, missing));
         mixed[^1] ^= 1;
         Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
     }
 
     [Test]
-    public void Empty_dependency_set_has_an_empty_proof_and_rejects_old_envelopes()
+    public void Empty_dependency_set_has_an_empty_proof_and_rejects_any_other()
     {
         ValueHash256 emptyHash = Eip8288Dependencies.ComputeDepsHash([]);
         byte[] empty = Native.ProveRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, new());
-        byte[] oldEnvelope = [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0];
+        byte[] nonEmpty = new byte[12];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(empty, Is.Empty);
             Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, empty), Is.True);
-            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, oldEnvelope), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, oldEnvelope), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk,
-                [(byte)'N', (byte)'L', (byte)'R', (byte)'2', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), Is.False);
+            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, nonEmpty), Is.False);
+            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, nonEmpty), Is.False);
         }
     }
 
     [TestCase("sphincs")]
-    [TestCase("stark")]
+    [TestCase("second")]
     public void Invalid_raw_witness_cannot_be_hidden_by_a_valid_recursive_parent(string scheme)
     {
         FrameDependency dependency = Dependency(scheme);
@@ -204,7 +214,6 @@ public class NativeLeanProofVerifierTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof.Length, Is.InRange(1, Eip8288Constants.MaxMixedGuestProofBytes));
-            Assert.That(proof.AsSpan().StartsWith("NLR"u8), Is.False);
             for (int offset = 0; offset < triples.Length; offset += Eip8288Constants.DependencyTripleLength)
                 Assert.That(proof.AsSpan().IndexOf(triples.AsSpan(offset + 32, 64)), Is.EqualTo(-1));
         }
@@ -214,12 +223,12 @@ public class NativeLeanProofVerifierTests
     public void Discarding_claims_cannot_add_unproved_dependencies()
     {
         FrameDependency sphincs = Dependency("sphincs");
-        FrameDependency stark = Dependency("stark");
-        AggregationInput input = new() { Deps = [sphincs, stark, sphincs], Witnesses = [Witness("sphincs"), Witness("stark"), Witness("sphincs")], Discards = [sphincs] };
-        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([stark]);
+        FrameDependency second = Dependency("second");
+        AggregationInput input = new() { Deps = [sphincs, second, sphincs], Witnesses = [Witness("sphincs"), Witness("second"), Witness("sphincs")], Discards = [sphincs] };
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([second]);
         byte[] proof = Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input);
         Assert.That(Native.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
-        ValueHash256 invented = Eip8288Dependencies.ComputeDepsHash([sphincs, stark]);
+        ValueHash256 invented = Eip8288Dependencies.ComputeDepsHash([sphincs, second]);
         Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(invented, Eip8288Constants.AggregatedVk, input));
     }
 }

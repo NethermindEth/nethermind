@@ -167,16 +167,14 @@ public class InclusionListValidatorTests
 
     // EIP-8288: omission is permitted only when EIP-7805 excuses it. No block dependency count or weighted budget, local proof
     // envelope or wrapper limit is an omission ground, however large the block's dependency union already is.
-    [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Full proof envelope is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, 0, Eip8288Constants.LeanSphincsScheme, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
-    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, 0, Eip8288Constants.LeanSphincsScheme, true, TestName = "Dependency already in a large block")]
-    [TestCase(256, 256, Eip8288Constants.LeanStarkScheme, false, TestName = "Many leanSTARKs are no omission ground for another")]
-    [TestCase(256, 256, Eip8288Constants.LeanSphincsScheme, false, TestName = "Many leanSTARKs are no omission ground for a leanSPHINCS")]
-    public void No_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
+    [TestCase(Eip8288Constants.MaxProofDependencies, false, TestName = "Full proof envelope is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, false, TestName = "Aggregate wrapper ceiling is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerAggregateWrapper, true, TestName = "Dependency already in a large block")]
+    public void No_dependency_capacity_excuses_an_omission(int blockDependencies, bool present)
     {
         FrameDependency[] blockDeps = new FrameDependency[blockDependencies];
         for (int i = 0; i < blockDependencies; i++)
-            blockDeps[i] = new(i < blockLeanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+            blockDeps[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
         Transaction blockTx = new()
         {
             Type = TxType.FrameTx,
@@ -187,11 +185,11 @@ public class InclusionListValidatorTests
         };
         blockTx.Hash = blockTx.CalculateHash();
 
-        FrameDependency dependency = present ? blockDeps[^1] : new(scheme, ValueKeccak.Compute("omitted"), default);
+        FrameDependency dependency = present ? blockDeps[^1] : new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("omitted"), default);
         Transaction entry = BuildFrameTx();
         entry.GasLimit = 1_000_000;
         entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
-            dependency.Scheme == Eip8288Constants.LeanStarkScheme ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas,
+            Eip8288Constants.LeanSphincsVerificationGas,
             UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
         entry.Hash = entry.CalculateHash();
 

@@ -53,7 +53,7 @@ public sealed class InclusionListProofV1
             wideScheme |= !dependency.AsSpan(0, 31).IsZero();
             dependency.CopyTo(concatenated, i * Eip8288Constants.DependencyTripleLength);
         }
-        ilProof = new InclusionListProof(StarkProof, Eip8288Dependencies.Parse(concatenated), Blake2s.Compute(concatenated), wideScheme);
+        ilProof = new InclusionListProof(StarkProof, Eip8288Dependencies.Parse(concatenated), Eip8288Dependencies.ComputeListDepsHash(concatenated), wideScheme);
         return null;
     }
 

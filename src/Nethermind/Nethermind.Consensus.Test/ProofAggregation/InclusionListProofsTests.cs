@@ -155,7 +155,7 @@ public class InclusionListProofsTests
     public void Commitment_verification(string scenario, InclusionListProofStatus expected, string? expectedError, int verifications)
     {
         Node node = new(scenario is not ("il-proof-fails" or "known-invalid" or "known-invalid-with-il-proof"));
-        Transaction covered = ValidDependencyFrame(default, Eip8288Constants.LeanStarkScheme);
+        Transaction covered = ValidDependencyFrame(default);
         Transaction malformed = Malformed();
         Transaction[] transactions = scenario switch
         {

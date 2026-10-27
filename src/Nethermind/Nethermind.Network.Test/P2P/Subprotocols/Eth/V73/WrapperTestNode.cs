@@ -33,7 +33,6 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     public int Calls => Volatile.Read(ref _calls);
     public void EnsureAvailable() { }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
-    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
     /// <summary>When set, recursive STARK checks throw this instead of returning a verdict.</summary>
     public Exception? Throws { get; set; }

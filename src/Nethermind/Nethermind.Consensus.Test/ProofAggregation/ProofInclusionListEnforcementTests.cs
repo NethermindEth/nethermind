@@ -30,7 +30,7 @@ public class ProofInclusionListEnforcementTests
 {
     [TestCase("valid", false)]
     [TestCase("bounded-proof", false)]
-    // EIP-8288 has no block dependency quota: a block already holding 256 leanSTARKs excuses no omission.
+    // EIP-8288 has no block dependency quota: a block already holding 256 dependencies excuses no omission.
     [TestCase("generic-many", false)]
     [TestCase("generic-space", false)]
     [TestCase("generic-compressed-union", false)]
@@ -84,19 +84,19 @@ public class ProofInclusionListEnforcementTests
 
         byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
         bool generic = scenario == "bounded-proof" || scenario.StartsWith("generic-", System.StringComparison.Ordinal);
-        dependency[31] = generic ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
+        dependency[31] = Eip8288Constants.LeanSphincsScheme;
         if (generic) dependency[32] = 255;
         bool coveredAndNew = scenario == "generic-covered-and-new";
         if (coveredAndNew)
         {
             dependency = new byte[2 * Eip8288Constants.DependencyTripleLength];
             dependency[31] = Eip8288Constants.LeanSphincsScheme;
-            dependency[Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanStarkScheme;
+            dependency[Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
             dependency[Eip8288Constants.DependencyTripleLength + 32] = 255;
         }
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-            new(FrameMode.DepVerify, FrameFlags.None, null, coveredAndNew ? Eip8288Constants.LeanStarkVerificationGas + Eip8288Constants.LeanSphincsVerificationGas
-                : generic ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency)];
+            new(FrameMode.DepVerify, FrameFlags.None, null, coveredAndNew ? 2 * Eip8288Constants.LeanSphincsVerificationGas
+                : Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency)];
         if (mixed) frames = [.. frames, new(FrameMode.Assert, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
         Transaction transaction = new()
         {
@@ -130,7 +130,7 @@ public class ProofInclusionListEnforcementTests
             byte[] existing = new byte[count * Eip8288Constants.DependencyTripleLength];
             for (int i = 0; i < count; i++)
             {
-                existing[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanStarkScheme;
+                existing[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
                 existing[i * Eip8288Constants.DependencyTripleLength + 32] = (byte)(i % 255);
                 existing[i * Eip8288Constants.DependencyTripleLength + 33] = (byte)(i / 255);
             }
@@ -138,7 +138,7 @@ public class ProofInclusionListEnforcementTests
             Transaction includedGeneric = new()
             {
                 Type = TxType.FrameTx,
-                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, existing)]
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, existing)]
             };
             block = block.WithReplacedBody(new([includedGeneric], block.Uncles, block.Withdrawals));
             List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric, FrameTxSigHash.ComputeValue);
@@ -165,9 +165,9 @@ public class ProofInclusionListEnforcementTests
             || scenario.StartsWith("mixed-uncovered", System.StringComparison.Ordinal))
         {
             byte[] extra = new byte[Eip8288Constants.DependencyTripleLength];
-            extra[31] = Eip8288Constants.LeanStarkScheme;
+            extra[31] = Eip8288Constants.LeanSphincsScheme;
             TxFrame[] extraFrames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-                new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, extra)];
+                new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, extra)];
             Transaction bad = new()
             {
                 Type = TxType.FrameTx,
