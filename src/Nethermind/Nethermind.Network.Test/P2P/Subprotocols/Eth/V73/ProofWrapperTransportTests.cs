@@ -421,7 +421,7 @@ public class ProofWrapperTransportTests
         node.Tick(WrapperTransportLimits.Tick);
     }
 
-    // EIP-8437 / EIP-8288 upgrade rule: once the target fork's verifier changes, every mode-1 wrapper is dropped and never
+    // EIP-8437 / local verifier-change rule: once the target fork's verifier changes, every mode-1 wrapper is dropped and never
     // announced or served again, while a mode-0 wrapper whose direct witnesses re-validate stays offered.
     [Test]
     public async Task Verifier_change_drops_aggregate_wrappers_and_keeps_revalidated_direct_ones()
@@ -475,7 +475,7 @@ public class ProofWrapperTransportTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(changes, Is.EqualTo(2), "the faulted upgrade rule runs again on the next tick");
+            Assert.That(changes, Is.EqualTo(2), "the faulted verifier-change rule runs again on the next tick");
             Assert.That(node.Wrappers.CurrentVerifier, Is.EqualTo(new Eip8288Verifier(UpgradedVk)));
         }
     }

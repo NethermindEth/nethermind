@@ -669,7 +669,7 @@ public class SessionTests
     }
 
     // eth/73 wrapper messages are bounded by this client's caps on their advertised uncompressed size, before decompression;
-    // PooledTransactions (0x0a), which carries recovered envelopes, keeps its eth limits.
+    // PooledTransactions (0x0a) keeps its eth limits.
     [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes, false)]
     [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, true)]
     [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes + 1, true)]

@@ -361,7 +361,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 
     private void Publish(FrameDependency dependency, ProofRecord record)
     {
-        // A record the verifier upgrade rule removed never covers a dependency again.
+        // A record the verifier-change rule removed never covers a dependency again.
         if (record.Node is null) return;
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))
         {
@@ -492,7 +492,7 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     }
 
     /// <summary>
-    /// Applies the EIP-8288 verifier upgrade rule: drops every aggregate proof, whatever pins it, and every direct witness
+    /// Applies the local verifier-change rule: drops every aggregate proof, whatever pins it, and every direct witness
     /// <paramref name="revalidate"/> rejects under the new verifier.
     /// </summary>
     /// <remarks>Transactions covered only by dropped records are no longer proven; <see cref="Covers"/> then fails for them.</remarks>

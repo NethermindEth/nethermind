@@ -908,7 +908,7 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIPs#12473: a wrapper is relayed only once usable for admission, so a verified proof over transactions the pool
+    // A wrapper is relayed only once usable for admission, so a verified proof over transactions the pool
     // rejects (for example unfunded) is not republished.
     [TestCase(true)]
     [TestCase(false)]
@@ -1030,7 +1030,7 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIP-8288 Test Case 12: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
+    // Local verifier-change rule: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
     // is dropped, a direct witness whose scheme parameters are unchanged is kept by reusing its verdict, and pending
     // transactions left without proof coverage leave the pool.
     [Test]

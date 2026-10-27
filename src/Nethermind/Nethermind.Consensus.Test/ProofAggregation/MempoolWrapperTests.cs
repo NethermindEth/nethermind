@@ -304,7 +304,7 @@ public class MempoolWrapperTests
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.MalformedDependencyFrame));
     }
 
-    // EIPs#12474: a mode-1 proof above MAX_AGGREGATE_PROOF_BYTES is rejected before verification.
+    // A mode-1 proof above the local MaxAggregateProofBytes bound is rejected before verification.
     [TestCase(Eip8288Constants.MaxAggregateProofBytes, null, 1)]
     [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, MempoolWrapperValidator.InvalidProof, 0)]
     public void Aggregate_proof_size_is_bounded_before_verification(int length, string? expected, int calls)
@@ -330,7 +330,7 @@ public class MempoolWrapperTests
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.NotFrameTransaction));
     }
 
-    // EIPs#12473: verdicts are cached by (keccak256(proof), get_deps_hash(covered)), so the same proof arriving with another
+    // Verdicts are cached locally by proof, dependencies and AGGREGATED_VK, so the same proof arriving with another
     // transaction list is not verified again, whichever verdict it had.
     [Test]
     public void Known_proof_verdict_is_reused_for_another_transaction_list(

@@ -42,7 +42,7 @@ public class InclusionListProofsTests
         }
     }
 
-    // EIP-8288 Test Case 12: verdict caches are separate per verification kind and verifier. A valid direct witness w for d
+    // Local verdict caches are separate per verification kind and verifier. A valid direct witness w for d
     // misses the aggregate cache in a one-dependency mode-1 wrapper, a cached aggregate verdict does not satisfy a direct
     // lookup, an aggregate verdict never answers under another AGGREGATED_VK, and a direct verdict survives a key change that
     // leaves its scheme parameters unchanged.

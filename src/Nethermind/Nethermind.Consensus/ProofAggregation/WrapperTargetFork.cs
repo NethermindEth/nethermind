@@ -7,15 +7,16 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// EIP-8288 wrapper target fork: the fork active at <c>head.timestamp + L</c>, the timestamp of the slot after the local head,
-/// even if that slot is missed.
+/// Local wrapper target fork, which EIP-8288 does not specify: the fork active at <c>head.timestamp + L</c>, the timestamp of
+/// the slot after the local head, even if that slot is missed.
 /// </summary>
 /// <remarks>
 /// <c>L = (head.timestamp - parent.timestamp) // (head.slot_number - parent.slot_number)</c>, integer division over the
 /// EIP-7843 slot numbers, is a local estimate for mempool validation only. Slot length is variable, so no configured slot length
 /// is used: a head and parent straddling a slot-length change can give a stale or averaged estimate. Proof failures from peers
-/// never incur penalties under EIP-8437, so such a misestimate only discards wrappers. Without a parent, or when slot numbers do not increase, the target fork is the head's fork; so too,
-/// defensively, without slot numbers, which EIP-8288 never meets since it activates after EIP-7843.
+/// never incur penalties under EIP-8437, so such a misestimate only discards wrappers. Without a parent, or when slot numbers
+/// do not increase, the target fork is the head's fork; so too, defensively, without slot numbers, which EIP-8288 never meets
+/// since it activates after EIP-7843.
 /// </remarks>
 public static class WrapperTargetFork
 {

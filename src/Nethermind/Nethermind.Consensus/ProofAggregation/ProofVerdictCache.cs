@@ -11,8 +11,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// The two bounded EIP-8288 proof-verdict caches, so a known proof arriving with a different or unresolvable transaction list,
-/// or committed to by an inclusion list, is not verified again under the same verifier.
+/// The two bounded local EIP-8288 proof-verdict caches, so a known proof arriving with a different transaction list, or carried
+/// by an inclusion list, is not verified again under the same verifier.
 /// </summary>
 /// <remarks>
 /// Direct-witness verdicts are keyed by <c>(dep, keccak256(witness), scheme_params)</c> and aggregate-proof verdicts by

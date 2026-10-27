@@ -174,7 +174,7 @@ public class RecursiveStarkAggregatorTests
             "retained dependencies absent from the inputs need another proof");
     }
 
-    // EIPs#12473: input_deps includes dependencies covered only by mode-0 direct witnesses.
+    // EIP-8288: input_deps includes dependencies covered only by mode-0 direct witnesses.
     [Test]
     public void Direct_witness_dependencies_count_as_discard_inputs()
     {
@@ -801,7 +801,7 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
-    // EIP-8288 MAX_AGGREGATE_PROOF_BYTES: a proof at the bound still needs full verification; one byte longer is rejected
+    // Local MaxAggregateProofBytes bound: a proof at the bound still needs full verification; one byte longer is rejected
     // before the verifier runs.
     [TestCase(Eip8288Constants.MaxAggregateProofBytes, true, 1)]
     [TestCase(Eip8288Constants.MaxAggregateProofBytes, false, 1)]
@@ -946,7 +946,7 @@ public class RecursiveStarkAggregatorTests
                 if (!recursiveProof.Proof.IsEmpty) return false;
                 continue;
             }
-            // A recursive input above MAX_AGGREGATE_PROOF_BYTES is rejected before its verifier runs.
+            // A recursive input above MaxAggregateProofBytes is rejected before its verifier runs.
             if (recursiveProof.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) return false;
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
             if (!verifier.VerifyRecursiveStark(in innerHash, forkVerifier.AggregatedVk.Bytes, recursiveProof.Proof.Span)) return false;

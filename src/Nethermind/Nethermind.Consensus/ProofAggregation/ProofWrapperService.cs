@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <remarks>
 /// Wrappers are validated under their target fork, which fixes the verifier: the fork active at the next slot's timestamp,
 /// predicted from the local head with the local slot-length estimate (see <see cref="WrapperTargetFork"/>).
-/// When the local head advances to a target fork whose verifier differs, the EIP-8288 upgrade rule applies: every held
+/// When the local head advances to a target fork whose verifier differs, the local verifier-change rule applies: every held
 /// aggregate proof is dropped, direct witnesses are kept only if they re-validate, and pending transactions left without
 /// proof coverage leave the pool.
 /// </remarks>
@@ -62,7 +62,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <remarks>The second argument is the verifier it was validated under. Subscribers must not mutate the wrapper.</remarks>
     public event Action<byte[], Eip8288Verifier>? WrapperValidated;
 
-    /// <summary>Raised with the new verifier after the upgrade rule dropped what the previous one validated.</summary>
+    /// <summary>Raised with the new verifier after the verifier-change rule dropped what the previous one validated.</summary>
     public event Action<Eip8288Verifier>? VerifierChanged;
 
     /// <summary>The fork active at the next slot's timestamp after the local head: the target fork of every wrapper this node
@@ -79,14 +79,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return forks;
     }
 
-    /// <summary>The verifier the upgrade rule last applied, read without refreshing it.</summary>
+    /// <summary>The verifier the verifier-change rule last applied, read without refreshing it.</summary>
     public Eip8288Verifier? CurrentVerifier
     {
         get { lock (_verifierLock) return _verifier; }
     }
 
     /// <summary>
-    /// The verifier of the current target fork, after applying the EIP-8288 upgrade rule if it changed; null while EIP-8288 is
+    /// The verifier of the current target fork, after applying the local verifier-change rule if it changed; null while EIP-8288 is
     /// inactive at the target fork.
     /// </summary>
     /// <remarks>The head is read under the verifier lock, so a caller holding a stale head cannot move the verifier back.</remarks>
@@ -111,7 +111,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         catch
         {
-            // A half-applied upgrade rule must run again on the next refresh rather than be skipped as already applied.
+            // A half-applied verifier-change rule must run again on the next refresh rather than be skipped as already applied.
             lock (_verifierLock)
                 if (_verifier == current) _verifier = previous;
             throw;
@@ -129,7 +129,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return decoded.Mode == MempoolWrapper.ModeDirect && MempoolWrapperValidator.VerifyProofs(decoded, leanProofVerifier, in verifier, out _);
     }
 
-    /// <summary>EIP-8288 upgrade rule: drops every aggregate proof, keeps direct witnesses only if they re-validate under
+    /// <summary>Local verifier-change rule: drops every aggregate proof, keeps direct witnesses only if they re-validate under
     /// <paramref name="verifier"/>, and evicts pending transactions no longer covered.</summary>
     private void ApplyUpgradeRule(Eip8288Verifier verifier)
     {
@@ -178,7 +178,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
         try
         {
-            // Inside the try, so an upgrade-rule fault is a local failure rather than an exception escaping to the caller.
+            // Inside the try, so a verifier-change-rule fault is a local failure rather than an exception escaping to the caller.
             if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
             cancellationToken.ThrowIfCancellationRequested();
             if (copyInput) wrapper = (byte[])wrapper.Clone();
@@ -212,11 +212,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (!valid) return ProofWrapperAcceptance.Invalid(error!, verifier);
             }
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error, verifier);
-            // Nothing validated under a verifier the upgrade rule has since replaced may be published or admitted.
+            // Nothing validated under a verifier the verifier-change rule has since replaced may be published or admitted.
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
             // Coverage keeps one record per dependency, so a verified recursive proof can otherwise be lost to a direct
             // witness or eviction; indexed by its exact set, it stays reusable by producers restricted to proven sets. The
-            // upgrade rule purges under the commit lock, so a proof cached here never outlives the verifier it was checked under.
+            // verifier-change rule purges under the commit lock, so a proof cached here never outlives the verifier it was checked under.
             if (decoded.RecursiveStark is { } recursive)
             {
                 lock (_commitLock)
@@ -368,7 +368,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         if (!IsEnabled) return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         WrapperSnapshot? wrapper = Volatile.Read(ref _cachedWrapper);
         Eip8288Verifier? verifier;
-        // A pending upgrade rule leaves the cached wrapper unpublishable until it applies.
+        // A pending verifier-change rule leaves the cached wrapper unpublishable until it applies.
         try { verifier = RefreshVerifier(); }
         catch (InvalidOperationException) { verifier = null; }
         if (wrapper is null || wrapper.Verifier != verifier || !ArePending(wrapper.Transactions))

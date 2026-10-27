@@ -153,7 +153,7 @@ public class NativeProofWrapperTransportTests
     public async Task Real_recursive_wrapper_is_fetched_whole_and_validated_before_admission()
     {
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
-        Assert.That(proof.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes), "the pinned guest proof fits MAX_AGGREGATE_PROOF_BYTES");
+        Assert.That(proof.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregateProofBytes), "the pinned guest proof fits MaxAggregateProofBytes");
         using Context source = await Create();
         using Context target = await Create();
         Channel<WireMessage> toTarget = Channel.CreateUnbounded<WireMessage>(), toSource = Channel.CreateUnbounded<WireMessage>();

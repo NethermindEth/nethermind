@@ -176,15 +176,15 @@ public sealed partial class ProofWrapperTransport : IDisposable
 
     private void Tick()
     {
-        // Applies the EIP-8288 upgrade rule, through VerifierChanged, once the head reaches a fork with another verifier.
+        // Applies the local verifier-change rule, through VerifierChanged, once the head reaches a fork with another verifier.
         // Idle while EIP-8288 is inactive: no peer registers then.
         if (!IsEnabled && PeerCount == 0) return;
         Eip8288Verifier? refreshed;
         try { refreshed = _wrappers.RefreshVerifier(); }
         catch (Exception exception)
         {
-            // An exception escaping a timer callback ends the process; the upgrade rule is retried on the next tick.
-            if (_logger.IsError) _logger.Error("eth/73 could not apply the EIP-8288 upgrade rule", exception);
+            // An exception escaping a timer callback ends the process; the verifier-change rule is retried on the next tick.
+            if (_logger.IsError) _logger.Error("eth/73 could not apply the local verifier-change rule", exception);
             refreshed = _wrappers.CurrentVerifier;
         }
         Outbox outbox = new();
@@ -297,13 +297,13 @@ public sealed partial class ProofWrapperTransport : IDisposable
     public bool PublishWrapper(byte[] wrapper)
     {
         Eip8288Verifier? verifier;
-        // A pending upgrade rule publishes nothing; the gossip loop offers the wrapper again on its next cycle.
+        // A pending verifier-change rule publishes nothing; the gossip loop offers the wrapper again on its next cycle.
         try { verifier = _wrappers.RefreshVerifier(); }
         catch (InvalidOperationException) { return false; }
         return verifier is { } current && Publish(wrapper, current);
     }
 
-    /// <summary>EIP-8288 upgrade rule for offered wrappers: drops every mode-1 wrapper and keeps a mode-0 wrapper only if its
+    /// <summary>Local verifier-change rule for offered wrappers: drops every mode-1 wrapper and keeps a mode-0 wrapper only if its
     /// direct witnesses re-validate under <paramref name="verifier"/>.</summary>
     private void OnVerifierChanged(Eip8288Verifier verifier)
     {

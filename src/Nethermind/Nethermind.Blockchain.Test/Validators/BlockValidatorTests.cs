@@ -239,7 +239,7 @@ public class BlockValidatorTests
         }
     }
 
-    // EIPs#12474: a proof at MAX_AGGREGATE_PROOF_BYTES passes the length check but still requires full verification.
+    // A proof at the local MaxAggregateProofBytes bound passes the length check but still requires full verification.
     [Test]
     public void Eip8288_proof_at_the_aggregate_bound_is_still_verified([Values] bool verdict)
     {

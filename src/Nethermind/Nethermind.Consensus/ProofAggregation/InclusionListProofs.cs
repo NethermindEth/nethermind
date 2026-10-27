@@ -61,7 +61,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier)
 /// <summary>EIP-8288 inclusion-list rules shared by the Engine API, block building and inclusion enforcement.</summary>
 public static class InclusionListProofValidator
 {
-    /// <summary>Parses <c>proof_deps</c>, failing when an entry is not a 96-byte encoding of an <c>ENABLED_SCHEMES</c> scheme or
+    /// <summary>Parses <c>proof_deps</c>, failing when an entry is not a 96-byte leanSPHINCS encoding, the only accepted scheme, or
     /// the list is not sorted and deduplicated; either invalidates the proof, not the signed list.</summary>
     public static bool TryParseProofDeps(byte[][] encoded, out List<FrameDependency>? proofDeps)
     {

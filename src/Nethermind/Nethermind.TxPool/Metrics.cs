@@ -326,11 +326,11 @@ namespace Nethermind.TxPool
         public static long Eip8288VerifierChanges { get; set; }
 
         [CounterMetric]
-        [Description("Number of EIP-8288 proofs dropped by the verifier upgrade rule.")]
+        [Description("Number of EIP-8288 proofs dropped by the verifier-change rule.")]
         public static long Eip8288UpgradeDroppedProofs { get; set; }
 
         [CounterMetric]
-        [Description("Number of pending transactions evicted by the EIP-8288 verifier upgrade rule for lack of proof coverage.")]
+        [Description("Number of pending transactions evicted by the local verifier-change rule for lack of proof coverage.")]
         public static long Eip8288UpgradeEvictedTransactions { get; set; }
     }
 }
