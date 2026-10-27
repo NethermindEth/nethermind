@@ -263,7 +263,7 @@ namespace Nethermind.Trie
                     Span<byte> resultChildren = resultSpan.Slice(position, contentLength - valueRlpLength);
                     previousRlp = item.FullRlp.AsSpan();
                     if (sequenceLength != FullBranchRlpLength || previousRlp.Length != FullBranchRlpLength
-                        || !TryPatchFullBranch(tree, ref path, item, previousRlp, resultChildren, pool, canBeParallel))
+                        || !TryPatchFullBranch(tree, ref path, item, previousRlp, resultSpan[..FullBranchRlpLength], pool, canBeParallel))
                     {
                         WriteChildrenRlpBranch(tree, ref path, item, resultChildren, pool, canBeParallel);
                     }
@@ -276,15 +276,9 @@ namespace Nethermind.Trie
                 previousRlp = item.FullRlp.AsSpan();
                 if (previousRlp.Length == FullBranchRlpLength)
                 {
-                    const int fullContentLength = valueRlpLength + BranchesCount * Rlp.LengthOfKeccakRlp;
                     result = RentBranchRlp(pool, FullBranchRlpLength, path);
-                    resultSpan = result.AsSpan();
-                    position = Rlp.StartSequence(resultSpan, 0, fullContentLength);
-                    if (TryPatchFullBranch(tree, ref path, item, previousRlp, resultSpan.Slice(position, fullContentLength - valueRlpLength), pool, canBeParallel))
-                    {
-                        resultSpan[FullBranchRlpLength - valueRlpLength] = 128;
+                    if (TryPatchFullBranch(tree, ref path, item, previousRlp, result.AsSpan()[..FullBranchRlpLength], pool, canBeParallel))
                         return result;
-                    }
 
                     if (!KeepsRlpOfHashedBranch) pool.SafeReturn(result);
                 }
@@ -1243,12 +1237,18 @@ namespace Nethermind.Trie
                 return position + fullRlp.Length;
             }
 
+            /// <summary>Writes <paramref name="item"/>, a branch whose previous encoding <paramref name="nodeRlp"/> is a full one, into <paramref name="destination"/> by patching that encoding.</summary>
+            /// <remarks>
+            /// The header and the empty value are the previous ones too, so the whole encoding is copied: both ends of the
+            /// copy then sit on word boundaries, where the children alone start three bytes in.
+            /// </remarks>
             private static bool TryPatchFullBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item,
                 ReadOnlySpan<byte> nodeRlp, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
             {
+                const int headerLength = FullBranchRlpLength - BranchesCount * Rlp.LengthOfKeccakRlp - 1;
                 // Nethermind branches have an empty value, so a canonical 532-byte branch has sixteen hash children.
                 Debug.Assert(nodeRlp[^1] == 128);
-                Bytes.Copy(nodeRlp.Slice(3, BranchesCount * Rlp.LengthOfKeccakRlp), destination);
+                Bytes.Copy(nodeRlp, destination);
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
                 for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
@@ -1271,7 +1271,7 @@ namespace Nethermind.Trie
                             if (hash is null) return false;
                         }
                     }
-                    Rlp.Encode(destination, i * Rlp.LengthOfKeccakRlp, hash);
+                    Rlp.Encode(destination, headerLength + i * Rlp.LengthOfKeccakRlp, hash);
                 }
                 return true;
             }
