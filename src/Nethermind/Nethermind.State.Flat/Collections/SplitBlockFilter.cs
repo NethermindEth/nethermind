@@ -52,6 +52,12 @@ internal sealed unsafe class SplitBlockFilter
     public void Add(uint hash)
     {
         ref uint block = ref Block(hash, out uint mixed);
+        if (Avx2.IsSupported)
+        {
+            (Vector256.LoadUnsafe(ref block) | Bits(mixed)).StoreUnsafe(ref block);
+            return;
+        }
+
         for (int i = 0; i < WordsPerBlock; i++)
         {
             Unsafe.Add(ref block, i) |= 1u << (int)((mixed * Salts.GetElement(i)) >> 27);
@@ -62,12 +68,7 @@ internal sealed unsafe class SplitBlockFilter
     public bool MightContain(uint hash)
     {
         ref uint block = ref Block(hash, out uint mixed);
-        if (Avx2.IsSupported)
-        {
-            Vector256<uint> shifts = Vector256.ShiftRightLogical(Vector256.Create(mixed) * Salts, 27);
-            Vector256<uint> bits = Avx2.ShiftLeftLogicalVariable(Vector256<uint>.One, shifts);
-            return Avx.TestC(Vector256.LoadUnsafe(ref block), bits);
-        }
+        if (Avx2.IsSupported) return Avx.TestC(Vector256.LoadUnsafe(ref block), Bits(mixed));
 
         for (int i = 0; i < WordsPerBlock; i++)
         {
@@ -77,6 +78,10 @@ internal sealed unsafe class SplitBlockFilter
 
         return true;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<uint> Bits(uint mixed) =>
+        Avx2.ShiftLeftLogicalVariable(Vector256<uint>.One, Vector256.ShiftRightLogical(Vector256.Create(mixed) * Salts, 27));
 
     // The block comes from the high half of a 64-bit mix and the in-block bits from the low half, so neither
     // reuses the low hash bits the dictionary buckets on.
