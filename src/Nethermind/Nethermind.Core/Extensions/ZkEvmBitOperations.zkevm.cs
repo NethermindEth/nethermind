@@ -113,6 +113,11 @@ public static partial class ZkEvmBitOperations
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(x);
 
+        // A 32-bit guest swaps each half, which then trade places for free, with `or`: a 64-bit addition there is
+        // a carry chain of four instructions.
+        if (AirbenderFlag.IsActive)
+            return ((ulong)Swap32((uint)x, (uint)m8) << 32) | Swap32((uint)(x >> 32), (uint)m8);
+
         // Addition rather than disjunction: the prover charges `or` 60 units against `add`'s 15.5, and
         // each pair below is disjoint by construction - the masked halves occupy alternating byte, then
         // halfword, then word lanes - so the operators are equivalent here at a quarter of the price.
@@ -120,6 +125,13 @@ public static partial class ZkEvmBitOperations
         x = ((x & m8) << 8) + ((x >> 8) & m8);
         x = ((x & m16) << 16) + ((x >> 16) & m16);
         return (x << 32) + (x >> 32);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Swap32(uint x, uint m8)
+    {
+        x = ((x & m8) << 8) | ((x >> 8) & m8);
+        return (x << 16) | (x >> 16);
     }
 
 }
