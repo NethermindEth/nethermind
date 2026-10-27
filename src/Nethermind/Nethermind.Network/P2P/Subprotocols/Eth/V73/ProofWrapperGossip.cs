@@ -11,7 +11,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-/// <summary>Drives background aggregation on the EIP-8288 cadence and offers each new wrapper over <c>eth/73</c>.</summary>
+/// <summary>Drives background aggregation on the EIP-8288 cadence, producing mode-1 wrappers over bounded subsets that together
+/// cover the pending dependency-bearing transactions, and offers each new one over <c>eth/73</c>.</summary>
 /// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
 public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrapperTransport transport, ILogManager logManager,
     TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable
@@ -72,7 +73,8 @@ public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrappe
     {
         try
         {
-            if (wrappers.RefreshWrapper(_stop.Token)) PublishLatest();
+            // Each bounded wrapper of the cycle is offered as soon as it is built.
+            wrappers.RefreshWrapper(PublishLatest, _stop.Token);
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception exception)

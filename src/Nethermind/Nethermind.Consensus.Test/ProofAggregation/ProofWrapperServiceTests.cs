@@ -537,8 +537,26 @@ public class ProofWrapperServiceTests
             Assert.That(decoded.Transactions.Select(MempoolWrapperDecoder.EncodeTransaction),
                 Is.EqualTo(decoded.Transactions.Select(tx => MempoolWrapperDecoder.EncodeTransaction(transactions.Single(t => t.Hash == tx.Hash)))));
             Assert.That(rotated.Transactions.Select(static tx => tx.Hash), Is.Not.EqualTo(decoded.Transactions.Select(static tx => tx.Hash)),
-                "the next cycle rotates to the remaining transactions");
+                "the next build rotates to the remaining transactions");
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "transactions sharing a dependency reuse the proof");
+        }
+    }
+
+    // EIP-8288: every AGGREGATION_INTERVAL a node produces mode-1 wrappers over bounded subsets, so one cycle covers every pending
+    // dependency-bearing transaction, however many wrappers that takes.
+    [Test]
+    public void One_cycle_produces_bounded_wrappers_covering_every_pending_transaction()
+    {
+        (ProofWrapperService service, FakeLeanProofVerifier verifier) = Create(10, 128 * 1024, out Transaction[] transactions);
+        List<MempoolWrapper> produced = [];
+        Result result = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(Result.Success));
+            Assert.That(produced, Has.Count.GreaterThan(1));
+            Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash),
+                Is.EquivalentTo(transactions.Select(static tx => tx.Hash)), "each transaction is in exactly one wrapper of the cycle");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "subsets sharing a dependency reuse the proof");
         }
     }
 

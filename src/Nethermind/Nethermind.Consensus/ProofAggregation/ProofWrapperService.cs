@@ -305,11 +305,35 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public Result<byte[]> BuildWrapper(CancellationToken cancellationToken = default)
         => BuildWrapper(true, cancellationToken);
 
-    /// <summary>Advances background aggregation without copying the encoded result for an unused return value.</summary>
-    public Result RefreshWrapper(CancellationToken cancellationToken = default)
+    /// <summary>One <c>AGGREGATION_INTERVAL</c> cycle of background aggregation: builds bounded wrappers, continuing the
+    /// rotation, until every pending dependency-bearing transaction has been offered to one, calling
+    /// <paramref name="produced"/> after each, so each can be read through <see cref="GetLatestWrapper()"/> and published.</summary>
+    /// <remarks>Stops at the first build failure; the next cycle resumes the rotation where this one stopped.</remarks>
+    /// <returns>Success when at least one wrapper is current; otherwise the first failure.</returns>
+    public Result RefreshWrapper(Action? produced = null, CancellationToken cancellationToken = default)
     {
-        Result<byte[]> result = BuildWrapper(false, cancellationToken);
-        return result.IsSuccess ? Result.Success : Result.Fail(result.Error!);
+        if (!Monitor.TryEnter(_aggregationLock)) return Result.Fail("Proof aggregation is busy; retry later.");
+        try
+        {
+            using IDisposable request = ProductionProofCache.Background(cancellationToken);
+            bool any = false;
+            for (int scanned = 0; ;)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Result<byte[]> result = BuildWrapperCore(false, cancellationToken, out int buildScanned, out int candidates);
+                scanned += buildScanned;
+                // A stretch of the rotation without proof-backed transactions ends no cycle that has more candidates.
+                if (result.IsSuccess) { any = true; produced?.Invoke(); }
+                else if (result.Error != NoProofBackedTransactions) return any ? Result.Success : Result.Fail(result.Error!);
+                if (buildScanned == 0 || scanned >= candidates)
+                    return any ? Result.Success : Result.Fail(result.Error ?? NoProofBackedTransactions);
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Result.Fail(exception.Message);
+        }
+        finally { Monitor.Exit(_aggregationLock); }
     }
 
     private Result<byte[]> BuildWrapper(bool returnEncoded, CancellationToken cancellationToken)
@@ -319,7 +343,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             cancellationToken.ThrowIfCancellationRequested();
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
-            return BuildWrapperCore(returnEncoded, cancellationToken);
+            return BuildWrapperCore(returnEncoded, cancellationToken, out _, out _);
         }
         catch (InvalidOperationException exception)
         {
@@ -327,6 +351,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         finally { Monitor.Exit(_aggregationLock); }
     }
+
+    private const string NoProofBackedTransactions = "No proof-backed pending transactions.";
 
     /// <summary>Returns the latest background-produced wrapper without invoking the prover.</summary>
     public Result<byte[]> GetLatestWrapper() => GetLatestWrapper(null, out _);
@@ -347,8 +373,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
     }
 
-    private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken)
+    /// <param name="scanned">Candidates this build passed over, from the rotation point to where the wrapper filled.</param>
+    /// <param name="candidateCount">Pending transactions considered.</param>
+    private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken, out int scanned, out int candidateCount)
     {
+        scanned = 0;
+        candidateCount = 0;
         if (RefreshVerifier() is not { } verifier)
             return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         List<Transaction> transactions = [];
@@ -359,8 +389,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         // Blob-carrying transactions are left out: their wrapped form elides blob data for EIP-8070 cell retrieval.
         List<Transaction> candidates = [.. txPool.GetPendingTransactions()];
         candidates.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
+        candidateCount = candidates.Count;
         int start = candidates.Count == 0 ? 0 : (int)((uint)_rotation % (uint)candidates.Count);
         int next = 0;
+        int end = candidates.Count;
         for (int candidateIndex = start; candidateIndex < candidates.Count; candidateIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -372,7 +404,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (encodedLength > MaxWrapperTransactionBytes) continue;
             if (encodedLength > MaxWrapperTransactionBytes - transactionBytes)
             {
-                if (transactions.Count != 0) { next = candidateIndex; break; }
+                if (transactions.Count != 0) { next = end = candidateIndex; break; }
                 continue;
             }
             bool addsDependencies = false;
@@ -385,7 +417,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(combined);
                 if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper)
                 {
-                    if (transactions.Count != 0) { next = candidateIndex; break; }
+                    if (transactions.Count != 0) { next = end = candidateIndex; break; }
                     continue;
                 }
                 if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
@@ -398,9 +430,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             transactions.Add(transaction);
             next = (candidateIndex + 1) % candidates.Count;
         }
-        _rotation = next;
+        // A build that reached the end of the candidates starts the next one from the beginning.
+        _rotation = end == candidates.Count ? 0 : next;
+        scanned = end - start;
         if (transactions.Count == 0)
-            return Result<byte[]>.Fail("No proof-backed pending transactions.");
+            return Result<byte[]>.Fail(NoProofBackedTransactions);
         transactions.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
         byte[] selection = new byte[transactions.Count * Hash256.Size];
         for (int i = 0; i < transactions.Count; i++) transactions[i].Hash!.Bytes.CopyTo(selection.AsSpan(i * Hash256.Size));
