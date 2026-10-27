@@ -7,7 +7,6 @@ using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
@@ -168,8 +167,8 @@ public class PbtFormatInteropTests
             byte[] node = depth == 0 ? PbtTreeHarness.EncodeLeaf(leaf)
                 : PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
             writer.Write(cursor, depth == 0 ? PbtTwoLevelGroupGeometry.RootPosition : 0, node);
-            using RefCountingMemory memory = writer.Detach(default, 0)!;
-            expected = memory.GetSpan().ToArray();
+            byte[] memory = writer.Detach(default, 0)!;
+            expected = memory;
             content.SetTree((groupKey, absent ? null : expected));
         }
         PbtSnapshot source = PersistedSource(content);

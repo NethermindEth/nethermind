@@ -23,7 +23,6 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
@@ -51,14 +50,9 @@ public class PbtSnapshotCompactorTests
         PbtSnapshotContent newer = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         older.SetSlot(key, new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true));
         newer.SetSlot(key, new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true));
-        byte[] expected;
-        using (RefCountingMemory olderPayload = CreateStorageLeafGroup())
-        using (RefCountingMemory newerPayload = CreateStorageLeafGroup())
-        {
-            older.SetTree((default, olderPayload.GetSpan().ToArray()));
-            newer.SetTree((default, emptied ? null : newerPayload.GetSpan().ToArray()));
-            expected = newerPayload.GetSpan().ToArray();
-        }
+        byte[] expected = CreateStorageLeafGroup();
+        older.SetTree((default, CreateStorageLeafGroup()));
+        newer.SetTree((default, emptied ? null : expected));
         using PbtSnapshot compacted = Compact(older, newer);
         PbtGroupRecord record = default;
         bool found = compacted.Content.GroupRecordBuffer?.TryFindGroup(compacted.RootGroupPointer, default, out record) == true;
@@ -70,7 +64,7 @@ public class PbtSnapshotCompactorTests
             Assert.That(found ? record.Payload.ToArray() : null, Is.EqualTo(emptied ? null : expected));
         }
 
-        RefCountingMemory CreateStorageLeafGroup()
+        byte[] CreateStorageLeafGroup()
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<PbtNodePath> writer = new(groupKey.BitDepth);
@@ -331,8 +325,8 @@ public class PbtSnapshotCompactorTests
             byte[] node = group.BitDepth == 0 ? PbtTreeHarness.EncodeLeaf(leaf)
                 : PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
             writer.Write(path, group.BitDepth == 0 ? PbtTwoLevelGroupGeometry.RootPosition : 0, node);
-            using RefCountingMemory payload = writer.Detach(default, 0)!;
-            expected = payload.GetSpan().ToArray();
+            byte[] payload = writer.Detach(default, 0)!;
+            expected = payload;
             older.SetTree((group, expected));
             newer.SetTree((group, dropped ? null : expected));
         }

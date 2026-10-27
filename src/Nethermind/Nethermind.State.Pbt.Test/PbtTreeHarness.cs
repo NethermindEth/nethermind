@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -180,15 +179,15 @@ internal static class PbtStoreTestExtensions
         encoding.CopyTo(writer.Append(position, encoding.Length));
     }
 
-    internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey)
+    internal static byte[]? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
         using PbtLoadedRecordBuffer loaded = new();
-        return loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? PbtSnapshotTestExtensions.CopyPayload(record) : null;
+        return loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
     }
 
-    internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, RefCountingMemory? payload)
+    internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, byte[]? payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
@@ -205,19 +204,17 @@ internal static class PbtStoreTestExtensions
         return new(new PbtGroupRecord(record, 0));
     }
 
-    /// <summary>Reads the group <paramref name="lease"/> holds at <paramref name="path"/>, releasing the lease.</summary>
-    internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup(scoped in PbtTraversalPath path, RefCountingMemory lease)
-    {
-        using (lease) return ReadGroup(path.ToPath<PbtStorageNodePath>(), lease.GetSpan());
-    }
+    /// <summary>Reads the group <paramref name="payload"/> holds at <paramref name="path"/>.</summary>
+    internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup(scoped in PbtTraversalPath path, byte[] payload) =>
+        ReadGroup(path.ToPath<PbtStorageNodePath>(), payload);
 
     /// <summary>Finishes the writer's group into an array of its own, or returns null for an empty group.</summary>
-    internal static RefCountingMemory? Detach<TPath>(this PbtNodeGroupWriter<TPath> writer, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    internal static byte[]? Detach<TPath>(this PbtNodeGroupWriter<TPath> writer, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
         where TPath : struct, IPbtNodePath<TPath>
     {
         byte[] payload = new byte[writer.GetPayloadLength(descendantBytes, candidateSlots)];
         writer.DetachTo(payload, descendantBytes, candidateSlots);
-        return payload.Length == 0 ? null : RefCountingMemory.Wrapping(payload);
+        return payload.Length == 0 ? null : payload;
     }
 
     internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader)
@@ -251,7 +248,7 @@ internal static class PbtStoreTestExtensions
         }
     }
 
-    internal static RefCountingMemory? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
+    internal static byte[]? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
         where TPath : struct, IPbtNodePath<TPath>
         => store.GetNodeGroup(groupKey);
 
@@ -259,9 +256,9 @@ internal static class PbtStoreTestExtensions
         where TPath : struct, IPbtNodePath<TPath>
     {
         if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
-        using RefCountingMemory? payload = store.GetNodeGroup(path);
+        byte[]? payload = store.GetNodeGroup(path);
         if (payload is null) return null;
-        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), path, PbtTwoLevelGroupGeometry.RootPosition);
+        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload), path, PbtTwoLevelGroupGeometry.RootPosition);
     }
 
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
@@ -307,21 +304,15 @@ internal static class PbtStoreTestExtensions
         return [.. result];
     }
 
-    private static byte[]? PhysicalPayload(PbtNodeGroupStore store, PbtStorageNodePath groupKey)
-    {
-        using RefCountingMemory? payload = store.GetPhysicalNodeGroup(groupKey);
-        return payload?.GetSpan().ToArray();
-    }
-
     /// <summary>Asserts the groups persisted in <paramref name="db"/>, read through <paramref name="reader"/>, are exactly those of <paramref name="expected"/>.</summary>
     internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected, string message) =>
         Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.LoadNodeGroup),
-            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), groupKey => PhysicalPayload(expected, groupKey))), message);
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)), message);
 
     /// <inheritdoc cref="AssertSameGroups(IColumnsDb{PbtColumns}, IPbtPersistence.IReader, PbtNodeGroupStore, string)"/>
     internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected) =>
         Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.LoadNodeGroup),
-            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), groupKey => PhysicalPayload(expected, groupKey))));
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)));
 
     /// <summary>Opens the on-disk PBT RocksDB at <paramref name="path"/> with the default <see cref="DbConfig"/> and the production column options for <paramref name="config"/>.</summary>
     internal static ColumnsDb<PbtColumns> OpenPbtRocksDb(string path, PbtConfig config)
@@ -420,9 +411,9 @@ internal static class PbtStoreTestExtensions
     private static byte[]? GetLogicalNode<TPath>(PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
-        using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
+        byte[]? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload);
         return ResolveNode(reader, location.GroupKey, location.Position);
     }
 
@@ -440,15 +431,14 @@ internal static class PbtStoreTestExtensions
             PbtTreeHarness.HashBranch(left), PbtTreeHarness.HashBranch(right));
     }
 
-    internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding,
-        IRefCountingMemoryProvider? memoryProvider = null) where TPath : struct, IPbtNodePath<TPath>
+    internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding) where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
-        using RefCountingMemory? priorPayload = store.GetPhysicalNodeGroup(location.GroupKey);
+        byte[]? priorPayload = store.GetPhysicalNodeGroup(location.GroupKey);
         List<PbtNodeRecord> records = [];
         if (priorPayload is not null)
         {
-            foreach ((int position, ReadOnlyMemory<byte> node) in PbtStoreTestExtensions.ReadGroup(location.GroupKey, priorPayload.GetSpan()).Nodes())
+            foreach ((int position, ReadOnlyMemory<byte> node) in PbtStoreTestExtensions.ReadGroup(location.GroupKey, priorPayload).Nodes())
             {
                 if (position != location.Position)
                     records.Add(new PbtNodeRecord(PbtTestPaths.PathOf(location.GroupKey, position).ToPath<PbtStorageNodePath>(), node.Span));
@@ -461,8 +451,7 @@ internal static class PbtStoreTestExtensions
             return;
         }
 
-        using RefCountingMemory payload = PbtNodeGroupEncoder.EncodeToMemory(location.GroupKey, records, memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
-        store.SetNodeGroup(location.GroupKey, payload);
+        store.SetNodeGroup(location.GroupKey, PbtNodeGroupEncoder.Encode(location.GroupKey, records, default));
     }
 
     /// <summary>The store's canonical records as path-then-encoding hex, in path order.</summary>

@@ -10,7 +10,6 @@ using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using NUnit.Framework;
@@ -114,7 +113,6 @@ public class Eip8297CanonicalTreeTests
             Assert.Throws<ObjectDisposedException>(() => operations.AsSpan());
             Assert.Throws<ObjectDisposedException>(() => table.AsSpan());
         }
-        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -760,7 +758,6 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 root = store.Fold(default, initial);
         root = store.Fold(root, changes);
         Assert.That(root, Is.EqualTo(tree.Bulk.RootHash));
-        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -1043,7 +1040,6 @@ public class Eip8297CanonicalTreeTests
         tree.Apply(changes);
         tree.AssertEquivalentAfterReopen($"prefix at bit {divergenceBit}, persisted {persisted}");
         Assert.That(root, Is.EqualTo(tree.Bulk.RootHash));
-        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -1112,7 +1108,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(emptiedRoot, Is.EqualTo(default(ValueHash256)));
         }
 
-        AssertAllMemoryReleased(store);
     }
 
     // Each case leaves the group at 0x0000 with a boundary node that owns nothing below it, so the fold that
@@ -1174,12 +1169,7 @@ public class Eip8297CanonicalTreeTests
                 store.ThrowOnApply = true;
                 break;
             default:
-                store.OverrideGroup = _ =>
-                {
-                    RefCountingMemory memory = store.MemoryProvider.Rent(failure == FoldFailure.MalformedGroup ? 1 : 0);
-                    if (failure == FoldFailure.MalformedGroup) memory.GetSpan()[0] = 0x01;
-                    return memory;
-                };
+                store.OverrideGroup = _ => failure == FoldFailure.MalformedGroup ? Bytes.FromHexString("01") : [];
                 break;
         }
 
@@ -1191,7 +1181,6 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(before.PhysicalRecords()));
         }
 
-        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -1253,9 +1242,9 @@ public class Eip8297CanonicalTreeTests
             return false;
         }
         public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey) => store.GetNodeGroup(groupKey);
+        public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey) => store.GetNodeGroup(groupKey);
         private void SetNodeGroup(PbtGroupRecord record)
         {
             if (record.Path.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
@@ -1270,23 +1259,18 @@ public class Eip8297CanonicalTreeTests
         // The two 0012345x keys keep a stored branch in the group at depth 28; deleting 00123458 promotes it.
         ValueHash256 root = store.Fold(default, [
             (ZoneKey("00123450"), Value(1)), (ZoneKey("00123451"), Value(4)), (ZoneKey("00123458"), Value(2)), (ZoneKey("0080"), Value(3))]);
-        TrackingMemoryProvider readProvider = new();
-        RefCountingMemory? promotedPayload = null;
+        byte[]? promotedPayload = null;
         bool checkedPromotion = false;
         store.OverrideGroup = groupKey =>
         {
-            using RefCountingMemory? stored = store.Inner.GetNodeGroup(groupKey);
-            if (stored is null) return null;
-            RefCountingMemory read = readProvider.Rent(stored.Memory.Length);
-            stored.GetSpan().CopyTo(read.GetSpan());
-            if (groupKey.BitDepth == 28) promotedPayload = read;
-            return read;
+            byte[]? stored = store.Inner.GetNodeGroup(groupKey);
+            if (groupKey.BitDepth == 28) promotedPayload = stored;
+            return stored;
         };
         store.OnApply = groupKey =>
         {
             if (groupKey.BitDepth != 0) return;
             Assert.That(promotedPayload, Is.Not.Null);
-            Assert.That(TrackingMemoryProvider.CountUnreleased([promotedPayload!]), Is.Zero);
             checkedPromotion = true;
         };
         root = store.Fold(root, [(ZoneKey("00123458"), null)], PbtTreeHarness.DefaultFanOut);
@@ -1298,9 +1282,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(checkedPromotion, Is.True);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(readProvider.Rented), Is.Zero);
         }
-        AssertAllMemoryReleased(store);
     }
 
     [Test]
@@ -1355,17 +1337,15 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 root = store.Fold(default, [(left, Value(1)), (right, Value(2)), (sibling, Value(3))]);
         PbtStorageNodePath groupKey = new([], 0);
         PbtStorageNodePath branchGroupKey = new(Bytes.FromHexString("0080"), 10);
-        using (RefCountingMemory? original = store.GetPhysicalNodeGroup(branchGroupKey))
-        {
-            PbtBranchReader branch = PbtBranchReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan()).GetEncoding(3).Span);
-            Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 12));
-        }
+        byte[]? original = store.GetPhysicalNodeGroup(branchGroupKey);
+        PbtBranchReader branch = PbtBranchReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!).GetEncoding(3).Span);
+        Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 12));
         root = store.Fold(root, [(sibling, null)]);
         EipReferenceTree oracle = new();
         oracle.Insert(left, Value(1));
         oracle.Insert(right, Value(2));
-        using RefCountingMemory? updated = store.GetPhysicalNodeGroup(groupKey);
-        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
+        byte[]? updated = store.GetPhysicalNodeGroup(groupKey);
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!);
         PbtBranchReader promoted = PbtBranchReader.FromValidated(updatedReader.GetEncoding(6).Span);
         using (Assert.EnterMultipleScope())
         {
@@ -1478,12 +1458,6 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    private static void AssertAllMemoryReleased(CountingPbtStore store)
-    {
-        store.Inner.Dispose();
-        Assert.That(store.UnreleasedMemoryCount, Is.Zero);
-    }
-
     private sealed class CountingPbtStore : IPbtStore
     {
         public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
@@ -1493,32 +1467,23 @@ public class Eip8297CanonicalTreeTests
             return false;
         }
         public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
-        internal TrackingMemoryProvider MemoryProvider { get; } = new();
-        internal PbtNodeGroupStore Inner { get; }
-
-        internal CountingPbtStore() => Inner = new(MemoryProvider);
-
-        internal int UnreleasedMemoryCount => TrackingMemoryProvider.CountUnreleased(MemoryProvider.Rented);
+        internal PbtNodeGroupStore Inner { get; } = new();
         internal int Reads { get; private set; }
         internal int Applies { get; private set; }
         internal Dictionary<PbtStorageNodePath, int> GroupReads { get; } = [];
         internal Func<PbtStorageNodePath, byte[]?>? OverrideNode { get; set; }
-        internal Func<PbtStorageNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
+        internal Func<PbtStorageNodePath, byte[]?>? OverrideGroup { get; set; }
         internal bool ThrowOnApply { get; set; }
         internal Action<PbtStorageNodePath>? OnApply { get; set; }
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+        public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             Reads++;
             PbtStorageNodePath storageGroupKey = groupKey.ToPath<PbtStorageNodePath>();
             GroupReads[storageGroupKey] = GroupReads.GetValueOrDefault(storageGroupKey) + 1;
-            if (OverrideGroup is { } overrideGroup)
-            {
-                RefCountingMemory? overriddenPayload = overrideGroup(storageGroupKey);
-                return overriddenPayload;
-            }
+            if (OverrideGroup is { } overrideGroup) return overrideGroup(storageGroupKey);
             if (OverrideNode is { } overrideNode)
             {
                 List<PbtNodeRecord> records = [];
@@ -1531,10 +1496,9 @@ public class Eip8297CanonicalTreeTests
                 }
 
                 if (records.Count == 0) return null;
-                return PbtNodeGroupEncoder.EncodeToMemory(storageGroupKey, records, MemoryProvider);
+                return PbtNodeGroupEncoder.Encode(storageGroupKey, records, default);
             }
-            RefCountingMemory? innerPayload = Inner.GetNodeGroup(groupKey);
-            return innerPayload;
+            return Inner.GetNodeGroup(groupKey);
         }
 
         private void SetNodeGroup(PbtGroupRecord record)

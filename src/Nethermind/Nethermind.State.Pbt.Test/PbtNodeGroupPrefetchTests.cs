@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -79,7 +78,7 @@ public class PbtNodeGroupPrefetchTests
         // A fold's read warms nothing, so the prefetch reads again every group the fold read from persistence.
         List<PbtStorageNodePath> reread = readByFold ? [.. firstGroups] : [];
         if (readByFold)
-            foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
+            foreach (PbtStorageNodePath path in firstGroups) _ = bundle.GetNodeGroup(path);
 
         PbtWorldStateScope scope = HintBal(bundle, bal);
 
@@ -104,8 +103,8 @@ public class PbtNodeGroupPrefetchTests
         reader.ClearReads();
         foreach (PbtStorageNodePath path in expected.Where(path => !Absent(path)))
         {
-            using RefCountingMemory? kept = bundle.GetNodeGroup(path);
-            Assert.That(kept?.GetSpan().ToArray(), Is.EqualTo(ReadPayload(path)));
+            byte[]? kept = bundle.GetNodeGroup(path);
+            Assert.That(kept, Is.EqualTo(ReadPayload(path)));
         }
         using (Assert.EnterMultipleScope())
         {

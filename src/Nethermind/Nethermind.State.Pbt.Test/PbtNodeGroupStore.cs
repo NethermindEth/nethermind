@@ -6,8 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 
@@ -15,11 +13,10 @@ namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by two-level ownership boundaries.</summary>
 /// <remarks>Groups are kept as managed record bytes, so a borrowed record stays valid after its group is replaced.</remarks>
-public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IDisposable
+public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
 {
     public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
 
-    private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
     private readonly System.Threading.Lock _groupLock = new();
     private Dictionary<PbtStorageNodePath, byte[]> _groups = [];
     private bool _disposed;
@@ -64,16 +61,12 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <summary>Returns a caller-owned copy of the group payload at <paramref name="groupKey"/>, or null when the store has none.</summary>
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+    public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         if (!PbtTwoLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a two-level boundary.", nameof(groupKey));
         using PbtLoadedRecordBuffer loaded = new();
-        if (!loaded.TryLoad(this, groupKey, out PbtGroupRecord record)) return null;
-
-        RefCountingMemory payload = _memoryProvider.Rent(record.Payload.Length);
-        record.Payload.Span.CopyTo(payload.GetSpan());
-        return payload;
+        return loaded.TryLoad(this, groupKey, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
     }
 
     /// <summary>Drops every group the tree from the root group no longer reaches, or every group of an empty tree.</summary>
@@ -92,18 +85,18 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     /// </remarks>
     public void SetNodeGroup(PbtGroupRecord record)
     {
-        SetNodeGroup(record.Path, record.Span.ToArray());
+        SetRecord(record.Path, record.Span.ToArray());
         if (record.Path.BitDepth == 0) RetainTreeGroups(emptyTree: false);
     }
 
     /// <summary>Replaces the group at <paramref name="groupKey"/> with a copy of <paramref name="payload"/>, or deletes it for a null payload.</summary>
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, byte[]? payload)
     {
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        SetNodeGroup(storagePath, payload is null ? null : Record(storagePath, payload.GetSpan()));
+        SetRecord(storagePath, payload is null ? null : Record(storagePath, payload));
     }
 
-    private void SetNodeGroup(PbtStorageNodePath storagePath, byte[]? record)
+    private void SetRecord(PbtStorageNodePath storagePath, byte[]? record)
     {
         lock (_groupLock)
         {
@@ -121,13 +114,13 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         }
     }
 
-    /// <summary>Hands a test store's leased group payload to <paramref name="action"/>, releasing the lease.</summary>
-    /// <returns>False for a null lease, which stands for a missing group.</returns>
-    public static bool TryLoadLease<TArg>(RefCountingMemory? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    /// <summary>Hands a test store's group payload to <paramref name="action"/>.</summary>
+    /// <returns>False for a null payload, which stands for a missing group.</returns>
+    public static bool TryLoadPayload<TArg>(byte[]? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         if (payload is null) return false;
 
-        using (payload) action(payload.GetSpan(), arg);
+        action(payload, arg);
         return true;
     }
 

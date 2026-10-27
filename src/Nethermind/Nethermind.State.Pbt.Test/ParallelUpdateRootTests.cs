@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
@@ -629,7 +628,7 @@ public class ParallelUpdateRootTests
         {
             Interlocked.Increment(ref _storeReads);
             if (FailDescendantReads && path.BitDepth != 0) throw new InvalidDataException("Configured descendant read failure.");
-            return PbtNodeGroupStore.TryLoadLease(_persisted?.GetNodeGroup(path), action, arg);
+            return PbtNodeGroupStore.TryLoadPayload(_persisted?.GetNodeGroup(path), action, arg);
         }
 
         public ValueHash256 Fold((byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut, ulong? rootOverride = null)
@@ -744,14 +743,14 @@ public class ParallelUpdateRootTests
             return false;
         }
         public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         private readonly PbtNodeGroupStore _store = new();
         internal List<PbtStorageNodePath> Reads { get; } = [];
         internal List<PbtStorageNodePath> Writes { get; } = [];
         internal IReadOnlyList<PbtStorageNodePath> StoredGroups => _store.EnumerateNodeGroupKeys();
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+        public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             lock (Reads) Reads.Add(groupKey.ToPath<PbtStorageNodePath>());
             return _store.GetNodeGroup(groupKey);
@@ -808,7 +807,7 @@ public class ParallelUpdateRootTests
             return false;
         }
         public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         private readonly Barrier _barrier = new(2);
         private readonly HashSet<PbtStorageNodePath> _writtenGroups = [];
@@ -822,7 +821,7 @@ public class ParallelUpdateRootTests
         internal int ActiveReads => _activeReads;
         internal bool DuplicateWrites { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+        public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             Interlocked.Increment(ref _activeReads);
             try
@@ -873,7 +872,7 @@ public class ParallelUpdateRootTests
             return false;
         }
         public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadLease(GetNodeGroup(path), action, arg);
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         private const int BucketGroupBitDepth = 12;
         private readonly Barrier _barrier = new(2);
@@ -894,7 +893,7 @@ public class ParallelUpdateRootTests
             _coordinate = coordinate;
         }
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
+        public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             if (_observing)
             {

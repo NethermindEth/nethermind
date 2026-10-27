@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
@@ -91,16 +90,6 @@ internal static class PbtNodeGroupEncoder
         ArrayBufferWriter<byte> writer = new(capacity);
         Encode(writer, groupKey, nodes, descendantBytes);
         return writer.WrittenSpan.ToArray();
-    }
-
-    /// <summary>Encodes a canonical group payload without descendants into memory rented from <paramref name="provider"/>.</summary>
-    public static RefCountingMemory EncodeToMemory<TPath>(TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, IRefCountingMemoryProvider provider)
-        where TPath : struct, IPbtNodePath<TPath>
-    {
-        byte[] encoded = Encode(groupKey, nodes, default);
-        RefCountingMemory memory = provider.Rent(encoded.Length);
-        encoded.CopyTo(memory.GetSpan());
-        return memory;
     }
 
     private static void ValidateNodePath<TPath>(ReadOnlySpan<byte> encoding, TPath path) where TPath : struct, IPbtNodePath<TPath>

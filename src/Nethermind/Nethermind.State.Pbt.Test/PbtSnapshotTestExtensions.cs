@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
@@ -157,11 +156,10 @@ internal static class PbtSnapshotTestExtensions
     }
 
     /// <summary>Returns a caller-owned copy of the persisted group, or null when no persisted layer has an entry.</summary>
-    internal static RefCountingMemory? GetNodeGroup(this PbtReadOnlySnapshotBundle bundle, PbtStorageNodePath groupKey)
+    internal static byte[]? GetNodeGroup(this PbtReadOnlySnapshotBundle bundle, PbtStorageNodePath groupKey)
     {
-        RefCountingMemory? payload = null;
-        bundle.TryLoadPersistedNodeGroup(groupKey, static (bytes, target) => target[0] = CopyPayload(bytes), new Span<RefCountingMemory?>(ref payload));
-        return payload;
+        List<byte[]> groups = [];
+        return bundle.TryLoadPersistedNodeGroup(groupKey, CollectGroup, groups) ? groups.Single() : null;
     }
 
     /// <summary>Serves <paramref name="reader"/>'s group loads from <paramref name="loadGroup"/>, which a substitute cannot configure as they pass by span.</summary>
@@ -175,10 +173,9 @@ internal static class PbtSnapshotTestExtensions
     }
 
     /// <summary>A caller-owned copy of the group at <paramref name="groupKey"/> in the branch's tree, from its buffer or else as a fold loads it.</summary>
-    internal static RefCountingMemory? GetNodeGroup(this PbtSnapshotBundle bundle, PbtStorageNodePath groupKey) =>
-        bundle.GroupRecordBuffer.TryFindGroup(bundle.RootGroupPointer, groupKey, out PbtGroupRecord record) ? CopyPayload(record)
-        : LoadPayload((action, groups) => bundle.TryLoadNodeGroup(groupKey, action, groups)) is { } payload ? CopyPayload(payload)
-        : null;
+    internal static byte[]? GetNodeGroup(this PbtSnapshotBundle bundle, PbtStorageNodePath groupKey) =>
+        bundle.GroupRecordBuffer.TryFindGroup(bundle.RootGroupPointer, groupKey, out PbtGroupRecord record) ? record.Payload.ToArray()
+        : LoadPayload((action, groups) => bundle.TryLoadNodeGroup(groupKey, action, groups));
 
     /// <summary>The payload of the group <paramref name="load"/> hands over, as a record or as a payload, or null when it misses.</summary>
     internal static byte[]? LoadPayload(Func<ReadOnlySpanAction<byte, List<byte[]>>, List<byte[]>, bool> load)
@@ -206,16 +203,6 @@ internal static class PbtSnapshotTestExtensions
     }
 
     private static readonly ReadOnlySpanAction<byte, List<byte[]>> CollectGroup = static (group, groups) => groups.Add(group.ToArray());
-
-    /// <summary>A pooled copy of <paramref name="record"/>'s payload.</summary>
-    internal static RefCountingMemory CopyPayload(in PbtGroupRecord record) => CopyPayload(record.Payload.Span);
-
-    private static RefCountingMemory CopyPayload(ReadOnlySpan<byte> bytes)
-    {
-        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(bytes.Length);
-        bytes.CopyTo(payload.GetSpan());
-        return payload;
-    }
 
     /// <summary>Forwards to a reader but loads its groups from a delegate, recording every group asked for.</summary>
     public sealed class GroupLoadingReader(IPbtPersistence.IReader inner, Func<PbtStorageNodePath, byte[]?> loadGroup) : IPbtPersistence.IReader

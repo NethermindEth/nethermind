@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -194,7 +193,7 @@ public class PbtMetricsTests
         UInt256 actualSlot = bundle.GetSlot(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PackedSlotRun headerRun = bundle.RentRun<PbtPath>(SlotRun.RunKey(headerStorageKey), addressHash);
         PackedSlotRun storageRun = bundle.RentRun<PbtStoragePath>(SlotRun.RunKey(storageKey), addressHash);
-        using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
+        byte[]? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
         string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";
@@ -209,7 +208,7 @@ public class PbtMetricsTests
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(headerRun.Get(SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(actualHeaderSlot));
             Assert.That(storageRun.Get(SlotRun.IndexOf(storageKey)), Is.EqualTo(actualSlot));
-            Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(scenario == "missing" ? null : payload));
+            Assert.That(actualGroup, Is.EqualTo(scenario == "missing" ? null : payload));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
                 ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{groupTier}", $"code_{fallthroughTier}" }

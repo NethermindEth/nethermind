@@ -9,7 +9,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -286,12 +285,12 @@ public class PbtSnapshotBundleTests
         PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(source.To, StateId.PreGenesis), new Reader(default, null), slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, buffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         repository.RemoveMemoryState(source.To);
-        using RefCountingMemory? independentlyOwned = branch.GetNodeGroup(path);
+        byte[]? independentlyOwned = branch.GetNodeGroup(path);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rootPointer != 0, Is.True);
             Assert.That(branch.RootGroupPointer, Is.EqualTo(rootPointer));
-            Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
+            Assert.That(independentlyOwned!, Is.EqualTo(encoding));
             Assert.That(repository.HasState(source.To), Is.False);
         }
         Assert.That(buffer.TryLocate(rootPointer, out _), Is.True);
@@ -300,7 +299,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(buffer.PinCount(), Is.Zero);
             Assert.That(source.RootGroupPointer, Is.EqualTo(rootPointer), "the snapshot root hint is not read back from recycled content");
-            Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
+            Assert.That(independentlyOwned!, Is.EqualTo(encoding));
         }
     }
 
@@ -354,7 +353,7 @@ public class PbtSnapshotBundleTests
             }
         });
 
-        using RefCountingMemory? pending = bundle.GetNodeGroup(groupPath);
+        byte[]? pending = bundle.GetNodeGroup(groupPath);
         Assert.That(pending, Is.Null, "written groups stay invisible until a root links them");
         if (published) store.Publish();
 
@@ -543,11 +542,10 @@ public class PbtSnapshotBundleTests
             Assert.That(reader.GroupReadCount, Is.Zero);
         }
 
-        using (RefCountingMemory? actual = bundle.GetNodeGroup(wideGroupKey))
         using (Assert.EnterMultipleScope())
         {
             byte[]? expected = answeringTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
-            Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
+            Assert.That(bundle.GetNodeGroup(wideGroupKey), Is.EqualTo(expected));
             Assert.That(reader.GroupReadCount, Is.EqualTo(answeringTier == 0 ? 1 : 0));
         }
     }
@@ -575,16 +573,14 @@ public class PbtSnapshotBundleTests
         Reader reader = new(default, null) { GroupPayload = persistedEncoding };
         using PbtReadOnlySnapshotBundle bundle = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(head, StateId.PreGenesis), reader, slotFilterBitsPerKey: 0);
         int persistenceReads = !newerMemory && tombstone ? 1 : 0;
-        using (RefCountingMemory? payload = bundle.GetNodeGroup(path))
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload?.Memory.ToArray(), Is.EqualTo(persistedEncoding));
+            Assert.That(bundle.GetNodeGroup(path), Is.EqualTo(persistedEncoding));
             Assert.That(reader.GroupReadCount, Is.EqualTo(persistenceReads), "only a group no persisted tree holds is read from persistence");
         }
-        using (RefCountingMemory? missingPayload = bundle.GetNodeGroup(new PbtStorageNodePath([0], 8)))
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(missingPayload, Is.Null);
+            Assert.That(bundle.GetNodeGroup(new PbtStorageNodePath([0], 8)), Is.Null);
             Assert.That(reader.GroupReadCount, Is.EqualTo(persistenceReads + 1));
         }
     }
@@ -997,13 +993,6 @@ public class PbtSnapshotBundleTests
     {
         ulong root = encoding is null ? 0 : bundle.GroupRecordBuffer.Append(default, encoding, default);
         bundle.PublishTreeRoot((default, root), encoding is null ? 0 : 1, encoding?.Length ?? 0);
-    }
-
-    private static RefCountingMemory Memory(byte[] encoding, IRefCountingMemoryProvider? memoryProvider = null)
-    {
-        RefCountingMemory payload = (memoryProvider ?? PooledRefCountingMemoryProvider.Instance).Rent(encoding.Length);
-        encoding.CopyTo(payload.GetSpan());
-        return payload;
     }
 
     private static byte[] BranchEncoding(byte marker)

@@ -11,7 +11,6 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -251,11 +250,11 @@ public class PbtTrieNodeLogTests
         byte[] topGroup;
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default))
         {
-            using RefCountingMemory root = EncodeGroup(rootNode, TestItem.KeccakA.ValueHash256);
-            using RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256);
-            topGroup = top.GetSpan().ToArray();
-            batch.SetNodeGroup(rootKey, root.GetSpan());
-            batch.SetNodeGroup(topKey, top.GetSpan());
+            byte[] root = EncodeGroup(rootNode, TestItem.KeccakA.ValueHash256);
+            byte[] top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256);
+            topGroup = top;
+            batch.SetNodeGroup(rootKey, root);
+            batch.SetNodeGroup(topKey, top);
             batch.Commit();
         }
 
@@ -285,9 +284,9 @@ public class PbtTrieNodeLogTests
     }
 
     /// <summary>The group holding a single branch node at <paramref name="node"/>; the node has a prefix, as a prefixless interior branch would be omitted.</summary>
-    private static RefCountingMemory EncodeGroup(PbtNodePath node, in ValueHash256 child) =>
-        PbtNodeGroupEncoder.EncodeToMemory(PbtTestPaths.Locate(node).GroupKey,
-            [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], PooledRefCountingMemoryProvider.Instance);
+    private static byte[] EncodeGroup(PbtNodePath node, in ValueHash256 child) =>
+        PbtNodeGroupEncoder.Encode(PbtTestPaths.Locate(node).GroupKey,
+            [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], default);
 
     [Test]
     public void Every_node_group_column_is_logged_and_the_metadata_column_is_not()
@@ -684,8 +683,7 @@ public class PbtTrieNodeLogTests
 
         IPbtPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default);
         PbtNodePath topNode = new(Bytes.FromHexString("0x20"), 5);
-        using (RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256))
-            writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, top.GetSpan());
+        writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, EncodeGroup(topNode, TestItem.KeccakB.ValueHash256));
         Assert.That(writeBatch.Commit, Throws.TypeOf<IOException>());
         writeBatch.Dispose();
         using (Assert.EnterMultipleScope())

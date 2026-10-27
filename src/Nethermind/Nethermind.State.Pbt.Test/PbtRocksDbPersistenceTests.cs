@@ -21,7 +21,6 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.PersistedSnapshots;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -215,8 +214,8 @@ public class PbtRocksDbPersistenceTests
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default))
         {
-            using RefCountingMemory group = EncodeGroup(null, new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode));
-            batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey, group.GetSpan());
+            byte[] group = EncodeGroup(new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode));
+            batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey, group);
             batch.Commit();
         }
 
@@ -243,12 +242,10 @@ public class PbtRocksDbPersistenceTests
         PbtNodePath[] paths = [new(Bytes.FromHexString("8000"), 10), new([], 0), new(Bytes.FromHexString("00"), 4),
             new(Bytes.FromHexString("0100"), 10), new(Bytes.FromHexString("ff00"), 10), new(Bytes.FromHexString("000000"), 16)];
         using IPbtPersistence.IReader olderReader = persistence.CreateReader();
-        TrackingMemoryProvider memoryProvider = new();
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
             StateId.PreGenesis, new StateId(1, default), default))
         {
-            foreach (PbtNodePath path in paths) WriteGroup(batch, path, BranchNode(1), memoryProvider);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+            foreach (PbtNodePath path in paths) WriteGroup(batch, path, BranchNode(1));
             if (commit) batch.Commit();
         }
 
@@ -467,7 +464,6 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> inner = new("pbt");
         FailNextCommitColumnsDb db = new(inner);
-        TrackingMemoryProvider memoryProvider = new();
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance);
         ValueHash256 stagedAddressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch())
@@ -482,7 +478,7 @@ public class PbtRocksDbPersistenceTests
             new StateId(7, TestItem.KeccakB.ValueHash256),
             TestItem.KeccakA.ValueHash256);
         PbtVariableTreeKey nodeKey = new([0x80]);
-        WriteGroup(final, new PbtNodePath([], 0), PbtTreeHarness.EncodeLeaf(nodeKey), memoryProvider);
+        WriteGroup(final, new PbtNodePath([], 0), PbtTreeHarness.EncodeLeaf(nodeKey));
 
         Assert.That(() => final.Commit(), Throws.TypeOf<IOException>());
         final.Dispose();
@@ -493,7 +489,6 @@ public class PbtRocksDbPersistenceTests
             Assert.That(inner.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
             Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(25)));
         }
     }
@@ -614,15 +609,12 @@ public class PbtRocksDbPersistenceTests
         Assert.That(db.GetColumnDb(column).Get(key), Is.EqualTo(Bytes.FromHexString("01")));
     }
 
-    private static RefCountingMemory EncodeGroup(IRefCountingMemoryProvider? memoryProvider, params PbtNodeRecord[] records) =>
-        PbtNodeGroupEncoder.EncodeToMemory(PbtTestPaths.Locate(records[0].Path).GroupKey, records, memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
+    private static byte[] EncodeGroup(params PbtNodeRecord[] records) =>
+        PbtNodeGroupEncoder.Encode(PbtTestPaths.Locate(records[0].Path).GroupKey, records, default);
 
-    private static void WriteGroup<TPath>(IPbtPersistence.IWriteBatch batch, TPath path, byte[] node, IRefCountingMemoryProvider? memoryProvider = null)
-        where TPath : struct, IPbtNodePath<TPath>
-    {
-        using RefCountingMemory payload = EncodeGroup(memoryProvider, new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), node));
-        batch.SetNodeGroup(PbtTestPaths.Locate(path).GroupKey, payload.GetSpan());
-    }
+    private static void WriteGroup<TPath>(IPbtPersistence.IWriteBatch batch, TPath path, byte[] node)
+        where TPath : struct, IPbtNodePath<TPath> =>
+        batch.SetNodeGroup(PbtTestPaths.Locate(path).GroupKey, EncodeGroup(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), node)));
 
     private static byte[]? ReadNode<TPath>(IPbtPersistence.IReader reader, TPath path)
         where TPath : struct, IPbtNodePath<TPath>
