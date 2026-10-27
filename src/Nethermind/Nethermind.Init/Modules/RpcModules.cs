@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.IndexProof;
 using Nethermind.JsonRpc.Modules.LogIndex;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Overlay;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -119,6 +120,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // IndexProof
             .RegisterBoundedJsonRpcModule<IIndexProofRpcModule, AutoRpcModuleFactory<IIndexProofRpcModule>>(2, jsonRpcConfig.Timeout)
                 .AddScoped<IIndexProofRpcModule, IndexProofRpcModule>()
+            // Overlay
+            .RegisterBoundedJsonRpcModule<IOverlayRpcModule, OverlayModuleFactory>(2, jsonRpcConfig.Timeout)
+                .AddScoped<IOverlayRpcModule, OverlayRpcModule>()
 
             // Trace
             .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateTraceBudget)
