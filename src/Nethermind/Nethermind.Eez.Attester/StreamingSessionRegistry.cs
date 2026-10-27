@@ -17,6 +17,7 @@ internal sealed class StreamingSessionRegistry : IDisposable
     private readonly Dictionary<ByteString, Entry> _sessions = [];
     private readonly StreamingRegistryLimits _limits;
     private readonly StreamingSessionLimits _sessionLimits;
+    private readonly NativeStreamingProfile? _nativeProfile;
     private readonly TimeProvider _time;
     private readonly ITimer _timer;
     private readonly long _reservation;
@@ -25,11 +26,14 @@ internal sealed class StreamingSessionRegistry : IDisposable
     internal StreamingProtocolRules Rules { get; }
 
     internal StreamingSessionRegistry(StreamingRegistryLimits limits, StreamingSessionLimits sessionLimits, TimeProvider time,
-        StreamingSettlementProfile profile = StreamingSettlementProfile.Rollup0Calldata)
+        StreamingSettlementProfile profile = StreamingSettlementProfile.Rollup0Calldata, NativeStreamingProfile? nativeProfile = null)
     {
         sessionLimits.Validate();
         limits.Validate();
-        Rules = new StreamingProtocolRules(profile);
+        if (nativeProfile is not null && profile != StreamingSettlementProfile.RollupXNative)
+            throw new ArgumentException("Native session profile does not match its execution configuration.", nameof(nativeProfile));
+        Rules = new StreamingProtocolRules(profile, HasNativeHistory: nativeProfile is not null);
+        _nativeProfile = nativeProfile;
         if (sessionLimits.MaxBytes > long.MaxValue / Rules.ReservationCopies) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
         _reservation = sessionLimits.MaxBytes * Rules.ReservationCopies;
         if (_reservation > limits.MaxReservedBytes) throw new ArgumentOutOfRangeException(nameof(limits));
@@ -48,7 +52,7 @@ internal sealed class StreamingSessionRegistry : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             SweepCore();
-            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits, Rules, frameBytes);
+            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits, Rules, frameBytes, _nativeProfile);
             int owned = 0;
             foreach (Entry entry in _sessions.Values)
                 if (StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner)) owned++;

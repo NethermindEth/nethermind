@@ -25,6 +25,8 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     private void ValidateSettlement(SettlementInput? settlement)
     {
+        if (registry.Rules.HasNativeHistory)
+            throw Error(StatusCode.Unimplemented, "native settlement authorization unavailable");
         switch (registry.Rules.Profile)
         {
             case StreamingSettlementProfile.Rollup0Calldata:

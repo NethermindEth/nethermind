@@ -28,9 +28,13 @@ internal sealed class NativeHistoryBlockExecutor(
     EezChainRules rules,
     NativeHistorySchedule schedule,
     ulong firstNumber,
-    NativeHistorySource source,
+    NativeHistorySource? source,
     NativeL1HeaderChain evidence) : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private readonly NativeHistorySource? _source = rules.UsesNativeContractV3
+        ? null
+        : source ?? throw new ArgumentNullException(nameof(source));
+
     // Canonical L1BlockhashContract runtime from the native-v1 profile.
     internal static readonly ValueHash256 RuntimeHash = new("0x88192d264757958a6e14725aa40c875814def72c1f8710e5f72c768356f8afa0");
 
@@ -56,7 +60,7 @@ internal sealed class NativeHistoryBlockExecutor(
             if (!import.HasSystemTransactionFields(rules) || import.ChainId != specProvider.ChainId ||
                 import.GasLimit != Math.Min(block.GasLimit, EezConstants.L1HistoryTxGasCap) ||
                 !rules.UsesNativeContractV3 && (block.ParentHash is null ||
-                import.SourceHash!.ValueHash256 != source.Compute(block.ParentHash.ValueHash256, block.Number, block.Timestamp, import.Data.Span)))
+                import.SourceHash!.ValueHash256 != _source!.Compute(block.ParentHash.ValueHash256, block.Number, block.Timestamp, import.Data.Span)))
                 throw new InvalidBlockException(block, "Native history transaction differs from the recorded transition.");
         }
         if (block.Header.MixHash?.ValueHash256 != execution.PrevRandao)

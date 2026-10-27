@@ -90,10 +90,11 @@ internal sealed partial class NativeL1Rules
         RollupXSchedule schedule = l2.Rules.Schedule!;
         if (schedule.L1Reference.ChainId != Specs.ChainId || schedule.L1Reference.Number < _lastBlockFork)
             throw Invalid("L2 bootstrap differs from L1 chain or precedes a block-based fork");
+        ValueHash256 runtimeHash = NativeHistoryBlockExecutor.GetRuntimeHash(l2.Rules.NativeFormat);
         NativeOfflineProfile.Inputs result = new(Specs.ChainId, l2.Specs.ChainId, l2.GenesisHash, schedule.GenesisTimestamp,
             schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks, checked((uint)(l2.History.Delay / l2.History.BlockInterval - 1)),
-            ConfigHash, NativeHistoryBlockExecutor.RuntimeHash, l2.Rules.FeeCollector!);
-        NativeOfflineProfile.Validate(in result, _ruleTimes, result.L1ChainId, NativeHistoryBlockExecutor.RuntimeHash);
+            ConfigHash, runtimeHash, l2.Rules.FeeCollector!);
+        NativeOfflineProfile.Validate(in result, _ruleTimes, result.L1ChainId, runtimeHash);
         return result;
     }
 

@@ -5,10 +5,10 @@ using Grpc.Core;
 
 namespace Nethermind.Eez.Attester;
 
-internal readonly record struct StreamingProtocolRules(StreamingSettlementProfile Profile)
+internal readonly record struct StreamingProtocolRules(StreamingSettlementProfile Profile, bool HasNativeHistory = false)
 {
     internal bool RetainsProvedWindow => Profile == StreamingSettlementProfile.Rollup0Conditional;
-    internal int ReservationCopies => RetainsProvedWindow ? 8 : 4;
+    internal int ReservationCopies => RetainsProvedWindow || HasNativeHistory ? 8 : 4;
     internal bool ChargesWireFrames => Profile == StreamingSettlementProfile.RollupXNative;
     internal bool ReturnsBoundControlErrors => Profile == StreamingSettlementProfile.RollupXNative;
     internal bool EvictsDetachedSessions => Profile is StreamingSettlementProfile.RollupXNative or StreamingSettlementProfile.Rollup0Conditional;

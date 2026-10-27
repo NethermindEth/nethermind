@@ -20,7 +20,9 @@ public sealed partial class EezStatelessExecutor
 
     private sealed class NativeHistoryContext(NativeGenesisSnapshot profile, NativeL1HeaderChain evidence)
     {
-        private readonly NativeHistorySource _source = new(profile.Rules.Schedule!.L1Reference.ChainId, profile.Specs.ChainId, profile.GenesisHash);
+        private readonly NativeHistorySource? _source = profile.Rules.UsesNativeContractV3
+            ? null
+            : new(profile.Rules.Schedule!.L1Reference.ChainId, profile.Specs.ChainId, profile.GenesisHash);
 
         internal void ValidateEmptyPrefix(BlockHeader header, IWorldState state)
         {

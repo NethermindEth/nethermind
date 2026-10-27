@@ -17,7 +17,12 @@ internal sealed class SessionOperation : IDisposable
     private Finalize? _finalize;
     private BlockWitness[] _blocks = [];
     private Begin? _predecessor;
+    private NativeStreamingEvidence? _nativeHistory;
 
+    internal NativeStreamingProfile? NativeProfile { get; }
+    internal NativeStreamingEvidence? NativeHistory => _nativeHistory;
+    internal int NativeHistoryLength { get; }
+    internal ExecutedStreamingBlock? ReusedBlock { get; }
     internal SessionBinding Binding { get; }
     internal ulong RequestId { get; }
     internal ByteString PreStateRoot { get; } = ByteString.Empty;
@@ -35,7 +40,8 @@ internal sealed class SessionOperation : IDisposable
     internal Begin? Predecessor => _predecessor?.Clone();
 
     internal SessionOperation(StreamingSession session, SessionBinding binding, ulong requestId, BlockWitness block,
-        ByteString preStateRoot, long size, long witnessItems, int duplicate)
+        ByteString preStateRoot, long size, long witnessItems, int duplicate, NativeStreamingProfile? nativeProfile = null,
+        NativeStreamingEvidence? nativeHistory = null, int nativeHistoryLength = 0, ExecutedStreamingBlock? reusedBlock = null)
     {
         _session = session;
         Binding = binding;
@@ -45,10 +51,14 @@ internal sealed class SessionOperation : IDisposable
         Size = size;
         WitnessItems = witnessItems;
         Duplicate = duplicate;
+        NativeProfile = nativeProfile;
+        _nativeHistory = nativeHistory;
+        NativeHistoryLength = nativeHistoryLength;
+        ReusedBlock = reusedBlock;
     }
 
     internal SessionOperation(StreamingSession session, SessionBinding binding, ulong requestId, Finalize finalize,
-        BlockWitness[] blocks, Begin predecessor)
+        BlockWitness[] blocks, Begin predecessor, NativeStreamingProfile? nativeProfile = null, NativeStreamingEvidence? nativeHistory = null)
     {
         _session = session;
         Binding = binding;
@@ -56,6 +66,9 @@ internal sealed class SessionOperation : IDisposable
         _finalize = finalize;
         _blocks = blocks;
         _predecessor = predecessor;
+        NativeProfile = nativeProfile;
+        _nativeHistory = nativeHistory;
+        NativeHistoryLength = nativeHistory?.Count ?? 0;
     }
 
     internal BlockWitness[] CopyBlocks()
@@ -73,6 +86,7 @@ internal sealed class SessionOperation : IDisposable
         _finalize = null;
         _blocks = [];
         _predecessor = null;
+        _nativeHistory = null;
     }
 
     internal Proof SignCurrent(EezAttestationSigner signer, ValueHash256 publicInputs, CancellationToken cancellation) =>

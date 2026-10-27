@@ -20,6 +20,10 @@ internal sealed class StreamingSession
     private readonly string _owner;
     private readonly StreamingSessionLimits _limits;
     private readonly StreamingProtocolRules _rules;
+    private readonly NativeStreamingProfile? _nativeProfile;
+    private NativeStreamingEvidence? _nativeHistory;
+    private int _nativeHistoryLength;
+    private int _anchorHistoryLength;
     private bool _attached = true;
     private readonly ulong _initialAnchorNumber;
     private ulong _provedThrough;
@@ -35,7 +39,7 @@ internal sealed class StreamingSession
     internal ulong RollupId { get; }
     internal ByteString Id { get; } = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(32));
 
-    internal StreamingSession(string authenticatedOwner, Begin begin, StreamingSessionLimits limits, StreamingProtocolRules rules = default, int frameBytes = 0)
+    internal StreamingSession(string authenticatedOwner, Begin begin, StreamingSessionLimits limits, StreamingProtocolRules rules = default, int frameBytes = 0, NativeStreamingProfile? nativeProfile = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(authenticatedOwner);
         limits.Validate();
@@ -56,6 +60,9 @@ internal sealed class StreamingSession
             AnchorStateRoot = begin.AnchorStateRoot,
         };
         _rules = rules;
+        if (rules.HasNativeHistory != (nativeProfile is not null) || nativeProfile is not null && rules.Profile != StreamingSettlementProfile.RollupXNative) throw new ArgumentException("Native session profile does not match its execution configuration.", nameof(nativeProfile));
+        _nativeProfile = nativeProfile;
+        _nativeHistory = nativeProfile is null ? null : new NativeStreamingEvidence(limits.MaxWitnessItems);
         if (rules.ChargesWireFrames && (frameBytes <= 0 || frameBytes > limits.MaxBytes))
             throw Error(StatusCode.ResourceExhausted, "session anchor limit exceeded");
         _bytes = rules.ChargesWireFrames ? frameBytes : 0;
@@ -119,6 +126,7 @@ internal sealed class StreamingSession
             _cancelled = true;
             _revoked.TrySetResult();
             RemoveSuffix(0);
+            _nativeHistory = null;
         }
     }
 
@@ -158,6 +166,7 @@ internal sealed class StreamingSession
             if (index == -2) throw Error(StatusCode.FailedPrecondition, "ancestor outside validated prefix");
             AdvanceEpoch();
             RemoveSuffix(index + 1);
+            if (_rules.HasNativeHistory) _nativeHistoryLength = _blocks.Count == 0 ? _anchorHistoryLength : _blocks[^1].NativeHistoryLength;
             _provedThrough = Math.Min(_provedThrough, TipNumber);
             return (Frame(requestId, new Ready { ValidatedThrough = TipNumber, ValidatedHash = TipHash }), _binding, _revoked.Task);
         }
@@ -172,6 +181,7 @@ internal sealed class StreamingSession
             _cancelled = true;
             _revoked.TrySetResult();
             RemoveSuffix(0);
+            _nativeHistory = null;
             return response;
         }
     }
@@ -184,7 +194,7 @@ internal sealed class StreamingSession
             CheckIdle();
             if (block.Witness is null || block.Hash.Length != 32 || block.ParentHash.Length != 32)
                 throw Error(StatusCode.InvalidArgument, "invalid block witness");
-            WindowAssembler.RejectL1Evidence(block.Witness);
+            if (!_rules.HasNativeHistory) WindowAssembler.RejectL1Evidence(block.Witness);
             if (block.Rlp.IsEmpty) throw Error(StatusCode.FailedPrecondition, "consensus block encoding is empty");
             int duplicate = FindBlock(block.Number);
             if (duplicate >= 0)
@@ -200,7 +210,7 @@ internal sealed class StreamingSession
 
             long size = _rules.ChargesWireFrames ? frameBytes : block.CalculateSize();
             if (size <= 0) throw new ArgumentOutOfRangeException(nameof(frameBytes));
-            long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count;
+            long items = (long)block.Witness.State.Count + block.Witness.Codes.Count + block.Witness.Keys.Count + block.Witness.Headers.Count + block.Witness.L1HeadersRlp.Count;
             if (_rules.RetainsProvedWindow)
             {
                 int first = duplicate >= 0 ? _blocks.Count : checked((int)(_provedThrough - _anchor.AnchorNumber));
@@ -215,7 +225,18 @@ internal sealed class StreamingSession
             }
 
             ByteString preStateRoot = duplicate >= 0 ? PreStateRoot(duplicate) : TipStateRoot;
-            _pending = new SessionOperation(this, binding, requestId, block.Clone(), preStateRoot, size, items, duplicate);
+            int nativeLength = _nativeHistoryLength;
+            ExecutedStreamingBlock? reused = null;
+            if (_rules.HasNativeHistory && duplicate >= 0)
+            {
+                RetainedBlock retained = _blocks[duplicate];
+                if (!SameWitness(retained.Data.Witness, block.Witness))
+                    throw Error(StatusCode.FailedPrecondition, "duplicate witness differs from checked execution");
+                nativeLength = duplicate == 0 ? _anchorHistoryLength : _blocks[duplicate - 1].NativeHistoryLength;
+                reused = new ExecutedStreamingBlock(block.Number, block.Hash, block.ParentHash, preStateRoot, retained.PostStateRoot);
+            }
+            _pending = new SessionOperation(this, binding, requestId, block.Clone(), preStateRoot, size, items, duplicate,
+                _nativeProfile, _nativeHistory, nativeLength, reused);
             return _pending;
         }
     }
@@ -249,7 +270,7 @@ internal sealed class StreamingSession
                 AnchorHash = blocks[0].ParentHash,
                 AnchorStateRoot = PreStateRoot(first),
             };
-            _pending = new SessionOperation(this, binding, requestId, finalize.Clone(), blocks, predecessor);
+            _pending = new SessionOperation(this, binding, requestId, finalize.Clone(), blocks, predecessor, _nativeProfile, _nativeHistory);
             return _pending;
         }
     }
@@ -263,6 +284,8 @@ internal sealed class StreamingSession
             if (executed.Number != block.Number || executed.Hash != block.Hash || executed.ParentHash != block.ParentHash ||
                 executed.PreStateRoot != operation.PreStateRoot || executed.PostStateRoot.Length != 32)
                 throw Error(StatusCode.FailedPrecondition, "executed block differs from admitted block");
+            if (operation.Duplicate < 0 && _rules.HasNativeHistory != (executed.NativeHistory is not null))
+                throw Error(StatusCode.FailedPrecondition, "execution did not validate the session L1 evidence");
             if (operation.Duplicate >= 0)
             {
                 if (executed.PostStateRoot != _blocks[operation.Duplicate].PostStateRoot)
@@ -270,7 +293,19 @@ internal sealed class StreamingSession
             }
             else
             {
-                _blocks.Add(new RetainedBlock(block, executed.PostStateRoot, operation.Size, operation.WitnessItems));
+                if (_rules.HasNativeHistory)
+                {
+                    NativeStreamingEvidence history = executed.NativeHistory!;
+                    if (history.Count != operation.NativeHistoryLength + block.Witness.L1HeadersRlp.Count)
+                        throw Error(StatusCode.FailedPrecondition, "executed L1 checkpoint differs from admitted evidence");
+                }
+                int historyLength = executed.NativeHistory?.Count ?? 0;
+                _blocks.Add(new RetainedBlock(block, executed.PostStateRoot, operation.Size, operation.WitnessItems, historyLength));
+                if (_rules.HasNativeHistory)
+                {
+                    _nativeHistory = executed.NativeHistory;
+                    _nativeHistoryLength = historyLength;
+                }
                 if (!_rules.RetainsProvedWindow)
                 {
                     _bytes += operation.Size;
@@ -283,7 +318,7 @@ internal sealed class StreamingSession
                 SessionId = Id,
                 RequestId = operation.RequestId,
                 Epoch = operation.Binding.Epoch,
-                Validated = new Validated { Number = block.Number, Hash = block.Hash, PostStateRoot = executed.PostStateRoot },
+                Validated = new Validated { Number = block.Number, Hash = block.Hash, PostStateRoot = executed.PostStateRoot, Reused = _rules.HasNativeHistory && operation.Duplicate >= 0 },
             };
         }
     }
@@ -312,7 +347,8 @@ internal sealed class StreamingSession
             ServerFrame response = new() { SessionId = Id, RequestId = operation.RequestId, Epoch = operation.Binding.Epoch, Proof = proof.Clone() };
             AdvanceEpoch();
             _anchor = operation.Predecessor!;
-            if (!_rules.RetainsProvedWindow)
+            if (_rules.HasNativeHistory && first > 0) _anchorHistoryLength = _blocks[first - 1].NativeHistoryLength;
+            if (!_rules.RetainsProvedWindow && !_rules.HasNativeHistory)
                 for (int i = 0; i < first; i++) Release(_blocks[i]);
             _blocks.RemoveRange(0, first);
             if (_rules.RetainsProvedWindow) _provedThrough = Math.Max(_provedThrough, to);
@@ -406,11 +442,15 @@ internal sealed class StreamingSession
     private ByteString TipStateRoot => _blocks.Count == 0 ? _anchor.AnchorStateRoot : _blocks[^1].PostStateRoot;
     private ByteString PreStateRoot(int index) => index == 0 ? _anchor.AnchorStateRoot : _blocks[index - 1].PostStateRoot;
     private static RpcException Error(StatusCode code, string message) => new(new Status(code, message));
-    private sealed record RetainedBlock(BlockWitness Data, ByteString PostStateRoot, long Size, long WitnessItems);
+    private static bool SameWitness(ExecutionWitness left, ExecutionWitness right) =>
+        left.State.Equals(right.State) && left.Codes.Equals(right.Codes) && left.Keys.Equals(right.Keys)
+        && left.Headers.Equals(right.Headers) && left.L1HeadersRlp.Equals(right.L1HeadersRlp);
+
+    private sealed record RetainedBlock(BlockWitness Data, ByteString PostStateRoot, long Size, long WitnessItems, int NativeHistoryLength);
 }
 
 internal readonly record struct SessionBinding(Guid Attachment, ulong Epoch);
-internal sealed record ExecutedStreamingBlock(ulong Number, ByteString Hash, ByteString ParentHash, ByteString PreStateRoot, ByteString PostStateRoot);
+internal sealed record ExecutedStreamingBlock(ulong Number, ByteString Hash, ByteString ParentHash, ByteString PreStateRoot, ByteString PostStateRoot, NativeStreamingEvidence? NativeHistory = null);
 internal sealed record StreamingSessionLimits(int MaxBlocks, long MaxBytes, long MaxWitnessItems)
 {
     internal void Validate()
