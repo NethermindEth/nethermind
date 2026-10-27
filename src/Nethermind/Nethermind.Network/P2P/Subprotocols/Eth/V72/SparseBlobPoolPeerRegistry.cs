@@ -330,6 +330,7 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
             }
         }
 
+        DropWrapped(peer.Id);
         ProcessPeerCleanupActions(cleanupActions, peer.Id);
     }
 
@@ -468,7 +469,7 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
     }
 
     /// <inheritdoc/>
-    public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, bool requiresWrapper = false)
+    public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType = null)
     {
         if (announcementMask.IsEmpty || !IsActivePeer(peer))
         {
@@ -497,14 +498,21 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
         }
 
         bool accepted = false;
+        bool mismatched = false;
         lock (state.Lock)
         {
-            if (IsCurrentState(hash, state)
+            if (announcedType is { } claimed)
+            {
+                state.AnnouncedTypes[peer.Id] = claimed;
+            }
+
+            mismatched = state.BodyType is { } bodyType && ClaimedType(state, peer.Id) != bodyType;
+            if (!mismatched
+                && IsCurrentState(hash, state)
                 && IsActivePeer(peer)
                 && !IsCellValidationQuarantined(state)
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
             {
-                state.RequiresWrapper |= requiresWrapper;
                 if (state.Announcements.TryGetValue(peer.Id, out BlobCellMask previousMask))
                 {
                     if (previousMask != announcementMask)
@@ -524,15 +532,22 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
             }
         }
 
+        if (mismatched)
+        {
+            CompleteRecord(hash, state, added, false);
+            DisconnectMismatchedAnnouncer(peer.Id, hash);
+            return false;
+        }
+
         accepted = CompleteRecord(hash, state, added, accepted);
         if (!accepted)
         {
             return false;
         }
 
-        if (requiresWrapper)
+        if (ClaimedTypeLocked(state, peer.Id) == TxType.FrameTx)
         {
-            OnWrappedAnnouncement(peer, hash);
+            OnFrameCellAnnouncement(peer, hash);
         }
 
         return true;
@@ -973,9 +988,15 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
     public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction)
     {
         Hash256? hash = transaction.Hash;
-        if (hash is null || !transaction.SupportsBlobs && !IsAwaitingCells(hash))
+        if (hash is null || !transaction.SupportsBlobs && !transaction.CarriesBlobs)
         {
             return SubmitTransaction(peer, transaction);
+        }
+
+        // EIP-8437: a dependency-bearing body is held only once its covering wrapper validated.
+        if (Eip8288Dependencies.IsDependencyBearing(transaction) && !IsAwaitingCells(hash))
+        {
+            return AcceptTxResult.MissingDependencyProof;
         }
 
         if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
@@ -1061,6 +1082,7 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
             return null;
         }
 
+        RecordBodyType(hash, state, transaction);
         return TrySubmit(hash, state);
     }
 
@@ -2709,8 +2731,12 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
         public bool RemovalRequested { get; set; }
         public bool ApplyingRecordedCells { get; set; }
 
-        /// <summary>Announced as a frame transaction's cells, which are fetched only after its covering wrapper validated.</summary>
-        public bool RequiresWrapper { get; set; }
+        /// <summary>The transaction type each announcer claimed; type-3 when absent.</summary>
+        public Dictionary<PublicKey, TxType> AnnouncedTypes { get; } = [];
+
+        /// <summary>The recorded body's type, once known; it, not an announcement, decides how cells are gated.</summary>
+        public TxType? BodyType { get; set; }
+        public bool BodyDependencyBearing { get; set; }
         public BlobCellMask InFlightMask { get; set; }
         public DateTimeOffset InFlightUntil { get; set; }
         public long NextInFlightRevision { get; set; }

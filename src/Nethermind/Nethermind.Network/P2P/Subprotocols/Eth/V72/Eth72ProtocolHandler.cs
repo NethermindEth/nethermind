@@ -470,7 +470,7 @@ public class Eth72ProtocolHandler(
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
                 blobHash = hash.ToHash256();
-                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask, wrapped);
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, blobHash, announcementMask, txType);
                 if (!recorded
                     && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {

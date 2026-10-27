@@ -20,10 +20,11 @@ public interface ISparseBlobPoolPeerRegistry : IWrappedBlobTransactionAdmission
     void RemovePeer(ISparseBlobPoolPeer peer);
 
     /// <summary>Records an announcement when the peer and process admission budgets allow it.</summary>
-    /// <param name="requiresWrapper">Whether the cells belong to a dependency-bearing frame transaction, which are not requested
-    /// until its covering proof wrapper validated (EIP-8437).</param>
+    /// <param name="announcedType">The transaction type the peer announced, or null to keep its earlier claim. Cells announced
+    /// for a frame transaction wait for its body, and for a dependency-bearing one for its validated covering proof wrapper
+    /// (EIP-8437); once the body is known, an announcer that claimed another type is disconnected.</param>
     /// <returns><c>true</c> when the announcement is tracked; otherwise <c>false</c>.</returns>
-    bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, bool requiresWrapper = false);
+    bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType = null);
 
     /// <summary>Returns the node-wide provider or sampler request mask for an announcement.</summary>
     BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent);
