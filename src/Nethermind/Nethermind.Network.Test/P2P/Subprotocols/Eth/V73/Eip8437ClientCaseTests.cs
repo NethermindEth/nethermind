@@ -136,28 +136,8 @@ public class Eip8437ClientCaseTests
         }).Bytes;
     }
 
-    // This client never omits encodings: it serves a compact = 1 request in full and requests with compact = 0.
-    [Test]
-    public void Requests_are_full_and_compact_requests_are_served_in_full()
-    {
-        Transaction a = FrameTransaction(1);
-        byte[] wrapper = Wrapper(64, a);
-        using WrapperTestNode node = new();
-        FakeWrapperLink link = new();
-        WrapperPeer peer = node.Connect(link);
-        Assert.That(node.Transport.PublishWrapper(wrapper), Is.True);
-        node.Transport.OnGetProofWrappers(peer, new(1, true, [Describe(wrapper).Hash]));
-        node.Transport.OnGetProofWrappers(peer, new(2, true, [Describe(wrapper).Hash]));
-        using WrapperTestNode requester = new();
-        FakeWrapperLink source = new();
-        requester.Transport.OnAnnounce(requester.Connect(source), new([Describe(wrapper)]));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(link.Sent<ProofWrappersMessage>().Select(static m => m.Entries.Single().Wrapper), Is.EqualTo(new[] { wrapper, wrapper }),
-                "an encoding sent before is sent in full again");
-            Assert.That(source.Sent<GetProofWrappersMessage>().Single().Compact, Is.False);
-        }
-    }
+    // Omitting encodings previously sent in full, and retrying in full after eviction, are covered by
+    // ProofWrapperOmissionTests.
 
     // A complete wrapper can be validated without envelope requests: the transport has no other request than GetProofWrappers.
     [Test]

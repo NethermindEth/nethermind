@@ -19,7 +19,10 @@ internal enum WrapperEvent
     RequestExpired,
     Violation,
     UpgradeDropped,
-    AnnouncementSuppressed
+    AnnouncementSuppressed,
+    ReferenceResolved,
+    ReferenceMissed,
+    ReferenceSent
 }
 
 internal static class WrapperMetrics
@@ -27,7 +30,8 @@ internal static class WrapperMetrics
     private static readonly string[] Events =
     [
         "announced", "announcement_received", "requested", "received", "validated", "invalid", "malformed", "local_failure",
-        "expired", "published", "served", "request_expired", "violation", "upgrade_dropped", "announcement_suppressed"
+        "expired", "published", "served", "request_expired", "violation", "upgrade_dropped", "announcement_suppressed",
+        "reference_resolved", "reference_missed", "reference_sent"
     ];
 
     public static void Record(WrapperEvent wrapperEvent, long count = 1) =>

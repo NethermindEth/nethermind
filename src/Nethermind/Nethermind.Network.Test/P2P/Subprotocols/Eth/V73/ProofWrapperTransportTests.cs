@@ -124,6 +124,7 @@ public class ProofWrapperTransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
+            if (scenario == "reference") Assert.That(link.Penalties[0], Does.Contain("compact = 0"));
             Assert.That(node.Transport.ChargedBytes, Is.Zero);
             Assert.That(node.Pending, Is.Empty);
         }

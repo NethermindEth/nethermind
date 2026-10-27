@@ -87,8 +87,12 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 /// <remarks>Only wrappers that passed full EIP-8288 validation, or were produced locally, are added.</remarks>
 internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
 {
-    internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape)
+    internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Eip8288Verifier verifier, WrapperShape shape,
+        ValueHash256[] encodingHashes)
     {
+        /// <summary>The encoding hashes of the wrapper's transactions, in order, against which hash references are made.</summary>
+        public ValueHash256[] EncodingHashes { get; } = encodingHashes;
+
         public WrapperAnnouncement Announcement { get; } = announcement;
 
         /// <summary>Mode, proof bytes and verification work, compared when suppressing redundant announcements.</summary>
@@ -101,7 +105,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         /// <summary>The consensus hashes of the wrapper's <c>transactions</c>, in order.</summary>
         public ValueHash256[] Hashes { get; } = hashes;
         public LinkedListNode<ValueHash256>? Node { get; set; }
-        public long Bytes { get; } = wrapper.Length + 256 + hashes.Length * 64L;
+        public long Bytes { get; } = wrapper.Length + 256 + hashes.Length * 96L;
     }
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];
@@ -157,10 +161,18 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
 }
 
 /// <summary>A peer's request, budget and suppression state, guarded by the transport lock.</summary>
-internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock)
+internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, WrapperEncodingBudget encodingBudget)
 {
     public IWrapperLink Link { get; } = link;
     public bool Closed { get; set; }
+
+    /// <summary>Encoding hashes of transactions this node sent the peer in full within validated wrappers: the only ones it
+    /// may replace with hash references (EIP-8437).</summary>
+    public WrapperBoundedSet Delivered { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
+
+    /// <summary>Encodings received in full from the peer within wrappers that validated, from which its references are
+    /// resolved; while it is empty, requests to the peer ask for complete wrappers.</summary>
+    public WrapperEncodingCache Received { get; } = new(encodingBudget);
 
     /// <summary>Wrapper hashes exchanged on the connection in either direction: announced, requested or sent.</summary>
     public WrapperBoundedSet Known { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
@@ -203,9 +215,12 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock)
 }
 
 /// <summary>An outstanding GetProofWrappers request; its wanted wrappers in request order.</summary>
-internal sealed class WrappersRequest(long id, long created, long reserved, WrapperFetch[] fetches)
+internal sealed class WrappersRequest(long id, long created, long reserved, WrapperFetch[] fetches, bool compact)
 {
     public long Id { get; } = id;
+
+    /// <summary>Whether the request permitted hash references.</summary>
+    public bool Compact { get; } = compact;
     public long Created { get; } = created;
 
     /// <summary>Response bytes reserved against the peer and global budgets until the response arrives.</summary>
@@ -229,6 +244,10 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     public List<WrapperPeer> Sources { get; } = [];
     public HashSet<WrapperPeer> Tried { get; } = [];
     public bool Requested { get; set; }
+
+    /// <summary>Set after a compact response referenced an encoding this node no longer holds: the wrapper is requested again
+    /// with <c>compact = 0</c>.</summary>
+    public bool RequiresComplete { get; set; }
 
     /// <summary>The peer that served the wrapper.</summary>
     public WrapperPeer? Server { get; set; }

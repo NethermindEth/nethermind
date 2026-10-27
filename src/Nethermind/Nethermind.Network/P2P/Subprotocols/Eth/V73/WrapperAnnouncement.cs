@@ -82,7 +82,7 @@ public static class WrapperBodies
     /// <summary>Checks the canonical wrapper encoding and returns its consensus transaction hashes, in order.</summary>
     /// <remarks>Checks the fork-independent rules: <c>MAX_WRAPPER_BYTES</c>, full transaction encodings in strictly ascending
     /// transaction-hash order, the dependency count shared by both modes, dependency ordering and the mode-0 witness count.
-    /// A transaction hash reference is rejected: this client always requests complete wrappers.</remarks>
+    /// Hash references are resolved before a returned wrapper is parsed, so an unresolved one is rejected.</remarks>
     public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper, out WrapperShape shape)
     {
         int verificationBytes = 0;

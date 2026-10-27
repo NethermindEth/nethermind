@@ -125,25 +125,26 @@ public sealed partial class ProofWrapperTransport
             ids[i] = fetch.Announcement.Hash;
             peer.Known.Add(ids[i]);
         }
-        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch]);
+        // References are useful only once this node holds encodings the peer sent in full; a wrapper whose compact form
+        // referenced an evicted encoding is fetched complete.
+        bool compact = !peer.Received.IsEmpty && batch.TrueForAll(static fetch => !fetch.RequiresComplete);
+        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch], compact);
         peer.Requests.Add(request.Id, request);
-        outbox.Send(peer, new GetProofWrappersMessage(request.Id, false, ids));
+        outbox.Send(peer, new GetProofWrappersMessage(request.Id, compact, ids));
         WrapperMetrics.Record(WrapperEvent.Requested, ids.Length);
         return true;
     }
 
-    /// <summary>Matches returned entries, in order, to distinct requested hashes, checks each wrapper's canonical hash and the
-    /// responding peer's announced mode and length, then queues the wrappers for validation.</summary>
+    /// <summary>Matches returned entries, in order, to distinct requested hashes, resolves hash references from encodings
+    /// cached from this peer, checks each wrapper's canonical hash and the responding peer's announced mode and length, then
+    /// queues the wrappers for validation.</summary>
     /// <remarks>Requested wrappers skipped before the last one returned were unavailable from this peer; those after it were cut
-    /// by the soft limit and are requested again from the same peer. Requests ask for complete wrappers, so an entry with a hash
-    /// reference fails its hash check.</remarks>
+    /// by the soft limit and are requested again from the same peer. A compact item referencing an encoding this node no longer
+    /// holds is discarded without penalty and requested again with <c>compact = 0</c> (EIP-8437).</remarks>
     internal void OnProofWrappers(WrapperPeer peer, ProofWrappersMessage message)
     {
         ProofWrapperEntry[] entries = message.Entries;
-        // Hash outside the lock: a response carries up to 2 MiB.
-        (int Mode, ValueHash256 Hash)[] identities = new (int, ValueHash256)[entries.Length];
-        for (int i = 0; i < identities.Length; i++)
-            identities[i] = (WrapperBodies.TryReadMode(entries[i].Wrapper), ValueKeccak.Compute(entries[i].Wrapper));
+        Returned[] returned = Resolve(peer, message);
         Outbox outbox = new();
         lock (_gate)
         {
@@ -162,9 +163,14 @@ public sealed partial class ProofWrapperTransport
             for (int i = 0; i < entries.Length && violation is null; i++)
             {
                 while (cursor < fetches.Length && fetches[cursor].Announcement.Hash != entries[i].Hash) cursor++;
+                Returned item = returned[i];
                 if (cursor == fetches.Length) violation = "a returned wrapper is unrequested, repeated or reordered";
-                else if (identities[i].Hash != entries[i].Hash) violation = "a returned wrapper does not match its hash";
-                else if (fetches[cursor].ModeFrom(peer) != identities[i].Mode || fetches[cursor].LengthFrom(peer) != entries[i].Wrapper.Length)
+                else if (item.Referenced && !request.Compact) violation = "a compact = 0 response carries a hash reference";
+                else if (item.Error is not null) violation = item.Error;
+                else if (fetches[cursor].ModeFrom(peer) != item.Mode) violation = "a returned wrapper does not match its announced mode or length";
+                else if (item.Wrapper is null) matched[i] = cursor++;
+                else if (item.Hash != entries[i].Hash) violation = "a returned wrapper does not match its hash";
+                else if (fetches[cursor].LengthFrom(peer) != item.Wrapper.Length)
                     violation = "a returned wrapper does not match its announced mode or length";
                 else matched[i] = cursor++;
             }
@@ -184,14 +190,21 @@ public sealed partial class ProofWrapperTransport
                 fetch.Requested = false;
                 if (next < matched.Length && matched[next] == position)
                 {
-                    int mode = identities[next].Mode;
-                    byte[] wrapper = entries[next++].Wrapper;
+                    Returned item = returned[next++];
                     peer.Exchanged.Add(fetch.Announcement.Hash);
+                    if (item.Wrapper is not { } wrapper)
+                    {
+                        // A cache miss: retry the same peer with a fresh request for the complete wrapper.
+                        WrapperMetrics.Record(WrapperEvent.ReferenceMissed);
+                        fetch.RequiresComplete = true;
+                        fetch.Tried.Remove(peer);
+                        continue;
+                    }
                     if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, wrapper.Length)) continue;
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = wrapper.Length;
                     fetch.Server = peer;
-                    fetch.AddSource(peer, mode, wrapper.Length);
+                    fetch.AddSource(peer, item.Mode, wrapper.Length);
                     Enqueue(fetch);
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
@@ -201,6 +214,55 @@ public sealed partial class ProofWrapperTransport
             Schedule(outbox);
         }
         outbox.Flush();
+    }
+
+    /// <summary>A returned entry after reference resolution: the complete wrapper and its hash, or no wrapper on a cache miss,
+    /// or the reason it is malformed.</summary>
+    private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error);
+
+    /// <summary>Resolves and hashes the returned wrappers outside the lock, since a response carries up to 2 MiB.</summary>
+    private Returned[] Resolve(WrapperPeer peer, ProofWrappersMessage message)
+    {
+        ProofWrapperEntry[] entries = message.Entries;
+        Returned[] returned = new Returned[entries.Length];
+        Dictionary<ValueHash256, int>? lengths = null;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            byte[] wire = entries[i].Wrapper;
+            int mode = WrapperBodies.TryReadMode(wire);
+            if (!WrapperCompaction.HasReferences(wire))
+            {
+                returned[i] = new(mode, ValueKeccak.Compute(wire), wire, false, null);
+                continue;
+            }
+            // Reconstruction is bounded by the length this peer announced; an entry matching no request fails matching later.
+            lengths ??= AnnouncedLengths(peer, message.RequestId);
+            if (!lengths.TryGetValue(entries[i].Hash, out int announced))
+            {
+                returned[i] = new(mode, default, wire, true, null);
+                continue;
+            }
+            WrapperCompaction.Outcome outcome = WrapperCompaction.Reconstruct(wire, announced, hash => peer.Received.Get(hash),
+                out byte[]? wrapper, out string? error);
+            returned[i] = outcome switch
+            {
+                WrapperCompaction.Outcome.Complete => new(mode, ValueKeccak.Compute(wrapper!), wrapper, true, null),
+                WrapperCompaction.Outcome.Missing => new(mode, default, null, true, null),
+                _ => new(mode, default, null, true, error)
+            };
+            if (outcome == WrapperCompaction.Outcome.Complete) WrapperMetrics.Record(WrapperEvent.ReferenceResolved);
+        }
+        return returned;
+    }
+
+    /// <summary>The lengths <paramref name="peer"/> announced for the wrappers of an outstanding request.</summary>
+    private Dictionary<ValueHash256, int> AnnouncedLengths(WrapperPeer peer, long requestId)
+    {
+        Dictionary<ValueHash256, int> lengths = [];
+        lock (_gate)
+            if (peer.Requests.TryGetValue(requestId, out WrappersRequest? request))
+                foreach (WrapperFetch fetch in request.Fetches) lengths[fetch.Announcement.Hash] = fetch.LengthFrom(peer);
+        return lengths;
     }
 
     /// <summary>Drops pending announcements after their lifetime and cancels fetches past the fetch deadline.</summary>
@@ -329,6 +391,9 @@ public sealed partial class ProofWrapperTransport
         }
         (Verdict verdict, string? error, Eip8288Verifier? verifier) =
             await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token), cancellation).ConfigureAwait(false);
+        // Encodings received in full within a validated wrapper resolve the server's later references.
+        if (verdict is Verdict.Valid or Verdict.PoolRejected && fetch.Server is { Closed: false } server)
+            foreach ((ValueHash256 hash, byte[] encoding) in WrapperCompaction.Encodings(wrapper)) server.Received.Add(hash, encoding);
         Conclude(fetch, verdict, error, verifier);
     }
 

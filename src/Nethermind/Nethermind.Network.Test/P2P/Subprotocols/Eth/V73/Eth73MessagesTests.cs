@@ -254,18 +254,31 @@ public class Eth73MessagesTests
         }
     }
 
-    // compact_response_rlp: a hash reference is an RLP list in place of a transaction string. The message decodes, but the
-    // compact wrapper is not a complete wrapper until its references are resolved.
+    // compact_response_rlp: a hash reference is an RLP list in place of a transaction string. With the cached encodings the
+    // identical canonical wrapper is reconstructed; without them the item is discarded for a complete retry; a reconstruction
+    // longer than the announced length is rejected.
     [Test]
-    public void Compact_response_vector_decodes_but_its_wrapper_is_not_complete()
+    public void Compact_response_vector_reconstructs_the_canonical_wrapper()
     {
         ProofWrappersMessage message = new ProofWrappersMessageSerializer().Decode(Bytes.FromHexString(Mode1Compact));
+        byte[] body = Bytes.FromHexString(Mode1Body);
+        byte[] compact = message.Entries.Single().Wrapper;
+        System.Collections.Generic.Dictionary<ValueHash256, byte[]> cache = WrapperCompaction.Encodings(body).ToDictionary(static e => e.Hash, static e => e.Encoding);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(message.RequestId, Is.EqualTo(7));
-            Assert.That(message.Entries.Single().Hash.ToString(false), Is.EqualTo("082aec04a3cd181c4a376032dc0819b192a8b39ab14839f3fffb09089d1f9638"));
-            Assert.That(ValueKeccak.Compute(message.Entries[0].Wrapper), Is.Not.EqualTo(message.Entries[0].Hash));
-            Assert.That(() => WrapperBodies.ParseWrapper(message.Entries[0].Wrapper, out _), Throws.InstanceOf<RlpException>());
+            Assert.That(message.Entries[0].Hash.ToString(false), Is.EqualTo("082aec04a3cd181c4a376032dc0819b192a8b39ab14839f3fffb09089d1f9638"));
+            Assert.That(() => WrapperBodies.ParseWrapper(compact, out _), Throws.InstanceOf<RlpException>(), "references are unresolved");
+            Assert.That(WrapperCompaction.Compact(body, cache.ContainsKey), Is.EqualTo(compact), "both encodings are replaced");
+            Assert.That(WrapperCompaction.Reconstruct(compact, body.Length, h => cache.GetValueOrDefault(h), out byte[]? rebuilt, out _),
+                Is.EqualTo(WrapperCompaction.Outcome.Complete));
+            Assert.That(rebuilt, Is.EqualTo(body));
+            Assert.That(WrapperCompaction.Reconstruct(compact, body.Length, static _ => null, out _, out _), Is.EqualTo(WrapperCompaction.Outcome.Missing));
+            Assert.That(WrapperCompaction.Reconstruct(compact, body.Length - 1, h => cache.GetValueOrDefault(h), out _, out string? error),
+                Is.EqualTo(WrapperCompaction.Outcome.Malformed));
+            Assert.That(error, Does.Contain("announced length"));
+            Assert.That(WrapperCompaction.EncodingHashes(body).Select(static h => h.ToString(false)), Is.EqualTo(TransactionHashes),
+                "without blobs, encoding hashes equal transaction hashes");
         }
     }
 

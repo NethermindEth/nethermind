@@ -236,8 +236,14 @@ The only object is the canonical EIP-8288 wrapper
 encoding, at most `MAX_WRAPPER_BYTES` (2 MiB).
 An announcement entry is `[mode, length, hash]`; a returned wrapper must match the responding
 peer's announced mode and length as well as the hash. NewProofWrapperHashes and GetProofWrappers
-are bounded before decompression at their largest valid sizes, 2,499 and 1,072 bytes. This client
-requests complete wrappers (`compact = 0`) and serves them without hash-reference omission. Responses
+are bounded before decompression at their largest valid sizes, 2,499 and 1,072 bytes. Requests to a
+peer set `compact = 1` once this node caches transaction encodings that peer sent in full within
+validated wrappers (LRU, 4 MiB per peer and 64 MiB overall, released with the connection); a
+responder then replaces each encoding it already sent in full on that connection with its
+`[encoding-hash]` where smaller. References are resolved from the cache and the complete wrapper must
+match its announced hash and length; a reference to an evicted encoding discards the item and
+retries it with `compact = 0` without penalty, while a reference in a `compact = 0` response or a
+reconstruction past the announced length disconnects the peer. Responses
 carry whole wrappers under the 2 MiB `eth` soft response limit, always including the first one.
 A wrapper is announced to every `eth/73` peer once validated, except a hash already announced or
 sent on that connection, or one whose transactions the peer's exchanged wrappers already cover
