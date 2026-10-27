@@ -126,8 +126,10 @@ public class BlockValidator(
             return false;
         }
 
+        // A mismatched proof means a wrong body, which body download already rejects against the header. Should one reach here,
+        // the invalid-chain trackers skip it (StarkProofMatchesCommitment), so the block hash is not marked invalid.
         if (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
-            || !ValidateStarkProofMatchesCommitment(block.Header, block.Body))
+            || !StarkProofMatchesCommitment(block.Header, block.Body))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             return false;
@@ -538,7 +540,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (!ValidateStarkProofMatchesCommitment(header, toBeValidated))
+        if (!StarkProofMatchesCommitment(header, toBeValidated))
         {
             error = toBeValidated.StarkProof is null
                 ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark;
@@ -549,7 +551,10 @@ public class BlockValidator(
         return true;
     }
 
-    private static bool ValidateStarkProofMatchesCommitment(BlockHeader header, BlockBody body) =>
+    /// <summary>Whether <paramref name="body"/> carries the <c>stark_proof</c> its header commits to.</summary>
+    /// <remarks>EIP-8288: a body whose <c>stark_proof</c> does not hash to <c>stark_proof_hash</c> is not the body of this block. It is
+    /// discarded and requested again, and the block is not marked invalid.</remarks>
+    public static bool StarkProofMatchesCommitment(BlockHeader header, BlockBody body) =>
         header.RecursiveStark is { } commitment
             ? body.StarkProof is { } proof && Keccak.Compute(proof) == commitment.StarkProofHash
             : body.StarkProof is null;

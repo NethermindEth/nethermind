@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -244,6 +245,25 @@ public class InvalidChainTrackerTest
         }
 
         AssertInvalid(hashes[1]);
+    }
+
+    // EIP-8288: a processed block whose stark_proof does not match stark_proof_hash had the wrong body; it is requested again
+    // and its hash is not marked invalid.
+    [TestCase(null, false)]
+    [TestCase(new byte[] { 2 }, false)]
+    [TestCase(new byte[] { 1 }, true)]
+    public void Processor_invalidation_skips_a_body_with_a_mismatched_stark_proof(byte[]? proof, bool invalid)
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        _tracker.SetupBlockchainProcessorInterceptor(queue);
+        Block block = Build.A.Block.WithParent(Build.A.BlockHeader.TestObject).TestObject;
+        block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), Keccak.OfAnEmptyString);
+        block.Header.Hash = block.Header.CalculateHash();
+        block.StarkProof = proof;
+
+        queue.InvalidBlock += Raise.EventWith(new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = block });
+
+        Assert.That(_tracker.IsOnKnownInvalidChain(block.Hash!, out _), Is.EqualTo(invalid));
     }
 
     private void AssertValid(Hash256 hash) =>
