@@ -110,9 +110,11 @@ namespace Nethermind.Core.Test.Encoding
             ReceiptArrayStorageDecoder decoder = new(compactEncoding: true);
             int encodedLength = decoder.GetEncodedLength(receipts, RlpBehaviors.Storage);
             byte[] encoded = new byte[encodedLength];
-            RlpWriter writer = new(encoded);
+            scoped RlpWriter writer = new(encoded);
+            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
 
-            decoder.PopulateAndEncode(ref writer, receipts, RlpBehaviors.Storage);
+            decoder.PopulateAndEncode(ref writer, receipts, ref lengths, RlpBehaviors.Storage);
+            lengths.Dispose();
 
             Assert.That(writer.Position, Is.EqualTo(encodedLength));
         }

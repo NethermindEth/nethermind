@@ -14,11 +14,19 @@ public abstract class RlpHashEqualityBase
 
     private Hash256 CalculateHash()
     {
-        KeccakRlpWriter writer = new();
-        Encode(ref writer);
+        scoped KeccakRlpWriter writer = new();
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+        try
+        {
+            Encode(ref writer, ref lengths);
+        }
+        finally
+        {
+            lengths.Dispose();
+        }
         return writer.GetHash();
     }
-    protected abstract void Encode(ref KeccakRlpWriter writer);
+    protected abstract void Encode(ref KeccakRlpWriter writer, ref LengthStack lengths);
 
     public override bool Equals(object? obj) =>
                 obj is RlpHashEqualityBase other && Hash == other.Hash;

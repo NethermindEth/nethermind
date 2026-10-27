@@ -123,8 +123,10 @@ public class ReceiptMessageDecoder69Tests
                 return;
             }
 
-            RlpWriter writer = new(new byte[64]);
-            decoder.PopulateAndEncode(ref writer, receipt);
+            scoped RlpWriter writer = new(new byte[64]);
+            LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
+            decoder.PopulateAndEncode(ref writer, receipt, ref lengths);
+            lengths.Dispose();
         }
     }
 

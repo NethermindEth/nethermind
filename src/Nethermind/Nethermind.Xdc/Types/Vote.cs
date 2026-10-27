@@ -24,6 +24,6 @@ public class Vote(BlockRoundInfo proposedBlockInfo, ulong gapNumber, Signature s
     public (ulong Round, Hash256 hash) PoolKey() =>
         (ProposedBlockInfo.Round, _decoder.CalculateHash(this, RlpBehaviors.ForSealing));
 
-    protected override void Encode(ref KeccakRlpWriter writer) =>
-        _decoder.PopulateAndEncode(ref writer, this);
+    protected override void Encode(ref KeccakRlpWriter writer, ref LengthStack lengths) =>
+        _decoder.PopulateAndEncode(ref writer, this, ref lengths);
 }

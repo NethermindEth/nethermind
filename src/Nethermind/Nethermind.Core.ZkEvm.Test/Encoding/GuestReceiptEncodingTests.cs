@@ -40,14 +40,16 @@ public class GuestReceiptEncodingTests
     private static byte[] EncodeGeneric(TxReceipt receipt, RlpBehaviors behaviors)
     {
         IByteBuffer buffer = Unpooled.Buffer();
+        scoped ByteBufferRlpWriter writer = new(buffer);
+        LengthStack lengths = new(stackalloc int[LengthStack.DefaultStackallocLength]);
         try
         {
-            ByteBufferRlpWriter writer = new(buffer);
-            Decoder.PopulateAndEncode(ref writer, receipt, behaviors);
+            Decoder.PopulateAndEncode(ref writer, receipt, ref lengths, behaviors);
             return buffer.ReadAllBytesAsArray();
         }
         finally
         {
+            lengths.Dispose();
             buffer.Release();
         }
     }

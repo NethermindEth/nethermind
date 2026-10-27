@@ -44,21 +44,13 @@ public static class RlpEncoderExtensions
             }
         }
 
-        /// <summary>Populates and encodes <paramref name="item"/> on its own stack, at the position of a caller's writer.</summary>
-        public void PopulateAndEncode<TWriter>(ref TWriter writer, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        /// <summary>Populates and encodes <paramref name="item"/> at the position of a caller's writer.</summary>
+        /// <param name="lengths">An empty stack the caller owns and disposes; it is empty again on return.</param>
+        public void PopulateAndEncode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            // Not stackalloc: the caller's writer may outlive this frame, so the stack must not reference it.
-            LengthStack lengths = new(default);
-            try
-            {
-                decoder.PopulateLength(item, ref lengths, rlpBehaviors);
-                decoder.Encode(ref writer, item, ref lengths, rlpBehaviors);
-            }
-            finally
-            {
-                lengths.Dispose();
-            }
+            decoder.PopulateLength(item, ref lengths, rlpBehaviors);
+            decoder.Encode(ref writer, item, ref lengths, rlpBehaviors);
         }
 
         public int GetEncodedLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, int stackSize = LengthStack.DefaultStackallocLength)

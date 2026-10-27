@@ -20,6 +20,6 @@ public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool is
     public (ulong Round, Hash256 hash) PoolKey() =>
         (Round, _timeoutDecoder.CalculateHash(this, RlpBehaviors.ForSealing));
 
-    protected override void Encode(ref KeccakRlpWriter writer) =>
-        _timeoutDecoder.PopulateAndEncode(ref writer, this);
+    protected override void Encode(ref KeccakRlpWriter writer, ref LengthStack lengths) =>
+        _timeoutDecoder.PopulateAndEncode(ref writer, this, ref lengths);
 }

@@ -91,7 +91,9 @@ public class TxTrieTests(bool useEip2718)
             .Calculate(canBeParallel, IndexedTrieRoot.MinReceiptsForParallelRootHash);
         using (Assert.EnterMultipleScope())
         {
-            if (multiBlock || outlierIndex < 0) Assert.That(lengthCalls, Is.All.EqualTo(1));
+            // A multi-block value is measured at most once, then populated again only when a batch encodes it.
+            if (multiBlock) Assert.That(lengthCalls, Is.All.InRange(1, 2));
+            else if (outlierIndex < 0) Assert.That(lengthCalls, Is.All.EqualTo(1));
             else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1).And.Some.EqualTo(1));
             Assert.That(actual, Is.EqualTo(expected.RootHash));
         }
@@ -205,12 +207,12 @@ public class TxTrieTests(bool useEip2718)
     {
         public IndexedTrieRoot.LeafBatching Batching => multiBlock ? IndexedTrieRoot.LeafBatching.MultiBlock : IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
-        public int GetLength(byte[] item)
+        public int PopulateLength(byte[] item, ref LengthStack lengths)
         {
             if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[BinaryPrimitives.ReadInt32LittleEndian(item)]);
             return reportedLength ?? item.Length;
         }
-        public void Encode<TWriter>(ref TWriter writer, byte[] item)
+        public void Encode<TWriter>(ref TWriter writer, byte[] item, ref LengthStack lengths)
             where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
     }
 

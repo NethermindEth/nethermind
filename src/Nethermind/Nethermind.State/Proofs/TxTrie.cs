@@ -149,23 +149,23 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     {
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.None;
         public ReadOnlySpan<byte> GetEncodedValue(Transaction item) => item.PreHash.Span;
-        public int GetLength(Transaction item) => _txDecoder.GetEncodedLength(item, RlpBehaviors.SkipTypedWrapping);
-        public void Encode<TWriter>(ref TWriter writer, Transaction item) where TWriter : struct, IRlpWriteBackend, allows ref struct => _txDecoder.PopulateAndEncode(ref writer, item, RlpBehaviors.SkipTypedWrapping);
+        public int PopulateLength(Transaction item, ref LengthStack lengths) => _txDecoder.PopulateLength(item, ref lengths, RlpBehaviors.SkipTypedWrapping);
+        public void Encode<TWriter>(ref TWriter writer, Transaction item, ref LengthStack lengths) where TWriter : struct, IRlpWriteBackend, allows ref struct => _txDecoder.Encode(ref writer, item, ref lengths, RlpBehaviors.SkipTypedWrapping);
     }
 
     private readonly struct EncodedTransactionEncoder : IndexedTrieRoot.IValueEncoder<byte[]>
     {
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => item;
-        public int GetLength(byte[] item) => item.Length;
-        public void Encode<TWriter>(ref TWriter writer, byte[] item) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
+        public int PopulateLength(byte[] item, ref LengthStack lengths) => item.Length;
+        public void Encode<TWriter>(ref TWriter writer, byte[] item, ref LengthStack lengths) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
     }
 
     private readonly struct EncodedMemoryEncoder : IndexedTrieRoot.IValueEncoder<ReadOnlyMemory<byte>>
     {
         public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(ReadOnlyMemory<byte> item) => item.Span;
-        public int GetLength(ReadOnlyMemory<byte> item) => item.Length;
-        public void Encode<TWriter>(ref TWriter writer, ReadOnlyMemory<byte> item) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item.Span);
+        public int PopulateLength(ReadOnlyMemory<byte> item, ref LengthStack lengths) => item.Length;
+        public void Encode<TWriter>(ref TWriter writer, ReadOnlyMemory<byte> item, ref LengthStack lengths) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item.Span);
     }
 }
