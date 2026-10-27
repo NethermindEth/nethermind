@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.Caching.Memory;
@@ -264,19 +265,46 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        bool trace = _logger.IsDebug;
         if (_hostedAccounts?.TryGetAccount(head, address, out Account retained) == true)
             return Task.FromResult(retained);
         ValueHash256 path = ValueKeccak.Compute(address.Bytes);
         return _accounts.GetAsync(StateKey(head.StateRoot, address.Bytes), fetchToken => RequestAsync(async (peer, token) =>
         {
-            using AccountsAndProofs response = await peer.GetAccountRange(new AccountRange(head.StateRoot, path, path.IncrementPath()), token);
-            return VerifyAccountRange(head.StateRoot, address, response, _logManager);
-        }, fetchToken), cancellationToken);
+            long responseStart = trace ? _clock.GetTimestamp() : 0;
+            AccountsAndProofs response;
+            try { response = await peer.GetAccountRange(new AccountRange(head.StateRoot, path, path.IncrementPath()), token); }
+            catch
+            {
+                if (trace)
+                    _logger.Debug($"LC peer id={Activity.Current?.Id} phase=response-await kind=account outcome=failed elapsedMs={_clock.GetElapsedTime(responseStart).TotalMilliseconds:F3}");
+                throw;
+            }
+            using (response)
+            {
+                if (trace)
+                    _logger.Debug($"LC peer id={Activity.Current?.Id} phase=response-await kind=account outcome=received block={head.BlockHash} stateRoot={head.StateRoot} elapsedMs={_clock.GetElapsedTime(responseStart).TotalMilliseconds:F3}");
+                long verificationStart = trace ? _clock.GetTimestamp() : 0;
+                bool verified = false;
+                try
+                {
+                    Account result = VerifyAccountRange(head.StateRoot, address, response, _logManager);
+                    verified = true;
+                    return result;
+                }
+                finally
+                {
+                    if (trace)
+                        _logger.Debug($"LC peer id={Activity.Current?.Id} phase=verification kind=account outcome={(verified ? "verified" : "failed")} elapsedMs={_clock.GetElapsedTime(verificationStart).TotalMilliseconds:F3}");
+                }
+            }
+        }, fetchToken, "account"), cancellationToken);
     }
 
     public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        bool trace = _logger.IsDebug;
         if (_hostedAccounts?.TryGetStorage(address, account, key, out UInt256 retained) == true)
             return Task.FromResult(retained);
         if (!account.HasStorage) return Task.FromResult(UInt256.Zero);
@@ -293,26 +321,76 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 StartingHash = slotPath,
                 LimitHash = slotPath.IncrementPath(),
             };
-            using SlotsAndProofs response = await peer.GetStorageRange(request, token);
-            return VerifyStorageRange(account, accountPath, key, response, _logManager);
-        }, fetchToken), cancellationToken);
+            long responseStart = trace ? _clock.GetTimestamp() : 0;
+            SlotsAndProofs response;
+            try { response = await peer.GetStorageRange(request, token); }
+            catch
+            {
+                if (trace)
+                    _logger.Debug($"LC peer id={Activity.Current?.Id} phase=response-await kind=storage outcome=failed elapsedMs={_clock.GetElapsedTime(responseStart).TotalMilliseconds:F3}");
+                throw;
+            }
+            using (response)
+            {
+                if (trace)
+                    _logger.Debug($"LC peer id={Activity.Current?.Id} phase=response-await kind=storage outcome=received block={head.BlockHash} stateRoot={head.StateRoot} storageRoot={account.StorageRoot} elapsedMs={_clock.GetElapsedTime(responseStart).TotalMilliseconds:F3}");
+                long verificationStart = trace ? _clock.GetTimestamp() : 0;
+                bool verified = false;
+                try
+                {
+                    UInt256 result = VerifyStorageRange(account, accountPath, key, response, _logManager);
+                    verified = true;
+                    return result;
+                }
+                finally
+                {
+                    if (trace)
+                        _logger.Debug($"LC peer id={Activity.Current?.Id} phase=verification kind=storage outcome={(verified ? "verified" : "failed")} elapsedMs={_clock.GetElapsedTime(verificationStart).TotalMilliseconds:F3}");
+                }
+            }
+        }, fetchToken, "storage"), cancellationToken);
     }
 
     public async Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        bool trace = _logger.IsDebug;
         if (_hostedAccounts?.TryGetCode(account, out byte[] retained) == true)
             return retained;
         if (!account.HasCode) return [];
         byte[] cached = await _code.GetAsync(account.CodeHash, fetchToken => RequestAsync(async (peer, token) =>
         {
-            using IByteArrayList response = await peer.GetByteCodes([new ValueHash256(account.CodeHash.Bytes)], token);
-            if (response.Count != 1 || response[0].Length > 1024 * 1024)
-                throw new InvalidDataException("Execution peer returned an invalid bytecode response.");
-            byte[] code = response[0].ToArray();
-            ExecutionProofVerifier.VerifyCode(account.CodeHash, code);
-            return code;
-        }, fetchToken), cancellationToken);
+            long responseStart = trace ? _clock.GetTimestamp() : 0;
+            IByteArrayList response;
+            try { response = await peer.GetByteCodes([new ValueHash256(account.CodeHash.Bytes)], token); }
+            catch
+            {
+                if (trace)
+                    _logger.Debug($"LC peer id={Activity.Current?.Id} phase=response-await kind=code outcome=failed elapsedMs={_clock.GetElapsedTime(responseStart).TotalMilliseconds:F3}");
+                throw;
+            }
+            using (response)
+            {
+                if (trace)
+                    _logger.Debug($"LC peer id={Activity.Current?.Id} phase=response-await kind=code outcome=received codeHash={account.CodeHash} elapsedMs={_clock.GetElapsedTime(responseStart).TotalMilliseconds:F3}");
+                long verificationStart = trace ? _clock.GetTimestamp() : 0;
+                bool verified = false;
+                try
+                {
+                    if (response.Count != 1 || response[0].Length > 1024 * 1024)
+                        throw new InvalidDataException("Execution peer returned an invalid bytecode response.");
+                    byte[] result = response[0].ToArray();
+                    ExecutionProofVerifier.VerifyCode(account.CodeHash, result);
+                    verified = true;
+                    return result;
+                }
+                finally
+                {
+                    if (trace)
+                        _logger.Debug($"LC peer id={Activity.Current?.Id} phase=verification kind=code outcome={(verified ? "verified" : "failed")} elapsedMs={_clock.GetElapsedTime(verificationStart).TotalMilliseconds:F3}");
+                }
+            }
+        }, fetchToken, "code"), cancellationToken);
         return cached.AsSpan().ToArray();
     }
 
@@ -339,7 +417,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             };
             using SlotsAndProofs response = await peer.GetStorageRange(request, peerToken);
             return HostedStorageDownload.VerifyPage(accountPath, start, response, _logManager);
-        }, token), cancellationToken);
+        }, token, "storage-download"), cancellationToken);
     }
 
     public async Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
@@ -764,19 +842,28 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         string failureMessage = "No execution peer supplied authenticated block data.") =>
         RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage);
 
-    private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken) =>
+    private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
+        string operation = "proof") =>
         RequestFromPeersAsync(AllocationContexts.Snap,
             static peer => peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap) ? snap : null,
-            request, cancellationToken, null, "No execution peer supplied a valid SNAP proof for the selected verified state.");
+            request, cancellationToken, null, "No execution peer supplied a valid SNAP proof for the selected verified state.", operation);
 
     private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
-        Func<ISyncPeer, bool>? canServe, string failureMessage) where TPeer : class
+        Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null) where TPeer : class
     {
+        bool trace = _logger.IsDebug;
+        using Activity? diagnostic = trace
+            ? new Activity("LightClientPeerRequest").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
+        if (trace)
+            _logger.Debug($"LC peer id={diagnostic?.Id} parent={diagnostic?.ParentId} context={context} operation={operation ?? context.ToString()}");
         SemaphoreSlim requests = context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests;
         bool bulk = context is not (AllocationContexts.Headers or AllocationContexts.Snap);
         bool bulkAcquired = false;
         bool requestAcquired = false;
+        long admissionStart = trace ? _clock.GetTimestamp() : 0;
+        long requestSlotStart = admissionStart;
+        bool requestSlotStarted = !bulk;
         CancellationToken stopToken = _stop.Token;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopToken, timeout.Token);
@@ -786,6 +873,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             {
                 await _executionBulkRequests.WaitAsync(deadline.Token);
                 bulkAcquired = true;
+                if (trace)
+                    _logger.Debug($"LC peer id={diagnostic?.Id} phase=bulk-admission admitted=True elapsedMs={_clock.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
+                requestSlotStart = trace ? _clock.GetTimestamp() : 0;
+                requestSlotStarted = true;
             }
             await requests.WaitAsync(deadline.Token);
             requestAcquired = true;
@@ -798,6 +889,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         finally
         {
             if (!requestAcquired && bulkAcquired) _executionBulkRequests.Release();
+            if (trace)
+                _logger.Debug($"LC peer id={diagnostic?.Id} phase=admission admitted={requestAcquired} bulkAdmitted={bulkAcquired} elapsedMs={_clock.GetElapsedTime(admissionStart).TotalMilliseconds:F3} requestSlotMs={(requestSlotStarted ? _clock.GetElapsedTime(requestSlotStart).TotalMilliseconds : 0):F3}");
         }
         try
         {
@@ -849,7 +942,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                             (PeerInfo peer, TPeer protocol) = eligible[next++];
                             if (!CanPrefer(peer)) continue;
                             _lastPeers[context] = peer;
-                            pending.Add((peer, RequestPeerAsync(protocol, round.Token)));
+                            pending.Add((peer, RequestPeerAsync(peer, protocol, round.Token)));
                         }
                         while (pending.Count == 0 || !pending[0].Request.IsCompleted);
                         if (pending.Count == 0) continue;
@@ -862,6 +955,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         if (deadline.IsCancellationRequested) break;
                         if (error is null)
                         {
+                            if (trace)
+                                _logger.Debug($"LC peer id={diagnostic?.Id} phase=selection peer={supplier.SyncPeer.Node:c} outcome=selected");
                             while (CanPrefer(supplier))
                             {
                                 if (_preferredPeers.TryAdd(context, supplier)) break;
@@ -903,15 +998,33 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             stopToken.ThrowIfCancellationRequested();
             throw new RpcException(-32000, failureMessage);
 
-            async Task<(T Result, Exception? Error)> RequestPeerAsync(TPeer peer, CancellationToken roundToken)
+            async Task<(T Result, Exception? Error)> RequestPeerAsync(PeerInfo info, TPeer peer, CancellationToken roundToken)
             {
+                using Activity? attemptDiagnostic = trace
+                    ? new Activity("LightClientPeerAttempt").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
+                long attemptStart = trace ? _clock.GetTimestamp() : 0;
+                string outcome = "failed";
+                if (trace)
+                    _logger.Debug($"LC peer id={attemptDiagnostic?.Id} parent={attemptDiagnostic?.ParentId} phase=attempt-start peer={info.SyncPeer.Node:c} context={context}");
                 try
                 {
                     using CancellationTokenSource peerTimeout = new(TimeSpan.FromSeconds(10), _clock);
                     using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(roundToken, peerTimeout.Token);
-                    return (await request(peer, attempt.Token), null);
+                    T result = await request(peer, attempt.Token);
+                    outcome = "completed";
+                    return (result, null);
                 }
-                catch (Exception exception) { return (default!, exception); }
+                catch (Exception exception)
+                {
+                    outcome = roundToken.IsCancellationRequested ? "interrupted"
+                        : exception is ConcurrencyLimitReachedException ? "busy" : "failed";
+                    return (default!, exception);
+                }
+                finally
+                {
+                    if (trace)
+                        _logger.Debug($"LC peer id={attemptDiagnostic?.Id} parent={attemptDiagnostic?.ParentId} phase=peer-attempt peer={info.SyncPeer.Node:c} context={context} outcome={outcome} inclusiveMs={_clock.GetElapsedTime(attemptStart).TotalMilliseconds:F3}");
+                }
             }
         }
         finally

@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Net;
 using System.Text;
@@ -2988,6 +2989,274 @@ public class TransportTests
         public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
+    [Test]
+    public async Task State_diagnostics_split_response_wait_and_verification(
+        [Values(0, 1, 2)] int operation, [Values] bool debug)
+    {
+        ConcurrentQueue<string> entries = new();
+        await using ExecutionPeers peers = new(1, snap1: true, logs: DiagnosticLogs(debug, entries));
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        Activity? observed = null;
+        peers.Ordered[0].BeforeResponse = (_, _) =>
+        {
+            observed = Activity.Current;
+            peers.Clock.Advance(TimeSpan.FromMilliseconds(3));
+            return Task.CompletedTask;
+        };
+
+        await peers.RequestSnap(operation, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(1));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+        }
+        if (!debug)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries, Is.Empty);
+                Assert.That(observed, Is.SameAs(parent));
+            }
+            return;
+        }
+        string kind = new[] { "account", "storage", "code" }[operation];
+        Assert.That(observed, Is.Not.Null);
+        Assert.That(observed!.Parent, Is.Not.Null);
+        string response = entries.Single(entry => entry.Contains("phase=response-await"));
+        string verification = entries.Single(entry => entry.Contains("phase=verification"));
+        string attempt = entries.Single(entry => entry.Contains("phase=peer-attempt"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed!.OperationName, Is.EqualTo("LightClientPeerAttempt"));
+            Assert.That(observed!.Parent!.OperationName, Is.EqualTo("LightClientPeerRequest"));
+            Assert.That(observed!.Parent!.ParentId, Is.EqualTo(parent.Id));
+            Assert.That(response, Does.Contain($"kind={kind} outcome=received").And.Contain($"elapsedMs={3d:F3}"));
+            Assert.That(verification, Does.Contain($"kind={kind} outcome=verified").And.Contain($"elapsedMs={0d:F3}"));
+            Assert.That(attempt, Does.Contain("outcome=completed").And.Contain($"inclusiveMs={3d:F3}"));
+        }
+    }
+
+    [Test]
+    public async Task Failed_state_response_or_verification_keeps_timing_and_ownership(
+        [Values(0, 1, 2)] int operation, [Values] bool invalidProof)
+    {
+        ConcurrentQueue<string> entries = new();
+        await using ExecutionPeers peers = new(2, snap1: true, logs: DiagnosticLogs(true, entries));
+        if (invalidProof) peers.Ordered[0].InvalidData = true;
+        else peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new IOException("test response failure"));
+
+        await peers.RequestSnap(operation, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Count(entry => entry.Contains("phase=response-await") && entry.Contains("outcome=failed")), Is.EqualTo(invalidProof ? 0 : 1));
+            Assert.That(entries.Count(entry => entry.Contains("phase=verification") && entry.Contains("outcome=failed")), Is.EqualTo(invalidProof ? 1 : 0));
+            Assert.That(entries.Count(entry => entry.Contains("phase=verification") && entry.Contains("outcome=verified")), Is.EqualTo(1));
+            Assert.That(entries.Count(entry => entry.Contains("phase=peer-attempt") && entry.Contains("outcome=failed")), Is.EqualTo(1));
+            Assert.That(entries.Count(entry => entry.Contains("phase=peer-attempt") && entry.Contains("outcome=completed")), Is.EqualTo(1));
+            Assert.That(peers.Ordered.Select(peer => peer.ResponsesDisposed), Is.EqualTo(new[] { invalidProof ? 1 : 0, 1 }));
+        }
+    }
+
+    [Test]
+    public async Task Cancelled_state_admission_is_timed_without_releasing_an_unowned_slot()
+    {
+        ConcurrentQueue<string> entries = new();
+        await using ExecutionPeers peers = new(1, snap1: true, logs: DiagnosticLogs(true, entries));
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (_, token) => release.Task.WaitAsync(token);
+        Task[] admitted = Enumerable.Range(0, 8).Select(_ => peers.Request(AllocationContexts.Snap, CancellationToken.None)).ToArray();
+        using CancellationTokenSource cancel = new();
+        try
+        {
+            for (int i = 0; i < admitted.Length; i++)
+                await peers.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Task queued = peers.Request(AllocationContexts.Snap, cancel.Token);
+            peers.Clock.Advance(TimeSpan.FromMilliseconds(7));
+            await cancel.CancelAsync();
+            await Assert.CatchAsync<OperationCanceledException>(async () => await queued);
+            string admission = entries.Single(entry => entry.Contains("phase=admission admitted=False"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admission, Does.Contain($"elapsedMs={7d:F3}"));
+                Assert.That(peers.Counts(AllocationContexts.Snap).Sum(), Is.EqualTo(8));
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(admitted);
+        }
+        peers.Ordered[0].BeforeResponse = null;
+        await peers.Request(AllocationContexts.Snap, CancellationToken.None);
+        Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(9));
+    }
+
+    [Test]
+    public async Task Enabling_debug_during_a_state_response_does_not_invent_started_intervals([Values(0, 1, 2)] int operation)
+    {
+        ConcurrentQueue<string> entries = new();
+        await using ExecutionPeers peers = new(1, snap1: true, logs: DiagnosticLogs(false, entries));
+        peers.Clock.Advance(TimeSpan.FromHours(1));
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        Activity? observed = null;
+        peers.Ordered[0].BeforeResponse = async (_, token) =>
+        {
+            observed = Activity.Current;
+            waiting.TrySetResult();
+            await release.Task.WaitAsync(token);
+        };
+        Task request = peers.RequestSnap(operation, CancellationToken.None);
+        try
+        {
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            FieldInfo logger = typeof(ExecutionPeerTransport).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            logger.SetValue(peers.Transport, DiagnosticLogs(true, entries).GetClassLogger<ExecutionPeerTransport>());
+            Assert.That(((Nethermind.Logging.ILogger)logger.GetValue(peers.Transport)!).IsDebug, Is.True);
+            peers.Clock.Advance(TimeSpan.FromMilliseconds(7));
+        }
+        finally
+        {
+            release.TrySetResult();
+            await request;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Is.Empty);
+            Assert.That(observed, Is.SameAs(parent));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+            Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(1));
+        }
+
+        peers.Ordered[0].BeforeResponse = null;
+        peers.SetSnapState(43, 124, [0x60, 0x02, 0x60, 0x00, 0x55]);
+        await peers.RequestSnap(operation, CancellationToken.None);
+        string verification = entries.Single(entry => entry.Contains("phase=verification"));
+        string attempt = entries.Single(entry => entry.Contains("phase=peer-attempt"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verification, Does.Contain("outcome=verified"));
+            Assert.That(attempt, Does.Contain("outcome=completed"));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+            Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Concurrent_hedged_state_diagnostics_keep_attempts_distinct_and_join_late_responses(
+        [Values] bool debug, CancellationToken token)
+    {
+        ConcurrentQueue<string> entries = new();
+        ConcurrentQueue<(Activity? Attempt, int Peer)> observed = new();
+        await using ExecutionPeers peers = new(2, snap1: true, logs: DiagnosticLogs(debug, entries));
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        TaskCompletionSource allStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource losersCanceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseWinners = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseLosers = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int canceled = 0;
+        for (int i = 0; i < peers.Ordered.Length; i++)
+        {
+            int peerIndex = i;
+            peers.Ordered[i].BeforeResponse = async (_, cancellation) =>
+            {
+                observed.Enqueue((Activity.Current, peerIndex));
+                if (observed.Count == 4) allStarted.TrySetResult();
+                if (peerIndex == 1)
+                {
+                    await releaseWinners.Task.WaitAsync(cancellation);
+                    return;
+                }
+                using CancellationTokenRegistration registration = cancellation.Register(() =>
+                {
+                    if (Interlocked.Increment(ref canceled) == 2) losersCanceled.TrySetResult();
+                });
+                await releaseLosers.Task;
+            };
+        }
+        Task[] requests = [peers.RequestSnap(0, token), peers.RequestSnap(1, token)];
+        try
+        {
+            await allStarted.Task.WaitAsync(token);
+            Assert.That(peers.Counts(AllocationContexts.Snap), Is.EqualTo(new[] { 2, 2 }));
+            peers.Clock.Advance(TimeSpan.FromMilliseconds(3));
+            releaseWinners.TrySetResult();
+            await losersCanceled.Task.WaitAsync(token);
+            Assert.That(requests, Is.All.Matches<Task>(request => request is { IsCompleted: false }),
+                "Both shared owners must drain their late peer response before completing.");
+            peers.Clock.Advance(TimeSpan.FromMilliseconds(2));
+        }
+        finally
+        {
+            releaseWinners.TrySetResult();
+            releaseLosers.TrySetResult();
+            await Task.WhenAll(requests);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Activity.Current, Is.SameAs(parent));
+            Assert.That(peers.Ordered.Select(peer => peer.ResponsesDisposed), Is.EqualTo(new[] { 2, 2 }));
+            Assert.That(peers.Pool.AllPeers.Select(peer => peer.SleepingContexts), Is.All.EqualTo(AllocationContexts.None));
+        }
+        if (!debug)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries, Is.Empty);
+                Assert.That(observed.Select(item => item.Attempt), Is.All.SameAs(parent));
+            }
+            return;
+        }
+        Assert.That(observed.Select(item => item.Attempt), Is.All.Not.Null);
+        Assert.That(observed.Select(item => item.Attempt!.Parent), Is.All.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed.Select(item => item.Attempt!.Id).Distinct().Count(), Is.EqualTo(4));
+            Assert.That(observed.Select(item => item.Attempt!.ParentId).Distinct().Count(), Is.EqualTo(2));
+            Assert.That(entries.Count(entry => entry.Contains("phase=selection")), Is.EqualTo(2));
+        }
+        foreach ((Activity? captured, int peerIndex) in observed)
+        {
+            Activity attempt = captured!;
+            Activity logical = attempt.Parent!;
+            double elapsed = peerIndex == 1 ? 3 : 5;
+            string response = entries.Single(entry => entry.Contains($"id={attempt.Id} phase=response-await"));
+            string verification = entries.Single(entry => entry.Contains($"id={attempt.Id} phase=verification"));
+            string completedAttempt = entries.Single(entry => entry.Contains($"id={attempt.Id} parent={logical.Id} phase=peer-attempt"));
+            string selection = entries.Single(entry => entry.Contains($"id={logical.Id} phase=selection"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(attempt.OperationName, Is.EqualTo("LightClientPeerAttempt"));
+                Assert.That(logical.OperationName, Is.EqualTo("LightClientPeerRequest"));
+                Assert.That(logical.ParentId, Is.EqualTo(parent.Id));
+                Assert.That(response,
+                    Does.Contain("outcome=received").And.Contain($"elapsedMs={elapsed:F3}"));
+                Assert.That(verification,
+                    Does.Contain("outcome=verified").And.Contain($"elapsedMs={0d:F3}"));
+                Assert.That(completedAttempt,
+                    Does.Contain($"peer={peers.Ordered[peerIndex].SyncPeer.Node:c}").And.Contain("outcome=completed").And.Contain($"inclusiveMs={elapsed:F3}"));
+                Assert.That(selection,
+                    Does.Contain($"peer={peers.Ordered[1].SyncPeer.Node:c} outcome=selected"));
+            }
+        }
+    }
+
+    private static Nethermind.Logging.ILogManager DiagnosticLogs(bool debug, ConcurrentQueue<string> entries)
+    {
+        Nethermind.Logging.InterfaceLogger sink = Substitute.For<Nethermind.Logging.InterfaceLogger>();
+        sink.IsDebug.Returns(debug);
+        sink.When(logger => logger.Debug(Arg.Any<string>())).Do(call => entries.Enqueue(call.Arg<string>()));
+        Nethermind.Logging.ILogManager logs = Substitute.For<Nethermind.Logging.ILogManager>();
+        Nethermind.Logging.ILogger logger = new(sink);
+        logs.GetClassLogger<ExecutionPeerTransport>().Returns(logger);
+        return logs;
+    }
+
     private sealed class ExecutionPeers : IAsyncDisposable
     {
         internal ExecutionClock Clock { get; } = new();
@@ -3013,9 +3282,9 @@ public class TransportTests
         private int _headerRequest;
 
         internal ExecutionPeers(int count, bool snap2 = false, byte ethVersion = 71, bool snap1 = false,
-            ulong startupTimestamp = 1_800_000_000)
+            ulong startupTimestamp = 1_800_000_000, Nethermind.Logging.ILogManager? logs = null)
         {
-            Transport = new("sepolia", Nethermind.Logging.LimboLogs.Instance,
+            Transport = new("sepolia", logs ?? Nethermind.Logging.LimboLogs.Instance,
                 new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Keccak.Zero), startupTimestamp, clock: Clock);
             Body = new([new Transaction { Nonce = 1, To = Address.Zero, Value = 1, GasLimit = 21_000, GasPrice = 1 }], [], []);
             Chain = new BlockHeader[3];
@@ -3091,7 +3360,7 @@ public class TransportTests
                     Assert.That(await Transport.GetAccountAsync(SnapHead, SnapAddress, token), Is.EqualTo(SnapAccount));
                     break;
                 case 1:
-                    Assert.That(await Transport.GetStorageAsync(SnapHead, SnapAddress, SnapAccount, 1, token), Is.EqualTo((UInt256)42));
+                    Assert.That(await Transport.GetStorageAsync(SnapHead, SnapAddress, SnapAccount, 1, token), Is.EqualTo(SnapValue));
                     break;
                 case 2:
                     Assert.That(await Transport.GetCodeAsync(SnapAccount, token), Is.EqualTo(SnapCode));

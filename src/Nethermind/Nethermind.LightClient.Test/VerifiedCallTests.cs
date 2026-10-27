@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 
 namespace Nethermind.LightClient.Test;
 
@@ -551,6 +555,196 @@ public class VerifiedCallTests
         RpcException? orphan = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, new { blockHash = source.Head.BlockHash.ToString(), requireCanonical = true } }), CancellationToken.None));
         Assert.That(orphan!.Code, Is.EqualTo(-32001));
+    }
+
+    [Test]
+    public async Task Call_phase_diagnostics_are_opt_in_and_keep_the_selected_head([Values] bool debug, [Values] bool blockhash)
+    {
+        byte[] code = blockhash
+            ? [0x63, 0x01, 0x8c, 0xba, 0x7e, 0x40, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]
+            : [0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
+        FakeSource source = new(code);
+        ConcurrentQueue<string> entries = new();
+        ILogManager logs = DiagnosticLogs(debug, entries);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, logs);
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        Activity? observed = null;
+        source.ContractAccountResponse = _ =>
+        {
+            observed = Activity.Current;
+            return source.ContractAccount;
+        };
+
+        string result = await call.ExecuteAsync(source.Head,
+            JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(blockhash ? Keccak.Compute("grandparent").ToString() : "0x" + new string('0', 62) + "2a"));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+        }
+        if (!debug)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries, Is.Empty);
+                Assert.That(observed, Is.SameAs(parent));
+            }
+            return;
+        }
+        Assert.That(observed, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed!.OperationName, Is.EqualTo("LightClientCall"));
+            Assert.That(observed!.ParentId, Is.EqualTo(parent.Id));
+            Assert.That(entries.Any(entry => entry.Contains($"block={source.Head.BlockHash} number={source.Head.Number} stateRoot={source.Head.StateRoot}")), Is.True);
+            foreach (string kind in new[] { "Account", "Code", blockhash ? "Blockhash" : "Storage" })
+                Assert.That(entries.Any(entry => entry.Contains($"phase=fill kind={kind} count=1 outcome=filled")), Is.True);
+            Assert.That(entries.Any(entry => entry.Contains("phase=execution") && entry.Contains("outcome=completed")), Is.True);
+        }
+
+        int fetches = source.Fetches;
+        int fills = entries.Count(entry => entry.Contains("phase=fill"));
+        string cachedResult = await call.ExecuteAsync(source.Head,
+            JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cachedResult, Is.EqualTo(result));
+            Assert.That(source.Fetches, Is.EqualTo(fetches));
+            Assert.That(entries.Count(entry => entry.Contains("phase=fill")), Is.EqualTo(fills));
+            Assert.That(entries.Any(entry => entry.Contains("phase=header source=cache")), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Concurrent_call_diagnostics_do_not_merge_and_execution_stops_before_fill_wait()
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        ConcurrentQueue<string> entries = new();
+        ConcurrentQueue<string?> callers = new();
+        TaskCompletionSource bothWaiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.StorageResponse = async (_, token) =>
+        {
+            callers.Enqueue(Activity.Current?.Id);
+            if (callers.Count == 2) bothWaiting.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return (UInt256)42;
+        };
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(true, entries));
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
+        Task<string>[] requests = [call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None),
+            call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None)];
+        try
+        {
+            await bothWaiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(callers.Distinct().Count(), Is.EqualTo(2));
+                foreach (string? id in callers)
+                    Assert.That(entries.Any(entry => entry.Contains($"id={id} phase=execution") && entry.Contains("outcome=missing kind=Storage")), Is.True);
+                Assert.That(entries.Any(entry => entry.Contains("phase=fill kind=Storage")), Is.False);
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(requests);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Count(entry => entry.Contains("phase=fill kind=Storage count=1 outcome=filled")), Is.EqualTo(2));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+        }
+    }
+
+    [Test]
+    public async Task Failed_fill_is_not_reported_as_success_and_releases_the_call_scope()
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        ConcurrentQueue<string> entries = new();
+        source.StorageResponse = (_, _) => Task.FromException<UInt256>(new InvalidDataException("test state failure"));
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(true, entries));
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () => await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Activity.Current, Is.SameAs(parent));
+            Assert.That(entries.Any(entry => entry.Contains("phase=fill kind=Storage count=1 outcome=failed")), Is.True);
+            Assert.That(entries.Any(entry => entry.Contains("phase=fill kind=Storage count=1 outcome=filled")), Is.False);
+            Assert.That(entries.Any(entry => entry.Contains("phase=execution") && entry.Contains("outcome=completed")), Is.False);
+        }
+
+        source.StorageResponse = null;
+        string result = await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+        }
+    }
+
+    [Test]
+    public async Task Enabling_debug_during_a_call_does_not_invent_started_intervals()
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        ConcurrentQueue<string> entries = new();
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Activity? observed = null;
+        source.StorageResponse = async (_, token) =>
+        {
+            observed = Activity.Current;
+            waiting.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return (UInt256)42;
+        };
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(false, entries));
+        using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
+        JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
+        Task<string> request = call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None);
+        try
+        {
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            FieldInfo logger = typeof(VerifiedCall).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            logger.SetValue(call, DiagnosticLogs(true, entries).GetClassLogger<VerifiedCall>());
+            Assert.That(((Nethermind.Logging.ILogger)logger.GetValue(call)!).IsDebug, Is.True);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await request;
+        }
+        string result = await request;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(entries, Is.Empty);
+            Assert.That(observed, Is.SameAs(parent));
+            Assert.That(Activity.Current, Is.SameAs(parent));
+        }
+
+        await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Any(entry => entry.Contains("operation=call")), Is.True);
+            Assert.That(entries.Any(entry => entry.Contains("phase=completion outcome=completed")), Is.True);
+            Assert.That(Activity.Current, Is.SameAs(parent));
+        }
+    }
+
+    private static ILogManager DiagnosticLogs(bool debug, ConcurrentQueue<string> entries)
+    {
+        InterfaceLogger sink = Substitute.For<InterfaceLogger>();
+        sink.IsDebug.Returns(debug);
+        sink.When(logger => logger.Debug(Arg.Any<string>())).Do(call => entries.Enqueue(call.Arg<string>()));
+        ILogManager logs = Substitute.For<ILogManager>();
+        Nethermind.Logging.ILogger logger = new(sink);
+        logs.GetClassLogger<VerifiedCall>().Returns(logger);
+        return logs;
     }
 
     private sealed class FakeSource(byte[] code, UInt256 contractBalance = default) : IExecutionStateSource

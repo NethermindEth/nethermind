@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Microsoft.Extensions.Caching.Memory;
@@ -51,15 +52,43 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
     private readonly EthereumJsonSerializer _json = new();
+    private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<VerifiedCall>();
 
     internal async Task<string> ExecuteAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, CancellationToken cancellationToken)
     {
+        bool trace = _logger.IsDebug;
+        using Activity? diagnostic = trace
+            ? new Activity("LightClientCall").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
+        if (trace)
+            _logger.Debug($"LC call id={diagnostic?.Id} parent={diagnostic?.ParentId} operation={(estimateGas ? "estimateGas" : "call")} block={head.BlockHash} number={head.Number} stateRoot={head.StateRoot}");
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
         CancellationToken token = deadline.Token;
-        await _slots.WaitAsync(token);
-        try { return await ExecuteCoreAsync(head, request, estimateGas, token); }
-        finally { _slots.Release(); }
+        long admissionStart = trace ? Stopwatch.GetTimestamp() : 0;
+        bool admitted = false;
+        try
+        {
+            await _slots.WaitAsync(token);
+            admitted = true;
+        }
+        finally
+        {
+            if (trace)
+                _logger.Debug($"LC call id={diagnostic?.Id} phase=admission admitted={admitted} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
+        }
+        bool returned = false;
+        try
+        {
+            string result = await ExecuteCoreAsync(head, request, estimateGas, trace, token);
+            returned = true;
+            return result;
+        }
+        finally
+        {
+            _slots.Release();
+            if (trace)
+                _logger.Debug($"LC call id={diagnostic?.Id} phase=completion outcome={(returned ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
+        }
     }
 
     internal async Task ValidateFrameAdmissionAsync(VerifiedHead head, Transaction transaction, BlockHeader contextHeader,
@@ -68,13 +97,30 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         if (FrameTxValidation.ValidationWorkGas(transaction) > TxPoolConfig.DefaultFrameTxMaxVerifyGas
             || FrameTxValidation.ValidationWorkStateGas(transaction) > 500_000)
             throw new RpcException(-32003, "Frame validation prefix exceeds the bounded public-mempool work limit.");
+        bool trace = _logger.IsDebug;
+        using Activity? diagnostic = trace
+            ? new Activity("LightClientCall").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
+        if (trace)
+            _logger.Debug($"LC call id={diagnostic?.Id} parent={diagnostic?.ParentId} operation=frame-admission block={head.BlockHash} number={head.Number} stateRoot={head.StateRoot}");
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
         CancellationToken token = deadline.Token;
-        await _slots.WaitAsync(token);
+        long admissionStart = trace ? Stopwatch.GetTimestamp() : 0;
+        bool admitted = false;
         try
         {
-            BlockHeader header = await GetHeaderAsync(head, token);
+            await _slots.WaitAsync(token);
+            admitted = true;
+        }
+        finally
+        {
+            if (trace)
+                _logger.Debug($"LC call id={diagnostic?.Id} phase=admission admitted={admitted} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
+        }
+        bool returned = false;
+        try
+        {
+            BlockHeader header = await GetHeaderAsync(head, trace, token);
             // A validation prefix can deposit code that is rolled back, so its code cache must not escape admission.
             StaticCodeCache codeCache = new(CodeCacheCapacity);
             for (int attempt = 0; attempt < 128; attempt++)
@@ -85,6 +131,9 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                 if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
                 using (scope)
                 {
+                    long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
+                    bool filling = false;
+                    bool completed = false;
                     try
                     {
                         if (transaction.NonceKeys is { } keys)
@@ -112,14 +161,32 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                         }
                         if (!result || tracer.Violated || tracer.Payer is null)
                             throw new RpcException(-32003, tracer.ViolationReason ?? result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
+                        completed = true;
+                        returned = true;
                         return;
                     }
-                    catch (MissingCallState missing) { await FillAsync(head, missing, token); }
+                    catch (MissingCallState missing)
+                    {
+                        filling = true;
+                        if (trace)
+                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                        await FillAsync(head, missing, trace, token);
+                    }
+                    finally
+                    {
+                        if (trace && !filling)
+                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                    }
                 }
             }
             throw new RpcException(-32000, "Frame validation accessed too many distinct authenticated state items.");
         }
-        finally { _slots.Release(); }
+        finally
+        {
+            _slots.Release();
+            if (trace)
+                _logger.Debug($"LC call id={diagnostic?.Id} phase=completion outcome={(returned ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
+        }
     }
 
     private ILifetimeScope CreateExecutionScope(VerifiedHead head, ICodeCache? codeCache = null) =>
@@ -127,7 +194,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
 
     private sealed record ExecutionState(VerifiedHead Head, MemoryCache Cache, ICodeCache CodeCache);
 
-    private async Task<string> ExecuteCoreAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, CancellationToken token)
+    private async Task<string> ExecuteCoreAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, bool trace, CancellationToken token)
     {
         TransactionForRpc model;
         try { model = _json.Deserialize<TransactionForRpc>(request.GetRawText()) ?? throw new FormatException(); }
@@ -136,7 +203,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             throw new RpcException(-32602, "Invalid transaction object.");
         }
         if (estimateGas && model.Gas == 0) model.Gas = null;
-        BlockHeader header = await GetHeaderAsync(head, token);
+        BlockHeader header = await GetHeaderAsync(head, trace, token);
         IReleaseSpec spec = specs.GetSpec(header);
         Nethermind.Core.Result<Transaction> converted = model.ToValidatedTransaction(gasCap: GasCap, spec: spec);
         if (converted.IsError) throw new RpcException(-32602, converted.Error);
@@ -152,6 +219,9 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
             using (scope)
             {
+                long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
+                bool filling = false;
+                bool completed = false;
                 try
                 {
                     if (tx.NonceKeys is null) tx.Nonce = state.GetNonce(tx.SenderAddress);
@@ -189,6 +259,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                             throw new RpcException(3, estimation.Error ?? "execution reverted", (estimation.RevertData ?? []).ToHexString(withZeroX: true));
                         if (estimation.Error is not null)
                             throw new RpcException(-32000, estimation.Error);
+                        completed = true;
                         return $"0x{estimation.Gas:x}";
                     }
                     CallOutputTracer tracer = new();
@@ -198,61 +269,97 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                         throw new RpcException(3, error ?? "execution reverted", (tracer.ReturnValue ?? []).ToHexString(withZeroX: true));
                     if (error is not null)
                         throw new RpcException(-32000, error);
-                    return (tracer.ReturnValue ?? []).ToHexString(withZeroX: true);
+                    string output = (tracer.ReturnValue ?? []).ToHexString(withZeroX: true);
+                    completed = true;
+                    return output;
                 }
                 catch (MissingCallState missing)
                 {
-                    await FillAsync(head, missing, token);
+                    filling = true;
+                    if (trace)
+                        _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                    await FillAsync(head, missing, trace, token);
+                }
+                finally
+                {
+                    if (trace && !filling)
+                        _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
                 }
             }
         }
         throw new RpcException(-32000, "Execution accessed too many distinct state items.");
     }
 
-    private async Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken token)
+    private async Task<BlockHeader> GetHeaderAsync(VerifiedHead head, bool trace, CancellationToken token)
     {
         object key = (head.BlockHash, "header");
-        if (_cache.TryGetValue(key, out BlockHeader? cached)) return cached!;
-        BlockHeader header = await execution.GetHeaderAsync(head, token);
-        if (header.Hash != head.BlockHash || header.Number != head.Number || header.StateRoot != head.StateRoot)
-            throw new RpcException(-32000, "Execution header does not match verified finality.");
-        _cache.Set(key, header, new MemoryCacheEntryOptions().SetSize(1024));
-        return header;
+        if (_cache.TryGetValue(key, out BlockHeader? cached))
+        {
+            if (trace) _logger.Debug($"LC call id={Activity.Current?.Id} phase=header source=cache");
+            return cached!;
+        }
+        long headerStart = trace ? Stopwatch.GetTimestamp() : 0;
+        bool verified = false;
+        try
+        {
+            BlockHeader header = await execution.GetHeaderAsync(head, token);
+            if (header.Hash != head.BlockHash || header.Number != head.Number || header.StateRoot != head.StateRoot)
+                throw new RpcException(-32000, "Execution header does not match verified finality.");
+            _cache.Set(key, header, new MemoryCacheEntryOptions().SetSize(1024));
+            verified = true;
+            return header;
+        }
+        finally
+        {
+            if (trace)
+                _logger.Debug($"LC call id={Activity.Current?.Id} phase=header source=execution outcome={(verified ? "verified" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(headerStart).TotalMilliseconds:F3}");
+        }
     }
 
-    private async Task FillAsync(VerifiedHead head, MissingCallState missing, CancellationToken token)
+    private async Task FillAsync(VerifiedHead head, MissingCallState missing, bool trace, CancellationToken token)
     {
-        switch (missing.Kind)
+        long fillStart = trace ? Stopwatch.GetTimestamp() : 0;
+        bool filled = false;
+        try
         {
-            case MissingKind.Account:
-                Account account = await execution.GetAccountAsync(head, missing.Address!, token);
-                _cache.Set((head.StateRoot, missing.Address!), account, new MemoryCacheEntryOptions().SetSize(256));
-                break;
-            case MissingKind.Storage:
-                if (!_cache.TryGetValue((head.StateRoot, missing.Address!), out Account? owner) || owner is null)
-                    throw new RpcException(-32000, "Account proof is unavailable for storage.");
-                UInt256 slot = await execution.GetStorageAsync(head, missing.Address!, owner, missing.Slot, token);
-                _cache.Set((owner.StorageRoot, missing.Address!, missing.Slot), slot, new MemoryCacheEntryOptions().SetSize(64));
-                break;
-            case MissingKind.Code:
-                Account? codeOwner = null;
-                foreach (Address address in missing.KnownAccounts!)
-                {
-                    if (_cache.TryGetValue((head.StateRoot, address), out Account? candidate)
-                        && candidate is not null && candidate.CodeHash.ValueHash256 == missing.CodeHash)
+            switch (missing.Kind)
+            {
+                case MissingKind.Account:
+                    Account account = await execution.GetAccountAsync(head, missing.Address!, token);
+                    _cache.Set((head.StateRoot, missing.Address!), account, new MemoryCacheEntryOptions().SetSize(256));
+                    break;
+                case MissingKind.Storage:
+                    if (!_cache.TryGetValue((head.StateRoot, missing.Address!), out Account? owner) || owner is null)
+                        throw new RpcException(-32000, "Account proof is unavailable for storage.");
+                    UInt256 slot = await execution.GetStorageAsync(head, missing.Address!, owner, missing.Slot, token);
+                    _cache.Set((owner.StorageRoot, missing.Address!, missing.Slot), slot, new MemoryCacheEntryOptions().SetSize(64));
+                    break;
+                case MissingKind.Code:
+                    Account? codeOwner = null;
+                    foreach (Address address in missing.KnownAccounts!)
                     {
-                        codeOwner = candidate;
-                        break;
+                        if (_cache.TryGetValue((head.StateRoot, address), out Account? candidate)
+                            && candidate is not null && candidate.CodeHash.ValueHash256 == missing.CodeHash)
+                        {
+                            codeOwner = candidate;
+                            break;
+                        }
                     }
-                }
-                if (codeOwner is null) throw new RpcException(-32000, "Code hash has no authenticated account.");
-                byte[] code = await execution.GetCodeAsync(codeOwner, token);
-                _cache.Set(missing.CodeHash, code, new MemoryCacheEntryOptions().SetSize(Math.Max(1, code.Length)));
-                break;
-            case MissingKind.Blockhash:
-                Hash256[] hashes = await execution.GetAncestorHashesAsync(head, missing.BlockNumber, token);
-                _cache.Set((head.BlockHash, "ancestors"), (missing.BlockNumber, hashes), new MemoryCacheEntryOptions().SetSize(hashes.Length * 32L));
-                break;
+                    if (codeOwner is null) throw new RpcException(-32000, "Code hash has no authenticated account.");
+                    byte[] code = await execution.GetCodeAsync(codeOwner, token);
+                    _cache.Set(missing.CodeHash, code, new MemoryCacheEntryOptions().SetSize(Math.Max(1, code.Length)));
+                    break;
+                case MissingKind.Blockhash:
+                    Hash256[] hashes = await execution.GetAncestorHashesAsync(head, missing.BlockNumber, token);
+                    _cache.Set((head.BlockHash, "ancestors"), (missing.BlockNumber, hashes), new MemoryCacheEntryOptions().SetSize(hashes.Length * 32L));
+                    break;
+            }
+            filled = true;
+        }
+        finally
+        {
+            if (trace)
+                _logger.Debug($"LC call id={Activity.Current?.Id} phase=fill kind={missing.Kind} count=1 outcome={(filled ? "filled" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(fillStart).TotalMilliseconds:F3}");
         }
     }
 
