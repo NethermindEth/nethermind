@@ -73,8 +73,8 @@ public sealed class ProofWrapperGossip(ProofWrapperService wrappers, ProofWrappe
     {
         try
         {
-            // Each bounded wrapper of the cycle is offered as soon as it is built.
-            wrappers.RefreshWrapper(PublishLatest, _stop.Token);
+            // Each bounded wrapper of the cycle is offered as soon as it is built; a cycle proves for at most one interval.
+            wrappers.RefreshWrapper(PublishLatest, TimeSpan.FromMilliseconds(Eip8288Constants.AggregationInterval), _clock, _stop.Token);
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception exception)

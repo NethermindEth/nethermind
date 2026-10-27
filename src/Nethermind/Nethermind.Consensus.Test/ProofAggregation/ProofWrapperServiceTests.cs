@@ -560,6 +560,24 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A cycle stops proving once its budget is spent, and the next resumes the rotation where it stopped.
+    [Test]
+    public void Exhausted_cycle_budget_defers_the_remaining_subsets_to_the_next_cycle()
+    {
+        (ProofWrapperService service, _) = Create(10, 128 * 1024, out Transaction[] transactions);
+        List<MempoolWrapper> first = [], second = [];
+        Assert.That(service.RefreshWrapper(() => first.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+        Assert.That(service.RefreshWrapper(() => second.Add(Decode(service.GetLatestWrapper().Data!)), TimeSpan.Zero), Is.EqualTo(Result.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Has.Count.EqualTo(1));
+            Assert.That(second, Has.Count.EqualTo(1));
+            Assert.That(second[0].Transactions.Select(static tx => tx.Hash), Is.Not.SubsetOf(first[0].Transactions.Select(static tx => tx.Hash)),
+                "the next cycle continues the rotation");
+            Assert.That(first[0].Transactions.Count + second[0].Transactions.Count, Is.LessThanOrEqualTo(transactions.Length));
+        }
+    }
+
     [Test]
     public void Rotation_does_not_reprove_an_unchanged_complete_selection()
     {

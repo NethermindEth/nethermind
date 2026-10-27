@@ -308,10 +308,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>One <c>AGGREGATION_INTERVAL</c> cycle of background aggregation: builds bounded wrappers, continuing the
     /// rotation, until every pending dependency-bearing transaction has been offered to one, calling
     /// <paramref name="produced"/> after each, so each can be read through <see cref="GetLatestWrapper()"/> and published.</summary>
-    /// <remarks>Stops at the first build failure; the next cycle resumes the rotation where this one stopped.</remarks>
+    /// <remarks>Stops at the first build failure, or before starting another build once <paramref name="budget"/> has elapsed,
+    /// so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped.</remarks>
     /// <returns>Success when at least one wrapper is current; otherwise the first failure.</returns>
-    public Result RefreshWrapper(Action? produced = null, CancellationToken cancellationToken = default)
+    public Result RefreshWrapper(Action? produced = null, TimeSpan? budget = null, TimeProvider? clock = null,
+        CancellationToken cancellationToken = default)
     {
+        clock ??= TimeProvider.System;
+        long started = clock.GetTimestamp();
         if (!Monitor.TryEnter(_aggregationLock)) return Result.Fail("Proof aggregation is busy; retry later.");
         try
         {
@@ -325,7 +329,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 // A stretch of the rotation without proof-backed transactions ends no cycle that has more candidates.
                 if (result.IsSuccess) { any = true; produced?.Invoke(); }
                 else if (result.Error != NoProofBackedTransactions) return any ? Result.Success : Result.Fail(result.Error!);
-                if (buildScanned == 0 || scanned >= candidates)
+                if (buildScanned == 0 || scanned >= candidates || budget is { } limit && clock.GetElapsedTime(started) >= limit)
                     return any ? Result.Success : Result.Fail(result.Error ?? NoProofBackedTransactions);
             }
         }
