@@ -148,8 +148,7 @@ public class Snapshot : RefCountingDisposable
 
     /// <summary>Builds key filters over the mutable content, so lookups of absent keys skip its dictionaries.</summary>
     /// <remarks>
-    /// Call once the content is final and before the snapshot is shared. A reader that still sees no filters
-    /// probes the dictionaries directly.
+    /// Call once the content is final. A reader that still sees no filters probes the dictionaries directly.
     /// </remarks>
     internal void BuildFilters()
     {
