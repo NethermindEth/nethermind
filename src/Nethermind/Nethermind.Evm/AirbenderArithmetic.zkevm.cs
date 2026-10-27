@@ -22,20 +22,21 @@ internal static unsafe class AirbenderArithmetic
     private const uint SubtractAndNegateOp = 1u << 2;
     private const uint MultiplyLowOp = 1u << 3;
     private const uint MultiplyHighOp = 1u << 4;
+    private const uint EqualOp = 1u << 5;
     private const uint CopyOp = 1u << 7;
 
-    // 2^i as the i-th of 256 words, in RAM where the delegation reads its operands.
+    // 2^i as the i-th of 256 words, then zero, in RAM where the delegation reads its operands.
     private static uint* s_powersOfTwo;
 
-    /// <summary>Prepares the shifts' constants; every handler table that reaches them calls this first.</summary>
+    /// <summary>Prepares the constants of the shifts and of <see cref="IsZero"/>; every handler table that reaches them calls this first.</summary>
     public static void Initialize()
     {
         if (s_powersOfTwo is not null)
             return;
 
         const int Words = 32 / sizeof(uint);
-        uint* table = (uint*)NativeMemory.AlignedAlloc(256 * 32, 32);
-        NativeMemory.Clear(table, 256 * 32);
+        uint* table = (uint*)NativeMemory.AlignedAlloc(257 * 32, 32);
+        NativeMemory.Clear(table, 257 * 32);
         for (int exponent = 0; exponent < 256; exponent++)
             table[exponent * Words + (exponent >> 5)] = 1u << exponent;
         s_powersOfTwo = table;
@@ -74,6 +75,18 @@ internal static unsafe class AirbenderArithmetic
         Debug.Assert((((nuint)subtrahend | (nuint)minuend) & 31) == 0 && subtrahend != minuend);
         airbender_u256_op(subtrahend, minuend, SubtractAndNegateOp);
     }
+
+    /// <summary>Whether the words at <paramref name="left"/> and <paramref name="right"/> are equal.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool Equal(void* left, void* right)
+    {
+        Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
+        return airbender_u256_op(left, right, EqualOp) != 0;
+    }
+
+    /// <summary>Whether the word at <paramref name="value"/> is zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsZero(void* value) => Equal(value, s_powersOfTwo + 256 * (32 / sizeof(uint)));
 
     /// <summary>Replaces <paramref name="left"/> with the low 256 bits of <paramref name="left"/> times <paramref name="right"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
