@@ -114,6 +114,19 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
+        /// <exception cref="ContractException"><paramref name="arguments"/> cannot be encoded as the arguments of <paramref name="function"/>.</exception>
+        protected byte[] EncodeCallData<TArgs, TResult>(ContractFunction<TArgs, TResult> function, TArgs arguments)
+        {
+            try
+            {
+                return AbiCodec.Encode(function.Signature, arguments);
+            }
+            catch (AbiException e)
+            {
+                throw new ContractException($"Cannot encode arguments for function {function} for contract {ContractAddress}.", e);
+            }
+        }
+
         /// <exception cref="ContractException"><paramref name="data"/> is not the canonical encoding of the return values of <paramref name="function"/>.</exception>
         protected TResult DecodeReturnData<TArgs, TResult>(ContractFunction<TArgs, TResult> function, byte[] data)
         {

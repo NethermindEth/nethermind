@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -64,7 +63,7 @@ namespace Nethermind.Blockchain.Contracts
 
             private bool TryCall<TArgs, TResult>(IReadOnlyTxProcessingScope scope, BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments, out TResult result)
             {
-                Transaction transaction = _contract.GenerateTransaction<SystemTransaction>(AbiCodec.Encode(function.Signature, arguments), sender, DefaultConstantContractGasLimit, parentHeader);
+                Transaction transaction = _contract.GenerateTransaction<SystemTransaction>(_contract.EncodeCallData(function, arguments), sender, DefaultConstantContractGasLimit, parentHeader);
                 if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
                 {
                     byte[] output = _contract.CallCore(scope.TransactionProcessor, parentHeader, function.Signature.Name, transaction, true);

@@ -80,6 +80,19 @@ public class TxPermissionFilterTest
     [TestCaseSource(nameof(V1Tests))]
     public async Task<(bool IsAllowed, bool Cache)> V1(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx) => await ChainTest(chainFactory, tx, 1);
 
+    // A signature that recovers to no key leaves the sender null, which the contract call cannot encode.
+    [Test]
+    public async Task Denies_transaction_without_sender()
+    {
+        using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(nameof(V1));
+        Block head = chain.BlockTree.Head!;
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).TestObject;
+
+        AcceptTxResult isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header, chain.SpecProvider.GetSpec(head.Header));
+
+        Assert.That((bool)isAllowed, Is.False);
+    }
+
     public static IEnumerable<TestCaseData> V2Tests()
     {
         IList<Test> tests =

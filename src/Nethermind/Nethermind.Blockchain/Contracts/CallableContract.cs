@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -50,7 +49,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>Decoded return values of <paramref name="function"/>.</returns>
         protected TResult Call<TArgs, TResult>(BlockHeader header, ContractFunction<TArgs, TResult> function, Address sender, ulong gasLimit, TArgs arguments)
         {
-            Transaction transaction = GenerateTransaction<SystemTransaction>(AbiCodec.Encode(function.Signature, arguments), sender, gasLimit, header);
+            Transaction transaction = GenerateTransaction<SystemTransaction>(EncodeCallData(function, arguments), sender, gasLimit, header);
             byte[] result = CallCore(_transactionProcessor, header, function.Signature.Name, transaction);
             return DecodeReturnData(function, result);
         }
@@ -84,7 +83,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
         protected bool TryCall<TArgs, TResult>(BlockHeader header, ContractFunction<TArgs, TResult> function, Address sender, ulong gasLimit, TArgs arguments, out TResult result)
         {
-            Transaction transaction = GenerateTransaction<SystemTransaction>(AbiCodec.Encode(function.Signature, arguments), sender, gasLimit, header);
+            Transaction transaction = GenerateTransaction<SystemTransaction>(EncodeCallData(function, arguments), sender, gasLimit, header);
             if (TryCall(header, transaction, out byte[] bytes))
             {
                 result = DecodeReturnData(function, bytes);
