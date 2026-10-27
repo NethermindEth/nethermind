@@ -41,7 +41,7 @@ public static class RlpEncoderExtensions
         }
 
         /// <summary>Writes a sequence populated by <see cref="PopulateSequenceLength"/>.</summary>
-        public void EncodeSequence<TWriter>(ReadOnlySpan<T?> items, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void EncodeSequence<TWriter>(ref TWriter writer, ReadOnlySpan<T?> items, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             writer.StartSequence(lengths.Pop());
@@ -53,7 +53,7 @@ public static class RlpEncoderExtensions
                 }
                 else
                 {
-                    decoder.Encode(item, ref lengths, ref writer, rlpBehaviors);
+                    decoder.Encode(ref writer, item, ref lengths, rlpBehaviors);
                 }
             }
         }
@@ -68,7 +68,7 @@ public static class RlpEncoderExtensions
             {
                 decoder.PopulateLength(item, ref lengths, rlpBehaviors);
                 lengths.Pop();
-                decoder.Encode(item, ref lengths, ref writer, rlpBehaviors);
+                decoder.Encode(ref writer, item, ref lengths, rlpBehaviors);
             }
             finally
             {
@@ -100,7 +100,7 @@ public static class RlpEncoderExtensions
             {
                 decoder.PopulateLength(item, ref lengths, rlpBehaviors);
                 lengths.Pop();
-                decoder.Encode(item, ref lengths, ref writer, rlpBehaviors);
+                decoder.Encode(ref writer, item, ref lengths, rlpBehaviors);
                 return writer.GetValueHash();
             }
             finally
@@ -114,13 +114,13 @@ public static class RlpEncoderExtensions
     internal static void EncodeTo<T>(IRlpDecoder<T> decoder, T item, ref LengthStack lengths, Span<byte> destination, RlpBehaviors rlpBehaviors)
     {
         RlpWriter writer = new(destination);
-        decoder.Encode(item, ref lengths, ref writer, rlpBehaviors);
+        decoder.Encode(ref writer, item, ref lengths, rlpBehaviors);
     }
 
     /// <summary>Encodes a populated sequence, its total already popped, into <paramref name="destination"/>, which has room for that total.</summary>
     internal static void EncodeSequenceTo<T>(IRlpDecoder<T> decoder, ReadOnlySpan<T?> items, ref LengthStack lengths, Span<byte> destination, RlpBehaviors rlpBehaviors)
     {
         RlpWriter writer = new(destination);
-        decoder.EncodeSequence(items, ref lengths, ref writer, rlpBehaviors);
+        decoder.EncodeSequence(ref writer, items, ref lengths, rlpBehaviors);
     }
 }

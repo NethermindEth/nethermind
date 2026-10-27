@@ -129,7 +129,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -161,6 +161,6 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         writer.Encode(item.GasUsedTotal);
 
-        LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
+        LogEntryDecoder.Instance.EncodeSequence(ref writer, GetLogs(item), ref lengths);
     }
 }

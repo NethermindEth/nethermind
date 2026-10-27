@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
                 => throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
         }
 
-        public override void Encode<TWriter>(ChainLevelInfo? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, ChainLevelInfo? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Serialization.Rlp
 
             writer.StartSequence(lengths.Pop());
             writer.Encode(item.HasBlockOnMainChain);
-            BlockInfoDecoder.Instance.EncodeSequence(item.BlockInfos, ref lengths, ref writer);
+            BlockInfoDecoder.Instance.EncodeSequence(ref writer, item.BlockInfos, ref lengths);
         }
 
         protected override ChainLevelInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

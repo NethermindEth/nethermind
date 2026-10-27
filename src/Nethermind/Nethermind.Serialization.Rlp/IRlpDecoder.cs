@@ -11,10 +11,10 @@ public interface IRlpDecoder;
 
 /// <remarks>
 /// Encoding takes two passes that measure every nested item only once.
-/// <see cref="PopulateLength"/> pushes the lengths <see cref="Encode{TWriter}(T, ref LengthStack, ref TWriter, RlpBehaviors)"/>
+/// <see cref="PopulateLength"/> pushes the lengths <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/>
 /// needs in the reverse of the order it pops them, and pushes the total encoded length of the item last.
 /// The caller pops that total, typically right after populating, to size its own container or buffer;
-/// <see cref="Encode{TWriter}(T, ref LengthStack, ref TWriter, RlpBehaviors)"/> then pops the rest
+/// <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/> then pops the rest
 /// and writes exactly that many bytes at the writer position.
 /// Lengths that are cheap to recompute, such as fixed-width fields, are not pushed but are still part of the total.
 /// A parent populates its children last to first, so each child's lengths sit on the stack in encode order.
@@ -23,9 +23,9 @@ public interface IRlpDecoder<T> : IRlpDecoder
 {
     void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    /// <param name="lengths">The stack <see cref="PopulateLength"/> filled, with its total already popped by the caller.</param>
     /// <param name="writer">A writer with room for the total length <see cref="PopulateLength"/> pushed last.</param>
-    void Encode<TWriter>(T item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <param name="lengths">The stack <see cref="PopulateLength"/> filled, with its total already popped by the caller.</param>
+    void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

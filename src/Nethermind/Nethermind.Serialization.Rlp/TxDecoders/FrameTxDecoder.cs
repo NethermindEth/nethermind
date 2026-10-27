@@ -145,11 +145,11 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
-    public override void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        EncodeTransaction(transaction, ref lengths, ref writer, rlpBehaviors, forSigning);
+        EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see PopulateTransactionLength.
@@ -160,7 +160,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         if (wrapper is null)
         {
             StartTypedTransaction(ref writer, TxType.FrameTx, ref lengths, rlpBehaviors);
-            EncodePayload(transaction, ref lengths, ref writer, elideCanonicalSignatureBytes: forSigning);
+            EncodePayload(transaction, ref writer, ref lengths, elideCanonicalSignatureBytes: forSigning);
         }
         else
         {
@@ -169,7 +169,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
             writer.StartSequence(wrapperContentLength);
             writer.StartSequence(lengths.Pop());
             // Elide on forSigning like the populated payload length, or the declared length and the bytes drift.
-            EncodePayload(transaction, ref lengths, ref writer, elideCanonicalSignatureBytes: forSigning);
+            EncodePayload(transaction, ref writer, ref lengths, elideCanonicalSignatureBytes: forSigning);
             ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper, rlpBehaviors);
         }
     }
@@ -195,14 +195,14 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         lengths.Push(GetTypedTransactionLength(Rlp.LengthOfSequence(wrapperContentLength), rlpBehaviors));
     }
 
-    private static void EncodePayload<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, bool elideCanonicalSignatureBytes)
+    private static void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.Encode(transaction.ChainId ?? 0);
         FrameTxNonceCalldata.Encode(transaction, ref writer);
         writer.Encode(transaction.SenderAddress);
-        TxFrameDecoder.Instance.EncodeSequence(transaction.Frames, ref lengths, ref writer);
-        TxFrameSignatureDecoder.Instance.EncodeArray(transaction.FrameSignatures, ref lengths, ref writer, elideCanonicalSignatureBytes);
+        TxFrameDecoder.Instance.EncodeSequence(ref writer, transaction.Frames, ref lengths);
+        TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, ref lengths, elideCanonicalSignatureBytes);
         writer.StartSequence(GetFeesContentLength(transaction));
         writer.Encode(transaction.GasPrice);
         writer.Encode(transaction.DecodedMaxFeePerGas);

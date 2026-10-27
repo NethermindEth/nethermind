@@ -20,7 +20,7 @@ public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = nu
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PushTypedTransactionLength(GetContentLength(transaction), ref lengths, rlpBehaviors);
 
-    public override void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         StartTypedTransaction(ref writer, TxType.DepositTx, ref lengths, rlpBehaviors);

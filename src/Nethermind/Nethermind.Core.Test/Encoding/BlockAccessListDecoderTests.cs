@@ -828,7 +828,7 @@ public class BlockAccessListDecoderTests
 
         public override void PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
 
-        public override void Encode<TWriter>(byte item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -858,7 +858,7 @@ public class BlockAccessListDecoderTests
 
         public override void PopulateLength(DisposableElement? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
 
-        public override void Encode<TWriter>(DisposableElement item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, DisposableElement item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -881,7 +881,7 @@ public class BlockAccessListDecoderTests
 
         public override void PopulateLength(object? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
 
-        public override void Encode<TWriter>(object item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, object item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 
@@ -895,7 +895,7 @@ public class BlockAccessListDecoderTests
 
         public override void PopulateLength(byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => lengths.Push(1);
 
-        public override void Encode<TWriter>(byte item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        public override void Encode<TWriter>(ref TWriter writer, byte item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

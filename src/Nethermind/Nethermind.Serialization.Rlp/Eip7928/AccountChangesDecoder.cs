@@ -103,19 +103,19 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(ReadOnlyAccountChanges item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyAccountChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
         writer.StartSequence(lengths.Pop());
         writer.Encode(item.Address);
-        SlotChangesDecoder.Instance.EncodeSequence(item.StorageChanges, ref lengths, ref writer, rlpBehaviors);
-        UInt256Decoder.Instance.EncodeSequence(item.StorageReads, ref lengths, ref writer, rlpBehaviors);
-        BalanceChangeDecoder.Instance.EncodeSequence(item.BalanceChanges, ref lengths, ref writer, rlpBehaviors);
-        NonceChangeDecoder.Instance.EncodeSequence(item.NonceChanges, ref lengths, ref writer, rlpBehaviors);
-        CodeChangeDecoder.Instance.EncodeSequence(item.CodeChanges, ref lengths, ref writer, rlpBehaviors);
+        SlotChangesDecoder.Instance.EncodeSequence(ref writer, item.StorageChanges, ref lengths, rlpBehaviors);
+        UInt256Decoder.Instance.EncodeSequence(ref writer, item.StorageReads, ref lengths, rlpBehaviors);
+        BalanceChangeDecoder.Instance.EncodeSequence(ref writer, item.BalanceChanges, ref lengths, rlpBehaviors);
+        NonceChangeDecoder.Instance.EncodeSequence(ref writer, item.NonceChanges, ref lengths, rlpBehaviors);
+        CodeChangeDecoder.Instance.EncodeSequence(ref writer, item.CodeChanges, ref lengths, rlpBehaviors);
     }
 
-    public void Encode<TWriter>(GeneratedAccountChanges item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode<TWriter>(ref TWriter writer, GeneratedAccountChanges item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(lengths.Pop());
@@ -128,7 +128,7 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             {
                 SlotChangesDecoder.Instance.PopulateLength(slotChanges, ref lengths, rlpBehaviors);
                 lengths.Pop();
-                SlotChangesDecoder.Instance.Encode(slotChanges, ref lengths, ref writer, rlpBehaviors);
+                SlotChangesDecoder.Instance.Encode(ref writer, slotChanges, ref lengths, rlpBehaviors);
             }
         }
 
@@ -141,9 +141,9 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
             }
         }
 
-        BalanceChangeDecoder.Instance.EncodeSequence(CollectionsMarshal.AsSpan(item.BalanceChanges), ref lengths, ref writer, rlpBehaviors);
-        NonceChangeDecoder.Instance.EncodeSequence(CollectionsMarshal.AsSpan(item.NonceChanges), ref lengths, ref writer, rlpBehaviors);
-        CodeChangeDecoder.Instance.EncodeSequence(CollectionsMarshal.AsSpan(item.CodeChanges), ref lengths, ref writer, rlpBehaviors);
+        BalanceChangeDecoder.Instance.EncodeSequence(ref writer, CollectionsMarshal.AsSpan(item.BalanceChanges), ref lengths, rlpBehaviors);
+        NonceChangeDecoder.Instance.EncodeSequence(ref writer, CollectionsMarshal.AsSpan(item.NonceChanges), ref lengths, rlpBehaviors);
+        CodeChangeDecoder.Instance.EncodeSequence(ref writer, CollectionsMarshal.AsSpan(item.CodeChanges), ref lengths, rlpBehaviors);
     }
 
     private static int PushSequenceLength(int contentLength, ref LengthStack lengths)

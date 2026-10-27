@@ -153,7 +153,7 @@ namespace Nethermind.Serialization.Rlp
         // Refstruct decode does not generate bloom
         public bool CanDecodeBloom => false;
 
-        public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -177,7 +177,7 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(item.Sender);
             writer.Encode(item.GasUsedTotal);
 
-            CompactLogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
+            CompactLogEntryDecoder.Instance.EncodeSequence(ref writer, GetLogs(item), ref lengths);
 
             if (item.TxType == TxType.FrameTx)
             {

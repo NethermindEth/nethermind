@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         behaviors = receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                     }
 
-                    _decoder.Encode(txReceipt, ref lengths, ref writer, behaviors);
+                    _decoder.Encode(ref writer, txReceipt, ref lengths, behaviors);
                 }
             }
         }

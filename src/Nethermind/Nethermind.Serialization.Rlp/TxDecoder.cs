@@ -218,8 +218,8 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     public override void PopulateLength(T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => PopulateTxLength(item, ref lengths, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
-    public override void Encode<TWriter>(T? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => EncodeTx(item, ref lengths, ref writer, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    public override void Encode<TWriter>(ref TWriter writer, T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => EncodeTx(ref writer, item, ref lengths, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     public Rlp EncodeTx(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
@@ -240,13 +240,13 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     private void EncodeTxTo(T? item, ref LengthStack lengths, Span<byte> destination, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
     {
         RlpWriter writer = new(destination);
-        EncodeTx(item, ref lengths, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        EncodeTx(ref writer, item, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId);
     }
 
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public void EncodeTx<TWriter>(T? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    public void EncodeTx<TWriter>(ref TWriter writer, T? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (item is null)
@@ -262,25 +262,25 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         switch ((item.Type, decoder))
         {
             case (TxType.EIP1559, EIP1559TxDecoder):
-                EIP1559TxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
+                EIP1559TxDecoder.EncodeTransaction(item, ref writer, ref lengths, rlpBehaviors, forSigning);
                 break;
             case (TxType.Legacy, LegacyTxDecoder):
-                LegacyTxDecoder.EncodeTransaction(item, ref lengths, ref writer, forSigning, isEip155Enabled, chainId);
+                LegacyTxDecoder.EncodeTransaction(item, ref writer, ref lengths, forSigning, isEip155Enabled, chainId);
                 break;
             case (TxType.Blob, BlobTxDecoder):
-                BlobTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
+                BlobTxDecoder.EncodeTransaction(item, ref writer, ref lengths, rlpBehaviors, forSigning);
                 break;
             case (TxType.SetCode, SetCodeTxDecoder):
-                SetCodeTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
+                SetCodeTxDecoder.EncodeTransaction(item, ref writer, ref lengths, rlpBehaviors, forSigning);
                 break;
             case (TxType.AccessList, AccessListTxDecoder):
-                AccessListTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
+                AccessListTxDecoder.EncodeTransaction(item, ref writer, ref lengths, rlpBehaviors, forSigning);
                 break;
             case (TxType.FrameTx, FrameTxDecoder):
-                FrameTxDecoder.EncodeTransaction(item, ref lengths, ref writer, rlpBehaviors, forSigning);
+                FrameTxDecoder.EncodeTransaction(item, ref writer, ref lengths, rlpBehaviors, forSigning);
                 break;
             default:
-                decoder.Encode(item, ref lengths, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+                decoder.Encode(item, ref writer, ref lengths, rlpBehaviors, forSigning, isEip155Enabled, chainId);
                 break;
         }
     }

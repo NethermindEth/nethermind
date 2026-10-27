@@ -41,7 +41,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(ExtraFieldsV2 item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ExtraFieldsV2 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -51,7 +51,7 @@ internal sealed class ExtraConsensusDataDecoder : RlpDecoder<ExtraFieldsV2>
 
         writer.StartSequence(lengths.Pop());
         writer.Encode(item.BlockRound);
-        _quorumCertificateDecoder.Encode(item.QuorumCert, ref lengths, ref writer, rlpBehaviors);
+        _quorumCertificateDecoder.Encode(ref writer, item.QuorumCert, ref lengths, rlpBehaviors);
     }
 
     private int PopulateContentLength(ExtraFieldsV2 item, ref LengthStack lengths, RlpBehaviors rlpBehaviors)

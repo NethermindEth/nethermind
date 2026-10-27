@@ -17,7 +17,7 @@ internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
     public void Serialize(IByteBuffer byteBuffer, VoteMsg message, ref LengthStack lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        _voteDecoder.Encode(message.Vote, ref lengths, ref writer);
+        _voteDecoder.Encode(ref writer, message.Vote, ref lengths);
     }
 
     public VoteMsg Deserialize(IByteBuffer byteBuffer)

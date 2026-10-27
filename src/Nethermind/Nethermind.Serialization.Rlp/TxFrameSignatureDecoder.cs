@@ -58,7 +58,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(TxFrameSignature item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxFrameSignature item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(lengths.Pop());
         EncodeContent(ref writer, item, elide: false);
@@ -73,7 +73,7 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
     }
 
     /// <summary>Writes a sequence populated by <see cref="PopulateArrayLength"/>.</summary>
-    public void EncodeArray<TWriter>(TxFrameSignature[]? items, ref LengthStack lengths, ref TWriter writer, bool elideCanonicalSignatureBytes)
+    public void EncodeArray<TWriter>(ref TWriter writer, TxFrameSignature[]? items, ref LengthStack lengths, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(lengths.Pop());

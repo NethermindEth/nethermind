@@ -82,7 +82,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
         }
     }
 
-    public override void Encode<TWriter>(TxReceipt[]? items, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt[]? items, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (items is null || items.Length == 0)
         {
@@ -111,7 +111,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
             for (int i = 0; i < items.Length; i++)
             {
-                CompactDecoder.Encode(items[i], ref lengths, ref writer, rlpBehaviors);
+                CompactDecoder.Encode(ref writer, items[i], ref lengths, rlpBehaviors);
             }
         }
         else
@@ -120,7 +120,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool
 
             for (int i = 0; i < items.Length; i++)
             {
-                Decoder.Encode(items[i], ref lengths, ref writer, rlpBehaviors);
+                Decoder.Encode(ref writer, items[i], ref lengths, rlpBehaviors);
             }
         }
     }

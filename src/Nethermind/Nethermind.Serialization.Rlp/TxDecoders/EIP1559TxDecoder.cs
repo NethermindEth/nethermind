@@ -25,7 +25,7 @@ public abstract class BaseEIP1559TxDecoder(TxType txType, Func<Transaction>? tra
         + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
         + AccessListDecoder.Instance.PopulateAndPop(transaction.AccessList, ref lengths);
 
-    protected static void EncodeEip1559Fields<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer)
+    protected static void EncodeEip1559Fields<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.Encode(transaction.ChainId ?? 0);
@@ -36,7 +36,7 @@ public abstract class BaseEIP1559TxDecoder(TxType txType, Func<Transaction>? tra
         writer.Encode(transaction.To);
         writer.Encode(in transaction.ValueRef);
         writer.Encode(transaction.Data);
-        AccessListDecoder.Instance.Encode(transaction.AccessList, ref lengths, ref writer);
+        AccessListDecoder.Instance.Encode(ref writer, transaction.AccessList, ref lengths);
     }
 }
 
@@ -51,15 +51,15 @@ public sealed class EIP1559TxDecoder(Func<Transaction>? transactionFactory = nul
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
-    public override void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        EncodeTransaction(transaction, ref lengths, ref writer, rlpBehaviors, forSigning);
+        EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         StartTypedTransaction(ref writer, TxType.EIP1559, ref lengths, rlpBehaviors);
-        EncodeEip1559Fields(transaction, ref lengths, ref writer);
+        EncodeEip1559Fields(transaction, ref writer, ref lengths);
         EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
     }
 

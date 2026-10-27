@@ -18,7 +18,7 @@ internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
     public void Serialize(IByteBuffer byteBuffer, TimeoutMsg message, ref LengthStack lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        _timeDecoder.Encode(message.Timeout, ref lengths, ref writer);
+        _timeDecoder.Encode(ref writer, message.Timeout, ref lengths);
     }
 
     public TimeoutMsg Deserialize(IByteBuffer byteBuffer)

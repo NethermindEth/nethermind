@@ -159,10 +159,10 @@ namespace Nethermind.Serialization.Rlp
         public byte[] EncodeNew(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             item is null ? Rlp.OfEmptyList.Bytes : EncodeAsBytes(item, rlpBehaviors);
 
-        partial void EncodeInOnePass<TWriter>(TxReceipt item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, ref bool encoded)
+        partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors, ref bool encoded)
             where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-        public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             bool encoded = false;
-            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(item, ref lengths, ref writer, rlpBehaviors, ref encoded);
+            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(ref writer, item, ref lengths, rlpBehaviors, ref encoded);
             if (encoded) return;
 
             int totalContentLength = lengths.Pop();
@@ -213,7 +213,7 @@ namespace Nethermind.Serialization.Rlp
             if (!skipBloom)
                 writer.Encode(GetBloom(item, rlpBehaviors));
 
-            LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
+            LogEntryDecoder.Instance.EncodeSequence(ref writer, GetLogs(item), ref lengths);
         }
     }
 }

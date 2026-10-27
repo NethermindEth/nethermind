@@ -590,7 +590,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             {
                 BinaryPrimitives.WriteInt32BigEndian(transactionIndex, index++);
                 writer = new(buffer);
-                _txDecoder.Encode(transaction, ref lengths, ref writer, behaviors);
+                _txDecoder.Encode(ref writer, transaction, ref lengths, behaviors);
                 batch.PutSpan(key, buffer[..writer.Position]);
             }
         }

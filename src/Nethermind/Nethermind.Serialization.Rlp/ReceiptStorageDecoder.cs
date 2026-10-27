@@ -129,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
                 => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
 
-        public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
                 writer.Encode(item.GasUsedTotal);
                 writer.Encode(item.Bloom);
 
-                LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
+                LogEntryDecoder.Instance.EncodeSequence(ref writer, GetLogs(item), ref lengths);
 
                 if (supportTxHash)
                 {
@@ -190,7 +190,7 @@ namespace Nethermind.Serialization.Rlp
                 writer.Encode(item.GasUsedTotal);
                 writer.Encode(item.Bloom);
 
-                LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
+                LogEntryDecoder.Instance.EncodeSequence(ref writer, GetLogs(item), ref lengths);
 
                 writer.Encode(item.Error);
             }

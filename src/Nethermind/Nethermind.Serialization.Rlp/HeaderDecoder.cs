@@ -148,7 +148,7 @@ namespace Nethermind.Serialization.Rlp
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
-        public override void Encode<TWriter>(BlockHeader? header, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (header is null)
             {

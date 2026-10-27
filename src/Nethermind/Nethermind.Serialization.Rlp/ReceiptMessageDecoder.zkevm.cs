@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp;
 /// </remarks>
 public sealed partial class ReceiptMessageDecoder
 {
-    partial void EncodeInOnePass<TWriter>(TxReceipt item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, ref bool encoded)
+    partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, ref LengthStack lengths, RlpBehaviors rlpBehaviors, ref bool encoded)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (typeof(TWriter) != typeof(RlpWriter) || !IsOnePass(item, rlpBehaviors)) return;

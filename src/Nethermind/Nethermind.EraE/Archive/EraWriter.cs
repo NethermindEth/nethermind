@@ -338,7 +338,7 @@ public sealed class EraWriter : IDisposable
 
         writer.Encode(receipt.GasUsedTotal);
 
-        LogEntryDecoder.Instance.EncodeSequence(receipt.Logs ?? [], ref lengths, ref writer);
+        LogEntryDecoder.Instance.EncodeSequence(ref writer, receipt.Logs ?? [], ref lengths);
     }
 
     private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)

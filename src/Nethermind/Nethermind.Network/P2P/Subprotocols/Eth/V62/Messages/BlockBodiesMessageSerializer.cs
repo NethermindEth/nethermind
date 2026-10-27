@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message, ref LengthStack lengths)
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
-            _blockBodyDecoder.EncodeSequence(message.Bodies.Bodies, ref lengths, ref writer);
+            _blockBodyDecoder.EncodeSequence(ref writer, message.Bodies.Bodies, ref lengths);
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)

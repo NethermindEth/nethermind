@@ -12,7 +12,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
 {
     public abstract void PopulateLength(T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
-    public abstract void Encode<TWriter>(T item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public abstract void Encode<TWriter>(ref TWriter writer, T item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
     [return: MaybeNull]
@@ -27,7 +27,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     /// <remarks>
     /// Equivalent to <see cref="Encode(T, RlpBehaviors)"/> without wrapping the result in a
     /// throwaway <see cref="Rlp"/>; prefer this when only the raw bytes are needed. The buffer is
-    /// allocated uninitialized because <see cref="Encode{TWriter}(T, ref LengthStack, ref TWriter, RlpBehaviors)"/>
+    /// allocated uninitialized because <see cref="Encode{TWriter}(ref TWriter, T, ref LengthStack, RlpBehaviors)"/>
     /// fills exactly the total length <see cref="PopulateLength"/> pushed last.
     /// </remarks>
     public byte[] EncodeAsBytes(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

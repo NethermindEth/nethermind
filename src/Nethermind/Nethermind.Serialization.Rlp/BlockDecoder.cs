@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public override void Encode<TWriter>(Block? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, Block? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             writer.StartSequence(lengths.Pop());
-            _headerDecoder.Encode(item.Header, ref lengths, ref writer, rlpBehaviors);
+            _headerDecoder.Encode(ref writer, item.Header, ref lengths, rlpBehaviors);
 
             if (item.EncodedTransactions is { } encodedTxs)
             {
@@ -119,13 +119,13 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                TxDecoder.Instance.EncodeSequence(item.Transactions, ref lengths, ref writer);
+                TxDecoder.Instance.EncodeSequence(ref writer, item.Transactions, ref lengths);
             }
 
-            _headerDecoder.EncodeSequence(item.Uncles, ref lengths, ref writer);
+            _headerDecoder.EncodeSequence(ref writer, item.Uncles, ref lengths);
             if (item.Withdrawals is { } withdrawals)
             {
-                _withdrawalDecoder.EncodeSequence(withdrawals, ref lengths, ref writer);
+                _withdrawalDecoder.EncodeSequence(ref writer, withdrawals, ref lengths);
             }
         }
 

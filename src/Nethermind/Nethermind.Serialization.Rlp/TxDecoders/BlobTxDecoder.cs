@@ -55,11 +55,11 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         PopulateTransactionLength(transaction, ref lengths, rlpBehaviors, forSigning);
 
-    public override void Encode<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
-        EncodeTransaction(transaction, ref lengths, ref writer, rlpBehaviors, forSigning);
+        EncodeTransaction(transaction, ref writer, ref lengths, rlpBehaviors, forSigning);
 
-    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, ref LengthStack lengths, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int bodyContentLength = lengths.Pop();
@@ -76,7 +76,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         }
 
         writer.StartSequence(contentLength);
-        EncodeEip1559Fields(transaction, ref lengths, ref writer);
+        EncodeEip1559Fields(transaction, ref writer, ref lengths);
         writer.Encode(GetMaxFeePerBlobGas(transaction));
         EncodeBlobVersionedHashes(ref writer, GetBlobVersionedHashes(transaction));
         EncodeTypedSignature(transaction.Signature, forSigning, ref writer);

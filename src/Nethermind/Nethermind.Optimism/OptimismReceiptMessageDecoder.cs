@@ -141,7 +141,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
             : receiptPayloadLength);
     }
 
-    public override void Encode<TWriter>(TxReceipt? item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -171,7 +171,7 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         writer.Encode(item.GasUsedTotal);
         writer.Encode(item.Bloom);
 
-        LogEntryDecoder.Instance.EncodeSequence(GetLogs(item), ref lengths, ref writer);
+        LogEntryDecoder.Instance.EncodeSequence(ref writer, GetLogs(item), ref lengths);
 
         if (item.IsOptimismTxReceipt(out OptimismTxReceipt? opItem))
         {

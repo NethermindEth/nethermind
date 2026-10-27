@@ -17,7 +17,7 @@ internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
     public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message, ref LengthStack lengths)
     {
         ByteBufferRlpWriter writer = new(byteBuffer);
-        _syncInfoDecoder.Encode(message.SyncInfo, ref lengths, ref writer);
+        _syncInfoDecoder.Encode(ref writer, message.SyncInfo, ref lengths);
     }
 
     public SyncInfoMsg Deserialize(IByteBuffer byteBuffer)

@@ -56,7 +56,7 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(TxFrame item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, TxFrame item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         writer.StartSequence(lengths.Pop());
         writer.Encode((ulong)item.Mode);

@@ -23,10 +23,10 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         AccountChangesDecoder.Instance.PopulateSequenceLength(item.AccountChanges.AsSpan(), ref lengths, rlpBehaviors);
     }
 
-    public override void Encode<TWriter>(ReadOnlyBlockAccessList item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ArgumentNullException.ThrowIfNull(item);
-        AccountChangesDecoder.Instance.EncodeSequence(item.AccountChanges.AsSpan(), ref lengths, ref writer, rlpBehaviors);
+        AccountChangesDecoder.Instance.EncodeSequence(ref writer, item.AccountChanges.AsSpan(), ref lengths, rlpBehaviors);
     }
 
     protected override ReadOnlyBlockAccessList DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
@@ -127,17 +127,17 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     private static void EncodeTo(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, Span<byte> destination, RlpBehaviors rlpBehaviors)
     {
         RlpWriter writer = new(destination);
-        Encode(sortedAccounts, ref lengths, ref writer, rlpBehaviors);
+        Encode(ref writer, sortedAccounts, ref lengths, rlpBehaviors);
     }
 
-    private static void Encode<TWriter>(scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors)
+    private static void Encode<TWriter>(ref TWriter writer, scoped ReadOnlySpan<GeneratedAccountChanges> sortedAccounts, ref LengthStack lengths, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(lengths.Pop());
         AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
         for (int i = 0; i < sortedAccounts.Length; i++)
         {
-            accountChangesDecoder.Encode(sortedAccounts[i], ref lengths, ref writer, rlpBehaviors);
+            accountChangesDecoder.Encode(ref writer, sortedAccounts[i], ref lengths, rlpBehaviors);
         }
     }
 

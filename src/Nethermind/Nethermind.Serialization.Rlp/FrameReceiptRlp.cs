@@ -294,7 +294,7 @@ public static class FrameReceiptRlp
             writer.StartSequence(GetGasUsedLength(frameReceipt));
             writer.Encode(frameReceipt.ExecutionGasUsed);
             writer.Encode(frameReceipt.StateGasUsed);
-            logDecoder.EncodeSequence(frameReceipt.Logs, ref lengths, ref writer);
+            logDecoder.EncodeSequence(ref writer, frameReceipt.Logs, ref lengths);
         }
     }
 

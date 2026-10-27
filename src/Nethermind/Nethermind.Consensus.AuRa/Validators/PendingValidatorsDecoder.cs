@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             lengths.Push(Rlp.LengthOfSequence(contentLength));
         }
 
-        public override void Encode<TWriter>(PendingValidators item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, PendingValidators item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {

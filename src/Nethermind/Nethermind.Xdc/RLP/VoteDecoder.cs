@@ -51,7 +51,7 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(Vote item, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, Vote item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -59,7 +59,7 @@ public sealed class VoteDecoder : RlpDecoder<Vote>
             return;
         }
         writer.StartSequence(lengths.Pop());
-        _xdcBlockInfoDecoder.Encode(item.ProposedBlockInfo, ref lengths, ref writer, rlpBehaviors);
+        _xdcBlockInfoDecoder.Encode(ref writer, item.ProposedBlockInfo, ref lengths, rlpBehaviors);
         if ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing)
         {
             Span<byte> sigBuffer = stackalloc byte[Signature.Size];

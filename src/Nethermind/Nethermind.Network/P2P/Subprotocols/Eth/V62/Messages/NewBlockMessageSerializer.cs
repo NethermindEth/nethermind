@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(lengths.Pop());
-            _blockDecoder.Encode(message.Block, ref lengths, ref writer);
+            _blockDecoder.Encode(ref writer, message.Block, ref lengths);
             writer.Encode(message.TotalDifficulty);
         }
 

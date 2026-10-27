@@ -117,7 +117,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(BlockHeader? header, ref LengthStack lengths, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockHeader? header, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (header is null)
         {
@@ -128,7 +128,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         if (header is not TH h)
         {
             EnsurePlainFallbackAllowed(header);
-            FallbackDecoder.Encode(header, ref lengths, ref writer, rlpBehaviors);
+            FallbackDecoder.Encode(ref writer, header, ref lengths, rlpBehaviors);
             return;
         }
 

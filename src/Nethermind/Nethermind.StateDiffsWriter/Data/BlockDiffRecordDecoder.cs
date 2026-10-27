@@ -30,7 +30,7 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         lengths.Push(Rlp.LengthOfSequence(contentLength));
     }
 
-    public override void Encode<TWriter>(BlockDiffRecord? item, ref LengthStack lengths, ref TWriter stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord? item, ref LengthStack lengths, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
