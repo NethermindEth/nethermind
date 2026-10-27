@@ -2851,15 +2851,24 @@ public partial class EthRpcModuleTests
          "0xc300000000000000000000000000000000000000":{"code":"0x00"}}
         """;
 
-    // A high-s signature still recovers the authority, but the transaction skips the authorization and never warms the
-    // authority, so like Geth the list keeps it.
+    public enum AuthorizationSkip { None, HighS, OtherChainId, MaxNonce }
+
+    // A skipped authorization still recovers its authority, but the transaction never warms that authority, so like Geth
+    // the list keeps it when the call names it. Only the authority of an authorization that is not skipped is left out.
     [Test]
-    public async Task Eth_createAccessList_leaves_out_an_authority_the_call_names([Values] bool highS)
+    public async Task Eth_createAccessList_lists_a_named_authority_only_when_its_tuple_is_skipped([Values] AuthorizationSkip skip)
     {
         using Context ctx = await Context.CreateWithOsakaEnabled();
         ulong chainId = ctx.Test.SpecProvider.ChainId;
-        AuthorizationTuple authorization = new EthereumEcdsa(chainId).Sign(TestItem.PrivateKeyB, chainId, new Address("0xc300000000000000000000000000000000000000"), 0);
-        if (highS)
+        Address codeAddress = new("0xc300000000000000000000000000000000000000");
+        EthereumEcdsa ecdsa = new(chainId);
+        AuthorizationTuple authorization = skip switch
+        {
+            AuthorizationSkip.OtherChainId => ecdsa.Sign(TestItem.PrivateKeyB, chainId + 1, codeAddress, 0),
+            AuthorizationSkip.MaxNonce => ecdsa.Sign(TestItem.PrivateKeyB, chainId, codeAddress, ulong.MaxValue),
+            _ => ecdsa.Sign(TestItem.PrivateKeyB, chainId, codeAddress, 0)
+        };
+        if (skip == AuthorizationSkip.HighS)
         {
             Signature signature = authorization.AuthoritySignature;
             authorization = new AuthorizationTuple(chainId, authorization.CodeAddress, authorization.Nonce, (byte)(1 - signature.RecoveryId),
@@ -2878,7 +2887,28 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
 
         Assert.That(JToken.Parse(serialized).SelectToken("result.accessList")!.Select(static e => e["address"]!.Value<string>()),
-            Is.EqualTo(highS ? new[] { TestItem.AddressB.ToString() } : []), serialized);
+            Is.EqualTo(skip == AuthorizationSkip.None ? [] : new[] { TestItem.AddressB.ToString() }), serialized);
+    }
+
+    // The caller's list names only the recipient, which the optimized list leaves out, so the first run must already carry
+    // the normalised list. Otherwise that run alone converges, and its gas pays the recipient's entry and a cold call.
+    [Test]
+    public async Task Eth_createAccessList_normalises_the_callers_list_before_the_first_run()
+    {
+        // 21,000 intrinsic and 2,400 for the listed callee, then five PUSH1, PUSH20 and GAS (20), and a CALL paying warm
+        // access for the listed callee (100).
+        const long expectedGas = 21_000 + 2_400 + 20 + 100;
+        const string callee = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        string call = $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}","accessList":[{"address":"{{AccessListContract}}","storageKeys":[]}]}""";
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, call, AccessListStateOverride(CallCode(callee)), optimize: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(new[] { callee }), result.ToString());
+            Assert.That(gasUsed, Is.EqualTo(expectedGas), result.ToString());
+        }
     }
 
     [Test]
