@@ -20,6 +20,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -912,8 +913,7 @@ public partial class EngineModuleTests
         }
     }
 
-    // The fallback payload has to satisfy the inclusion list, but must not pay for a mempool selection:
-    // it is produced synchronously on the engine thread while every other engine call waits.
+    // The fallback payload has to satisfy the inclusion list, but must not pay for a mempool selection.
     [Test]
     public async Task Empty_block_fallback_carries_the_inclusion_list_without_the_mempool()
     {
@@ -937,6 +937,57 @@ public partial class EngineModuleTests
             chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock);
 
         Assert.That(emptyBlock!.Transactions.Select(t => t.Hash), Is.EqualTo(new[] { inclusionListTx.Hash }));
+    }
+
+    // A late payload id makes the consensus client propose the payload of its previous update, built for an older list.
+    [Test]
+    [CancelAfter(30000)]
+    public async Task ForkchoiceUpdatedV5_returns_the_payload_id_before_the_inclusion_list_is_executed()
+    {
+        using ManualResetEventSlim inclusionListRelease = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<IInclusionListTxSource>((_, source) => new GatedInclusionListTxSource(source, inclusionListRelease)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Transaction inclusionListTx = BuildInclusionListTransfer();
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(inclusionListTx).Bytes]);
+
+        try
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdated = await Task.Run(() => rpc.engine_forkchoiceUpdatedV5(
+                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes)).WaitAsync(TimeSpan.FromSeconds(5));
+
+            Task<ResultWrapper<GetPayloadV7Result?>> getPayload = rpc.engine_getPayloadV7(Bytes.FromHexString(forkchoiceUpdated.Data.PayloadId!));
+            bool waitedForBuild = !getPayload.IsCompleted;
+            inclusionListRelease.Set();
+            ExecutionPayloadV4 payload = (await getPayload).Data!.ExecutionPayload;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(waitedForBuild, Is.True);
+                Assert.That(payload.TryGetTransactions().Data!.Select(t => t.Hash), Does.Contain(inclusionListTx.Hash));
+            }
+        }
+        finally
+        {
+            inclusionListRelease.Set();
+        }
+    }
+
+    private sealed class GatedInclusionListTxSource(IInclusionListTxSource inner, ManualResetEventSlim release) : IInclusionListTxSource
+    {
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        {
+            release.Wait();
+            return inner.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource);
+        }
+
+        public bool SupportsBlobs => inner.SupportsBlobs;
+
+        public void Set(byte[][][] inclusionLists, IReleaseSpec spec) => inner.Set(inclusionLists, spec);
+
+        public IReadOnlySet<Hash256AsKey>? GetProfile2Candidates(PayloadAttributes? payloadAttributes, ulong maxVerifyGasPerTx) =>
+            inner.GetProfile2Candidates(payloadAttributes, maxVerifyGasPerTx);
     }
 
     // A canonical block this node ran is VALID, and its inclusion check is judged against its own state; once that

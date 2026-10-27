@@ -44,6 +44,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingCallOutputMemory { get; protected set; }
     public virtual bool IsTracingCode { get; protected set; }
     public virtual bool IsTracingStack { get; protected set; }
+    public virtual bool IsTracingStackPushes => IsTracingInstructions;
     public virtual bool IsTracingBlockHash { get; protected set; }
     public virtual bool IsTracingAccess { get; protected set; }
     public virtual bool IsTracingFees { get; protected set; }

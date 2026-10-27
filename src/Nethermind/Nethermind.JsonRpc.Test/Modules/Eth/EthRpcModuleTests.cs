@@ -432,6 +432,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_uninstall_filter_returns_false_for_unknown_id([Values] bool uninstalledBefore)
+    {
+        using Context ctx = await Context.Create();
+        if (uninstalledBefore)
+        {
+            _ = await ctx.Test.TestEthRpc("eth_newBlockFilter");
+            _ = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        }
+
+        string serialized = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter_overflow_int()
     {
         using Context ctx = await Context.Create();
@@ -1772,10 +1786,10 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_proof_and_transaction_count_show_the_eip8253_bump_from_the_fork_block()
     {
-        Address target = Eip8253Constants.MainnetAccounts[0];
+        Address target = Eip8253TestData.MainnetAccounts[0];
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
-            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
             AllowTestChainOverride = false,
