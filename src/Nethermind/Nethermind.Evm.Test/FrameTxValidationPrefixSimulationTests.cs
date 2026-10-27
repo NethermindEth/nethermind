@@ -655,9 +655,9 @@ public class FrameTxValidationPrefixSimulationTests
 
     // EIP-8151: ecRecover returns the signer only while its code is empty or a delegation, so an owner check in the
     // prefix depends on a third party's code. Under EIP-8298, which lets that code change, the signer is recorded like a
-    // delegating helper whether or not ecRecover withheld it: recording needs no code read, and regular code is
-    // permanent, so the only change that can flip the result is returned -> withheld. With EIP-8151 off recovery reads
-    // no account, and with EIP-8298 off no code change can flip the result.
+    // delegating helper whether or not ecRecover withheld it: recording needs no code read, and regular code is never
+    // replaced by empty code or a delegation, so the only change that can flip the result is returned -> withheld.
+    // With EIP-8151 off recovery reads no account, and with EIP-8298 off no code change can flip the result.
     public sealed record EcRecoverSigner(string Name, byte[] Code, bool Approves)
     {
         public override string ToString() => Name;
