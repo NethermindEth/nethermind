@@ -543,6 +543,32 @@ public class ProofWrapperTransportTests
         Assert.That(node.Transport.IsStored(Describe(invalid).Hash), Is.True, "fetched and accepted under the new verifier");
     }
 
+    // An invalid verdict is remembered under the verifier the service judged it with, even when validation itself applied the
+    // verifier change the transport had not yet seen.
+    [Test]
+    public async Task Invalid_verdict_is_scoped_to_the_verifier_validation_used()
+    {
+        using WrapperTestNode node = new(UpgradingChain());
+        node.SetHead(10, 100);
+        node.Wrappers.RefreshVerifier();
+        node.Verifier.Valid = false;
+        byte[] wrapper = Wrapper(64, FrameTransaction(1));
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        node.SetHead(10, 990);
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Wrappers.CurrentVerifier, Is.EqualTo(new Eip8288Verifier(UpgradedVk)), "validation applied the change");
+            Assert.That(node.Transport.IsTombstoned(Describe(wrapper).Hash), Is.True);
+            Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1), "not fetched again under the same verifier");
+        }
+    }
+
     // EIP-8437: until EIP-8288 is enabled for local mempool validation, no wrapper message is sent; a chain without a
     // scheduled EIP-8288 fork registers no peers at all.
     [Test]

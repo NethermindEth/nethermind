@@ -196,7 +196,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (!Preflight(transaction, out string? frameError, admissionSpec))
                     return frameError is FrameTxValidation.AssertFrameNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
                         or FrameTxValidation.LegacyNonceNotAllowed
-                        ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!);
+                        ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!, verifier);
             }
             (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
@@ -209,9 +209,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 cancellationToken.ThrowIfCancellationRequested();
                 error = validationError;
                 RememberVerification(wrapperHash, valid ? null : error);
-                if (!valid) return ProofWrapperAcceptance.Invalid(error!);
+                if (!valid) return ProofWrapperAcceptance.Invalid(error!, verifier);
             }
-            else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
+            else if (error is not null) return ProofWrapperAcceptance.Invalid(error, verifier);
             // Nothing validated under a verifier the upgrade rule has since replaced may be published or admitted.
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
             // Coverage keeps one record per dependency, so a verified recursive proof can otherwise be lost to a direct

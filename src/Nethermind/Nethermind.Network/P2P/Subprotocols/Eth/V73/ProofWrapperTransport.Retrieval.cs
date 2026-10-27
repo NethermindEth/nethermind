@@ -329,15 +329,13 @@ public sealed partial class ProofWrapperTransport
             Conclude(fetch, Verdict.Malformed, $"noncanonical wrapper: {exception.Message}");
             return;
         }
-        Eip8288Verifier? verifier;
-        lock (_gate) verifier = _verifier;
-        (Verdict verdict, string? error) = await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token), cancellation)
-            .ConfigureAwait(false);
+        (Verdict verdict, string? error, Eip8288Verifier? verifier) =
+            await VerifyAsync(token => _wrappers.AcceptOwnedDetailedAsync(wrapper, token), cancellation).ConfigureAwait(false);
         Conclude(fetch, verdict, error, verifier);
     }
 
-    /// <param name="verifier">The target fork's verifier when validation began; an invalid verdict reached across a verifier
-    /// change is not remembered.</param>
+    /// <param name="verifier">For an invalid verdict, the verifier it was reached under; it suppresses fetching only while that
+    /// verifier stays current.</param>
     private void Conclude(WrapperFetch fetch, Verdict verdict, string? error, Eip8288Verifier? verifier = null)
     {
         switch (verdict)
@@ -359,8 +357,8 @@ public sealed partial class ProofWrapperTransport
             // EIP-8437: a proof or dependency-rule failure discards the wrapper without penalizing the peer that served it.
             case Verdict.Invalid:
                 WrapperMetrics.Record(WrapperEvent.Invalid);
-                lock (_gate)
-                    if (verifier is not null && verifier == _verifier) _invalid.Add(fetch.Announcement.Hash);
+                if (verifier is { } judgedUnder)
+                    lock (_gate) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
                 break;
             case Verdict.Refused:
@@ -395,7 +393,7 @@ public sealed partial class ProofWrapperTransport
         if (_logger.IsDebug) _logger.Debug($"eth/73 rejected {fetch.Announcement}: {reason}");
     }
 
-    private async Task<(Verdict, string?)> VerifyAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)
+    private async Task<(Verdict, string?, Eip8288Verifier?)> VerifyAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)
     {
         // Proof verification and admission stay serialized across the bounded validation workers.
         await _verification.WaitAsync(cancellation).ConfigureAwait(false);
@@ -407,15 +405,15 @@ public sealed partial class ProofWrapperTransport
                 ProofWrapperAcceptance result = await accept(cancellation).ConfigureAwait(false);
                 switch (result.Status)
                 {
-                    case ProofWrapperAcceptanceStatus.Accepted: return (Verdict.Valid, null);
-                    case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error);
-                    case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error);
-                    case ProofWrapperAcceptanceStatus.Malformed: return (Verdict.Malformed, result.Result.Error);
-                    case ProofWrapperAcceptanceStatus.Refused: return (Verdict.Refused, result.Result.Error);
+                    case ProofWrapperAcceptanceStatus.Accepted: return (Verdict.Valid, null, null);
+                    case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error, null);
+                    case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error, result.Verifier);
+                    case ProofWrapperAcceptanceStatus.Malformed: return (Verdict.Malformed, result.Result.Error, null);
+                    case ProofWrapperAcceptanceStatus.Refused: return (Verdict.Refused, result.Result.Error, null);
                     case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:
                         await Task.Delay(WrapperTransportLimits.BusyRetry, cancellation).ConfigureAwait(false);
                         continue;
-                    default: return (Verdict.LocalFailure, result.Result.Error);
+                    default: return (Verdict.LocalFailure, result.Result.Error, null);
                 }
             }
         }
