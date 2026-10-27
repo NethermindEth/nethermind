@@ -216,7 +216,7 @@ public class PbtRocksDbPersistenceTests
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default))
         {
             using RefCountingMemory group = EncodeGroup(null, new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode));
-            batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey, group);
+            batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey, group.GetSpan());
             batch.Commit();
         }
 
@@ -325,9 +325,9 @@ public class PbtRocksDbPersistenceTests
             List<PbtPhysicalPayload> persisted = [];
             foreach (PbtStorageNodePath groupKey in PbtStoreTestExtensions.PersistedNodeGroupKeys(reopenedDb))
             {
-                using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-                PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
-                persisted.Add(new PbtPhysicalPayload(groupKey, payload.GetSpan()));
+                byte[] payload = reader.LoadNodeGroup(groupKey)!;
+                PbtStoreTestExtensions.ReadGroup(groupKey, payload);
+                persisted.Add(new PbtPhysicalPayload(groupKey, payload));
             }
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
             Assert.That(reopened.EnumerateRecords().Count, Is.EqualTo(tree.Nodes.Count));
@@ -412,58 +412,18 @@ public class PbtRocksDbPersistenceTests
             }
             foreach ((PbtStorageNodePath path, PbtColumns column) in groups)
             {
-                using RefCountingMemory? payload = reader.GetNodeGroup(path);
+                byte[]? payload = reader.LoadNodeGroup(path);
                 Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToPathArray())}");
                 byte[] storageKeyBytes = path.ToStorageKey(column);
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));
+                    Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload));
                     Assert.That(ReadNode(reader, PbtTestPaths.PathOf(path, NodePosition(path))), Is.EqualTo(encoding));
                 }
             }
         }
 
         static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtTwoLevelGroupGeometry.RootPosition : 0;
-    }
-
-    [TestCase("00", 1)]
-    [TestCase("0000", 9)]
-    [TestCase("0000000000", 33)]
-    public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed(string prefix, int depth)
-    {
-        using TempPath dbPath = TempPath.GetTempDirectory();
-        using ColumnsDb<PbtColumns> db = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, new PbtConfig());
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        PbtNodePath path = new(Bytes.FromHexString(prefix), depth);
-        PbtNodePath groupKey = PbtTestPaths.Locate(path).GroupKey;
-        byte[] originalNode = BranchNode(1);
-        byte[] replacementNode = BranchNode(2);
-        RefCountingMemory payload;
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis, new StateId(1, default), default))
-        {
-            WriteGroup(batch, path, originalNode);
-            batch.Commit();
-        }
-
-        using (IPbtPersistence.IReader reader = persistence.CreateReader())
-        {
-            payload = reader.GetNodeGroup(groupKey)!;
-            Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetEncoding(PbtTestPaths.Locate(path).Position).ToArray(),
-                Is.EqualTo(originalNode));
-        }
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            new StateId(1, default), new StateId(2, default), default))
-        {
-            WriteGroup(batch, path, replacementNode);
-            batch.Commit();
-        }
-
-        Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetEncoding(PbtTestPaths.Locate(path).Position).ToArray(),
-            Is.EqualTo(originalNode));
-        ((IDisposable)payload).Dispose();
     }
 
     [Test]
@@ -620,7 +580,7 @@ public class PbtRocksDbPersistenceTests
         }
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, new StateId(3, default), default))
         {
-            batch.SetNodeGroup(groupKey, null);
+            batch.SetNodeGroup(groupKey, default);
             batch.Commit();
         }
         using IPbtPersistence.IReader deletedReader = persistence.CreateReader();
@@ -661,16 +621,16 @@ public class PbtRocksDbPersistenceTests
         where TPath : struct, IPbtNodePath<TPath>
     {
         using RefCountingMemory payload = EncodeGroup(memoryProvider, new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), node));
-        batch.SetNodeGroup(PbtTestPaths.Locate(path).GroupKey, payload);
+        batch.SetNodeGroup(PbtTestPaths.Locate(path).GroupKey, payload.GetSpan());
     }
 
     private static byte[]? ReadNode<TPath>(IPbtPersistence.IReader reader, TPath path)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
-        using RefCountingMemory? payload = reader.GetNodeGroup(location.GroupKey);
+        byte[]? payload = reader.LoadNodeGroup(location.GroupKey);
         if (payload is null) return null;
-        ReadOnlySpan<byte> encoding = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan()).GetEncoding(location.Position).Span;
+        ReadOnlySpan<byte> encoding = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload).GetEncoding(location.Position).Span;
         return encoding.IsEmpty ? null : encoding.ToArray();
     }
 

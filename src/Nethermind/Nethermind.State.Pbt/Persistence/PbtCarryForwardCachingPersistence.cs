@@ -3,10 +3,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
-using Nethermind.Core.Memory;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
@@ -175,7 +172,6 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => inner.TryLoadNodeGroup(groupKey, action, arg);
         public void Dispose() => inner.Dispose();
@@ -201,7 +197,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
 
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
+        public void SetNodeGroup<TPath>(TPath groupKey, scoped ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
 
         public void Commit()
         {

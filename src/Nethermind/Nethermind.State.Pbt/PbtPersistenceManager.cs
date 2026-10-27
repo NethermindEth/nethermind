@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Threading;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -228,12 +225,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
                 foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey.Key, run);
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
                 // Only groups reachable from the new root are written; a removed group's stale bytes stay unreachable.
-                foreach (PbtGroupRecord group in content.EnumerateNodeGroups())
-                {
-                    using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(group.Payload.Length);
-                    group.Payload.Span.CopyTo(payload.GetSpan());
-                    batch.SetNodeGroup(group.Path, payload);
-                }
+                foreach (PbtGroupRecord group in content.EnumerateNodeGroups()) batch.SetNodeGroup(group.Path, group.Payload.Span);
             }
             else candidate.Persisted!.ApplyTo(batch, cancellationToken);
             batch.Commit();

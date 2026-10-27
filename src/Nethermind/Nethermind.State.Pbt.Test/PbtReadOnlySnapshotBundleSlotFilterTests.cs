@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
@@ -263,7 +262,6 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => false;
         public void Dispose() => persisted.Dispose();

@@ -254,17 +254,16 @@ public class PbtTrieNodeLogTests
             using RefCountingMemory root = EncodeGroup(rootNode, TestItem.KeccakA.ValueHash256);
             using RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256);
             topGroup = top.GetSpan().ToArray();
-            batch.SetNodeGroup(rootKey, root);
-            batch.SetNodeGroup(topKey, top);
+            batch.SetNodeGroup(rootKey, root.GetSpan());
+            batch.SetNodeGroup(topKey, top.GetSpan());
             batch.Commit();
         }
 
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
-        using (RefCountingMemory? top = reader.GetNodeGroup(topKey))
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentState, Is.EqualTo(state));
-            Assert.That(top?.GetSpan().ToArray(), Is.EqualTo(topGroup));
+            Assert.That(reader.LoadNodeGroup(topKey), Is.EqualTo(topGroup));
             Assert.That(Raw(TopKey), Is.Null, "the top group is held by the log");
             Assert.That(_db.GetColumnDb(PbtColumns.Metadata).Get(PbtRocksDbPersistence.RootNodeGroupKey), Is.Not.Null, "the root group bypasses the log");
         }
@@ -686,7 +685,7 @@ public class PbtTrieNodeLogTests
         IPbtPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default);
         PbtNodePath topNode = new(Bytes.FromHexString("0x20"), 5);
         using (RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256))
-            writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, top);
+            writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, top.GetSpan());
         Assert.That(writeBatch.Commit, Throws.TypeOf<IOException>());
         writeBatch.Dispose();
         using (Assert.EnterMultipleScope())

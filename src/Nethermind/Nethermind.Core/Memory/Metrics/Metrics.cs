@@ -13,8 +13,6 @@ public static class Metrics
     private static long _activePooledRefCountingMemoryCapacity;
     private static long _activeRocksDbRefCountingMemoryCount;
     private static long _activeRocksDbRefCountingMemoryCapacity;
-    private static long _activeNativeRefCountingMemoryCount;
-    private static long _activeNativeRefCountingMemoryCapacity;
 
     [GaugeMetric]
     [Description("Number of active pooled RefCountingMemory instances")]
@@ -31,14 +29,6 @@ public static class Metrics
     [GaugeMetric]
     [Description("Total capacity of active RocksDB RefCountingMemory instances in bytes")]
     public static long ActiveRocksDbRefCountingMemoryCapacity => Volatile.Read(ref _activeRocksDbRefCountingMemoryCapacity);
-
-    [GaugeMetric]
-    [Description("Number of active native-pooled RefCountingMemory instances")]
-    public static long ActiveNativeRefCountingMemoryCount => Volatile.Read(ref _activeNativeRefCountingMemoryCount);
-
-    [GaugeMetric]
-    [Description("Total bucket capacity of active native-pooled RefCountingMemory instances in bytes")]
-    public static long ActiveNativeRefCountingMemoryCapacity => Volatile.Read(ref _activeNativeRefCountingMemoryCapacity);
 
     internal static void ReportRefCountingMemoryAllocation(RefCountingMemory.BackingKind backingKind, int capacity) =>
         Report(backingKind, 1, capacity);
@@ -57,10 +47,6 @@ public static class Metrics
             case RefCountingMemory.BackingKind.RocksDb:
                 Interlocked.Add(ref _activeRocksDbRefCountingMemoryCount, count);
                 Interlocked.Add(ref _activeRocksDbRefCountingMemoryCapacity, capacity);
-                break;
-            case RefCountingMemory.BackingKind.Native:
-                Interlocked.Add(ref _activeNativeRefCountingMemoryCount, count);
-                Interlocked.Add(ref _activeNativeRefCountingMemoryCapacity, capacity);
                 break;
         }
     }

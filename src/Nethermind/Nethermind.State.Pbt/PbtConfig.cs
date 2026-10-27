@@ -51,7 +51,6 @@ public class PbtConfig : IPbtConfig
     public int ScanTreeConcurrency { get; set; }
 
     public bool CarryForwardCache { get; set; } = true;
-    public bool NativeNodeGroupMemory { get; set; } = true;
     public ulong CompressedGroupRecordBufferMemoryBudget { get; set; } = 500UL.MiB;
     public int GroupRecordBufferLiveGenerations { get; set; } = 1;
     public bool TrieNodeLogEnabled { get; set; } = false;

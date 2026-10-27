@@ -4,9 +4,7 @@
 using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -22,7 +20,6 @@ public sealed class PbtPersistedSnapshotCompactor(
     PbtSnapshotRepository repository,
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
-    IRefCountingMemoryProvider nodeGroupMemory,
     IPbtConfig config,
     [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
     IPbtPersistedSnapshotLoader loader,
@@ -213,7 +210,7 @@ public sealed class PbtPersistedSnapshotCompactor(
         {
             reservation.Fsync();
             _shutdown.ThrowIfCancellationRequested();
-            using PbtPersistedSnapshot output = new(new(metadata.From, metadata.To, location, tier), reservation, blobs, nodeGroupMemory, bloom);
+            using PbtPersistedSnapshot output = new(new(metadata.From, metadata.To, location, tier), reservation, blobs, bloom);
             _shutdown.ThrowIfCancellationRequested();
             bool registered = loader.RegisterCompacted(output, sources.AsSpan());
             if (registered)

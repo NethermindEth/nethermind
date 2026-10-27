@@ -3,10 +3,8 @@
 
 using System;
 using Autofac;
-using Nethermind.Core.Memory;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Blockchain;
@@ -26,7 +24,6 @@ using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
-using RefCountingMemoryMetrics = Nethermind.Core.Memory.Metrics.Metrics;
 using NSubstitute;
 
 namespace Nethermind.State.Pbt.Test;
@@ -189,25 +186,6 @@ public class PbtWorldStateScopeTests
 
         Assert.That(scope.Get(TestItem.AddressA)?.Balance, Is.EqualTo(UInt256.One), "the scope reads back what it committed");
         Assert.That(ctx.Repository.Count, Is.Zero, "and the layer never reaches the repository");
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Native_node_groups_are_freed_once_the_scope_and_cache_are_gone()
-    {
-        long baselineCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        await using (PbtTestContext ctx = new(nodeGroupMemory: nativePool))
-        {
-            using IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null);
-            Write(scope, 1);
-            scope.UpdateRootHash();
-            scope.Commit(1);
-        }
-
-        // Released blocks stay retained in the pool's buckets, so only the instance count proves that
-        // every payload was released.
-        Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(baselineCount));
     }
 
     [TestCase(7u, TestName = "header slot, on the account's own stem")]

@@ -38,11 +38,11 @@ internal sealed class PbtTreeHarness : IDisposable
 
     public static readonly FoldFanOut DefaultFanOut = FoldFanOut.Default;
 
-    /// <summary>The code chunks of <paramref name="code"/>, copied out of the pooled memory <see cref="PbtKeyDerivation.ChunkifyCode(ReadOnlySpan{byte})"/> returns.</summary>
+    /// <summary>The code chunks of <paramref name="code"/>, copied out of the native list <see cref="PbtKeyDerivation.ChunkifyCode(ReadOnlySpan{byte})"/> returns.</summary>
     public static byte[] ChunkifyCode(ReadOnlySpan<byte> code)
     {
-        using RefCountingMemory chunks = PbtKeyDerivation.ChunkifyCode(code);
-        return chunks.GetSpan().ToArray();
+        using NativeMemoryList<byte> chunks = PbtKeyDerivation.ChunkifyCode(code);
+        return chunks.AsSpan().ToArray();
     }
 
     /// <summary>Encodes a single-leaf tree's root leaf.</summary>
@@ -298,27 +298,30 @@ internal static class PbtStoreTestExtensions
     }
 
     /// <summary>Each group as key-then-payload hex, sorted ordinally.</summary>
-    internal static string[] CanonicalGroups(IEnumerable<PbtStorageNodePath> groupKeys, Func<PbtStorageNodePath, RefCountingMemory?> getNodeGroup)
+    internal static string[] CanonicalGroups(IEnumerable<PbtStorageNodePath> groupKeys, Func<PbtStorageNodePath, byte[]?> getNodeGroup)
     {
         List<string> result = [];
         foreach (PbtStorageNodePath groupKey in groupKeys)
-        {
-            using RefCountingMemory? payload = getNodeGroup(groupKey);
-            result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(payload!.GetSpan())}");
-        }
+            result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(getNodeGroup(groupKey)!)}");
         result.Sort(StringComparer.Ordinal);
         return [.. result];
     }
 
+    private static byte[]? PhysicalPayload(PbtNodeGroupStore store, PbtStorageNodePath groupKey)
+    {
+        using RefCountingMemory? payload = store.GetPhysicalNodeGroup(groupKey);
+        return payload?.GetSpan().ToArray();
+    }
+
     /// <summary>Asserts the groups persisted in <paramref name="db"/>, read through <paramref name="reader"/>, are exactly those of <paramref name="expected"/>.</summary>
     internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected, string message) =>
-        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.GetNodeGroup),
-            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)), message);
+        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.LoadNodeGroup),
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), groupKey => PhysicalPayload(expected, groupKey))), message);
 
     /// <inheritdoc cref="AssertSameGroups(IColumnsDb{PbtColumns}, IPbtPersistence.IReader, PbtNodeGroupStore, string)"/>
     internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected) =>
-        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.GetNodeGroup),
-            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)));
+        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.LoadNodeGroup),
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), groupKey => PhysicalPayload(expected, groupKey))));
 
     /// <summary>Opens the on-disk PBT RocksDB at <paramref name="path"/> with the default <see cref="DbConfig"/> and the production column options for <paramref name="config"/>.</summary>
     internal static ColumnsDb<PbtColumns> OpenPbtRocksDb(string path, PbtConfig config)

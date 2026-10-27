@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using Nethermind.Core.Memory;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
@@ -34,17 +31,6 @@ public interface IPbtPersistence
         PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>;
         CodeInfo? GetCode(in ValueHash256 codeHash);
 
-        /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
-        /// <remarks>
-        /// A non-null result transfers exactly one reference to the caller, which must invoke
-        /// <see cref="IDisposable.Dispose"/> exactly once. Consumers must treat the memory returned by
-        /// <see cref="RefCountingMemory.GetSpan"/> as read-only. The reference keeps the payload valid until
-        /// released, independently of the reader. A missing group returns <see langword="null"/>.
-        /// </remarks>
-        /// <param name="groupKey">The group-boundary key identifying the group.</param>
-        /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
-        RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
-
         /// <summary>Passes the complete group identified by <paramref name="groupKey"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <returns>Whether the group was found.</returns>
         bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
@@ -58,12 +44,8 @@ public interface IPbtPersistence
         /// <typeparam name="TKey"><see cref="PbtPath"/> for a header-slot run, <see cref="PbtStoragePath"/> for any other.</typeparam>
         void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>;
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
-        /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>
-        /// <remarks>
-        /// The payload is borrowed for this call and its bytes must remain immutable. The caller retains
-        /// its reference; an implementation retaining the payload must acquire an independent reference.
-        /// </remarks>
-        void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>;
+        /// <summary>Stages a complete group replacement; an empty payload deletes the group. The payload is borrowed for the call.</summary>
+        void SetNodeGroup<TPath>(TPath groupKey, scoped ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath>;
         void Commit();
     }
 }

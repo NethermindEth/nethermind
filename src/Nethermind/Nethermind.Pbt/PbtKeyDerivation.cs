@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Memory;
 using Nethermind.Int256;
 
 namespace Nethermind.Pbt;
@@ -39,11 +38,11 @@ public static class PbtKeyDerivation
     /// leading PUSHDATA bytes (capped at 31) followed by 31 code bytes, zero-padded at the end.
     /// </summary>
     /// <returns>The chunks laid out back to back, so that a run of them can be written as one span; the caller disposes them.</returns>
-    public static RefCountingMemory ChunkifyCode(ReadOnlySpan<byte> code)
+    public static NativeMemoryList<byte> ChunkifyCode(ReadOnlySpan<byte> code)
     {
-        int chunkCount = (int)CodeChunkCount(code.Length);
-        RefCountingMemory chunks = PooledRefCountingMemoryProvider.Instance.Rent(chunkCount * CodeChunkSize);
-        ChunkifyCode(code, chunks.GetSpan());
+        int length = (int)CodeChunkCount(code.Length) * CodeChunkSize;
+        NativeMemoryList<byte> chunks = new(length, length);
+        ChunkifyCode(code, chunks.AsSpan());
         return chunks;
     }
 

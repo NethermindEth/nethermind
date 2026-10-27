@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -167,11 +166,9 @@ public class PbtScopeProviderTests
     }
 
     [Test]
-    public async Task Delete_all_persisted_accounts_then_insert_before_commit_does_not_resurrect_them([Values] bool native)
+    public async Task Delete_all_persisted_accounts_then_insert_before_commit_does_not_resurrect_them()
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
-        await using PbtTestContext ctx = new(nodeGroupMemory: memory);
+        await using PbtTestContext ctx = new();
         Hash256 persistedRoot;
         using (PbtWorldStateScope initial = ctx.BeginScope(null))
         {
@@ -263,11 +260,9 @@ public class PbtScopeProviderTests
     }
 
     [Test]
-    public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold([Values] bool native, [Values] bool clearStorage)
+    public async Task IncrementalUpdateRootHash_FoldsLaterWritesOnTopOfEarlierFold([Values] bool clearStorage)
     {
-        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
-        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
-        await using PbtTestContext ctx = new(nodeGroupMemory: memory);
+        await using PbtTestContext ctx = new();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
         Address address = TestItem.AddressC;
 

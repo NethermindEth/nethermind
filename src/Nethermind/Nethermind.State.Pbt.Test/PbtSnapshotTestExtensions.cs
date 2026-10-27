@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -12,7 +13,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
@@ -164,15 +164,14 @@ internal static class PbtSnapshotTestExtensions
         return payload;
     }
 
-    /// <summary>Serves <paramref name="reader"/>'s span-action group loads from its <see cref="IPbtPersistence.IReader.GetNodeGroup{TPath}"/>, where a substitute configures and counts them.</summary>
-    internal static IPbtPersistence.IReader LoadingGroupsByLease(this IPbtPersistence.IReader reader) => new LeaseGroupLoadingReader(reader);
+    /// <summary>Serves <paramref name="reader"/>'s group loads from <paramref name="loadGroup"/>, which a substitute cannot configure as they pass by span.</summary>
+    internal static GroupLoadingReader LoadingGroupsFrom(this IPbtPersistence.IReader reader, Func<PbtStorageNodePath, byte[]?> loadGroup) => new(reader, loadGroup);
 
-    /// <summary>Passes the lease <paramref name="payload"/> to <paramref name="action"/> and releases it, as a span-action load built on a lease read.</summary>
-    internal static bool PassNodeGroup<TArg>(RefCountingMemory? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    /// <summary>A copy of the group <paramref name="reader"/> holds at <paramref name="groupKey"/>, or null when it is absent.</summary>
+    internal static byte[]? LoadNodeGroup<TPath>(this IPbtPersistence.IReader reader, TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (payload is null) return false;
-        using (payload) action(payload.GetSpan(), arg);
-        return true;
+        List<byte[]> groups = [];
+        return reader.TryLoadNodeGroup(groupKey, CollectGroup, groups) ? groups.Single() : null;
     }
 
     /// <summary>A caller-owned copy of the group at <paramref name="groupKey"/> in the branch's tree, from its buffer or else as a fold loads it.</summary>
@@ -218,16 +217,29 @@ internal static class PbtSnapshotTestExtensions
         return payload;
     }
 
-    private sealed class LeaseGroupLoadingReader(IPbtPersistence.IReader inner) : IPbtPersistence.IReader
+    /// <summary>Forwards to a reader but loads its groups from a delegate, recording every group asked for.</summary>
+    public sealed class GroupLoadingReader(IPbtPersistence.IReader inner, Func<PbtStorageNodePath, byte[]?> loadGroup) : IPbtPersistence.IReader
     {
+        private readonly ConcurrentQueue<PbtStorageNodePath> _reads = new();
+
+        /// <summary>The groups asked for since the last <see cref="ClearReads"/>, in order.</summary>
+        public PbtStorageNodePath[] Reads => [.. _reads];
+        public void ClearReads() => _reads.Clear();
+
         public StateId CurrentState => inner.CurrentState;
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => inner.GetSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => PassNodeGroup(inner.GetNodeGroup(groupKey), action, arg);
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
+        {
+            PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
+            _reads.Enqueue(path);
+            if (loadGroup(path) is not { } payload) return false;
+            action(payload, arg);
+            return true;
+        }
         public void Dispose() => inner.Dispose();
     }
 }

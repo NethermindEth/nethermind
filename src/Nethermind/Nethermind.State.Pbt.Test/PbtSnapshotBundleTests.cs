@@ -592,14 +592,12 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Failed_group_read_during_fold_leaves_the_write_buffer_unchanged([Values] bool malformed)
     {
-        TrackingMemoryProvider memoryProvider = new();
         PbtVariableTreeKey originalLeafKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
         Reader reader = new(new PbtVariableTreeKey([0]), null)
         {
             GroupPayload = malformed ? Bytes.FromHexString("01") : null,
             GroupReadException = malformed ? null : new InvalidDataException("Configured group read failure."),
-            MemoryProvider = memoryProvider,
             CurrentRoot = new ValueHash256(Value(5)),
         };
         using PbtSnapshotBundle bundle = CreateBundle(reader);
@@ -616,7 +614,6 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(reader.GroupReadCount, Is.EqualTo(1));
             Assert.That(store.ApplyCount, Is.Zero);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
             Assert.That(snapshot.Content.HeaderStorages, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(new UInt256(originalLeafValue.Bytes, isBigEndian: true)));
             Assert.That(snapshot.Content.NodeGroupCount, Is.Zero, "a failed fold publishes no groups");
@@ -1021,7 +1018,6 @@ public class PbtSnapshotBundleTests
         public IEnumerable<KeyValuePair<ValueHash256, Account>> Accounts { get; init; } = [];
         public PbtNodePath GroupKey { get; set; } = new([], 0);
         public byte[]? GroupPayload { get; set; }
-        public IRefCountingMemoryProvider MemoryProvider { get; set; } = PooledRefCountingMemoryProvider.Instance;
         public Exception? GroupReadException { get; set; }
         public int GroupReadCount { get; private set; }
         public Dictionary<ValueHash256, CodeInfo> Codes { get; } = [];
@@ -1053,17 +1049,15 @@ public class PbtSnapshotBundleTests
             CodeReadCount++;
             return Codes.GetValueOrDefault(codeHash);
         }
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+        public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
         {
             GroupReadCount++;
             if (GroupReadException is not null) throw GroupReadException;
-            if (!PbtNodePathOperations.Equal(groupKey, GroupKey) || GroupPayload is null) return null;
-            RefCountingMemory memory = MemoryProvider.Rent(GroupPayload.Length);
-            GroupPayload.CopyTo(memory.GetSpan());
-            return memory;
+            if (!PbtNodePathOperations.Equal(groupKey, GroupKey) || GroupPayload is null) return false;
+            action(GroupPayload, arg);
+            return true;
         }
-        public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-            where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => PbtSnapshotTestExtensions.PassNodeGroup(GetNodeGroup(groupKey), action, arg);
         public int DisposeCount { get; private set; }
         public void Dispose() => DisposeCount++;
     }

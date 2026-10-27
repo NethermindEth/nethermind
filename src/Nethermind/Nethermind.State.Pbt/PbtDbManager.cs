@@ -4,11 +4,8 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -381,7 +378,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => null;
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => false;
 

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using Nethermind.Core.Buffers;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -572,7 +571,7 @@ public class PbtSnapshotRepositoryTests
         content.Codes[new ValueHash256(hash)] = new(new byte[65537]);
         using PbtSnapshot memory = new(from, to, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot built = store.Build(memory);
-        return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, store.Memory, built.BloomRef);
+        return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, built.BloomRef);
     }
 
     private sealed class CallbackCatalog(Action deleting) : ISnapshotCatalog
@@ -594,7 +593,7 @@ public class PbtSnapshotRepositoryTests
     {
         using PbtSnapshot memory = Snapshot(from, to);
         using PbtPersistedSnapshot built = store.Build(memory);
-        return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, store.Memory, built.BloomRef);
+        return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, built.BloomRef);
     }
 
     private SnapshotTier MemoryTier(PbtSnapshot snapshot)

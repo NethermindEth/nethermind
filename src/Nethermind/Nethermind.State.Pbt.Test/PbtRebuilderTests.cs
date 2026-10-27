@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -110,8 +109,7 @@ public class PbtRebuilderTests
         int physicalNodeCount = 0;
         foreach (PbtStorageNodePath groupKey in PbtStoreTestExtensions.PersistedNodeGroupKeys(db))
         {
-            using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-            physicalNodeCount += PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).Nodes().Count;
+            physicalNodeCount += PbtStoreTestExtensions.ReadGroup(groupKey, reader.LoadNodeGroup(groupKey)!).Nodes().Count;
         }
         Assert.That(physicalNodeCount, Is.LessThan(incrementalStore.EnumerateRecords().Count));
         using (Assert.EnterMultipleScope())

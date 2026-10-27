@@ -272,14 +272,6 @@ public class PbtNodeGroupTests
     private static int ReadGroupCount<TPath>(TPath groupKey, byte[] payload) where TPath : struct, IPbtNodePath<TPath> => PbtStoreTestExtensions.ReadGroup(groupKey, payload).Nodes().Count;
 
     [Test]
-    public void Node_group_memory_follows_the_native_memory_flag([Values] bool native)
-    {
-        IRefCountingMemoryProvider provider = PbtNodeGroupMemory.CreateProvider(new PbtConfig { NativeNodeGroupMemory = native });
-        using IDisposable? disposable = provider as IDisposable;
-        Assert.That(provider, native ? Is.InstanceOf<NativeBucketedMemoryPool>() : Is.SameAs(PooledRefCountingMemoryProvider.Instance));
-    }
-
-    [Test]
     public void Node_groups_partition_nodes_at_two_level_boundaries_and_preserve_siblings()
     {
         using PbtTreeHarness tree = new();

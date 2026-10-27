@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
 
@@ -183,9 +182,6 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
     bool CarryForwardCache { get; set; }
-
-    [ConfigItem(Description = "Keep node-group payloads in native memory pooled in jemalloc-style size buckets. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool NativeNodeGroupMemory { get; set; }
 
     [ConfigItem(Description = "Byte budget of compacted in-memory group record buffer generations: groups of retired generations that later generations did not rewrite stay readable within it, so persisted subtrees need not be read back.", DefaultValue = "524288000", HiddenFromDocs = true)]
     ulong CompressedGroupRecordBufferMemoryBudget { get; set; }

@@ -18,7 +18,6 @@ internal sealed class PbtPersistedTestStore : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "pbt-persisted-codec-" + Guid.NewGuid().ToString("N"));
     internal ArenaManager Arena { get; }
     internal BlobArenaManager Blobs { get; }
-    internal TrackingMemoryProvider Memory { get; } = new();
 
     internal PbtPersistedTestStore()
     {
@@ -44,7 +43,7 @@ internal sealed class PbtPersistedTestStore : IDisposable
             blobs.Complete();
             blobs.Fsync();
             reservation.Fsync();
-            return new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, Blobs, Memory, bloom);
+            return new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, Blobs, bloom);
         }
     }
 

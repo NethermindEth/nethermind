@@ -356,7 +356,6 @@ public class PbtSnapshotCompactorTests
             }
         }
         finally { DisposeSources(sources); }
-        Assert.That(TrackingMemoryProvider.CountUnreleased(store.Memory.Rented), Is.Zero);
     }
 
     [Test]
@@ -556,7 +555,7 @@ public class PbtSnapshotCompactorTests
         using (reservation)
         {
             reservation.Fsync();
-            return new(new(metadata.From, metadata.To, location, SnapshotTier.PersistedSmallCompacted), reservation, store.Blobs, store.Memory, bloom);
+            return new(new(metadata.From, metadata.To, location, SnapshotTier.PersistedSmallCompacted), reservation, store.Blobs, bloom);
         }
     }
 

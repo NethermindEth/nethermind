@@ -10,7 +10,6 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -42,7 +41,6 @@ public static class PbtCoreRegistration
             .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
-            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
             .AddSingleton<IPbtGroupRecordBuffer, IPbtConfig>(c => new PbtGroupRecordBuffer(c.CompressedGroupRecordBufferMemoryBudget,
                 PbtGroupRecordBuffer.DefaultGenerationBytes, c.GroupRecordBufferLiveGenerations))
             .AddPbtPersisted(config)

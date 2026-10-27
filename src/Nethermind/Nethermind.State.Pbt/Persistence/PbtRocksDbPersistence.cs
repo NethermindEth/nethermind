@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -207,18 +206,6 @@ public class PbtRocksDbPersistence(
             return code;
         }
 
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
-        {
-            PbtColumns column = NodeGroupColumn(groupKey);
-            Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
-            MemoryManager<byte>? owned = GetNodeGroupColumn(column).GetOwnedMemory(NodeGroupStorageKey(column, groupKey, key));
-            // The trie node cache leases this memory as-is, so a cached group keeps its RocksDB block-cache block pinned
-            // until eviction. That is acceptable: the block cache is budgeted for it and it saves a copy per cached read.
-            if (owned is null) return null;
-            PbtNodeGroupCodec.DebugValidateNodes(groupKey, owned.Memory.Span);
-            return RefCountingMemory.OwningRocksDb(owned);
-        }
-
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct
         {
@@ -289,15 +276,15 @@ public class PbtRocksDbPersistence(
                 && key[^1] is >= PbtKeyDerivation.HeaderStorageOffset and < PbtKeyDerivation.HeaderStorageOffset + PbtKeyDerivation.HeaderStorageSlots
             || key.Length == PbtStoragePath.KeyLength && key[0] == Eip8297KeyDerivation.StorageZone;
 
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void SetNodeGroup<TPath>(TPath groupKey, scoped ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath>
         {
-            if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload.GetSpan());
+            if (!payload.IsEmpty) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload);
             PbtColumns column = NodeGroupColumn(groupKey);
             IWriteBatch groups = ColumnBatch(column);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
             ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(column, groupKey, key);
-            if (payload is null) groups.Set(storageKey, null, flags);
-            else groups.PutSpan(storageKey, payload.GetSpan(), flags);
+            if (payload.IsEmpty) groups.Set(storageKey, null, flags);
+            else groups.PutSpan(storageKey, payload, flags);
         }
 
         private bool _completed;

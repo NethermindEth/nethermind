@@ -3,7 +3,6 @@
 
 using Autofac.Features.AttributeFilters;
 using System.Runtime.ExceptionServices;
-using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -20,7 +19,6 @@ public sealed class PbtPersistedSnapshotLoader(
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
     [KeyFilter(DbNames.Pbt)] ISnapshotCatalog catalog,
-    IRefCountingMemoryProvider memory,
     IPbtConfig config,
     ILogManager logManager) : IPbtPersistedSnapshotLoader
 {
@@ -67,7 +65,7 @@ public sealed class PbtPersistedSnapshotLoader(
                 ArenaReservation reservation = arena.Open(entry.Location);
                 reservations.Add(reservation);
                 using RefCountedBloomFilter bloom = RefCountedBloomFilter.AlwaysTrue();
-                using PbtPersistedSnapshot snapshot = new(entry, reservation, blobs, memory, bloom);
+                using PbtPersistedSnapshot snapshot = new(entry, reservation, blobs, bloom);
                 lock (publicationGate.Sync)
                 {
                     if (!repository.TryAddPersisted(snapshot))
@@ -109,7 +107,7 @@ public sealed class PbtPersistedSnapshotLoader(
             blobWriter.Complete();
             reservation.Fsync();
             blobWriter.Fsync();
-            using PbtPersistedSnapshot persisted = new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, blobs, memory, bloom);
+            using PbtPersistedSnapshot persisted = new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, blobs, bloom);
             if (config.ValidatePersistedSnapshot) PbtPersistedSnapshotValidation.Validate(snapshot, persisted);
             lock (publicationGate.Sync)
             {

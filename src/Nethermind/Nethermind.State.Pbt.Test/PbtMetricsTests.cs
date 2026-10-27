@@ -156,7 +156,7 @@ public class PbtMetricsTests
         Account account = new(1, 100);
         UInt256 slot = (UInt256)0x01;
         CodeInfo code = new(Bytes.FromHexString("6001"));
-        using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(1);
+        byte[] payload = Bytes.FromHexString("01");
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
         reader.GetSlotRun(Arg.Any<PbtPath>()).Returns(SlotRun.Empty);
         reader.GetSlotRun(Arg.Any<PbtStoragePath>()).Returns(SlotRun.Empty);
@@ -166,7 +166,6 @@ public class PbtMetricsTests
             reader.GetSlotRun(SlotRun.RunKey(headerStorageKey)).Returns(_ => SlotRun.Empty.With(SlotRun.IndexOf(headerStorageKey), slot));
             reader.GetSlotRun(SlotRun.RunKey(storageKey)).Returns(_ => SlotRun.Empty.With(SlotRun.IndexOf(storageKey), slot));
             reader.GetCode(codeHash).Returns(code);
-            reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>()).Returns(_ => { payload.AcquireLease(); return payload; });
         }
 
         using PbtSnapshotContent content = new();
@@ -188,7 +187,7 @@ public class PbtMetricsTests
         using PbtSnapshotContent emptyContent = new();
         emptyContent.BeginNodeGroupWrites(content.GroupRecordBuffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer);
         emptyContent.RootGroupPointer = content.RootGroupPointer;
-        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader.LoadingGroupsByLease(), detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader.LoadingGroupsFrom(path => scenario != "missing" && path.Equals(groupKey.ToPath<PbtStorageNodePath>()) ? payload : null), detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         UInt256 actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);
@@ -210,7 +209,7 @@ public class PbtMetricsTests
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(headerRun.Get(SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(actualHeaderSlot));
             Assert.That(storageRun.Get(SlotRun.IndexOf(storageKey)), Is.EqualTo(actualSlot));
-            Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(scenario == "missing" ? null : payload.GetSpan().ToArray()));
+            Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(scenario == "missing" ? null : payload));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
                 ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{groupTier}", $"code_{fallthroughTier}" }

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -218,7 +217,6 @@ public class PbtCarryForwardCachingPersistenceTests
             }
 
             public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-            public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
             public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
                 where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => false;
             public void Dispose() { }
@@ -229,7 +227,7 @@ public class PbtCarryForwardCachingPersistenceTests
             public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) { }
             public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> { }
             public void SetCode(in ValueHash256 codeHash, CodeInfo code) { }
-            public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> { }
+            public void SetNodeGroup<TPath>(TPath groupKey, scoped ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> { }
             public void Commit() { }
             public void Dispose() { }
         }

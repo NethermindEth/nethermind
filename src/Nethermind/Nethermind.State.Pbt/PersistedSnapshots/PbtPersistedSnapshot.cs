@@ -4,7 +4,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
@@ -22,7 +21,6 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
 {
     private readonly ArenaReservation _reservation;
     private readonly BlobArenaManager _blobs;
-    private readonly IRefCountingMemoryProvider _memory;
     private readonly RefCountedBloomFilter _bloom;
     private readonly List<BlobArenaFile> _files = [];
     private int _released;
@@ -42,11 +40,10 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
     /// referenced blob file. Construction failure releases only those newly acquired references.
     /// </remarks>
     public PbtPersistedSnapshot(CatalogEntry entry, ArenaReservation reservation, BlobArenaManager blobs,
-        IRefCountingMemoryProvider nodeGroupMemory, RefCountedBloomFilter bloom)
+        RefCountedBloomFilter bloom)
     {
         _reservation = reservation;
         _blobs = blobs;
-        _memory = nodeGroupMemory;
         _bloom = bloom;
         From = entry.From;
         To = entry.To;
@@ -83,7 +80,6 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
     {
         _reservation = source._reservation;
         _blobs = source._blobs;
-        _memory = source._memory;
         _bloom = bloom;
         From = source.From;
         To = source.To;
@@ -300,18 +296,11 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
                 case PbtPersistedKey.Code: batch.SetCode(new ValueHash256(key.Slice(1, 32)), new CodeInfo(bytes!)); break;
                 default:
                     PbtStorageNodePath path = PbtPersistedKey.DecodeGroup(key);
-                    using (RefCountingMemory? payload = bytes is null ? null : DecodeGroup(path, bytes)) batch.SetNodeGroup(path, payload);
+                    if (bytes is not null) PbtNodeGroupCodec.ValidateNodes(path, bytes);
+                    batch.SetNodeGroup(path, bytes);
                     break;
             }
         }
-    }
-
-    private RefCountingMemory DecodeGroup<TPath>(in TPath path, ReadOnlySpan<byte> bytes) where TPath : struct, IPbtNodePath<TPath>
-    {
-        PbtNodeGroupCodec.ValidateNodes(path, bytes);
-        RefCountingMemory payload = _memory.Rent(bytes.Length);
-        bytes.CopyTo(payload.GetSpan());
-        return payload;
     }
 
     private static PackedSlotRun DecodeRun(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? SlotRun.Empty : SlotRun.Decode(bytes);

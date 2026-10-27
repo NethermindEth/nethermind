@@ -5,8 +5,8 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -250,8 +250,8 @@ public sealed class PbtCodeReassembly : IDisposable
 
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
             throw new InvalidDataException("Code bytes do not match the account code hash or delegation representation.");
-        using RefCountingMemory chunkMemory = PbtKeyDerivation.ChunkifyCode(code);
-        ReadOnlySpan<byte> encodedChunks = chunkMemory.GetSpan();
+        using NativeMemoryList<byte> chunkMemory = PbtKeyDerivation.ChunkifyCode(code);
+        ReadOnlySpan<byte> encodedChunks = chunkMemory.AsSpan();
         for (int chunk = 0; chunk < leaves.Length; chunk++)
         {
             if (leaves[chunk] != new ValueHash256(encodedChunks.Slice(chunk * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize)))

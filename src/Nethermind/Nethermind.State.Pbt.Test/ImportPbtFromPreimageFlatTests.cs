@@ -18,7 +18,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -334,7 +333,7 @@ public class ImportPbtFromPreimageFlatTests
             using PbtNodeGroupStore staleNodes = new();
             staleNodes.SetNode(groupKey, PbtTreeHarness.EncodeLeaf(staleNodeKey));
             using RefCountingMemory? payload = staleNodes.GetPhysicalNodeGroup(groupKey);
-            staging.SetNodeGroup(groupKey, payload);
+            staging.SetNodeGroup(groupKey, payload!.GetSpan());
             staging.Commit();
         }
         byte[] maximumLengthKey = new byte[PbtVariableTreeKey.MaxLength];

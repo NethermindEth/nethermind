@@ -178,7 +178,6 @@ public class PbtFormatInteropTests
         byte[]? decoded = PbtSnapshotTestExtensions.LoadPayload((action, groups) => persisted.TryLoadNodeGroup(groupKey, action, groups, out _));
         persisted.Dispose();
         Assert.That(decoded, Is.EqualTo(absent ? null : expected), "an absent group leaves no entry");
-        Assert.That(TrackingMemoryProvider.CountUnreleased(store.Memory.Rented), Is.Zero);
     }
 
     private static readonly PbtStorageNodePath[] PersistedGroupPaths =

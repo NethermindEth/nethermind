@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Int256;
 
 namespace Nethermind.Pbt;
@@ -114,11 +114,11 @@ public static class Eip8297KeyDerivation
     /// <summary>The code-chunk leaves of <paramref name="code"/>, omitting all-zero chunks as the tree does.</summary>
     public static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> CodeLeaves(ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
-        using RefCountingMemory chunks = PbtKeyDerivation.ChunkifyCode(code.Span);
-        int chunkCount = chunks.GetSpan().Length / PbtKeyDerivation.CodeChunkSize;
+        using NativeMemoryList<byte> chunks = PbtKeyDerivation.ChunkifyCode(code.Span);
+        int chunkCount = chunks.Count / PbtKeyDerivation.CodeChunkSize;
         for (int chunkId = 0; chunkId < chunkCount; chunkId++)
         {
-            ValueHash256 value = new(chunks.GetSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
+            ValueHash256 value = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
             if (value != default) yield return new(OverflowCodeKey(codeHash.Bytes, chunkId), value);
         }
     }

@@ -2,14 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Threading;
 using Nethermind.Config;
-using Nethermind.Core.Memory;
-using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
-using Nethermind.Db;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
@@ -127,7 +123,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => inner.GetSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => inner.TryLoadNodeGroup(groupKey, action, arg);
         public bool TryLease() => TryAcquireLease();
@@ -143,7 +138,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) => inner.SetAccount(addressHash, account);
         public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> => inner.SetSlotRun(runKey, run);
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
-        public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
+        public void SetNodeGroup<TPath>(TPath groupKey, scoped ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
 
         public void Commit()
         {

@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Memory;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
@@ -62,9 +58,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         public void Write(PbtGroupRecord record)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
-            record.Payload.Span.CopyTo(payload.GetSpan());
-            (_batch ??= target.CreateStagingWriteBatch()).SetNodeGroup(record.Path, payload);
+            (_batch ??= target.CreateStagingWriteBatch()).SetNodeGroup(record.Path, record.Payload.Span);
         }
 
         public void Commit()

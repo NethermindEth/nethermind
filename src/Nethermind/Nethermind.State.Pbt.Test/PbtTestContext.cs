@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -45,7 +44,6 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
     public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
     public IPbtResourcePool ResourcePool { get; }
-    public IRefCountingMemoryProvider NodeGroupMemory { get; }
     public PbtGroupRecordBuffer GroupRecordBuffer { get; }
     public IPbtPersistence Persistence { get; }
     public PbtPersistenceManager PersistenceManager { get; }
@@ -53,7 +51,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtStateReader StateReader { get; }
     public PbtWorldStateManager WorldStateManager { get; }
 
-    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, IMetricsConfig? metricsConfig = null, IRefCountingMemoryProvider? nodeGroupMemory = null, PbtGroupRecordBuffer? groupRecordBuffer = null)
+    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, IMetricsConfig? metricsConfig = null, PbtGroupRecordBuffer? groupRecordBuffer = null)
     {
         metricsConfig ??= new MetricsConfig();
         db ??= new SnapshotableMemColumnsDb<PbtColumns>("pbt");
@@ -65,7 +63,6 @@ internal sealed class PbtTestContext : IAsyncDisposable
         ProcessExitSource processExitSource = new(_cts.Token);
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
-        NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
         GroupRecordBuffer = groupRecordBuffer ?? new PbtGroupRecordBuffer(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
         ResourcePool = new PbtResourcePool(Config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);

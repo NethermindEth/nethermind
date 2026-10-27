@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using NUnit.Framework;
@@ -121,36 +120,6 @@ public class RefCountingMemoryTests
         finally
         {
             ((IDisposable?)memory)?.Dispose();
-        }
-    }
-
-    [Test]
-    public void OwningNative_frees_the_block_on_the_last_release_and_tracks_native_metrics()
-    {
-        long initialNativeCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
-        long initialNativeCapacity = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity;
-        using NativeBucketedMemoryPool pool = new(NativeBucketedMemoryPool.GenerateBucketSizes(16, 4, 4096), 64 * 1024);
-        RefCountingMemory memory = pool.Rent(100);
-        memory.GetSpan().Fill(7);
-        memory.AcquireLease();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(memory.GetSpan().Length, Is.EqualTo(100));
-            Assert.That(memory.GetSpan().IndexOfAnyExcept((byte)7), Is.EqualTo(-1));
-            Assert.That(memory.Capacity, Is.EqualTo(112), "the bucket above 100 with quantum 16");
-            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount + 1));
-            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity, Is.EqualTo(initialNativeCapacity + 112));
-        }
-
-        ((IDisposable)memory).Dispose();
-        Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount + 1), "one lease is still out");
-
-        ((IDisposable)memory).Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount));
-            Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity, Is.EqualTo(initialNativeCapacity));
         }
     }
 
