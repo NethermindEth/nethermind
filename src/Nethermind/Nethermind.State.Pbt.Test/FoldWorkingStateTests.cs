@@ -15,7 +15,7 @@ public class FoldWorkingStateTests
         using TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.FoldWorkingState state = new();
 
         PbtNodeGroupWriter<PbtStorageNodePath> writer = state.RentWriter(8);
-        writer.Append(PbtTwoLevelGroupGeometry.RootPosition, 64);
+        writer.Append(PbtThreeLevelGroupGeometry.RootPosition, 64);
         state.ReturnWriter(writer);
         PbtNodeGroupWriter<PbtStorageNodePath> reused = state.RentWriter(16);
         PbtNodeGroupWriter<PbtStorageNodePath> nested = state.RentWriter(16);

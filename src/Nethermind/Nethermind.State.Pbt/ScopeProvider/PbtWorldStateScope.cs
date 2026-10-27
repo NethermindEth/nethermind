@@ -22,8 +22,8 @@ namespace Nethermind.State.Pbt.ScopeProvider;
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
-    private const int AccountGroupDepth = PbtNodeGroupLayout.AccountTopDepth + PbtTwoLevelGroupGeometry.LevelsPerGroup;
-    private const int StorageGroupDepth = PbtNodeGroupLayout.StemTopDepth + PbtTwoLevelGroupGeometry.LevelsPerGroup;
+    private const int AccountGroupDepth = PbtNodeGroupLayout.AccountTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
+    private const int StorageGroupDepth = PbtNodeGroupLayout.StemTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
     private const long AverageNodeGroupBytes = 512;
     private const int SlotChunkLength = 64;
 
@@ -193,7 +193,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// Reads the first group below the top node groups of each account zone written, and per account writing its storage
     /// zone, the first storage group and then the groups below each written slot, as deep as the slot's estimated remaining
     /// group levels: a boundary slot of the first storage group holds about <c>descendantBytes / 512 B</c> groups, so its
-    /// remaining depth is about <c>log4</c> of that many group levels. Code leaves are left out: they are content
+    /// remaining depth is about <c>log8</c> of that many group levels. Code leaves are left out: they are content
     /// addressed, so a deployment rarely finds their groups stored.
     /// </remarks>
     private static void PrefetchNodeGroups(PbtSnapshotBundle bundle, BalKeys keys, CancellationToken cancellation)
@@ -225,7 +225,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private static void PrefetchStorageGroups(PbtSnapshotBundle bundle, ReadOnlySpan<PbtWriteOperation<PbtStoragePath>> slots, CancellationToken cancellation)
     {
         PbtStoragePath previous = slots[0].Key;
-        Span<long> descendantBytes = stackalloc long[PbtTwoLevelGroupGeometry.BoundarySlots];
+        Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
         bundle.WarmUp(GroupOf(previous.Bytes, StorageGroupDepth), descendantBytes);
 
         for (int position = 0; position < slots.Length; position++)
@@ -234,10 +234,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             int sharedBits = position == 0 ? StorageGroupDepth : previous.FirstDifferingBit(key, 0);
             previous = key;
             long subtreeBytes = descendantBytes[TrieUpdater.BoundarySlot(key.Bytes, StorageGroupDepth)];
-            int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, PbtTwoLevelGroupGeometry.BoundarySlots));
+            int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, PbtThreeLevelGroupGeometry.BoundarySlots));
             for (int level = 1; level <= levels; level++)
             {
-                int depth = StorageGroupDepth + level * PbtTwoLevelGroupGeometry.LevelsPerGroup;
+                int depth = StorageGroupDepth + level * PbtThreeLevelGroupGeometry.LevelsPerGroup;
                 if (depth <= sharedBits) continue;
                 if (cancellation.IsCancellationRequested) return;
                 bundle.WarmUp(GroupOf(key.Bytes, depth), []);

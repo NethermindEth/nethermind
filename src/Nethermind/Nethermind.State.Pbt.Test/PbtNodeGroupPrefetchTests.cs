@@ -54,7 +54,7 @@ public class PbtNodeGroupPrefetchTests
 
     [Test]
     public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(
-        [Values(-1L, 0L, 512L, 513L, 4 * 512L, 4 * 512 + 1L, 1024 * 1024L)] long descendantBytes,
+        [Values(-1L, 0L, 512L, 513L, 8 * 512L, 8 * 512 + 1L, 1024 * 1024L)] long descendantBytes,
         [Values] bool snapshotBacked, [Values] bool readByFold)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
@@ -72,7 +72,7 @@ public class PbtNodeGroupPrefetchTests
         byte[]? ReadPayload(PbtStorageNodePath path) => Absent(path) ? null : LifecyclePrefetchPayload(path, descendantBytes);
         PbtSnapshotTestExtensions.GroupLoadingReader reader = Reader(ReadPayload);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
-        PbtStorageNodePath deeperSnapshot = PbtTestPaths.Prefix<PbtStorageNodePath>(storagePath.Bytes, 266);
+        PbtStorageNodePath deeperSnapshot = PbtTestPaths.Prefix<PbtStorageNodePath>(storagePath.Bytes, 267);
         if (snapshotBacked) bundle.SetTree((storageGroup, ReadPayload(storageGroup)), (deeperSnapshot, ReadPayload(deeperSnapshot)));
         HashSet<PbtStorageNodePath> firstGroups = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone), FirstGroup(TestItem.AddressB, Eip8297KeyDerivation.StorageZone)];
         // A fold's read warms nothing, so the prefetch reads again every group the fold read from persistence.
@@ -83,11 +83,11 @@ public class PbtNodeGroupPrefetchTests
         PbtWorldStateScope scope = HintBal(bundle, bal);
 
         HashSet<PbtStorageNodePath> expected = firstGroups;
-        int levels = descendantBytes switch { <= 512 => 0, <= 4 * 512 => 1, <= 16 * 512 => 2, <= 64 * 512 => 3, <= 256 * 512 => 4, <= 1024 * 512 => 5, _ => 6 };
+        int levels = descendantBytes switch { <= 512 => 0, <= 8 * 512 => 1, <= 64 * 512 => 2, <= 512 * 512 => 3, _ => 4 };
         foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
         {
             PbtStoragePath key = Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, addressHash, slot);
-            for (int depth = 266; depth <= 264 + 2 * levels; depth += 2)
+            for (int depth = 267; depth <= 264 + 3 * levels; depth += 3)
                 expected.Add(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, depth));
         }
         if (snapshotBacked && descendantBytes >= 0)
@@ -191,7 +191,7 @@ public class PbtNodeGroupPrefetchTests
         .SelectMany(static call => call.GetArguments().Select(static argument => argument?.ToString())));
 
     private static PbtStorageNodePath FirstGroup(Address address, byte zone) => zone == Eip8297KeyDerivation.AccountZone
-        ? PbtTestPaths.Prefix<PbtStorageNodePath>(Bytes.FromHexString("00" + Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes).Bytes.ToHexString()[..6]), 32)
+        ? PbtTestPaths.Prefix<PbtStorageNodePath>(Bytes.FromHexString("00" + Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes).Bytes.ToHexString()[..6]), 30)
         : new(Bytes.FromHexString("ff" + Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes).Bytes.ToHexString()), 264);
 
     private static ReadOnlyBlockAccessList LifecyclePrefetchBal() => Build.A.BlockAccessList.WithAccountChanges(
@@ -200,7 +200,7 @@ public class PbtNodeGroupPrefetchTests
 
     private static byte[] LifecyclePrefetchPayload(PbtStorageNodePath path, long descendantBytes)
     {
-        long[] sizes = new long[PbtTwoLevelGroupGeometry.BoundarySlots];
+        long[] sizes = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
         Array.Fill(sizes, descendantBytes);
         byte[] branch = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         return PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(PbtTestPaths.PathOf(path, 0), branch)], sizes);

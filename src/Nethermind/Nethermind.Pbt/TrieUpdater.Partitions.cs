@@ -20,7 +20,7 @@ public static partial class TrieUpdater
     /// <summary>The root group slot the account and code zones share, both of whose keys are <see cref="PbtPath"/>s.</summary>
     private const int AccountSlot = Eip8297KeyDerivation.AccountZone >> ZoneSlotShift;
     private const int StorageSlot = Eip8297KeyDerivation.StorageZone >> ZoneSlotShift;
-    private const int ZoneSlotShift = 8 - PbtTwoLevelGroupGeometry.LevelsPerGroup;
+    private const int ZoneSlotShift = 8 - PbtThreeLevelGroupGeometry.LevelsPerGroup;
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
@@ -101,7 +101,7 @@ public static partial class TrieUpdater
             if (!rootNode.IsEmpty)
             {
                 ReadOnlySpan<byte> entry = rootWriter.Entry(rootNode.Offset, rootNode.Length).Span;
-                rootWriter.ValidateEntry(rootPath, PbtTwoLevelGroupGeometry.RootPosition, entry);
+                rootWriter.ValidateEntry(rootPath, PbtThreeLevelGroupGeometry.RootPosition, entry);
                 hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
             }
             publication = PublishGroup(context, ref rootReader, rootWriter, rootPath);

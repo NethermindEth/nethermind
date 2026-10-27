@@ -42,12 +42,12 @@ public ref struct PbtTraversalPath
     public void AppendMut(int slot)
     {
         Debug.Assert(
-            PbtTwoLevelGroupGeometry.IsGroupDepth(BitDepth) && BitDepth + PbtTwoLevelGroupGeometry.LevelsPerGroup <= _buffer.Length * 8,
+            PbtThreeLevelGroupGeometry.IsGroupDepth(BitDepth) && BitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup <= _buffer.Length * 8,
             "Only a group-aligned cursor with room for a slot takes one.");
-        int shifted = slot << (16 - PbtTwoLevelGroupGeometry.LevelsPerGroup - (BitDepth & 7));
+        int shifted = slot << (16 - PbtThreeLevelGroupGeometry.LevelsPerGroup - (BitDepth & 7));
         _buffer[BitDepth >> 3] |= (byte)(shifted >> 8);
         if ((byte)shifted != 0) _buffer[(BitDepth >> 3) + 1] |= (byte)shifted;
-        BitDepth += PbtTwoLevelGroupGeometry.LevelsPerGroup;
+        BitDepth += PbtThreeLevelGroupGeometry.LevelsPerGroup;
     }
 
     /// <summary>Extends the cursor to a depth using the corresponding bits of a complete key.</summary>

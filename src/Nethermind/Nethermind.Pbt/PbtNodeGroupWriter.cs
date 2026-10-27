@@ -38,7 +38,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one, or its scratch, per group.</remarks>
     public void Reset(int bitDepth)
     {
-        Debug.Assert(PbtTwoLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
+        Debug.Assert(PbtThreeLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
         _bitDepth = bitDepth;
         ((Span<long>)_descendantDeltas).Clear();
         _descendantDeltaMask = 0;
@@ -51,7 +51,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     public int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
-    public int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtTwoLevelGroupGeometry.LocalPathOf(position).Length);
+    public int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtThreeLevelGroupGeometry.LocalPathOf(position).Length);
 
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>
     public long DescendantDelta(int slot) => _descendantDeltas[slot];
@@ -177,13 +177,13 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _scratch = grown;
     }
 
-    [InlineArray(PbtTwoLevelGroupGeometry.PositionCount)]
+    [InlineArray(PbtThreeLevelGroupGeometry.PositionCount)]
     private struct OffsetBuffer
     {
         private ushort _element;
     }
 
-    [InlineArray(PbtTwoLevelGroupGeometry.BoundarySlots)]
+    [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]
     private struct DescendantDeltaBuffer
     {
         private long _element;

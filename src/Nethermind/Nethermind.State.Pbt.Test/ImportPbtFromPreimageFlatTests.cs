@@ -339,7 +339,7 @@ public class ImportPbtFromPreimageFlatTests
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
 
-        byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "fc"), PbtTwoLevelGroupGeometry.MaxGroupDepth)
+        byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f8"), PbtThreeLevelGroupGeometry.MaxGroupDepth)
             .ToStorageKey(PbtColumns.StorageNodeGroups);
         PbtColumns[] groupColumns = [PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
@@ -403,7 +403,7 @@ public class ImportPbtFromPreimageFlatTests
         }
         Add(PbtColumns.Codes, TestItem.KeccakB.Bytes.ToArray(), Bytes.FromHexString("0x01"));
         Add(PbtColumns.Accounts, TestItem.KeccakC.Bytes.ToArray(), Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100).WithChangedCodeHash(TestItem.KeccakA)).Bytes);
-        long[] expectedGroups = new long[PbtTwoLevelGroupGeometry.MaxPathDepth + 1];
+        long[] expectedGroups = new long[PbtThreeLevelGroupGeometry.MaxPathDepth + 1];
         long[] expectedNodes = new long[expectedGroups.Length];
         long[] expectedPayloads = new long[expectedGroups.Length];
         Dictionary<PbtColumns, (long[] Groups, long[] Payloads, long[] Nodes)> expectedByPartition = [];
@@ -413,19 +413,19 @@ public class ImportPbtFromPreimageFlatTests
         (int Depth, byte Prefix, PbtColumns Column, PbtColumns Partition)[] groups =
         [
             (0, 0, PbtColumns.Metadata, PbtColumns.Metadata),
-            (2, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
-            (2, 0xC0, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (3, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (3, 0xE0, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
             (6, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
             (6, 0xFC, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
-            (8, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
-            (8, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
-            (8, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (9, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (9, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
+            (9, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
             (PbtNodeGroupLayout.AccountTopDepth, 0x80, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
-            (PbtNodeGroupLayout.AccountTopDepth + PbtTwoLevelGroupGeometry.LevelsPerGroup, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
+            (PbtNodeGroupLayout.AccountTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
             (PbtNodeGroupLayout.StemTopDepth, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
-            (PbtNodeGroupLayout.StemTopDepth + PbtTwoLevelGroupGeometry.LevelsPerGroup, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
+            (PbtNodeGroupLayout.StemTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
             (PbtNodeGroupLayout.StemTopDepth, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
-            (PbtTwoLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups, PbtColumns.StorageNodeGroups),
+            (PbtThreeLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups, PbtColumns.StorageNodeGroups),
         ];
         foreach ((int depth, byte prefix, PbtColumns column, PbtColumns partition) in groups)
         {
@@ -436,7 +436,7 @@ public class ImportPbtFromPreimageFlatTests
             PbtStorageNodePath group = PbtStorageNodePath.Create(pathBytes, depth);
             PbtStorageNodePath node = depth == 0 ? group : PbtTestPaths.PathOf(group, 0);
             // Below the root every group stores one branch over two inline leaves, except where no longer key fits.
-            bool inlineLeaves = depth != 0 && node.BitDepth < PbtTwoLevelGroupGeometry.MaxPathDepth;
+            bool inlineLeaves = depth != 0 && node.BitDepth < PbtThreeLevelGroupGeometry.MaxPathDepth;
             byte[] leftKey = new byte[inlineLeaves ? PbtVariableTreeKey.MaxLength : 0];
             byte[] rightKey = (byte[])leftKey.Clone();
             if (inlineLeaves)
@@ -606,7 +606,7 @@ public class ImportPbtFromPreimageFlatTests
                 _ => PbtColumns.StorageNodeGroups,
             };
             byte prefix = column == PbtColumns.CodeNodeGroups ? (byte)1 : column == PbtColumns.StorageNodeGroups ? (byte)0xFF : (byte)0;
-            byte[] key = new PbtNodePath([prefix], 8).ToStorageKey(column);
+            byte[] key = new PbtNodePath([prefix, 0], 9).ToStorageKey(column);
             db.GetColumnDb(column).Set(key, Bytes.FromHexString("0x7f"));
         }
         db.Recording = true;
