@@ -133,6 +133,7 @@ internal sealed class WindowAssembler
         }
 
         ExecutionWitness witness = block.Witness ?? throw Invalid($"block {block.Number} carries no execution witness");
+        RejectL1Evidence(witness);
         long attempted = _witnessItems + witness.State.Count + witness.Codes.Count + witness.Keys.Count + witness.Headers.Count;
         if (attempted > _limits.MaxWitnessItems)
         {
@@ -148,7 +149,7 @@ internal sealed class WindowAssembler
         }
 
         _claims.Add((hash, parentHash));
-        _blocks.Add(new EezStatelessBlock(block.Rlp.ToByteArray(), ToWitness(witness)));
+        _blocks.Add(new EezStatelessBlock(block.Rlp.ToByteArray(), ToL2Witness(witness)));
         _prepared.Add(null);
     }
 
@@ -216,7 +217,19 @@ internal sealed class WindowAssembler
         return attempted <= limit ? attempted : throw Quota($"window payload reached {attempted} bytes, limit is {limit}");
     }
 
-    internal static Witness ToWitness(ExecutionWitness witness) => new()
+    internal static Witness ToWitness(ExecutionWitness witness)
+    {
+        RejectL1Evidence(witness);
+        return ToL2Witness(witness);
+    }
+
+    internal static void RejectL1Evidence(ExecutionWitness witness)
+    {
+        if (witness.L1HeadersRlp.Count != 0) throw Invalid("L1 header evidence is not supported by this profile");
+    }
+
+    /// <summary>Copies L2 execution inputs; native callers must separately validate and retain field 5.</summary>
+    internal static Witness ToL2Witness(ExecutionWitness witness) => new()
     {
         State = ToList(witness.State),
         Codes = ToList(witness.Codes),

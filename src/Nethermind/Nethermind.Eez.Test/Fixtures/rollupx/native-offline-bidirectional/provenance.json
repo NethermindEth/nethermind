@@ -1,0 +1,12 @@
+{
+  "source": "https://github.com/eez-association/eez-rollupX/tree/c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae/crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional",
+  "commit": "c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae",
+  "modifications": "None. All four files copied byte-for-byte.",
+  "sha256": {
+    "l1-genesis.json": "71e9efcd1b9c711fbe30b564947a988b0a55976e5a3bf743184916681220031c",
+    "l2-genesis.json": "5c16616de4de7ea92c8931195bddca3ceacf4edd311b98285db0ce11d8241148",
+    "request.v2.protobuf": "63415a07f867d707e24cdf0ab1b9e62d8ee9307a739f116bba842e9821464461",
+    "response.json": "41cd95da057dfb3a95c75d7f2bd461bf0687f38a567752cd0071a52dffc50613"
+  },
+  "scope": "Cold replay of the independently sealed native L2 execution blocks and supplied L1 ancestry. This gate does not verify final settlement signing or live interoperability."
+}

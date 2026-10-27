@@ -1,5 +1,6 @@
 // Adapted from eez-association/eez-rollupX at 2c19e36bed2720c00f89841ccfca47ec7c921e06, licensed MIT OR Apache-2.0.
 // Retains legacy Rollup0 PostBatch fields 2/3 and adds the C# namespace.
+// L1 witness field 5 follows eez-rollupX at c1dafa6113425fce74bdba8c32ae8b0d7a7ba5ae.
 
 // The composer-controlled prover wire (Model B).
 //
@@ -158,7 +159,9 @@ message ExecutionWitness {
   repeated bytes state   = 1;  // trie nodes (augmented with removal-closure)
   repeated bytes codes   = 2;  // contract bytecodes
   repeated bytes keys    = 3;  // hashed-key preimages
-  repeated bytes headers = 4;  // ancestor headers (BLOCKHASH)
+  repeated bytes headers = 4;  // L2 ancestor headers (BLOCKHASH)
+  // Native offline RollupX only: separate, consecutive canonical L1 headers.
+  repeated bytes l1_headers_rlp = 5;
 }
 
 message ProveResponse {

@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
 
-public class EezStatelessExecutorTests
+public partial class EezStatelessExecutorTests
 {
     private const string Block13 = "stateless-block-13";
     private const string Checkpoint2175 = "stateless-checkpoint-2175";

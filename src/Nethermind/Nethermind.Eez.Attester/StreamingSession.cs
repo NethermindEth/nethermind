@@ -184,6 +184,7 @@ internal sealed class StreamingSession
             CheckIdle();
             if (block.Witness is null || block.Hash.Length != 32 || block.ParentHash.Length != 32)
                 throw Error(StatusCode.InvalidArgument, "invalid block witness");
+            WindowAssembler.RejectL1Evidence(block.Witness);
             if (block.Rlp.IsEmpty) throw Error(StatusCode.FailedPrecondition, "consensus block encoding is empty");
             int duplicate = FindBlock(block.Number);
             if (duplicate >= 0)

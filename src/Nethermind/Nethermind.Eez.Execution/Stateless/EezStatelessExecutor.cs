@@ -24,7 +24,7 @@ namespace Nethermind.Eez.Execution.Stateless;
 /// execution witness, and checks that the window chains: every block builds on the previous block's hash and
 /// post-state root.
 /// </summary>
-public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRules rules, ILogManager logManager)
+public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, EezChainRules rules, ILogManager logManager)
 {
     private static readonly IRlpDecoder<TxReceipt> ReceiptTrieDecoder = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
 
@@ -104,6 +104,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRul
         Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? decorator)
     {
         IBlockProcessor.IBlockTransactionsExecutor decorated = decorator?.Invoke(inner, worldState) ?? inner;
+        decorated = _nativeHistory?.Wrap(decorated, worldState) ?? decorated;
         return rules.BurnedAtBlockStart.Length == 0 ? decorated : new BlockStartBurn(decorated, worldState, specProvider, rules);
     }
 

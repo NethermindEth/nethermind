@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test;
 
-public class StreamingAdmissionTests
+public partial class StreamingAdmissionTests
 {
     [Test]
     public async Task Prove_CancelledResponseWhileWorkerRuns_KeepsSharedAdmissionUntilDrain()
