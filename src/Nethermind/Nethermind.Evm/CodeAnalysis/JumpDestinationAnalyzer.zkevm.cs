@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -205,6 +206,9 @@ public sealed partial class JumpDestinationAnalyzer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool MayHoldReachingPush(ref byte window)
     {
+        if (AirbenderFlag.IsActive)
+            return MayHoldReachingPushIn32BitWords(ref window);
+
         ref ulong biases = ref MemoryMarshal.GetArrayDataReference(_reachBiases);
         ulong word = Unsafe.ReadUnaligned<ulong>(ref window);
         ulong reach = (word + Unsafe.Add(ref biases, 1)) & ~word;
@@ -215,6 +219,48 @@ public sealed partial class JumpDestinationAnalyzer
         word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 3 * sizeof(ulong)));
         reach |= (word + Unsafe.Add(ref biases, 4)) & ~word;
         return (reach & biases) != 0;
+    }
+
+    /// <summary><see cref="MayHoldReachingPush"/> in 32-bit words, for Airbender.</summary>
+    /// <remarks>
+    /// A 32-bit core that rejects misaligned accesses gathers an unaligned 64-bit word byte by byte and adds it with a
+    /// carry chain. This reads the aligned words that cover the window, each window word merged from two of them, and
+    /// sums each against its half of the biases: the carry a 64-bit sum passes between the halves can only make a lane
+    /// look like a reaching PUSH, never hide one. The last aligned word may run up to three bytes past the window,
+    /// over the destination and into the code's execution padding.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool MayHoldReachingPushIn32BitWords(ref byte window)
+    {
+        ref uint biases = ref Unsafe.As<ulong, uint>(ref MemoryMarshal.GetArrayDataReference(_reachBiases));
+        nuint address = (nuint)Unsafe.AsPointer(ref window);
+        uint* words = (uint*)(address & ~(nuint)(sizeof(uint) - 1));
+        int low = (int)(address & (sizeof(uint) - 1)) * 8;
+        uint reach;
+        if (low == 0)
+        {
+            reach = Reach(words[0], Unsafe.Add(ref biases, 2)) | Reach(words[1], Unsafe.Add(ref biases, 3)) |
+                Reach(words[2], Unsafe.Add(ref biases, 4)) | Reach(words[3], Unsafe.Add(ref biases, 5)) |
+                Reach(words[4], Unsafe.Add(ref biases, 6)) | Reach(words[5], Unsafe.Add(ref biases, 7)) |
+                Reach(words[6], Unsafe.Add(ref biases, 8)) | Reach(words[7], Unsafe.Add(ref biases, 9));
+        }
+        else
+        {
+            int high = 32 - low;
+            reach = Reach((words[0] >> low) | (words[1] << high), Unsafe.Add(ref biases, 2)) |
+                Reach((words[1] >> low) | (words[2] << high), Unsafe.Add(ref biases, 3)) |
+                Reach((words[2] >> low) | (words[3] << high), Unsafe.Add(ref biases, 4)) |
+                Reach((words[3] >> low) | (words[4] << high), Unsafe.Add(ref biases, 5)) |
+                Reach((words[4] >> low) | (words[5] << high), Unsafe.Add(ref biases, 6)) |
+                Reach((words[5] >> low) | (words[6] << high), Unsafe.Add(ref biases, 7)) |
+                Reach((words[6] >> low) | (words[7] << high), Unsafe.Add(ref biases, 8)) |
+                Reach((words[7] >> low) | (words[8] << high), Unsafe.Add(ref biases, 9));
+        }
+
+        return (reach & biases) != 0;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static uint Reach(uint word, uint bias) => (word + bias) & ~word;
     }
 
     /// <summary>Returns the last position below <paramref name="destination"/> and at or above <paramref name="limit"/> that <paramref name="bitmap"/> marks, or -1.</summary>
