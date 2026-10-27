@@ -507,7 +507,7 @@ public class FrameTxValidationTests
             static t => t.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, new byte[] { 0, 1 })],
             prefixAndIntrinsic + GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028);
         yield return Admission("OneAccessCostPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * Eip8250Constants.KeyedNonceAccessCost);
-        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [UInt256.Zero], prefixAndIntrinsic);
+        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [], prefixAndIntrinsic);
         yield return Admission("RecentRootFrameAtItsDeclaredLimit",
             static t => t.Frames = [RecentRootFrame(), SelfVerifyFrame()],
             prefixAndIntrinsic + (ulong)Eip8141Constants.PerFrameGasCost + 20_000 + Eip8272Constants.RecentRootTupleLength * GasCostOf.TxDataZero);
@@ -615,7 +615,8 @@ public class FrameTxValidationTests
             "the measured calldata must be priced, not served from the memo taken before it was set");
     }
 
-    [TestCase(new ulong[] { 0 }, 0ul)]
+    [TestCase(new ulong[] { }, 0ul)]
+    [TestCase(new ulong[] { 0 }, 12_100ul)]
     [TestCase(new ulong[] { 1 }, 12_100ul)]
     [TestCase(new ulong[] { 1, 2 }, 24_200ul)]
     public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong accessCost)

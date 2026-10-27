@@ -524,6 +524,18 @@ public class FrameTxDecoderTests
         Assert.That(() => FrameTxNonceCalldata.Measure(keyed), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
+    [TestCase(true, 1UL, 3, TestName = "MeasureNonceCalldata_SequentialKeyedNonce_PricesTheSequence")]
+    [TestCase(true, Eip8250Constants.MaxNonceSeq, 2, TestName = "MeasureNonceCalldata_SingleUseKeyedNonce_ExemptsTheSequence")]
+    [TestCase(false, Eip8250Constants.MaxNonceSeq, 9, TestName = "MeasureNonceCalldata_PlainNonceAtMax_PricesTheSequence")]
+    public void MeasureNonceCalldata_PricesTheSequenceUnlessSingleUse(bool keyed, ulong nonceSeq, int nonZeroBytes)
+    {
+        Transaction tx = CreateFrameTx();
+        tx.Nonce = nonceSeq;
+        tx.NonceKeys = keyed ? [(UInt256)7] : null;
+
+        Assert.That(FrameTxNonceCalldata.Measure(tx), Is.EqualTo((0, nonZeroBytes)));
+    }
+
     [TestCase(Eip8141Constants.MaxFrames, false)]
     [TestCase(Eip8141Constants.MaxFrames + 1, true)]
     public void Decode_BoundsTheFrameCount(int frameCount, bool rejected)

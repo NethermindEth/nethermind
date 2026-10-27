@@ -58,13 +58,13 @@ public sealed class FrameTxContext(
     public UInt256 LegacyNonce { get; } = legacyNonce;
 
     /// <summary><c>keccak256(bytes32(len(nonce_keys)) || concat(bytes32(k) for k in nonce_keys))</c>.</summary>
-    /// <remarks>The EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its account nonce occupies.</remarks>
+    /// <remarks>The EIP-8141 envelope hashes as the empty key set, the domain its account nonce occupies.</remarks>
     public ValueHash256 NonceKeysHash =>
         NonceKeys is { } keys ? _nonceKeysHash ??= ComputeNonceKeysHash(keys) : AccountNonceKeySetHash;
 
     private ValueHash256? _nonceKeysHash;
 
-    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([UInt256.Zero]);
+    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([]);
 
     /// <summary>The envelope's frames, in execution order.</summary>
     public TxFrame[] Frames { get; } = frames;
