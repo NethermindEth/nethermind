@@ -298,7 +298,7 @@ namespace Nethermind.Facade
             blockOverride is not null && HasBlockOverrides(blockOverride);
 
         internal static string? GetUnsupportedBlockOverrideError(BlockOverride? blockOverride) =>
-            blockOverride?.BeaconRoot is not null ? "block override \"beaconRoot\" is not supported for this RPC method"
+            blockOverride?.BeaconRoot is not null ? BlockOverride.BeaconRootNotSupported
             : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
             : null;
 

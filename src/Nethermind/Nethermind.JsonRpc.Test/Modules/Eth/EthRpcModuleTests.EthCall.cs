@@ -174,7 +174,7 @@ public partial class EthRpcModuleTests
         string rejectedField = field switch { "both" => "beaconRoot", "nonemptyWithdrawals" => "withdrawals", _ => field };
         string expectedMessage = rejectedField == "withdrawals"
             ? BlockOverride.WithdrawalsNotSupported
-            : "block override \"beaconRoot\" is not supported for this RPC method";
+            : BlockOverride.BeaconRootNotSupported;
         AssertCallBlockOverrideError(error, expectedMessage, response);
     }
 
@@ -214,10 +214,19 @@ public partial class EthRpcModuleTests
 
     [Test]
     public async Task Unsupported_block_overrides_precede_transaction_and_state_override_validation(
-        [Values("eth_call", "eth_estimateGas")] string method)
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool invalidTransactionType)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
-        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x2" };
+        object call = invalidTransactionType
+            ? new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), authorizationList = Array.Empty<object>() }
+            : new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), maxFeePerGas = "0x1", maxPriorityFeePerGas = "0x2" };
+        if (invalidTransactionType)
+        {
+            string withoutOverride = await ctx.Test.TestEthRpc(method, call, "latest");
+            Assert.That(JToken.Parse(withoutOverride)["error"]?["message"]?.Value<string>(),
+                Does.Contain(TxErrorMessages.InvalidTxType(Cancun.Instance.Name)), withoutOverride);
+        }
         object stateOverride = new Dictionary<string, object>
         {
             [TestItem.AddressA.ToString()] = new { state = new { }, stateDiff = new { } }
@@ -226,11 +235,7 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc(method, call, "latest", stateOverride, blockOverride);
         JToken? error = JToken.Parse(response)["error"];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(-32000), response);
-            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo("block override \"withdrawals\" is not supported for this RPC method"), response);
-        }
+        AssertCallBlockOverrideError(error, BlockOverride.WithdrawalsNotSupported, response);
     }
 
     [Test]
