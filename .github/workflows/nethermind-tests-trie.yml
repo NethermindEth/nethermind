@@ -46,9 +46,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh).
+        # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.cs).
         project:
           - Nethermind.JsonRpc.Test
+          - Nethermind.Mcp.Plugin.Test
           - Nethermind.TxPool.Test
           - name: Nethermind tests 1
             list: >-
@@ -123,7 +124,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -136,11 +137,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           CRASH_RETRY: false
-        run: bash scripts/ci/run-test-projects.sh
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
@@ -190,7 +191,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -203,11 +204,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
           PROJECTS: ${{ matrix.project.list || matrix.project }}
           CRASH_RETRY: false
-        run: bash scripts/ci/run-test-projects.sh
+        run: dotnet run --file scripts/ci/run-test-projects.cs
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
@@ -243,7 +244,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -262,7 +263,7 @@ jobs:
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-dumps
           path: |

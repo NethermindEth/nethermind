@@ -110,6 +110,24 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Computes the Keccak-256 digest of the <paramref name="length"/> bytes at <paramref name="input"/> into <paramref name="hash"/>.</summary>
+    /// <param name="length">A constant, so the sponge folds to that length's path.</param>
+    /// <remarks>Written through a reference rather than returned: a returned digest goes through a stack temporary
+    /// before it reaches memory elsewhere.</remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static unsafe void ComputeHash256Fixed(ref byte input, nuint length, out ValueHash256 hash)
+    {
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        fixed (byte* data = &input)
+        {
+            Sponge(ref lane, StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0 ? AlignedDown(data) : data, length);
+        }
+
+        hash = Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ValueHash256 ComputeHash256(byte* data, nuint length)

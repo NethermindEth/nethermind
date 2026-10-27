@@ -9,7 +9,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
-using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -68,9 +67,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 // would convert in-memory snapshots into the no-op loader and lose that state.
                 flatDbConfig.EnableLongFinality = false;
             })
-
-            // Rpc
-            .AddSingleton<IJsonRpcService, JsonRpcService>()
             ;
 
 

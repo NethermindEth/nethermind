@@ -10,7 +10,7 @@ env:
   PACKAGE_DIR: guests
   # Provers use ere-server, so the verification keys come from it. Bump together with the
   # ere_digests
-  ERE_VERSION: 0.19.2
+  ERE_VERSION: 0.19.5
 
 jobs:
   # The tested binaries are what gets released, so nothing unexecuted is ever signed
@@ -58,7 +58,6 @@ jobs:
           version=$version_prefix${version_suffix:+-$version_suffix}
           echo "Detected version $version"
           echo "version=$version" >> $GITHUB_OUTPUT
-          echo "commit=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
 
       - name: Generate verification keys and sign
         id: sign
@@ -71,8 +70,8 @@ jobs:
           declare -A names=([zisk]=ZisK [sp1]=SP1 [openvm]=OpenVM)
           declare -A guests=([zisk]=Zisk [sp1]=Sp1 [openvm]=OpenVM)
           declare -A ere_digests=(
-            [zisk]=sha256:5712a0eaa811a5bd960c8493538181c14b7cf650716891bd29808065e418c065
-            [sp1]=sha256:e13e2d07a10c5cdb0d548bceacbc1cbe468c1dbda3972c3d4611589585f1fede
+            [zisk]=sha256:569468bab192afc020c652011e68a6b06028917977d6a7567def27606d8ea96c
+            [sp1]=sha256:82e0b809148a08f82f86ff2ddee9d352cf399a17f145754b417ecf2634578cc0
           )
           mtime=$(git log -1 --format=%ct)
           assets=()
@@ -85,7 +84,7 @@ jobs:
             # The zkVM version is the tag of the image the guest is run with
             zkvm_version=$(sed -n 's/^[A-Z0-9]*_IMAGE ?= [^:]*:v\{0,1\}\([^@]*\)@.*/\1/p' \
               "../src/Nethermind/Nethermind.Stateless.${guests[$vm]}Guest/Makefile")
-            name=nethermind-guest-${{ steps.version.outputs.version }}-${{ steps.version.outputs.commit }}-$vm-${zkvm_version:?}
+            name=stateless-validator-nethermind-$vm-v${zkvm_version:?}
             digests+="- **${names[$vm]} $zkvm_version**"$'\n'"  - ELF: \`$(sha256sum "$dir/nethermind" | cut -d ' ' -f 1)\`"$'\n'
 
             # ere-server's OpenVM rejects the guest's entrypoint, so that guest gets no VK. It

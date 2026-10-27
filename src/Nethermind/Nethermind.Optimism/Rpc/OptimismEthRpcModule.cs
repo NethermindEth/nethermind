@@ -96,6 +96,7 @@ public class OptimismEthRpcModule(
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
+        UInt256? feePerBlobGas = null;
 
         // EIP-8116: logIndex counts within the receipt.
         ReceiptsForRpc<OptimismReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, tx, logIndexStart) =>
@@ -103,7 +104,7 @@ public class OptimismEthRpcModule(
                 tx.Hash!,
                 receipt,
                 block.Timestamp,
-                tx.GetGasInfo(spec, block.Header),
+                tx.GetGasInfo(spec, block.Header, ref feePerBlobGas),
                 receipt is OptimismTxReceipt ? l1BlockGasInfo.GetTxGasInfo(tx) : null,
                 logIndexStart));
 
@@ -115,8 +116,8 @@ public class OptimismEthRpcModule(
 
     private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (CheckSendTransactionFees(rpcTx) is { } feeError)
-            return feeError;
+        if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
+            return sendError;
 
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
