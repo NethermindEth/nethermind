@@ -20,7 +20,7 @@ public sealed partial class EezStatelessExecutor
 
     private sealed class NativeHistoryContext(NativeGenesisSnapshot profile, NativeL1HeaderChain evidence)
     {
-        private readonly NativeHistorySource? _source = profile.Rules.UsesNativeContractV3
+        private readonly NativeHistorySource? _source = profile.Rules.UsesNativeContract
             ? null
             : new(profile.Rules.Schedule!.L1Reference.ChainId, profile.Specs.ChainId, profile.GenesisHash);
 

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
+using Grpc.Core;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution.Settlement;
@@ -16,15 +17,28 @@ using V2 = Nethermind.Eez.Prove.V2;
 
 namespace Nethermind.Eez.Attester;
 
-internal sealed class NativeProver(RollupXStreamingFinalizer finalizer, ByteString identity, AttesterOptions? settings = null)
+internal sealed class NativeProver
 {
-    internal ByteString Identity { get; } = identity;
-    internal PreparedCache Cache { get; } = new(identity, settings?.RequestTimeout ?? TimeSpan.FromMinutes(5));
+    private readonly RollupXStreamingFinalizer? _finalizer;
+    private readonly PreparedCache? _cache;
+    internal ByteString Identity { get; }
+    internal PreparedCache Cache => _cache ?? throw Unsupported();
+
+    internal NativeProver(RollupXStreamingFinalizer finalizer, ByteString identity, AttesterOptions? settings = null)
+    {
+        _finalizer = finalizer;
+        Identity = identity;
+        _cache = new(identity, settings?.RequestTimeout ?? TimeSpan.FromMinutes(5));
+    }
+
+    internal NativeProver(ByteString identity) => Identity = identity;
+
+    private static RpcException Unsupported() => new(new Status(StatusCode.Unimplemented, "native offline proving requires prove.v2"));
 
     internal Task<PreparedOrdinaryBlock> Prepare(EezStatelessBlock block, CancellationToken cancellation) =>
-        finalizer.Prepare(block, cancellation);
+        (_finalizer ?? throw Unsupported()).Prepare(block, cancellation);
 
-    internal CapabilitiesResponse Capabilities(AttesterOptions options) => new()
+    internal CapabilitiesResponse Capabilities(AttesterOptions options) => _finalizer is null ? throw Unsupported() : new()
     {
         ProfileId = 1,
         PreparationMaxBlocks = (ulong)Math.Min(64, options.Limits.MaxBlocks),
@@ -43,6 +57,7 @@ internal sealed class NativeProver(RollupXStreamingFinalizer finalizer, ByteStri
 
     internal Task<ProveResponse> Prove(AdmittedWindow window, CancellationToken cancellation)
     {
+        RollupXStreamingFinalizer finalizer = _finalizer ?? throw Unsupported();
         ProveHeader header = window.NativeHeader ?? throw WindowAssembler.Invalid("native header missing");
         V2.SettlementInput settlement = new() { AbiCalldata = header.PostBatch.AbiCalldata };
         settlement.Blobs.Add(header.PostBatch.Blobs);

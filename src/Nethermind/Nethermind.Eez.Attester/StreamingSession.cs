@@ -247,6 +247,8 @@ internal sealed class StreamingSession
         {
             CheckBinding(binding);
             CheckIdle();
+            if (_rules.HasNativeHistory && finalize.Settlement is null)
+                throw Error(StatusCode.InvalidArgument, "settlement input missing");
             if (finalize.Settlement is null || finalize.TerminalHash.Length != 32 || finalize.FromBlock == 0 || finalize.FromBlock > finalize.ToBlock ||
                 (!_rules.RetainsProvedWindow && finalize.FromBlock <= _initialAnchorNumber))
                 throw Error(_rules.InvalidRange, "invalid finalization range or settlement");
@@ -262,7 +264,12 @@ internal sealed class StreamingSession
             if (settlementBytes > (_rules.ChargesWireFrames ? _limits.MaxBytes - _bytes : _limits.MaxBytes))
                 throw Error(StatusCode.ResourceExhausted, "session settlement limit exceeded");
             BlockWitness[] blocks = new BlockWitness[last - first + 1];
-            for (int i = 0; i < blocks.Length; i++) blocks[i] = _blocks[first + i].Data.Clone();
+            int[] checkpoints = _nativeProfile is null ? [] : new int[blocks.Length];
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                blocks[i] = _blocks[first + i].Data.Clone();
+                if (_nativeProfile is not null) checkpoints[i] = _blocks[first + i].NativeHistoryLength;
+            }
             Begin predecessor = new()
             {
                 RollupId = _anchor.RollupId,
@@ -270,7 +277,7 @@ internal sealed class StreamingSession
                 AnchorHash = blocks[0].ParentHash,
                 AnchorStateRoot = PreStateRoot(first),
             };
-            _pending = new SessionOperation(this, binding, requestId, finalize.Clone(), blocks, predecessor, _nativeProfile, _nativeHistory);
+            _pending = new SessionOperation(this, binding, requestId, finalize.Clone(), blocks, predecessor, _nativeProfile, _nativeHistory, checkpoints);
             return _pending;
         }
     }

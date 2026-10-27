@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 
 namespace Nethermind.Eez.Execution.Settlement;
 
@@ -38,10 +39,24 @@ public static class RollupXPostBatchProfile
     /// <exception cref="EezSettlementException">The batch is outside the profile.</exception>
     public static void Validate(PostBatch batch, ulong rollupId, Address proofSystem, int blobCount)
     {
+        Require(batch.ExpectedRoots.Length == 0, "expected state roots must be empty");
+        Require(batch.BlockNumber == CurrentBlock, "the block number must read the custom data of the block the batch lands in");
+        ValidateShared(batch, rollupId, proofSystem, blobCount);
+    }
+
+    internal static void ValidateNative(PostBatch batch, Address proofSystem, int blobCount, NativeOfflineContext context)
+    {
+        Require(batch.ExpectedRoots is [{ } pin] && pin.RollupId == context.RollupId && pin.Root == context.AcceptedL2BlockHash,
+            "expected state root must equal the selected accepted-root pin");
+        Require(batch.BlockNumber == context.Selector, "the block number must equal the selected anchor");
+        ValidateShared(batch, context.RollupId, proofSystem, blobCount);
+    }
+
+    private static void ValidateShared(PostBatch batch, ulong rollupId, Address proofSystem, int blobCount)
+    {
         Require(batch.ProofSystems is [{ } only] && only == proofSystem, $"the batch must be verified by exactly proof system {proofSystem}");
         Require(batch.RollupIdsWithProofSystems is [{ } rollup] && rollup.RollupId == rollupId && rollup.ProofSystemIndexes is [0],
             $"the batch must settle exactly rollup {rollupId} with proof system indexes [0]");
-        Require(batch.ExpectedRoots.Length == 0, "expected state roots must be empty");
         for (int i = 0; i < batch.Entries.Length; i++)
         {
             Require(batch.Entries[i].DestinationRollupId == rollupId, $"entry {i} must target rollup {rollupId}");
@@ -57,7 +72,6 @@ public static class RollupXPostBatchProfile
         Require(batch.ImmediateStaticEntryCount.IsZero, "the immediate static entry count must be zero");
         Require(batch.ImmediateEntryCount == (UInt256)LeadingEntriesWithoutProxy(batch),
             "the immediate entry count must be the leading run of entries without a proxy entry hash");
-        Require(batch.BlockNumber == CurrentBlock, "the block number must read the custom data of the block the batch lands in");
         Require(!batch.BindMsgSenderInPublicInput, "the sender must not be bound into the public input");
         Require(batch.CallData.Length == 0, "the stream must travel in blobs, not calldata", EezSettlementFailure.InvalidDaPayload);
         Require(blobCount > 0 && SelectsEveryBlob(batch.BlobIndices, blobCount), "the batch must select every blob of its transaction once, in order", EezSettlementFailure.InvalidDaPayload);
@@ -66,7 +80,10 @@ public static class RollupXPostBatchProfile
     /// <summary>The public inputs hash of a batch in the profile, for the proof system's verification key.</summary>
     /// <param name="blobVersionedHashes">The versioned hashes of the transaction's blobs, which the batch selects in order.</param>
     public static ValueHash256 PublicInputsHash(PostBatch batch, ulong rollupId, in ValueHash256 verificationKey, IReadOnlyList<Hash256> blobVersionedHashes,
-        L1PostingTarget target)
+        L1PostingTarget target) => PublicInputsHash(batch, rollupId, in verificationKey, blobVersionedHashes, target.CustomData());
+
+    internal static ValueHash256 PublicInputsHash(PostBatch batch, ulong rollupId, in ValueHash256 verificationKey,
+        IReadOnlyList<Hash256> blobVersionedHashes, ReadOnlySpan<byte> customData)
     {
         ValueHash256[] entryHashes = new ValueHash256[batch.Entries.Length];
         for (int i = 0; i < entryHashes.Length; i++)
@@ -86,7 +103,7 @@ public static class RollupXPostBatchProfile
             blobHashes[i] = blobVersionedHashes[i];
         }
 
-        RollupProofAssignment[] assignments = [new(rollupId, [0], [verificationKey], target.CustomData())];
+        RollupProofAssignment[] assignments = [new(rollupId, [0], [verificationKey], customData.ToArray())];
         return PublicInputs.Compute(entryHashes, staticEntryHashes, blobHashes, [], assignments, 1, Address.Zero)[0];
     }
 

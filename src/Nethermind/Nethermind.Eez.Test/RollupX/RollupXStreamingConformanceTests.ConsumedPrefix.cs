@@ -20,6 +20,8 @@ using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove;
+using CapabilitiesResponse = Nethermind.Eez.Prove.CapabilitiesResponse;
+using CapabilitiesRequest = Nethermind.Eez.Prove.CapabilitiesRequest;
 using Nethermind.Eez.Prove.V2;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -37,7 +39,7 @@ public partial class RollupXStreamingConformanceTests
     public async Task Prove_ConsumedTerminalCheckpoint_ReturnsRecordedProof(
         [Values("streaming", "inline", "prepared")] string mode, [Values] bool complete)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-static.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-static.json");
         ClientFrame[] requests = ConsumedRequests(document.RootElement);
         Hash256 root = ConsumedRoot(requests, complete);
 
@@ -52,7 +54,7 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("load", "inline", TestName = "ProveV1_UnboundLoadCheckpoint_ReturnsNoProof")]
     public async Task Prove_UnboundRegistryRoot_ReturnsNoProof(string source, string mode)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-static.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-static.json");
         ClientFrame[] requests = ConsumedRequests(document.RootElement);
         BlockWitness terminal = requests.Last(static frame => frame.Block is not null).Block.Data;
         Hash256 root = source switch
@@ -78,7 +80,7 @@ public partial class RollupXStreamingConformanceTests
     public async Task Prove_ConsumedPrefix_StillChecksSettlementAndCanonicalL1(
         [Values("streaming", "inline", "prepared")] string mode, [Values("anchor", "reorg")] string mutation)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-static.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-static.json");
         Hash256 root = ConsumedRoot(ConsumedRequests(document.RootElement), false);
 
         await CheckConsumedProof(document.RootElement, mode, root, mutation);
@@ -114,7 +116,7 @@ public partial class RollupXStreamingConformanceTests
     private static Hash256 LoadCheckpoint(JsonElement scenario, BlockWitness terminal)
     {
         string fixture = scenario.GetProperty("fixture").GetString()!;
-        using JsonDocument genesis = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, fixture + ".genesis.json");
+        using JsonDocument genesis = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, fixture + ".genesis.json");
         using TempPath chain = TempPath.GetTempFile();
         File.WriteAllText(chain.Path, genesis.RootElement.GetRawText());
         (ISpecProvider specs, EezChainRules rules) = ChainConfigLoader.LoadProfile(chain.Path);
@@ -131,7 +133,7 @@ public partial class RollupXStreamingConformanceTests
     private static async Task CheckConsumedProof(JsonElement scenario, string mode, Hash256 root, string? mutation = null)
     {
         StatusCode? rejection = mutation is null ? null : mutation == "reorg" ? StatusCode.Aborted : StatusCode.FailedPrecondition;
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, scenario,
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, scenario,
             reorgBeforeSigning: mutation == "reorg", registryRoot: root);
         if (mode == "streaming")
         {

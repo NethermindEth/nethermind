@@ -42,5 +42,20 @@ internal sealed class NativeStreamingEvidence
         return new NativeStreamingEvidence(staged, _limit);
     }
 
+    internal NativeStreamingEvidence Prefix(int count) => count == Count ? this : new(_headers.Prefix(count), _limit);
+
+    internal NativeL1Header Endpoint => _headers.Endpoint;
+
+    internal void VerifyAnchor(in NativeEvidenceAnchor anchor) => _headers.VerifyAnchor(in anchor);
+
+    internal void VerifyPrefix(int count, in NativeEvidenceAnchor anchor)
+    {
+        if (count <= 0 || count > Count) throw NativeL1Header.Invalid("invalid selected block L1 checkpoint");
+        ulong number = Endpoint.Number - (ulong)(Count - count);
+        _headers.VerifyOrigin(number, _headers.At(number).Hash, in anchor);
+    }
+
+    internal RollupXObservationReplay CreateObservationReplay(NativeGenesisSnapshot profile, ILogManager logs) => new(profile, _headers, logs);
+
     internal EezStatelessExecutor CreateExecutor(NativeGenesisSnapshot profile, ILogManager logs) => new(profile, _headers, logs);
 }

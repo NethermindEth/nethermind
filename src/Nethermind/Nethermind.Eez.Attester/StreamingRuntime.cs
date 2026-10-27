@@ -4,6 +4,9 @@
 using System;
 using System.IO;
 using System.Net.Http;
+using Google.Protobuf;
+using Nethermind.Core.Crypto;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -33,9 +36,10 @@ internal sealed class StreamingRuntime : IDisposable
     internal StreamingOptions Options { get; }
     internal StreamingIdentity Identity { get; }
     internal StreamingSessionRegistry Registry { get; }
+    internal StreamingCapabilities Capabilities { get; }
 
     private StreamingRuntime(StreamingOptions options, X509Certificate2 certificate, StreamingIdentity identity,
-        HttpClient? l1, HttpClient? l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId, NativeProver? native)
+        HttpClient? l1, HttpClient? l2, StreamingSessionRegistry registry, StreamingBlockExecutor executor, Func<SessionOperation, CancellationToken, Task<Proof>> finalize, ulong rollupId, NativeProver? native, StreamingCapabilities capabilities)
     {
         Options = options;
         _certificate = certificate;
@@ -47,6 +51,7 @@ internal sealed class StreamingRuntime : IDisposable
         _finalize = finalize;
         _rollupId = rollupId;
         _native = native;
+        Capabilities = capabilities;
     }
 
     internal static StreamingRuntime Load(AttesterOptions options, ISpecProvider specs, AttestationPipeline pipeline,
@@ -78,11 +83,20 @@ internal sealed class StreamingRuntime : IDisposable
                 identity = new StreamingIdentity(pins);
             }
             finally { foreach (X509Certificate2? pin in pins) pin?.Dispose(); }
-            registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System, settings.Profile);
+            NativeStreamingProfile? nativeProfile = null;
+            if (chainRules?.NativeFormat == NativeSystemTxFormat.ContractV4)
+            {
+                NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(StreamingOptions.ReadFile(options.ChainConfigPath, 8 * 1024 * 1024), NativeSystemTxFormat.ContractV4);
+                NativeL1Rules l1Rules = NativeL1Rules.LoadEthereum(StreamingOptions.ReadFile(settings.L1ChainConfigPath!, 8 * 1024 * 1024));
+                nativeProfile = new NativeStreamingProfile(genesis, l1Rules);
+                if (genesis.Specs.ChainId != specs.ChainId || l1Rules.Specs.ChainId != settings.L1ChainId ||
+                    settings.L2GenesisHash?.ValueHash256 != genesis.GenesisHash) throw StreamingOptions.Invalid();
+            }
+            registry = new StreamingSessionRegistry(settings.RegistryLimits, settings.SessionLimits, TimeProvider.System, settings.Profile, nativeProfile);
             NativeProver? native = null;
             EezChainRules rules;
             Func<SessionOperation, CancellationToken, Task<Proof>> finalize;
-            if (settings.Profile != StreamingSettlementProfile.Rollup0Conditional)
+            if (settings.Profile != StreamingSettlementProfile.Rollup0Conditional && nativeProfile is null)
             {
                 l1 = Source(settings.L1Rpc ?? throw StreamingOptions.Invalid());
                 l2 = Source(settings.L2Rpc ?? throw StreamingOptions.Invalid());
@@ -90,15 +104,29 @@ internal sealed class StreamingRuntime : IDisposable
             if (settings.Profile == StreamingSettlementProfile.RollupXNative)
             {
                 rules = chainRules is { IsRollupX: true } ? chainRules : throw StreamingOptions.Invalid();
-                ISpecProvider l1Specs = ChainConfigLoader.LoadL1(settings.L1ChainConfigPath!);
-                if (l1Specs.ChainId != settings.L1ChainId || rules.Schedule!.L1Reference.ChainId != settings.L1ChainId)
-                    throw StreamingOptions.Invalid();
-                RollupXParentAuthorizer authorizer = new(new SettlementRpcReader(l1!, TimeSpan.FromSeconds(5)),
-                    new SettlementRpcReader(l2!, TimeSpan.FromSeconds(5)), settings.Registry!, settings.Manager!,
-                    pipeline.Context, signer.Address, rules.Schedule, settings.L2GenesisHash!);
-                RollupXStreamingFinalizer nativeFinalizer = new(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs);
-                finalize = nativeFinalizer.Finalize;
-                native = new NativeProver(nativeFinalizer, NativeProver.ValidationIdentity(options, settings, pipeline.Context), options);
+                if (nativeProfile is not null)
+                {
+                    NativeOfflineFinalizer offline = new(nativeProfile, pipeline.Context, settings.Registry!, settings.Manager!, signer, logs);
+                    finalize = offline.Finalize;
+                    NativeOfflineProfile.Inputs network = nativeProfile.Offline;
+                    RollupXValidationIdentity.Inputs input = new(pipeline.Context.RollupId, specs.ChainId,
+                        rules.SystemAddress, rules.Eezl2Address, new Hash256(nativeProfile.Genesis.SourceDigest),
+                        new Hash256(NativeOfflineProfile.Compute(in network, nativeProfile.L1.RuleTimes)), settings.Registry!, settings.Manager!, 4);
+                    ByteString validationIdentity = ByteString.CopyFrom(RollupXValidationIdentity.Compute(in input).Bytes);
+                    native = new NativeProver(validationIdentity);
+                }
+                else
+                {
+                    ISpecProvider l1Specs = ChainConfigLoader.LoadL1(settings.L1ChainConfigPath!);
+                    if (l1Specs.ChainId != settings.L1ChainId || rules.Schedule!.L1Reference.ChainId != settings.L1ChainId)
+                        throw StreamingOptions.Invalid();
+                    RollupXParentAuthorizer authorizer = new(new SettlementRpcReader(l1!, TimeSpan.FromSeconds(5)),
+                        new SettlementRpcReader(l2!, TimeSpan.FromSeconds(5)), settings.Registry!, settings.Manager!,
+                        pipeline.Context, signer.Address, rules.Schedule, settings.L2GenesisHash!);
+                    RollupXStreamingFinalizer nativeFinalizer = new(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs);
+                    finalize = nativeFinalizer.Finalize;
+                    native = new NativeProver(nativeFinalizer, NativeProver.ValidationIdentity(options, settings, pipeline.Context), options);
+                }
             }
             else
             {
@@ -117,7 +145,8 @@ internal sealed class StreamingRuntime : IDisposable
                 }
             }
             return new StreamingRuntime(settings, certificate, identity, l1, l2, registry,
-                new StreamingBlockExecutor(specs, rules, logs), finalize, pipeline.Context.RollupId, native);
+                nativeProfile is null ? new StreamingBlockExecutor(specs, rules, logs) : new StreamingBlockExecutor(nativeProfile, logs),
+                finalize, pipeline.Context.RollupId, native, new StreamingCapabilities(nativeProfile is null ? null : native!.Identity, options));
         }
         catch (Exception exception)
         {

@@ -372,6 +372,11 @@ def rollupx_blob(entry):
     return data
 
 
+def supported_rollupx_cases(cases, historical):
+    native = sorted("sync-range-proof.json" if name == "single-block-proof.json" else name for name in historical)
+    return cases == historical or cases == native
+
+
 def rollupx_execution(args):
     args.directory.mkdir(parents=True, exist_ok=False)
     resolve(args)
@@ -390,7 +395,7 @@ def rollupx_execution(args):
     cases = sorted(path[len(vector_prefix):] for path in entries if path.startswith(vector_prefix) and path.endswith(".json") and path != vector_prefix + "manifest.json")
     baseline_names = ("baseline-lookup", "baseline-static")
     if cases:
-        if cases != reviewed["cases"]:
+        if not supported_rollupx_cases(cases, reviewed["cases"]):
             raise ValueError("RollupX case inventory changed; review the execution and streaming coverage mapping")
         source = {"repository": repository, "source": "public-main", "revision": manifest["revision"],
             "core_revision": manifest["core_revision"], "files": {}}

@@ -17,11 +17,13 @@ internal sealed class SessionOperation : IDisposable
     private Finalize? _finalize;
     private BlockWitness[] _blocks = [];
     private Begin? _predecessor;
+    private int[] _nativeCheckpoints = [];
     private NativeStreamingEvidence? _nativeHistory;
 
     internal NativeStreamingProfile? NativeProfile { get; }
     internal NativeStreamingEvidence? NativeHistory => _nativeHistory;
     internal int NativeHistoryLength { get; }
+    internal ReadOnlySpan<int> NativeCheckpoints => _nativeCheckpoints;
     internal ExecutedStreamingBlock? ReusedBlock { get; }
     internal SessionBinding Binding { get; }
     internal ulong RequestId { get; }
@@ -58,7 +60,7 @@ internal sealed class SessionOperation : IDisposable
     }
 
     internal SessionOperation(StreamingSession session, SessionBinding binding, ulong requestId, Finalize finalize,
-        BlockWitness[] blocks, Begin predecessor, NativeStreamingProfile? nativeProfile = null, NativeStreamingEvidence? nativeHistory = null)
+        BlockWitness[] blocks, Begin predecessor, NativeStreamingProfile? nativeProfile = null, NativeStreamingEvidence? nativeHistory = null, int[]? nativeCheckpoints = null)
     {
         _session = session;
         Binding = binding;
@@ -69,6 +71,7 @@ internal sealed class SessionOperation : IDisposable
         NativeProfile = nativeProfile;
         _nativeHistory = nativeHistory;
         NativeHistoryLength = nativeHistory?.Count ?? 0;
+        _nativeCheckpoints = nativeCheckpoints ?? [];
     }
 
     internal BlockWitness[] CopyBlocks()
@@ -86,6 +89,7 @@ internal sealed class SessionOperation : IDisposable
         _finalize = null;
         _blocks = [];
         _predecessor = null;
+        _nativeCheckpoints = [];
         _nativeHistory = null;
     }
 

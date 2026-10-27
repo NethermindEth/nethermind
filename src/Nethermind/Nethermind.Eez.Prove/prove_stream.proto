@@ -1,4 +1,4 @@
-// Copied from eez-association/eez-rollup0 at efcbb9a10086c94c9a79c8187faaef5cdbeffd32, licensed MIT OR Apache-2.0.
+// Based on eez-association/eez-rollup0 at efcbb9a10086c94c9a79c8187faaef5cdbeffd32 and eez-association/eez-rollupX at 167373172d216586b0e03b56f36c08484b1a51b3, licensed MIT OR Apache-2.0.
 syntax = "proto3";
 
 package prove.v2;
@@ -10,7 +10,23 @@ import "prove.proto";
 service Prover {
 
 
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
   rpc ProveStream(stream ClientFrame) returns (stream ServerFrame);
+}
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  uint32 operations_tag = 1;
+  uint32 profile_id = 2;
+  bytes validation_identity = 3;
+  uint64 max_window_blocks = 4;
+  uint64 max_request_bytes = 5;
+  uint64 max_request_witness_items = 6;
+  uint64 max_message_bytes = 7;
+  reserved 8, 11, 12, 13, 14;
+  uint64 stream_idle_timeout_millis = 9;
+  uint64 request_timeout_millis = 10;
 }
 
 message ClientFrame {

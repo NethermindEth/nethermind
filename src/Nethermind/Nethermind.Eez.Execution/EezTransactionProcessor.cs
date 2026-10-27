@@ -35,7 +35,7 @@ public sealed class EezTransactionProcessor(
     bool parallel = false)
     : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
 {
-    private readonly NativeHistorySchedule? _historySchedule = rules.UsesNativeContractV3
+    private readonly NativeHistorySchedule? _historySchedule = rules.UsesNativeContract
         ? new(rules.Schedule!.GenesisTimestamp, rules.Schedule.BlockIntervalSeconds, rules.Schedule.SyncIntervalBlocks, rules.NativeHistoryOffset)
         : null;
     private BlockHeader? _groupHeader;
@@ -57,12 +57,12 @@ public sealed class EezTransactionProcessor(
 
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
         NativeExecutionGroup next = default;
-        if (rules.UsesNativeContractV3)
+        if (rules.UsesNativeContract)
             next = CurrentGroup(header).After(tx, out _);
         Transaction original = tx;
         if (tx is NativeHistoryTransaction history)
         {
-            if (!rules.UsesNativeContractV3 || !tx.HasSystemTransactionFields(rules) || history.IsExecutionView)
+            if (!rules.UsesNativeContract || !tx.HasSystemTransactionFields(rules) || history.IsExecutionView)
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("Invalid dedicated history transaction fields");
             tx = history.ForExecution(_historySchedule!.SourceCutoff(header.Timestamp));
         }
@@ -72,7 +72,7 @@ public sealed class EezTransactionProcessor(
             original.SpentGas = tx.SpentGas;
             original.BlockGasUsed = tx.BlockGasUsed;
         }
-        if (result && rules.UsesNativeContractV3 && !opts.HasFlag(ExecutionOptions.Restore) && !opts.HasFlag(ExecutionOptions.Warmup))
+        if (result && rules.UsesNativeContract && !opts.HasFlag(ExecutionOptions.Restore) && !opts.HasFlag(ExecutionOptions.Warmup))
         {
             _groupHeader = header;
             _group = next;
@@ -137,7 +137,7 @@ public sealed class EezTransactionProcessor(
             spec = _withoutFeeCollector!;
         }
         base.PayFees(tx, header, spec, tracer, in substate, spentGas, in premiumPerGas, in effectiveGasPrice, in blobBaseFee, statusCode);
-        if (rules.UsesNativeContractV3)
+        if (rules.UsesNativeContract)
         {
             CurrentGroup(header).After(tx, out bool completes);
             if (completes)

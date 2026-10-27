@@ -33,8 +33,11 @@ using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 
 namespace Nethermind.Eez.Test.RollupX;
 
+[NonParallelizable]
 public partial class RollupXStreamingConformanceTests
 {
+    private static string LegacyDirectoryPath => StatelessFixtures.PathOf("rollupx/recorded-execution", "");
+
     private static string DirectoryPath => RollupXRecordedExecutionTests.SelectDirectory(
         Environment.GetEnvironmentVariable("EEZ_ROLLUPX_EXECUTION_VECTOR_DIR"), Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true");
 
@@ -47,6 +50,17 @@ public partial class RollupXStreamingConformanceTests
         using GrpcChannel channel = server.Channel();
         ProverV2.ProverClient client = new(channel);
         Address attester = new(scenario.GetProperty("oracle").GetProperty("attester").GetString()!);
+        if (server.IsOffline)
+        {
+            Nethermind.Eez.Prove.V2.CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new Nethermind.Eez.Prove.V2.CapabilitiesRequest());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capabilities.ProfileId, Is.EqualTo(2));
+                Assert.That(capabilities.ValidationIdentity, Is.EqualTo(server.ExpectedValidationIdentity),
+                    "published identity must bind the exact selected fixture deployment and independently encoded V4 preimage");
+                Assert.That(capabilities.MaxWindowBlocks, Is.EqualTo(scenario.GetProperty("server_profile").GetProperty("max_window_blocks").GetUInt64()));
+            }
+        }
         await Replay(client, scenario, attester);
         await server.Admission.WaitUntilIdle();
     }
@@ -66,8 +80,8 @@ public partial class RollupXStreamingConformanceTests
     [Test]
     public async Task RollupXProfile_V1EmptyStream_UsesItsOwnListener([Values] bool tls)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = tls ? server.Channel() : server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         using AsyncClientStreamingCall<ProveChunk, ProveResponse> call = client.Prove();
@@ -84,10 +98,10 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("anchor", StatusCode.FailedPrecondition, true, TestName = "Finalize_SyntheticFalseSettlementAnchor_DoesNotReturnProof")]
     public async Task Finalize_UntrustedEvidence_DoesNotReturnProof(string change, StatusCode code, bool syntheticAuthority)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
         await using RollupXStreamingServer server = syntheticAuthority
-            ? await RollupXStreamingServer.StartFixture(DirectoryPath, document.RootElement)
-            : await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement, change == "reorg");
+            ? await RollupXStreamingServer.StartFixture(LegacyDirectoryPath, document.RootElement)
+            : await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement, change == "reorg");
         using GrpcChannel channel = server.Channel();
         Address attester = new(document.RootElement.GetProperty("oracle").GetProperty("attester").GetString()!);
         await Replay(new ProverV2.ProverClient(channel), document.RootElement, attester,
@@ -100,8 +114,8 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("subrange-promoted-anchor.json", StatusCode.Unavailable, TestName = "Finalize_RollupXParentWithoutAcceptanceEvidence_ReturnsNoProof")]
     public async Task Finalize_OriginalRecordingWithoutRequiredSettlementAuthority_ReturnsNoProof(string name, StatusCode expected)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, name);
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, name);
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.Channel();
         using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(new CallOptions(deadline: DateTime.UtcNow.AddMinutes(2)));
         ServerFrame? previous = null;
@@ -158,7 +172,7 @@ public partial class RollupXStreamingConformanceTests
     [TestCase(true, TestName = "CompareFrame_WrongProofSigner_IsRejected")]
     public void CompareFrame_ChangedIndependentProofOracle_IsRejected(bool wrongSigner)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
         ServerFrame expected = RecordedProof(document.RootElement);
         Address attester = new(document.RootElement.GetProperty("oracle").GetProperty("attester").GetString()!);
         Dictionary<ByteString, ByteString> sessions = new() { [expected.SessionId] = expected.SessionId };
@@ -176,11 +190,11 @@ public partial class RollupXStreamingConformanceTests
     public async Task SettlementExecution_ChangedTrustedSeed_RejectsRecordedWindow()
     {
         await KzgPolynomialCommitments.InitializeAsync();
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "single-block-proof.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "single-block-proof.json");
         string fixture = document.RootElement.GetProperty("fixture").GetString()!;
-        using JsonDocument genesis = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, fixture + ".genesis.json");
-        using JsonDocument l1Genesis = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, fixture + ".l1-genesis.json");
-        using JsonDocument identity = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, fixture + ".identity.json");
+        using JsonDocument genesis = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, fixture + ".genesis.json");
+        using JsonDocument l1Genesis = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, fixture + ".l1-genesis.json");
+        using JsonDocument identity = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, fixture + ".identity.json");
         using TempPath directory = TempPath.GetTempDirectory();
         Directory.CreateDirectory(directory.Path);
         string l2Path = Path.Combine(directory.Path, "l2.json"), l1Path = Path.Combine(directory.Path, "l1.json");

@@ -18,14 +18,15 @@ internal static class RollupXValidationIdentity
 
     internal static byte[] Encode(in Inputs input)
     {
-        int length = Rlp.LengthOf(Domain) + Rlp.LengthOf(Version) + Rlp.LengthOf(input.RollupId) + Rlp.LengthOf(input.ChainId)
+        ValidateVersion(input.ValidationVersion);
+        int length = Rlp.LengthOf(Domain) + Rlp.LengthOf(input.ValidationVersion) + Rlp.LengthOf(input.RollupId) + Rlp.LengthOf(input.ChainId)
             + Rlp.LengthOf(input.SystemAddress) + Rlp.LengthOf(input.Eezl2Address) + Rlp.LengthOf(input.ChainDocumentDigest)
             + Rlp.LengthOf(input.OfflineProfileHash) + Rlp.LengthOf(input.Registry) + Rlp.LengthOf(input.Manager);
         byte[] encoded = new byte[Rlp.LengthOfSequence(length)];
         RlpWriter writer = new(encoded);
         writer.StartSequence(length);
         writer.Encode(Domain);
-        writer.Encode(Version);
+        writer.Encode(input.ValidationVersion);
         writer.Encode(input.RollupId);
         writer.Encode(input.ChainId);
         writer.Encode(input.SystemAddress);
@@ -37,6 +38,11 @@ internal static class RollupXValidationIdentity
         return encoded;
     }
 
+    internal static void ValidateVersion(ulong version)
+    {
+        if (version is not (3 or 4)) throw new ArgumentOutOfRangeException(nameof(version));
+    }
+
     internal readonly record struct Inputs(ulong RollupId, ulong ChainId, Address SystemAddress, Address Eezl2Address,
-        Hash256 ChainDocumentDigest, Hash256 OfflineProfileHash, Address Registry, Address Manager);
+        Hash256 ChainDocumentDigest, Hash256 OfflineProfileHash, Address Registry, Address Manager, ulong ValidationVersion = Version);
 }

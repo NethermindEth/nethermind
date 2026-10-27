@@ -18,7 +18,7 @@ internal sealed partial class NativeTransactions
     {
         Transaction[] transactions = execution.Block.Transactions;
         int count = checked(_outbound.Count + _inbound.Count);
-        if (!rules.UsesNativeContractV3 || source.ChainId != _chainId || firstTransaction < 0 || firstTransaction > transactions.Length ||
+        if (!rules.UsesNativeContract || source.ChainId != _chainId || firstTransaction < 0 || firstTransaction > transactions.Length ||
             applied.Skip < 0 || applied.Take < 0 || applied.Skip > count || applied.Take > count - applied.Skip ||
             execution.Receipts.Length != transactions.Length)
             throw NativeCallTree.Invalid("invalid native reconstruction profile or suffix bounds");

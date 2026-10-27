@@ -19,7 +19,7 @@ public static class EezTransactionExtensions
     /// must not reach execution with a different sender, target, budget or price.
     /// </remarks>
     public static bool HasSystemTransactionFields(this Transaction tx, EezChainRules rules) =>
-        (tx.Type == rules.SystemTransactionType || rules.UsesNativeContractV3 && tx is NativeHistoryTransaction && (byte)tx.Type == NativeHistoryEnvelope.Type)
+        (tx.Type == rules.SystemTransactionType || rules.UsesNativeContract && tx is NativeHistoryTransaction && (byte)tx.Type == NativeHistoryEnvelope.Type)
         && tx.SenderAddress == rules.SystemAddress
         && (rules.UsesNativeSystemTransactions ? HasNativeEnvelopeFields(tx, rules) : tx.To == rules.Eezl2Address)
         && rules.IsSystemTransactionGas(tx.GasLimit)
@@ -31,10 +31,10 @@ public static class EezTransactionExtensions
 
     private static bool HasNativeEnvelopeFields(Transaction tx, EezChainRules rules) =>
         (tx is NativeHistoryTransaction history
-            ? rules.UsesNativeContractV3 && tx.SourceHash is null && tx.ChainId == history.Envelope.ChainId
+            ? rules.UsesNativeContract && tx.SourceHash is null && tx.ChainId == history.Envelope.ChainId
                 && tx.To == EezConstants.L1HistoryAddress && tx.ValueRef.IsZero && tx.GasLimit == EezConstants.L1HistoryTxGasCap
                 && (tx.Data.IsEmpty || history.IsExecutionView)
-            : tx.SourceHash is not null && (tx.To == rules.Eezl2Address || !rules.UsesNativeContractV3 && tx.To == EezConstants.L1HistoryAddress))
+            : tx.SourceHash is not null && (tx.To == rules.Eezl2Address || !rules.UsesNativeContract && tx.To == EezConstants.L1HistoryAddress))
         && tx.Nonce == 0 && tx.Signature is null && tx.MaxFeePerBlobGas is null
         && (tx.To == rules.Eezl2Address || tx.To == EezConstants.L1HistoryAddress && tx.ValueRef.IsZero
             && tx.GasLimit <= EezConstants.L1HistoryTxGasCap);

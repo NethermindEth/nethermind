@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using System.Threading;
@@ -12,7 +13,9 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
 using Google.Protobuf;
 using Grpc.Core;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Attester;
 using Nethermind.Eez.Execution;
@@ -29,23 +32,27 @@ using ProveBlock = Nethermind.Eez.Prove.V2.Block;
 namespace Nethermind.Eez.Test;
 
 [NonParallelizable]
-public sealed class NativeStreamingSessionTests
+[TestFixture(3)]
+[TestFixture(4)]
+public sealed class NativeStreamingSessionTests(int version)
 {
-    private const string Capture = "rollupx/native-offline-v3";
+    private string Capture => $"rollupx/native-offline-v{version}";
     private readonly List<ClientFrame> _frames = [];
     private readonly List<BlockWitness> _blocks = [];
     private NativeStreamingProfile _profile = null!;
     private StreamingBlockExecutor _executor = null!;
 
     [OneTimeSetUp]
-    public void LoadUnchangedCapture()
+    public async Task LoadUnchangedCapture()
     {
-        NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l2-genesis.json")), NativeSystemTxFormat.ContractV3);
+        NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l2-genesis.json")), (NativeSystemTxFormat)version);
         NativeL1Rules l1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l1-genesis.json")));
         _profile = new NativeStreamingProfile(genesis, l1);
         _executor = new StreamingBlockExecutor(_profile, LimboLogs.Instance);
         byte[] request = File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "request.v2.protobuf"));
-        Assert.That(ValueKeccak.Compute(request), Is.EqualTo(new ValueHash256("0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")));
+        Assert.That(ValueKeccak.Compute(request), Is.EqualTo(new ValueHash256(version == 4
+            ? "0x4fe2bd2df0167990164d7004a44e141768ecd70595db718dade3e18c054ff715"
+            : "0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")));
         using MemoryStream stream = new(request, writable: false);
         while (stream.Position < stream.Length)
         {
@@ -54,11 +61,72 @@ public sealed class NativeStreamingSessionTests
             if (frame.Block is not null) _blocks.Add(frame.Block.Data);
         }
         Assert.That(_blocks, Has.Count.EqualTo(30));
-        TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(genesis.Rules));
+        await Program.InitializeExecution(genesis.Rules, TxDecoder.Instance);
     }
 
     [OneTimeTearDown]
     public void RestoreRecordedDecoder() => TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+
+    [Test]
+    public async Task InitializeExecution_FreshDecoder_RegistersTheCapturedNativeHistoryEnvelope()
+    {
+        TxDecoder<Transaction> decoder = new FreshDecoder();
+        byte[] envelope = [];
+        foreach (BlockWitness input in _blocks)
+        {
+            Block block = Rlp.Decode<Block>(input.Rlp.ToByteArray())!;
+            foreach (Transaction transaction in block.Transactions)
+                if (transaction is NativeHistoryTransaction)
+                {
+                    envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+                    break;
+                }
+            if (envelope.Length != 0) break;
+        }
+        Assert.That(envelope, Is.Not.Empty, "precondition: the capture contains a native history transaction");
+        Assert.That(() => decoder.Decode(envelope, RlpBehaviors.SkipTypedWrapping), Throws.TypeOf<RlpException>(),
+            "precondition: a fresh decoder has no native history registration");
+        await Program.InitializeExecution(_profile.Genesis.Rules, decoder);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoder.Decode(envelope, RlpBehaviors.SkipTypedWrapping), Is.TypeOf<NativeHistoryTransaction>());
+            Assert.That(KzgPolynomialCommitments.IsInitialized, Is.True, "startup must load KZG before accepting blob-backed finalization");
+        }
+    }
+
+    [Test]
+    public async Task Finalize_CurrentNativeCapture_MatchesIndependentProofAndRejectsPreviousProfile()
+    {
+        using JsonDocument identity = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "identity.json")));
+        JsonElement fields = identity.RootElement;
+        EezSettlementContext context = new(fields.GetProperty("rollup_id").GetUInt64(), _profile.Genesis.Specs.ChainId,
+            new Address(fields.GetProperty("proof_system").GetString()!),
+            new ValueHash256(fields.GetProperty("vkey").GetString()!), _profile.Genesis.Rules.Schedule!.BlockIntervalSeconds);
+        using PrivateKey key = new("8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba");
+        EezAttestationSigner signer = new(key);
+        Address registry = new(fields.GetProperty("registry_address").GetString()!);
+        Address manager = new(fields.GetProperty("rollup_manager_address").GetString()!);
+        if (version == 3)
+        {
+            Assert.That(() => new NativeOfflineFinalizer(_profile, context, registry, manager, signer, LimboLogs.Instance),
+                Throws.ArgumentException, "a previous runtime cannot enter current offline finalization");
+            return;
+        }
+        NativeOfflineFinalizer finalizer = new(_profile, context, registry, manager, signer, LimboLogs.Instance);
+        StreamingSession session = Session();
+        foreach (BlockWitness block in _blocks) Append(session, block);
+        ClientFrame request = _frames[^1].Clone();
+        using SessionOperation operation = session.AdmitFinalize(session.Binding, 90, request.Finalize, request.CalculateSize());
+        Proof proof = await finalizer.Finalize(operation, CancellationToken.None);
+        using JsonDocument response = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "response.json")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Convert.ToHexStringLower(proof.PublicInputsHash.Span), Is.EqualTo(response.RootElement.GetProperty("public_inputs_hash").GetString()),
+                "the native finalizer must reproduce the unchanged independently generated digest");
+            Assert.That(Convert.ToHexStringLower(proof.Proof_.Span), Is.EqualTo(response.RootElement.GetProperty("signature").GetString()),
+                "the native finalizer must reproduce the unchanged independently generated signature");
+        }
+    }
 
     [Test]
     public void Append_UnchangedUpstreamCapture_ValidatesEveryBlockAndPublishesEvidenceWithItsAck()
@@ -386,7 +454,9 @@ public sealed class NativeStreamingSessionTests
         Assert.That(Append(session, _blocks[0]).Validated.Hash, Is.EqualTo(_blocks[0].Hash));
         NativeL1Rules l1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l1-genesis.json")));
         Assert.That(l1.Profile(_profile.Genesis).HistoryCodeHash,
-            Is.EqualTo(new ValueHash256("0xef41c0d934734d41e8eed6c11a19015ea84cd5cce35e52f5fdd5e5fe30d8dac9")), "the profile commits to the unchanged current upstream runtime");
+            Is.EqualTo(new ValueHash256(version == 4
+                ? "0xbe389fdaa7ed5833a65c0ceffacb8e04e727127f8faf6e240611272d566b6676"
+                : "0xef41c0d934734d41e8eed6c11a19015ea84cd5cce35e52f5fdd5e5fe30d8dac9")), "the profile commits to the unchanged current upstream runtime");
     }
 
     private StreamingSession Session(StreamingSessionLimits? limits = null) => new("composer", _frames[0].Begin,
@@ -414,4 +484,6 @@ public sealed class NativeStreamingSessionTests
     }
 
     private static void AssertCode(Action action, StatusCode code) => Assert.That(Assert.Throws<RpcException>(action)!.StatusCode, Is.EqualTo(code));
+    private sealed class FreshDecoder() : TxDecoder<Transaction>(static () => new Transaction());
+
 }

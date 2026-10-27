@@ -19,23 +19,41 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
-internal sealed class RollupXObservationReplay(ISpecProvider specs, EezChainRules rules, ILogManager logs)
+internal sealed class RollupXObservationReplay
 {
+    private readonly ISpecProvider _specs;
+    private readonly EezChainRules _rules;
+    private readonly ILogManager _logs;
+    private readonly EezStatelessExecutor _executor;
+
+    internal RollupXObservationReplay(ISpecProvider specs, EezChainRules rules, ILogManager logs)
+        : this(specs, rules, logs, new EezStatelessExecutor(specs, rules, logs)) { }
+
+    internal RollupXObservationReplay(NativeGenesisSnapshot profile, NativeL1HeaderChain evidence, ILogManager logs)
+        : this(profile.Specs, profile.Rules, logs, new EezStatelessExecutor(profile, evidence, logs)) { }
+
+    private RollupXObservationReplay(ISpecProvider specs, EezChainRules rules, ILogManager logs, EezStatelessExecutor executor)
+    {
+        _specs = specs;
+        _rules = rules;
+        _logs = logs;
+        _executor = executor;
+    }
+
     public void Verify(EezStatelessBlock input, EezStatelessBlockResult validated,
         IReadOnlyList<RollupXObservationClaim> claims, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!rules.IsRollupX) throw new EezSettlementException("Observation replay requires RollupX chain rules.");
+        if (!_rules.IsRollupX) throw new EezSettlementException("Observation replay requires RollupX chain rules.");
         Block block = Rlp.Decode<Block>(input.Rlp) ?? throw new EezSettlementException("Observation block RLP is empty.");
         if (block.Hash != validated.Hash) throw new EezSettlementException("Observation block differs from the validated terminal block.");
         RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(block);
         Hash256[] pins = new Hash256[claims.Count];
         for (int i = 0; i < pins.Length; i++) pins[i] = claims[i].Pin;
         int[] positions = plan.ObservationPositions(pins, validated.Checkpoints, validated.Hash, block.Transactions.Length);
-        Scheduler scheduler = new(specs, rules, logs, claims, positions, validated.Checkpoints, cancellationToken);
-        EezStatelessExecutor executor = new(specs, rules, logs);
-        executor.AssignSenders(block);
-        StatelessBlockProcessingEnv environment = executor.CreateEnvironment(input.Witness, scheduler, scheduler, scheduler.Wrap);
+        Scheduler scheduler = new(_specs, _rules, _logs, claims, positions, validated.Checkpoints, cancellationToken);
+        _executor.AssignSenders(block);
+        StatelessBlockProcessingEnv environment = _executor.CreateEnvironment(input.Witness, scheduler, scheduler, scheduler.Wrap);
         StatelessBlockProcessingResult result = environment.Process(block);
         cancellationToken.ThrowIfCancellationRequested();
         if (!result.IsValid || result.ProcessedBlock!.Hash != validated.Hash

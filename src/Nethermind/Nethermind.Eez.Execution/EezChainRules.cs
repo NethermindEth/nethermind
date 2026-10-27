@@ -48,7 +48,7 @@ public sealed class EezChainRules
 
     internal static EezChainRules NativeRollupX(RollupXSchedule schedule, Address feeCollector, NativeSystemTxFormat format = NativeSystemTxFormat.RecordedV1, uint historyOffset = 0)
     {
-        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3))
+        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4))
             throw new ArgumentOutOfRangeException(nameof(format));
         if (feeCollector == Address.Zero || feeCollector == Address.SystemUser || feeCollector == EezConstants.RollupXEezl2Address)
             throw new ArgumentException("Native fee collector uses a reserved address.", nameof(feeCollector));
@@ -106,7 +106,7 @@ public sealed class EezChainRules
     internal TxType SystemTransactionType { get; }
     internal NativeSystemTxFormat NativeFormat { get; }
     internal uint NativeHistoryOffset { get; }
-    internal bool UsesNativeContractV3 => UsesNativeSystemTransactions && NativeFormat == NativeSystemTxFormat.ContractV3;
+    internal bool UsesNativeContract => UsesNativeSystemTransactions && NativeFormat is NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4;
     internal bool UsesNativeSystemTransactions => SystemTransactionType == EezConstants.NativeSystemTxType;
     internal Address SystemAddress => UsesNativeSystemTransactions ? Address.SystemUser : EezConstants.SystemAddress;
 

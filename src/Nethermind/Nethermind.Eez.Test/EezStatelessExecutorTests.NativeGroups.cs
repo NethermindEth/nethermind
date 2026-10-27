@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,6 +20,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Block = Nethermind.Core.Block;
+using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 
 namespace Nethermind.Eez.Test;
 
@@ -146,6 +149,59 @@ public partial class EezStatelessExecutorTests
             : EezChainRules.NativeRollupX(input.Rules.Schedule!, input.Rules.FeeCollector!, NativeSystemTxFormat.RecordedV1);
         Assert.That(() => input.Groups.VerifyNativeSuffix(input.Execution, 0, new ProducingSlice(0, 2), source, rules),
             Throws.TypeOf<EezSettlementException>(), "reconstruction is available only for the selected native V3 chain");
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void VerifyNative_CapturedSettlement_RequiresTheSourceReconstructionGate([Values("unchanged", "source", "gas", "chain")] string mutation)
+    {
+        const string capture = "rollupx/native-offline-v4";
+        List<ClientFrame> frames = ReadNativeFrames(capture);
+        NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(capture, "l2-genesis.json")), NativeSystemTxFormat.ContractV4);
+        NativeL1Rules l1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(StatelessFixtures.PathOf(capture, "l1-genesis.json")));
+        using JsonDocument identity = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(capture, "identity.json")));
+        JsonElement fields = identity.RootElement;
+        EezSettlementContext context = new(frames[0].Begin.RollupId, genesis.Specs.ChainId,
+            new Address(fields.GetProperty("proof_system").GetString()!), new ValueHash256(fields.GetProperty("vkey").GetString()!), 1);
+        NativeL1HeaderChain history = new();
+        List<EezStatelessBlockResult> window = [];
+        using (new NativeDecoderScope(genesis.Rules))
+        {
+            EezStatelessExecutor executor = new(genesis, history, LimboLogs.Instance);
+            foreach (ClientFrame frame in frames)
+            {
+                if (frame.Block is null) continue;
+                BlockWitness input = frame.Block.Data;
+                ReadOnlyMemory<byte>[] segment = new ReadOnlyMemory<byte>[input.Witness.L1HeadersRlp.Count];
+                for (int index = 0; index < segment.Length; index++) segment[index] = input.Witness.L1HeadersRlp[index].Memory;
+                history.Append(segment, l1.Headers);
+                Block decoded = Rlp.Decode<Block>(input.Rlp.ToByteArray())!;
+                int[] positions = input.Number == frames[^1].Finalize.ToBlock ? RollupXCheckpointPlan.Create(decoded).Positions.ToArray() : [];
+                using Witness witness = WindowAssembler.ToL2Witness(input.Witness);
+                window.Add(executor.Execute([new EezStatelessBlock(input.Rlp.ToByteArray(), witness)], positions)[0]);
+            }
+            SettlementInput settlement = frames[^1].Finalize.Settlement;
+            byte[][] blobs = new byte[settlement.Blobs.Count][];
+            for (int index = 0; index < blobs.Length; index++) blobs[index] = settlement.Blobs[index].ToByteArray();
+            NativeStream stream = NativeStream.Decode(BlobStream.Unpack(blobs), context.RollupId);
+            PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(settlement.AbiCalldata.Span);
+            NativeOfflineProfile.Inputs network = l1.Profile(genesis);
+            NativeEvidenceAnchor anchor = new(settlement.PostingContext.ParentNumber, new ValueHash256(settlement.PostingContext.ParentHash.Span), settlement.PostingContext.TargetTimestamp);
+            NativeOfflineContext offline = new(in network, l1.RuleTimes, new Address(fields.GetProperty("registry_address").GetString()!),
+                new Address(fields.GetProperty("rollup_manager_address").GetString()!), context.RollupId, batch.ExpectedRoots[0].Root, in anchor, history.Endpoint);
+            Assert.That(() => RollupXSettlementVerifier.VerifyNative(batch, stream, window, context, genesis.Rules, offline, default), Throws.Nothing,
+                "precondition: the unchanged full capture passes every native semantic gate");
+            Transaction native = window[^1].Block.Transactions[RollupXCheckpointPlan.Create(window[^1].Block).OrdinaryTransactions];
+            switch (mutation)
+            {
+                case "source": native.SourceHash = TestItem.KeccakA; break;
+                case "gas": native.GasLimit--; break;
+                case "chain": native.ChainId = native.ChainId!.Value + 1; break;
+            }
+            if (mutation != "unchanged")
+                Assert.That(() => RollupXSettlementVerifier.VerifyNative(batch, stream, window, context, genesis.Rules, offline, default),
+                    Throws.TypeOf<EezSettlementException>(), "the caller must enforce source identity, chain and position gas before settlement can pass");
+        }
     }
 
     private static IEnumerable<string> NativeMutationFields() =>

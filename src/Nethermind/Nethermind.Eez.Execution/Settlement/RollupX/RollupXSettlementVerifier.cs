@@ -19,12 +19,30 @@ internal static class RollupXSettlementVerifier
     private static readonly UInt256 MaxInboundValue = MaxOutboundValue - 1;
     public static RollupXObservationClaim[] Verify(PostBatch batch, NativeStream stream,
         IReadOnlyList<EezStatelessBlockResult> window, ulong rollupId, CancellationToken cancellation = default)
+        => VerifyCore(batch, stream, window, rollupId, cancellation, null);
+
+    internal static RollupXObservationClaim[] VerifyNative(PostBatch batch, NativeStream stream,
+        IReadOnlyList<EezStatelessBlockResult> window, EezSettlementContext context, EezChainRules rules,
+        NativeOfflineContext offline, CancellationToken cancellation)
     {
-        RollupXOperationsCheck.Verify(OperationsPayload.Decode(stream.Operations), window, cancellation);
+        if (!rules.UsesNativeContract || offline.RollupId != context.RollupId)
+            throw Invalid("Native settlement profile differs from execution.");
+        NativeTransactions groups = NativeTransactions.Parse(stream.Messages, context);
+        EezStatelessBlockResult terminal = window[^1];
+        int ordinary = RollupXCheckpointPlan.Create(terminal.Block).OrdinaryTransactions;
+        if (groups.HasActions)
+            groups.VerifyNativeSuffix(terminal, ordinary, new ProducingSlice(0, groups.GroupCount), offline.LiveSource(), rules);
+        return VerifyCore(batch, stream, window, context.RollupId, cancellation, rules);
+    }
+
+    private static RollupXObservationClaim[] VerifyCore(PostBatch batch, NativeStream stream,
+        IReadOnlyList<EezStatelessBlockResult> window, ulong rollupId, CancellationToken cancellation, EezChainRules? nativeRules)
+    {
+        RollupXOperationsCheck.Verify(OperationsPayload.Decode(stream.Operations), window, cancellation, nativeRules);
         RollupUpdate[] updates = RollupUpdateChain.Verify(batch, rollupId, window[0].Block.ParentHash!.ValueHash256, window[^1].Hash.ValueHash256);
         EezStatelessBlockResult terminal = window[^1];
         RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal.Block);
-        Verification verification = new(batch, updates, terminal, plan, rollupId, cancellation);
+        Verification verification = new(batch, updates, terminal, plan, rollupId, cancellation, nativeRules);
         bool inbound = false;
         int index = 0;
         while (index < stream.Messages.Length)
@@ -44,8 +62,9 @@ internal static class RollupXSettlementVerifier
     private static EezSettlementException Invalid(string message) => new(message);
 
     private sealed class Verification(PostBatch batch, RollupUpdate[] updates, EezStatelessBlockResult terminal,
-        RollupXCheckpointPlan plan, ulong rollupId, CancellationToken cancellation)
+        RollupXCheckpointPlan plan, ulong rollupId, CancellationToken cancellation, EezChainRules? nativeRules)
     {
+        private readonly Address _system = nativeRules?.SystemAddress ?? EezConstants.SystemAddress;
         private readonly List<RollupXObservationClaim> _observations = [];
         private readonly List<(int Transaction, ValueHash256 Hash)> _outboundEvents = [];
         private readonly NativeL1Tables _l1 = new(updates.AsMemory(1), rollupId, terminal.Checkpoints[0].BlockHash.ValueHash256);
@@ -62,7 +81,7 @@ internal static class RollupXSettlementVerifier
             foreach (NativeCallTree.Node call in tree.Calls)
             {
                 if (call.Encoded.SourceRollupId != rollupId) continue;
-                if (call.Encoded.SourceAddress == EezConstants.SystemAddress)
+                if (call.Encoded.SourceAddress == _system)
                     throw Invalid("Native call uses the reserved L2 system source.");
                 if (start.ChainId != 0 && call.Encoded.Value > MaxOutboundValue)
                     throw Invalid("Outbound recorded call value exceeds the int192 outflow range.");
@@ -78,8 +97,8 @@ internal static class RollupXSettlementVerifier
                 throw Invalid("Outbound transaction has no matching settlement entry and load/user pair.");
             Transaction load = terminal.Block.Transactions[_transaction];
             Transaction user = terminal.Block.Transactions[_transaction + 1];
-            if (!load.Value.IsZero) throw Invalid("Outbound load must carry zero native value.");
-            if (user.IsEezSystemTransaction() || user.SenderAddress == EezConstants.SystemAddress ||
+            if (nativeRules is null && !load.Value.IsZero) throw Invalid("Outbound load must carry zero native value.");
+            if (user.IsEezSystemTransaction() || user.SenderAddress == _system ||
                 !TxDecoder.Instance.Encode(user, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(start.TxData.Span))
                 throw Invalid("Native outbound transaction bytes differ from canonical execution.");
             ExecutionEntry expected = _l1.Entries[_entry - 1];
@@ -180,7 +199,7 @@ internal static class RollupXSettlementVerifier
 
         private void VerifySystem(Transaction transaction, int index, UInt256 value, byte[] calldata)
         {
-            if (!transaction.IsEezSystemTransaction() || transaction.SenderAddress != EezConstants.SystemAddress ||
+            if (!transaction.IsEezSystemTransaction() || transaction.SenderAddress != _system ||
                 transaction.To != EezConstants.RollupXEezl2Address || transaction.Value != value ||
                 !transaction.Data.Span.SequenceEqual(calldata) || terminal.Receipts[index].StatusCode != StatusCode.Success)
                 throw Invalid("Native stream does not reproduce the executed system transaction.");

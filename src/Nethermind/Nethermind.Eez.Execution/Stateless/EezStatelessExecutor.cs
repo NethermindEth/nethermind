@@ -65,7 +65,7 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         EnsureCheckpointsInRange(block, checkpoints);
         AssignSenders(block);
 
-        NativeHistoryContext? native = rules.UsesNativeContractV3 ? _nativeHistory : null;
+        NativeHistoryContext? native = rules.UsesNativeContract ? _nativeHistory : null;
         TransactionCheckpointRecorder? recorder = checkpoints.Length > 0
             ? new TransactionCheckpointRecorder(specProvider, checkpoints, native is null || checkpoints[0] != EezTransactionCheckpoint.PreExecution ? null : native.ValidateEmptyPrefix)
             : null;
@@ -138,7 +138,7 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
                     $"Checkpoints must be the empty prefix, if any, then strictly increasing transaction indices of block {block.Number}.");
             }
         }
-        if (rules.UsesNativeContractV3 && checkpoints.Length > 0)
+        if (rules.UsesNativeContract && checkpoints.Length > 0)
         {
             NativeExecutionGroup group = default;
             int checkpoint = checkpoints[0] == EezTransactionCheckpoint.PreExecution ? 1 : 0;
@@ -177,7 +177,7 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
     {
         TxValidator txValidator = new(specProvider.ChainId);
         txValidator.RegisterValidator(rules.SystemTransactionType, EezTxType.CreateValidator(specProvider.ChainId, rules));
-        if (rules.UsesNativeContractV3)
+        if (rules.UsesNativeContract)
             txValidator.RegisterValidator((TxType)NativeHistoryEnvelope.Type, EezTxType.CreateValidator(specProvider.ChainId, rules));
         return txValidator;
     }

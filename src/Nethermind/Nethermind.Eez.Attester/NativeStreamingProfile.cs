@@ -10,13 +10,15 @@ namespace Nethermind.Eez.Attester;
 internal sealed class NativeStreamingProfile
 {
     internal NativeGenesisSnapshot Genesis { get; }
-    internal NativeL1HeaderRules Headers { get; }
+    internal NativeL1Rules L1 { get; }
+    internal NativeL1HeaderRules Headers => L1.Headers;
+    internal NativeOfflineProfile.Inputs Offline { get; }
 
     internal NativeStreamingProfile(NativeGenesisSnapshot genesis, NativeL1Rules l1)
     {
-        if (!genesis.Rules.UsesNativeContractV3) throw new ArgumentException("Native sessions require the current execution contract.", nameof(genesis));
-        _ = l1.Profile(genesis);
+        if (!genesis.Rules.UsesNativeContract) throw new ArgumentException("Native sessions require the current execution contract.", nameof(genesis));
+        Offline = l1.Profile(genesis);
         Genesis = genesis;
-        Headers = l1.Headers;
+        L1 = l1;
     }
 }

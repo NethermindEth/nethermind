@@ -13,6 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Attester;
 using Nethermind.Eez.Prove;
+using CapabilitiesResponse = Nethermind.Eez.Prove.CapabilitiesResponse;
+using CapabilitiesRequest = Nethermind.Eez.Prove.CapabilitiesRequest;
 using Nethermind.Eez.Prove.V2;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -28,8 +30,8 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("baseline-static.json", TestName = "ProveV1_RecordedStaticWindow_ReturnsIndependentProof")]
     public async Task ProveV1_InlineRecordedWindow_ReturnsIndependentProof(string name)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, name);
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, name);
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());
@@ -61,8 +63,8 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("reorg", StatusCode.Aborted, TestName = "ProveV1_ReorgBeforeSigning_Rejects")]
     public async Task ProveV1_InvalidNativeEvidence_ReturnsNoProof(string mutation, StatusCode expected)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement, mutation == "reorg");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement, mutation == "reorg");
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());
@@ -77,8 +79,8 @@ public partial class RollupXStreamingConformanceTests
     [Test]
     public async Task Capabilities_NativeWorkerBusy_ReturnsEffectivePreparationLimits()
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         using BackendAdmission.BackendLease slot = server.Admission.TryAcquire()!;
@@ -110,7 +112,7 @@ public partial class RollupXStreamingConformanceTests
     [Test]
     public void Start_NativeHeaderAboveByteQuota_RejectsBeforeWindowAdmission()
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
         ByteString identity = ByteString.CopyFrom(TestItem.KeccakA.Bytes);
         ProveChunk header = NativeWindow(document.RootElement, identity)[0];
         long bytes = header.CalculateSize();

@@ -23,6 +23,7 @@ internal sealed partial class NativeTransactions
     }
 
     public bool HasActions { get; }
+    internal int GroupCount => checked(_outbound.Count + _inbound.Count);
 
     public static NativeTransactions Parse(StreamMessage[] messages, EezSettlementContext context)
     {

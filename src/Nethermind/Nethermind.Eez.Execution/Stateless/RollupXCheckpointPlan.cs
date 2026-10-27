@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 
 namespace Nethermind.Eez.Execution.Stateless;
 
@@ -25,7 +26,8 @@ internal sealed class RollupXCheckpointPlan
     {
         Transaction[] transactions = terminal.Transactions;
         int ordinary = 0;
-        while (ordinary < transactions.Length && !transactions[ordinary].IsEezSystemTransaction()) ordinary++;
+        while (ordinary < transactions.Length && (!transactions[ordinary].IsEezSystemTransaction() ||
+            ordinary == 0 && transactions[ordinary] is NativeHistoryTransaction)) ordinary++;
         int count = 1;
         for (int i = ordinary; i < transactions.Length; i++)
             if (EndsEffect(transactions, i)) count++;

@@ -17,10 +17,10 @@ namespace Nethermind.Eez.Test.RollupX;
 public partial class RollupXGenesisTests
 {
     [Test]
-    public void NativeProfile_IndependentVector_MatchesAbiAndCommitment([Values("profile-collector-a", "profile-collector-b")] string id)
+    public void NativeProfile_IndependentVector_MatchesAbiAndCommitment([Values("profile-collector-a", "profile-collector-b")] string id, [Values(3UL, 4UL)] ulong version)
     {
-        NativeOfflineProfile.Inputs input = OfflineInput(id == "profile-collector-a" ? (byte)0x11 : (byte)0x12);
-        JsonElement vector = OfflineVector(id);
+        NativeOfflineProfile.Inputs input = OfflineInput(id == "profile-collector-a" ? (byte)0x11 : (byte)0x12) with { ValidationVersion = version };
+        JsonElement vector = OfflineVector(id, version);
         NativeOfflineProfile.Validate(in input, [0, 1000], input.L1ChainId, input.HistoryCodeHash);
         using (Assert.EnterMultipleScope())
         {
@@ -67,6 +67,21 @@ public partial class RollupXGenesisTests
     [Test]
     public void NativeProfile_RulesId_MissingConfiguration_Rejects() =>
         Assert.That(() => NativeOfflineProfile.RulesId(default, [0, 1000], 1000), Throws.TypeOf<ArgumentException>());
+
+    [Test]
+    public void NativeProfile_UnsupportedVersion_RejectsBeforeEncoding([Values(0UL, 1UL, 2UL, 5UL, ulong.MaxValue)] ulong version)
+    {
+        NativeOfflineProfile.Inputs profile = OfflineInput(0x11) with { ValidationVersion = version };
+        RollupXValidationIdentity.Inputs identity = new(1, 901, Address.SystemUser, EezConstants.RollupXEezl2Address,
+            new Hash256(OfflineHash(0x11)), new Hash256(OfflineHash(0x12)), new Address("0x1111111111111111111111111111111111111111"),
+            new Address("0x2222222222222222222222222222222222222222"), version);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => NativeOfflineProfile.Encode(in profile, [0]), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => NativeOfflineProfile.Validate(in profile, [0], profile.L1ChainId, profile.HistoryCodeHash), Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => RollupXValidationIdentity.Encode(in identity), Throws.TypeOf<ArgumentOutOfRangeException>());
+        }
+    }
 
     private static IEnumerable<TestCaseData> InvalidOfflineEpochs()
     {
@@ -206,9 +221,9 @@ public partial class RollupXGenesisTests
         return new ValueHash256(bytes);
     }
 
-    private static JsonElement OfflineVector(string id)
+    private static JsonElement OfflineVector(string id, ulong version = 3)
     {
-        JsonElement fixture = StatelessFixtures.ReadJson("rollupx/native-profile-v3", "vectors.json");
+        JsonElement fixture = StatelessFixtures.ReadJson($"rollupx/native-profile-v{version}", "vectors.json");
         foreach (JsonElement vector in fixture.GetProperty("vectors").EnumerateArray())
             if (vector.GetProperty("id").GetString() == id) return vector;
         throw new InvalidOperationException($"Missing native profile vector {id}.");

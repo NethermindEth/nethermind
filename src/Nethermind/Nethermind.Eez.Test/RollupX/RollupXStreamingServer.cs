@@ -33,6 +33,7 @@ using Nethermind.Crypto;
 using Nethermind.Eez.Attester;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove.V2;
 using Nethermind.Logging;
@@ -51,6 +52,9 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
     private StreamingRuntime? _runtime;
     private WebApplication? _rpc;
     private WebApplication? _app;
+    private bool _nativeDecoder;
+    internal bool IsOffline => _nativeDecoder;
+    internal ByteString? ExpectedValidationIdentity { get; private set; }
     private Uri _address = null!;
     private Uri _plainAddress = null!;
     internal BackendAdmission Admission { get; private set; } = null!;
@@ -71,7 +75,6 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
 
     private async Task StartCore(string directory, JsonElement scenario, bool reorgBeforeSigning, bool syntheticAuthority, Hash256? registryRoot)
     {
-        await KzgPolynomialCommitments.InitializeAsync();
         string fixture = scenario.GetProperty("fixture").GetString()!;
         using JsonDocument genesis = RollupXRecordedExecutionTests.ReadSelected(directory, fixture + ".genesis.json");
         using JsonDocument l1Genesis = RollupXRecordedExecutionTests.ReadSelected(directory, fixture + ".l1-genesis.json");
@@ -89,15 +92,38 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         EezSettlementContext context = new(identity.RootElement.GetProperty("rollup_id").GetUInt64(), specs.ChainId,
             new Address(identity.RootElement.GetProperty("proof_system").GetString()!),
             new ValueHash256(identity.RootElement.GetProperty("vkey").GetString()!), rules.Schedule!.BlockIntervalSeconds);
-        FixtureAuthority authority = new(transcript.RootElement, context, key.Address, rules.Schedule, reorgBeforeSigning, registryRoot);
-        WebApplicationBuilder rpc = WebApplication.CreateSlimBuilder();
-        rpc.Logging.ClearProviders();
-        rpc.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, 0));
-        _rpc = rpc.Build();
-        _rpc.MapPost("/l1", http => Reply(http, authority, false));
-        _rpc.MapPost("/l2", http => Reply(http, authority, true));
-        await _rpc.StartAsync();
-        Uri source = StreamingEndpointTests.EndpointServer.AddressOf(_rpc, "http");
+        bool offline = rules.NativeFormat == NativeSystemTxFormat.ContractV4;
+        if (offline)
+        {
+            if (reorgBeforeSigning || registryRoot is not null) throw new ArgumentException("canonical RPC controls require the historical profile");
+            _nativeDecoder = true;
+            await Program.InitializeExecution(rules, TxDecoder.Instance);
+            NativeGenesisSnapshot nativeGenesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), NativeSystemTxFormat.ContractV4);
+            NativeL1Rules nativeL1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(Path.Combine(_directory.Path, "l1.json")));
+            NativeOfflineProfile.Inputs network = nativeL1.Profile(nativeGenesis);
+            byte[] preimage = Rlp.Encode(
+                Rlp.Encode("eez.validation-identity"u8), Rlp.Encode(4UL), Rlp.Encode(context.RollupId), Rlp.Encode(specs.ChainId),
+                Rlp.Encode(new Address(identity.RootElement.GetProperty("l2_system_address").GetString()!).Bytes),
+                Rlp.Encode(EezConstants.RollupXEezl2Address.Bytes), Rlp.Encode(nativeGenesis.SourceDigest.Bytes),
+                Rlp.Encode(NativeOfflineProfile.Compute(in network, nativeL1.RuleTimes).Bytes),
+                Rlp.Encode(new Address(identity.RootElement.GetProperty("registry_address").GetString()!).Bytes),
+                Rlp.Encode(new Address(identity.RootElement.GetProperty("rollup_manager_address").GetString()!).Bytes)).Bytes;
+            ExpectedValidationIdentity = ByteString.CopyFrom(Keccak.Compute(preimage).Bytes);
+        }
+        if (!offline) await KzgPolynomialCommitments.InitializeAsync();
+        FixtureAuthority? authority = offline ? null : new(transcript.RootElement, context, key.Address, rules.Schedule, reorgBeforeSigning, registryRoot);
+        Uri? source = null;
+        if (authority is not null)
+        {
+            WebApplicationBuilder rpc = WebApplication.CreateSlimBuilder();
+            rpc.Logging.ClearProviders();
+            rpc.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, 0));
+            _rpc = rpc.Build();
+            _rpc.MapPost("/l1", http => Reply(http, authority, false));
+            _rpc.MapPost("/l2", http => Reply(http, authority, true));
+            await _rpc.StartAsync();
+            source = StreamingEndpointTests.EndpointServer.AddressOf(_rpc, "http");
+        }
         File.WriteAllBytes(Path.Combine(_directory.Path, "server.pfx"), _certificate.Export(X509ContentType.Pkcs12, "test"));
         File.WriteAllBytes(Path.Combine(_directory.Path, "composer.cer"), _client.RawData);
         File.WriteAllText(Path.Combine(_directory.Path, "password"), "test");
@@ -109,13 +135,13 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         {
             profile = "rollupx-native",
             listenAddress = "127.0.0.1:0",
-            l1Rpc = new Uri(source, "l1").ToString(),
-            l2Rpc = new Uri(source, "l2").ToString(),
+            l1Rpc = source is null ? null : new Uri(source, "l1").ToString(),
+            l2Rpc = source is null ? null : new Uri(source, "l2").ToString(),
             l1ChainId = rules.Schedule.L1Reference.ChainId,
-            registry = TestItem.AddressA.ToString(),
-            manager = TestItem.AddressB.ToString(),
+            registry = offline ? identity.RootElement.GetProperty("registry_address").GetString() : TestItem.AddressA.ToString(),
+            manager = offline ? identity.RootElement.GetProperty("rollup_manager_address").GetString() : TestItem.AddressB.ToString(),
             l1ChainConfigPath = "l1.json",
-            l2GenesisHash = authority.Genesis.ToString(),
+            l2GenesisHash = offline ? NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), NativeSystemTxFormat.ContractV4).GenesisHash.ToString() : authority!.Genesis.ToString(),
             serverCertificate = "server.pfx",
             serverPasswordFile = "password",
             composerCertificates = new[] { "composer.cer" },
@@ -123,7 +149,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             maxSessionsPerOwner = 8,
             maxConnections = 8,
             maxSessionBytes = limits.MaxBytes,
-            maxReservedBytes = checked(limits.MaxBytes * 4 * 8),
+            maxReservedBytes = checked(limits.MaxBytes * (offline ? 8 : 4) * 8),
         }));
         AttesterOptions options = new(new IPEndPoint(IPAddress.Loopback, 0), chainPath, context.RollupId, context.VerificationKey,
             key.Address, context.ProofSystem, "", "", rules.Schedule.BlockIntervalSeconds, context.GasLimit, limits,
@@ -135,9 +161,9 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         _runtime = runtime;
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
-        if (syntheticAuthority)
+        if (syntheticAuthority && !offline)
         {
-            FixtureFinalizer finalizer = new(ChainConfigLoader.LoadL1(Path.Combine(_directory.Path, "l1.json")), specs, rules, context, signer, authority);
+            FixtureFinalizer finalizer = new(ChainConfigLoader.LoadL1(Path.Combine(_directory.Path, "l1.json")), specs, rules, context, signer, authority!);
             builder.Host.ConfigureContainer<IServiceCollection>((_, services) => services.Replace(ServiceDescriptor.Singleton<StreamingTransport>(provider =>
                 new(runtime.Registry, provider.GetRequiredService<BackendAdmission>(), new StreamingBlockExecutor(specs, rules, LimboLogs.Instance),
                     runtime.Options.TransportLimits, context.RollupId, provider.GetRequiredService<ILogger<StreamingTransport>>(), finalize: finalizer.Finalize))));
@@ -182,6 +208,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         finally
         {
             _runtime?.Dispose();
+            if (_nativeDecoder) TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
             if (_rpc is not null) await _rpc.DisposeAsync();
             _certificate.Dispose();
             _client.Dispose();

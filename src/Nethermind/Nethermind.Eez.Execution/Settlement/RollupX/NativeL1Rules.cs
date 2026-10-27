@@ -93,7 +93,8 @@ internal sealed partial class NativeL1Rules
         ValueHash256 runtimeHash = NativeHistoryBlockExecutor.GetRuntimeHash(l2.Rules.NativeFormat);
         NativeOfflineProfile.Inputs result = new(Specs.ChainId, l2.Specs.ChainId, l2.GenesisHash, schedule.GenesisTimestamp,
             schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks, checked((uint)(l2.History.Delay / l2.History.BlockInterval - 1)),
-            ConfigHash, runtimeHash, l2.Rules.FeeCollector!);
+            ConfigHash, runtimeHash, l2.Rules.FeeCollector!,
+            l2.Rules.NativeFormat == NativeSystemTxFormat.ContractV4 ? 4UL : 3UL);
         NativeOfflineProfile.Validate(in result, _ruleTimes, result.L1ChainId, runtimeHash);
         return result;
     }

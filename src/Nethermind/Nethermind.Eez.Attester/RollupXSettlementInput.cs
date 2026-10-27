@@ -19,22 +19,37 @@ internal sealed record RollupXSettlementInput(PostBatch Batch, NativeStream Stre
     Hash256[] BlobHashes, ulong L1ParentNumber, L1PostingTarget Target)
 {
     internal static RollupXSettlementInput Decode(SettlementInput input, EezSettlementContext context, ISpecProvider l1Specs,
-        CancellationToken cancellation)
+        CancellationToken cancellation, NativeOfflineContext? offline = null, ulong rulesTimestamp = 0, PostBatch? decodedBatch = null)
     {
         cancellation.ThrowIfCancellationRequested();
         SettlementInput snapshot = input.Clone();
-        L1PostingContext posting = snapshot.PostingContext ?? throw Invalid();
-        if (posting.ChainId == 0 || posting.ChainId != l1Specs.ChainId || posting.TargetTimestamp == 0 || posting.ParentNumber == ulong.MaxValue ||
-            posting.ParentHash.Length != Hash256.Size || !posting.ParentHash.Span.ContainsAnyExcept((byte)0)) throw Invalid();
-        L1PostingTarget target = new(posting.TargetTimestamp, new Hash256(posting.ParentHash.Span));
-        IReleaseSpec spec = l1Specs.GetSpec(posting.ParentNumber + 1, posting.TargetTimestamp);
+        ulong parentNumber;
+        L1PostingTarget target;
+        if (offline is null)
+        {
+            L1PostingContext posting = snapshot.PostingContext ?? throw Invalid();
+            if (posting.ChainId == 0 || posting.ChainId != l1Specs.ChainId || posting.TargetTimestamp == 0 || posting.ParentNumber == ulong.MaxValue ||
+                posting.ParentHash.Length != Hash256.Size || !posting.ParentHash.Span.ContainsAnyExcept((byte)0)) throw Invalid();
+            parentNumber = posting.ParentNumber;
+            target = new(posting.TargetTimestamp, new Hash256(posting.ParentHash.Span));
+        }
+        else
+        {
+            parentNumber = offline.Anchor.Number;
+            target = new(rulesTimestamp, new Hash256(offline.Anchor.Hash));
+        }
+        IReleaseSpec spec = l1Specs.GetSpec(offline?.Anchor.TargetTimestamp is null && offline is not null ? parentNumber : checked(parentNumber + 1), target.Timestamp);
         int count = snapshot.Blobs.Count;
         if (!spec.IsEip4844Enabled || count == 0 || (ulong)count > Math.Min(spec.MaxBlobCount, spec.MaxBlobsPerTx)) throw Invalid();
         try
         {
-            PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(snapshot.AbiCalldata.Span);
+            PostBatch batch = decodedBatch ?? EezCalldata.DecodePostAndVerifyBatch(snapshot.AbiCalldata.Span);
             if (batch.Proofs is not ([] or [{ Length: 0 }])) throw Invalid();
-            try { RollupXPostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem, count); }
+            try
+            {
+                if (offline is null) RollupXPostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem, count);
+                else RollupXPostBatchProfile.ValidateNative(batch, context.ProofSystem, count, offline);
+            }
             catch (EezSettlementException exception) when (exception.Failure == EezSettlementFailure.Rejected)
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "RollupX settlement claims differ from configured profile"));
@@ -56,7 +71,7 @@ internal sealed record RollupXSettlementInput(PostBatch Batch, NativeStream Stre
                 hashes[i] = VersionedHash(snapshot.Blobs[i].Span);
                 cancellation.ThrowIfCancellationRequested();
             }
-            return new RollupXSettlementInput(batch, stream, operations, hashes, posting.ParentNumber, target);
+            return new RollupXSettlementInput(batch, stream, operations, hashes, parentNumber, target);
         }
         catch (Exception exception) when (exception is EezAbiException or EezSettlementException or OverflowException or ArgumentException)
         {

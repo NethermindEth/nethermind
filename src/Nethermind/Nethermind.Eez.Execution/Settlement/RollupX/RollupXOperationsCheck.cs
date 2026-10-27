@@ -13,7 +13,7 @@ namespace Nethermind.Eez.Execution.Settlement.RollupX;
 internal static class RollupXOperationsCheck
 {
     public static void Verify(OperationsPayload operations, IReadOnlyList<EezStatelessBlockResult> window,
-        CancellationToken token = default)
+        CancellationToken token = default, EezChainRules? nativeRules = null)
     {
         token.ThrowIfCancellationRequested();
         if (window.Count == 0 || operations.BlockCount != window.Count)
@@ -29,14 +29,14 @@ internal static class RollupXOperationsCheck
                 token.ThrowIfCancellationRequested();
                 EezStatelessBlockResult result = window[index];
                 bool terminal = index == window.Count - 1;
-                if (!terminal) VerifyIntermediate(result);
-                VerifyBlock(run, result.Block, terminal ? plan.OrdinaryTransactions : result.Block.Transactions.Length, token);
+                if (!terminal) VerifyIntermediate(result, nativeRules);
+                VerifyBlock(run, result.Block, terminal ? plan.OrdinaryTransactions : result.Block.Transactions.Length, token, nativeRules);
                 index++;
             }
         }
     }
 
-    private static void VerifyBlock(OperationsRun run, Block block, int count, CancellationToken token)
+    private static void VerifyBlock(OperationsRun run, Block block, int count, CancellationToken token, EezChainRules? nativeRules)
     {
         if (run.Beneficiary != block.Header.Beneficiary || !run.ExtraData.Span.SequenceEqual(block.Header.ExtraData))
             throw new EezSettlementException($"The operations publish different header inputs for block {block.Number}.");
@@ -46,19 +46,26 @@ internal static class RollupXOperationsCheck
         {
             token.ThrowIfCancellationRequested();
             Transaction transaction = block.Transactions[i];
-            if (transaction.IsEezSystemTransaction() || transaction.SenderAddress == EezConstants.SystemAddress)
+            if (!IsHistory(transaction, i, nativeRules) && (transaction.IsEezSystemTransaction() || transaction.SenderAddress ==
+                (nativeRules?.SystemAddress ?? EezConstants.SystemAddress)))
                 throw new EezSettlementException($"Ordinary transaction {i} of block {block.Number} uses the reserved system identity.");
             if (!TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.AsSpan().SequenceEqual(run.Transactions[i].Span))
                 throw new EezSettlementException($"The operations do not publish transaction {i} of block {block.Number}.");
         }
     }
 
-    internal static void VerifyIntermediate(EezStatelessBlockResult result)
+    internal static void VerifyIntermediate(EezStatelessBlockResult result, EezChainRules? nativeRules = null)
     {
-        foreach (Transaction transaction in result.Block.Transactions)
-            if (transaction.IsEezSystemTransaction() || transaction.SenderAddress == EezConstants.SystemAddress)
+        for (int index = 0; index < result.Block.Transactions.Length; index++)
+        {
+            Transaction transaction = result.Block.Transactions[index];
+            if (!IsHistory(transaction, index, nativeRules) && (transaction.IsEezSystemTransaction() ||
+                transaction.SenderAddress == (nativeRules?.SystemAddress ?? EezConstants.SystemAddress)))
                 throw new EezSettlementException($"Intermediate block {result.Block.Number} contains a system transaction.");
+        }
         if (OutboundEvent.Observe(result.Receipts, EezConstants.RollupXEezl2Address).Length != 0)
             throw new EezSettlementException($"Intermediate block {result.Block.Number} contains an outbound event.");
     }
+    private static bool IsHistory(Transaction transaction, int position, EezChainRules? rules) =>
+        position == 0 && rules?.UsesNativeContract == true && transaction is NativeHistoryTransaction && transaction.HasSystemTransactionFields(rules);
 }

@@ -28,16 +28,17 @@ public partial class EezStatelessExecutorTests
 {
     private const string NativeCapture = "rollupx/native-offline-bidirectional";
 
-    [TestCase(false, 200)]
-    [TestCase(true, 30)]
+    [TestCase(1, 200)]
+    [TestCase(3, 30)]
+    [TestCase(4, 30)]
     [NonParallelizable]
-    public void Execute_NativeUpstreamCapture_ReproducesEverySealedBlockWithoutChangingInputs(bool contractV3, int expectedBlocks)
+    public void Execute_NativeUpstreamCapture_ReproducesEverySealedBlockWithoutChangingInputs(int version, int expectedBlocks)
     {
-        string capture = contractV3 ? "rollupx/native-offline-v3" : NativeCapture;
+        string capture = NativeCaptureFor(version);
         List<ClientFrame> frames = ReadNativeFrames(capture);
         Begin begin = frames[0].Begin;
         NativeGenesisSnapshot profile = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(capture, "l2-genesis.json")),
-            contractV3 ? NativeSystemTxFormat.ContractV3 : NativeSystemTxFormat.RecordedV1);
+            (NativeSystemTxFormat)version);
         Assert.That(begin.AnchorNumber, Is.Zero, "precondition: the cold capture starts at genesis");
         Assert.That(profile.GenesisHash, Is.EqualTo(new ValueHash256(begin.AnchorHash.Span)), "the allocation-derived genesis equals the independently captured anchor");
         NativeL1HeaderRules headerRules = ReadNativeHeaderRules(capture);
@@ -87,14 +88,14 @@ public partial class EezStatelessExecutorTests
 
     [Test]
     [NonParallelizable]
-    public void Execute_NativeCaptureWithoutL1Evidence_RejectsWithoutFallback([Values] bool contractV3)
+    public void Execute_NativeCaptureWithoutL1Evidence_RejectsWithoutFallback([Values(1, 3, 4)] int version)
     {
-        string capture = contractV3 ? "rollupx/native-offline-v3" : NativeCapture;
+        string capture = NativeCaptureFor(version);
         List<ClientFrame> frames = ReadNativeFrames(capture);
         BlockWitness input = frames[1].Block.Data;
         Assert.That(input.Witness.L1HeadersRlp.Count, Is.GreaterThan(0), "precondition: the original first block supplies its parent history endpoint");
         NativeGenesisSnapshot profile = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(capture, "l2-genesis.json")),
-            contractV3 ? NativeSystemTxFormat.ContractV3 : NativeSystemTxFormat.RecordedV1);
+            (NativeSystemTxFormat)version);
         using (new NativeDecoderScope(profile.Rules))
         {
             EezStatelessExecutor executor = new(profile, new NativeL1HeaderChain(), LimboLogs.Instance);
@@ -103,12 +104,16 @@ public partial class EezStatelessExecutorTests
         }
     }
 
+    private static string NativeCaptureFor(int version) => version == 1 ? NativeCapture : $"rollupx/native-offline-v{version}";
+
     private static List<ClientFrame> ReadNativeFrames(string capture)
     {
         byte[] bytes = File.ReadAllBytes(StatelessFixtures.PathOf(capture, "request.v2.protobuf"));
         Assert.That(ValueKeccak.Compute(bytes), Is.EqualTo(new ValueHash256(capture == NativeCapture
             ? "0xbda7e319d5b3b8bd30daea948249a8cff50c01248755be8023f0ee31faac5f83"
-            : "0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")),
+            : capture == "rollupx/native-offline-v4"
+                ? "0x4fe2bd2df0167990164d7004a44e141768ecd70595db718dade3e18c054ff715"
+                : "0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")),
             "the upstream captured request remains byte-for-byte unchanged");
         using MemoryStream stream = new(bytes, writable: false);
         List<ClientFrame> frames = [];

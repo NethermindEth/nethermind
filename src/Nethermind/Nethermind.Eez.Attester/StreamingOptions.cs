@@ -62,7 +62,8 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Ur
             string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             string[] pins = new string[settings.ComposerCertificates.Length];
             for (int i = 0; i < pins.Length; i++) pins[i] = Path.GetFullPath(Required(settings.ComposerCertificates[i]), directory);
-            return new StreamingOptions(listen, conditional ? null : Rpc(settings.L1Rpc), conditional ? null : Rpc(settings.L2Rpc), settings.L1ChainId, registry, manager,
+            return new StreamingOptions(listen, conditional || profile == StreamingSettlementProfile.RollupXNative && settings.L1Rpc is null ? null : Rpc(settings.L1Rpc),
+                conditional || profile == StreamingSettlementProfile.RollupXNative && settings.L2Rpc is null ? null : Rpc(settings.L2Rpc), settings.L1ChainId, registry, manager,
                 Path.GetFullPath(Required(settings.ServerCertificate), directory), Path.GetFullPath(Required(settings.ServerPasswordFile), directory),
                 pins, registryLimits, sessionLimits, transportLimits)
             {

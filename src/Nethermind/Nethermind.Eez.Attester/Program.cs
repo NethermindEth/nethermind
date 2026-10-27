@@ -74,6 +74,7 @@ public static class Program
             builder.Services.AddGrpc().AddServiceOptions<StreamingProverService>(grpc =>
                 grpc.MaxReceiveMessageSize = streaming.Options.TransportLimits.MaxMessageBytes);
             builder.Services.AddSingleton(streaming.Identity);
+            builder.Services.AddSingleton(streaming.Capabilities);
             builder.Services.AddSingleton(streaming.Registry);
             builder.Services.AddSingleton(services => streaming.CreateTransport(services.GetRequiredService<BackendAdmission>(),
                 services.GetRequiredService<ILogger<StreamingTransport>>()));
@@ -106,7 +107,7 @@ public static class Program
         PrivateKey key = AttestationKeyStore.Unlock(options.KeyStoreDirectory, options.PasswordFile, options.AttesterAddress, logManager);
         (ISpecProvider specProvider, EezChainRules rules) = ChainConfigLoader.LoadProfile(options.ChainConfigPath);
         if (options.SkipConsensusLayerCalls) rules = rules.WithoutConsensusLayerCalls();
-        TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(rules));
+        await InitializeExecution(rules, TxDecoder.Instance);
         if (rules.IsRollupX && options.StreamingConfigPath is null)
             throw new InvalidOperationException("RollupX attestation requires the native streaming profile");
         EezSettlementContext context = new(options.RollupId, specProvider.ChainId, options.ProofSystem, options.VerificationKey, options.BlockTimeSeconds, options.GasLimit);
@@ -130,6 +131,13 @@ public static class Program
         BackendAdmission admission = app.Services.GetRequiredService<BackendAdmission>();
         try { await app.StartAsync(); await app.WaitForShutdownAsync(); }
         finally { await StopAndDrain(app, admission); }
+    }
+
+    internal static async Task InitializeExecution(EezChainRules rules, TxDecoder<Transaction> decoder)
+    {
+        decoder.RegisterDecoder(EezTxType.CreateDecoder(rules));
+        if (rules.UsesNativeContract) decoder.RegisterDecoder(new EezNativeHistoryTxDecoder());
+        if (rules.IsRollupX) await KzgPolynomialCommitments.InitializeAsync();
     }
 
     internal static async Task StopAndDrain(WebApplication app, BackendAdmission admission)

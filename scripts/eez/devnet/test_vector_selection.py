@@ -218,7 +218,10 @@ class RollupXExecutionSelectionTests(unittest.TestCase):
             for name in reviewed["cases"]:
                 payloads.setdefault(self.prefix + "streaming-v2/" + name, b"{}")
             if remove: payloads.pop(self.prefix + remove)
-            if add: payloads[self.prefix + "streaming-v2/" + add] = b"{}"
+            if add:
+                payloads[self.prefix + "streaming-v2/" + add] = json.dumps({"format": 2, "case": add.removesuffix(".json"),
+                    "fixture": "updated-baseline-lookup", "events": [
+                        {"direction": "client"}, {"direction": "server"}, {"direction": "client"}, {"direction": "eof"}]}).encode()
         else:
             payloads.clear()
         entries = []
@@ -308,6 +311,18 @@ class RollupXExecutionSelectionTests(unittest.TestCase):
         for options in ({"add": "new-case.json"}, {"remove": "streaming-v2/rewind-boundaries.json"}, {"truncated": True}):
             with self.subTest(options=options), tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "inventory changed|tree is incomplete"):
                 self.invoke(Path(temporary), **options)
+
+    def test_native_v4_inventory_downloads_each_unchanged_case(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args, _, manifest, payloads = self.invoke(Path(temporary),
+                remove="streaming-v2/single-block-proof.json", add="sync-range-proof.json")
+            source = manifest["execution_vectors"]
+            self.assertEqual(len(source["cases"]), 29)
+            self.assertIn("sync-range-proof.json", source["cases"])
+            self.assertNotIn("single-block-proof.json", source["cases"])
+            for name in source["cases"]:
+                self.assertEqual(gzip.decompress((args.directory / (name + ".gz")).read_bytes()),
+                    payloads[self.prefix + "streaming-v2/" + name])
 
     def test_missing_matching_genesis_cannot_use_an_old_snapshot(self):
         for name in self.names:

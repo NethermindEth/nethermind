@@ -22,6 +22,7 @@ internal static class NativeOfflineProfile
 
     internal static void Validate(in Inputs input, ReadOnlySpan<ulong> ruleTimes, in UInt256 l1ChainId, in ValueHash256 historyCodeHash)
     {
+        RollupXValidationIdentity.ValidateVersion(input.ValidationVersion);
         ValidateEpochs(ruleTimes);
         if (input.L1ChainId.IsZero || input.L1ChainId != l1ChainId || input.L2ChainId.IsZero || input.GenesisHash == default ||
             input.L1ConfigHash == default || historyCodeHash == default || input.HistoryCodeHash != historyCodeHash ||
@@ -32,11 +33,12 @@ internal static class NativeOfflineProfile
 
     internal static byte[] Encode(in Inputs input, ReadOnlySpan<ulong> ruleTimes)
     {
+        RollupXValidationIdentity.ValidateVersion(input.ValidationVersion);
         ValidateEpochs(ruleTimes);
         byte[] encoded = new byte[(OuterWords + ProfileWords + 1 + ruleTimes.Length) * AbiWord.Size];
         AbiWriter writer = new(encoded);
         writer.Write(Domain);
-        writer.Write(RollupXValidationIdentity.Version);
+        writer.Write(input.ValidationVersion);
         writer.Write(EezConstants.L1HistoryAddress);
         writer.Write((ulong)NativeHistoryCall.MaxHashes);
         writer.Write(EezConstants.L1HistoryTxGasCap);
@@ -80,5 +82,5 @@ internal static class NativeOfflineProfile
     }
 
     internal readonly record struct Inputs(UInt256 L1ChainId, UInt256 L2ChainId, ValueHash256 GenesisHash, ulong GenesisTimestamp,
-        ulong BlockInterval, uint SyncInterval, uint UpdateOffset, ValueHash256 L1ConfigHash, ValueHash256 HistoryCodeHash, Address FeeCollector);
+        ulong BlockInterval, uint SyncInterval, uint UpdateOffset, ValueHash256 L1ConfigHash, ValueHash256 HistoryCodeHash, Address FeeCollector, ulong ValidationVersion = RollupXValidationIdentity.Version);
 }

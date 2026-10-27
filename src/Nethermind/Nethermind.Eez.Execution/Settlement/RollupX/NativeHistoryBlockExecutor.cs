@@ -31,7 +31,7 @@ internal sealed class NativeHistoryBlockExecutor(
     NativeHistorySource? source,
     NativeL1HeaderChain evidence) : IBlockProcessor.IBlockTransactionsExecutor
 {
-    private readonly NativeHistorySource? _source = rules.UsesNativeContractV3
+    private readonly NativeHistorySource? _source = rules.UsesNativeContract
         ? null
         : source ?? throw new ArgumentNullException(nameof(source));
 
@@ -40,9 +40,15 @@ internal sealed class NativeHistoryBlockExecutor(
 
     private static readonly ValueHash256 ContractV3RuntimeHash = new("0xef41c0d934734d41e8eed6c11a19015ea84cd5cce35e52f5fdd5e5fe30d8dac9");
 
-    internal static ValueHash256 GetRuntimeHash(NativeSystemTxFormat format) => format == NativeSystemTxFormat.ContractV3
-        ? ContractV3RuntimeHash
-        : RuntimeHash;
+    private static readonly ValueHash256 ContractV4RuntimeHash = new("0xbe389fdaa7ed5833a65c0ceffacb8e04e727127f8faf6e240611272d566b6676");
+
+    internal static ValueHash256 GetRuntimeHash(NativeSystemTxFormat format) => format switch
+    {
+        NativeSystemTxFormat.RecordedV1 => RuntimeHash,
+        NativeSystemTxFormat.ContractV3 => ContractV3RuntimeHash,
+        NativeSystemTxFormat.ContractV4 => ContractV4RuntimeHash,
+        _ => throw new ArgumentOutOfRangeException(nameof(format)),
+    };
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
@@ -52,14 +58,14 @@ internal sealed class NativeHistoryBlockExecutor(
             throw new InvalidBlockException(block, "Native history requires a fresh native-profile block.");
         NativeHistoryState prior = ReadState();
         Transaction? import = FindImport(block);
-        NativeHistoryExecution execution = rules.UsesNativeContractV3
+        NativeHistoryExecution execution = rules.UsesNativeContract
             ? VerifyContractV3(block, in prior, import)
             : schedule.VerifyRecorded(block.Timestamp, in prior, evidence, import?.Data);
         if (import is not null)
         {
             if (!import.HasSystemTransactionFields(rules) || import.ChainId != specProvider.ChainId ||
                 import.GasLimit != Math.Min(block.GasLimit, EezConstants.L1HistoryTxGasCap) ||
-                !rules.UsesNativeContractV3 && (block.ParentHash is null ||
+                !rules.UsesNativeContract && (block.ParentHash is null ||
                 import.SourceHash!.ValueHash256 != _source!.Compute(block.ParentHash.ValueHash256, block.Number, block.Timestamp, import.Data.Span)))
                 throw new InvalidBlockException(block, "Native history transaction differs from the recorded transition.");
         }
@@ -71,7 +77,7 @@ internal sealed class NativeHistoryBlockExecutor(
         if (import is not null && (receipts.Length == 0 || receipts[0].StatusCode != StatusCode.Success || receipts[0].Logs is { Length: > 0 }))
             throw new InvalidBlockException(block, "Mandatory native history import failed or emitted logs.");
         NativeHistoryState after = ReadState();
-        ulong nextCutoff = rules.UsesNativeContractV3 || import is null ? prior.ScheduleCutoff : execution.Cutoff + schedule.Interval;
+        ulong nextCutoff = rules.UsesNativeContract || import is null ? prior.ScheduleCutoff : execution.Cutoff + schedule.Interval;
         if (after != new NativeHistoryState(prior.FirstNumber, execution.OriginNumber, execution.OriginHash, nextCutoff))
             throw new InvalidBlockException(block, "Native history post-state differs from the recorded transition.");
         return receipts;
@@ -83,7 +89,7 @@ internal sealed class NativeHistoryBlockExecutor(
         for (int index = 0; index < block.Transactions.Length; index++)
         {
             Transaction tx = block.Transactions[index];
-            bool history = rules.UsesNativeContractV3
+            bool history = rules.UsesNativeContract
                 ? (byte)tx.Type == NativeHistoryEnvelope.Type
                 : tx.Type == EezConstants.NativeSystemTxType && tx.To == EezConstants.L1HistoryAddress;
             if (!history) continue;

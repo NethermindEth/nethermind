@@ -24,8 +24,8 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("baseline-static.json")]
     public async Task ProveV1_PreparedOrdinaryRange_PreservesRecordedProof(string name)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, name);
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, name);
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());
@@ -55,8 +55,8 @@ public partial class RollupXStreamingConformanceTests
     [Test]
     public async Task ProveV1_PreparedRange_StillRechecksCanonicalL1()
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement, true);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement, true);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());
@@ -80,8 +80,8 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("bounds", StatusCode.InvalidArgument)]
     public async Task PrepareOrdinary_InvalidRange_DoesNotPartiallyPublish(string mutation, StatusCode expected)
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());
@@ -122,8 +122,8 @@ public partial class RollupXStreamingConformanceTests
     [Test]
     public async Task PrepareOrdinary_TerminalSystemBlock_Rejects()
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-static.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-static.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());
@@ -147,8 +147,8 @@ public partial class RollupXStreamingConformanceTests
     [Test]
     public async Task ProveV1_CachedTerminal_RequiresFreshWitness()
     {
-        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
-        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
+        using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(LegacyDirectoryPath, "baseline-lookup.json");
+        await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(LegacyDirectoryPath, document.RootElement);
         using GrpcChannel channel = server.PlainChannel();
         ProverV1.ProverClient client = new(channel);
         CapabilitiesResponse capabilities = await client.CapabilitiesAsync(new CapabilitiesRequest());

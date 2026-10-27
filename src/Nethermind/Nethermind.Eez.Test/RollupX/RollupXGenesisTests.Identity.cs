@@ -18,8 +18,9 @@ public partial class RollupXGenesisTests
 {
     private static IEnumerable<TestCaseData> PortableIdentityVectors()
     {
-        foreach (JsonElement vector in IdentityFixture().GetProperty("identities").EnumerateArray())
-            yield return new TestCaseData(vector).SetName($"PortableIdentity_Upstream_{vector.GetProperty("name").GetString()}");
+        foreach (ulong version in new ulong[] { 3, 4 })
+            foreach (JsonElement vector in IdentityFixture(version).GetProperty("identities").EnumerateArray())
+                yield return new TestCaseData(vector, version).SetName($"PortableIdentity_V{version}_Upstream_{vector.GetProperty("name").GetString()}");
     }
 
     private static IEnumerable<TestCaseData> CanonicalJsonVectors()
@@ -36,7 +37,7 @@ public partial class RollupXGenesisTests
     }
 
     [TestCaseSource(nameof(PortableIdentityVectors))]
-    public void PortableIdentity_IndependentVector_MatchesPreimageAndHash(JsonElement vector)
+    public void PortableIdentity_IndependentVector_MatchesPreimageAndHash(JsonElement vector, ulong version)
     {
         RollupXValidationIdentity.Inputs input = new(
             ulong.Parse(vector.GetProperty("rollup_id").GetString()!, CultureInfo.InvariantCulture),
@@ -46,7 +47,7 @@ public partial class RollupXGenesisTests
             new Hash256(vector.GetProperty("chain_document_digest").GetString()!),
             new Hash256(vector.GetProperty("offline_profile_hash").GetString()!),
             new Address(vector.GetProperty("registry").GetString()!),
-            new Address(vector.GetProperty("manager").GetString()!));
+            new Address(vector.GetProperty("manager").GetString()!), version);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(RollupXValidationIdentity.Encode(in input), Is.EqualTo(Bytes.FromHexString(vector.GetProperty("rlp").GetString()!)));
@@ -105,5 +106,5 @@ public partial class RollupXGenesisTests
     public void CanonicalJson_InvalidUtf8_Rejects(byte[] input) =>
         Assert.That(() => RollupXCanonicalJson.Encode(input), Throws.InstanceOf<JsonException>());
 
-    private static JsonElement IdentityFixture() => StatelessFixtures.ReadJson("rollupx/native-profile-v3", "validation-identity.json");
+    private static JsonElement IdentityFixture(ulong version = 3) => StatelessFixtures.ReadJson($"rollupx/native-profile-v{version}", "validation-identity.json");
 }

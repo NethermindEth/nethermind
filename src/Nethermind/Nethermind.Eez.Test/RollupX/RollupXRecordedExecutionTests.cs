@@ -248,8 +248,7 @@ public class RollupXRecordedExecutionTests(string recording)
 
     internal EezStatelessBlockResult TerminalResult => _executed[^1];
 
-    private string InputDirectory() => SelectDirectory(_selectedDirectory ?? Environment.GetEnvironmentVariable("EEZ_ROLLUPX_EXECUTION_VECTOR_DIR"),
-        Environment.GetEnvironmentVariable("EEZ_REQUIRE_UPSTREAM_VECTORS") == "true");
+    private string InputDirectory() => _selectedDirectory ?? StatelessFixtures.PathOf(DirectoryName, "");
 
     internal static string SelectDirectory(string? selected, bool required)
     {

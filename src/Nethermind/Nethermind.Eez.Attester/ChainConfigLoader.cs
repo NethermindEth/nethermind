@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -24,6 +25,12 @@ internal static class ChainConfigLoader
     internal static (ISpecProvider Specs, EezChainRules Rules) LoadProfile(string path)
     {
         JsonNode document = Read(path);
+        if (document["config"]?["rollupX"] is JsonObject rollup &&
+            (rollup.ContainsKey("feeCollector") || rollup.ContainsKey("historyUpdateOffset")))
+        {
+            NativeGenesisSnapshot native = NativeGenesisSnapshot.Load(File.ReadAllBytes(path), NativeSystemTxFormat.ContractV4);
+            return (native.Specs, native.Rules);
+        }
         EezChainRules rules = EezChainRules.FromGenesis(JsonSerializer.SerializeToElement(document));
         return (new EezSpecProvider(new ChainSpecBasedSpecProvider(Parse(document)), rules), rules);
     }
