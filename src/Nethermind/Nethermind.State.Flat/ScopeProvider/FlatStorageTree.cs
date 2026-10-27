@@ -346,9 +346,9 @@ public sealed class FlatStorageTree(
         long start = Stopwatch.GetTimestamp();
         try
         {
-            (int loads, int rounds, int failures) = StorageRootPrefetch.Run(root, new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), entries, _scope.ReadPool);
-            _scope.CountStorageRootPrefetch(loads, rounds, Stopwatch.GetTimestamp() - start);
-            if (failures != 0) LogPrefetchFailure($"{failures} nodes could not be resolved");
+            (int loads, int rounds, int misses, int failures) = StorageRootPrefetch.Run(root, new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), entries, _scope.ReadPool);
+            _scope.CountStorageRootPrefetch(loads, rounds, misses, Stopwatch.GetTimestamp() - start);
+            if (misses != 0 || failures != 0) LogPrefetchFailure($"{misses} nodes not resolved, {failures} failed");
         }
         // A prefetch only loads nodes: the write reads whatever it left, and meets a real error itself.
         catch (Exception e)
