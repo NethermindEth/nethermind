@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -38,9 +39,13 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     /// <summary>When set, recursive STARK checks throw this instead of returning a verdict.</summary>
     public Exception? Throws { get; set; }
 
+    /// <summary>When set, recursive STARK checks wait for it, as a slow verification would.</summary>
+    public ManualResetEventSlim? Hold { get; set; }
+
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
         Interlocked.Increment(ref _calls);
+        Hold?.Wait(TimeSpan.FromSeconds(10));
         if (Throws is { } exception) throw exception;
         return Valid;
     }
@@ -67,19 +72,8 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public void Penalize(string reason) { lock (_penalties) _penalties.Add(reason); }
 
-    private readonly List<string> _scores = [];
-    public void LowerScore(string reason) { lock (_scores) _scores.Add(reason); }
-
-    /// <summary>The type and size this peer announced per transaction hash through NewPooledTransactionHashes.</summary>
-    public Dictionary<Hash256, (TxType Type, int Size)> AnnouncedShapes { get; } = [];
-
-    public bool MatchesAnnouncedShape(Transaction transaction) =>
-        !AnnouncedShapes.TryGetValue(transaction.Hash!, out (TxType Type, int Size) shape)
-        || shape.Type == transaction.Type && shape.Size == transaction.GetLength();
-
     public T[] Sent<T>() where T : P2PMessage { lock (_sent) return [.. _sent.OfType<T>()]; }
     public string[] Penalties { get { lock (_penalties) return [.. _penalties]; } }
-    public string[] ScoreReductions { get { lock (_scores) return [.. _scores]; } }
     public void Clear() { lock (_sent) _sent.Clear(); }
 }
 
@@ -107,7 +101,7 @@ internal sealed class WrapperTestNode : IDisposable
             return AcceptTxResult.Accepted;
         });
         Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier);
-        Transport = new ProofWrapperTransport(Pool, Wrappers, LimboLogs.Instance, Time);
+        Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
     }
 
     public ManualTimeProvider Time { get; }
@@ -162,15 +156,13 @@ internal static class WrapperTestObjects
         return transaction;
     }
 
-    public static byte[] Envelope(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+    /// <summary>The transaction's pooled encoding, as a wrapper carries it.</summary>
+    public static byte[] Envelope(Transaction transaction) => MempoolWrapperDecoder.EncodeTransaction(transaction);
 
-    /// <summary>The transaction as a PooledTransactions item: a typed envelope wrapped as an RLP string.</summary>
-    public static byte[] PooledItem(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes;
-
-    /// <summary>A hash-only mode-1 wrapper over <paramref name="transactions"/> with an opaque proof.</summary>
+    /// <summary>A mode-1 wrapper over <paramref name="transactions"/> with an opaque proof.</summary>
     public static byte[] Wrapper(int proofBytes, params Transaction[] transactions) => Wrapper(proofBytes, proofBytes, transactions);
 
-    /// <summary>A hash-only mode-1 wrapper whose opaque proof is drawn from <paramref name="seed"/>, so wrappers of equal size
+    /// <summary>A mode-1 wrapper whose opaque proof is drawn from <paramref name="seed"/>, so wrappers of equal size
     /// over the same transactions differ.</summary>
     public static byte[] Wrapper(int proofBytes, int seed, params Transaction[] transactions)
     {
@@ -180,21 +172,21 @@ internal static class WrapperTestObjects
         new Random(seed).NextBytes(proof);
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. sorted.Select(t => new WrapperTransaction(t.Hash!))],
+            Transactions = sorted,
             Deps = deps,
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(proof, new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
         }).Bytes;
     }
 
-    /// <summary>A hash-only mode-0 wrapper over <paramref name="transactions"/> with one opaque witness per dependency.</summary>
+    /// <summary>A mode-0 wrapper over <paramref name="transactions"/> with one opaque witness per dependency.</summary>
     public static byte[] DirectWrapper(params Transaction[] transactions)
     {
         Transaction[] sorted = [.. transactions.OrderBy(t => t.Hash!.ToString())];
         List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. sorted.Select(t => new WrapperTransaction(t.Hash!))],
+            Transactions = sorted,
             Deps = deps,
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [.. deps.Select(static _ => new byte[] { 1 })]
@@ -202,4 +194,7 @@ internal static class WrapperTestObjects
     }
 
     public static WrapperAnnouncement Describe(byte[] wrapper) => WrapperAnnouncement.Create(wrapper);
+
+    /// <summary>A ProofWrappers entry pairing <paramref name="wrapper"/> with its canonical hash.</summary>
+    public static ProofWrapperEntry Entry(byte[] wrapper) => new(ValueKeccak.Compute(wrapper), wrapper);
 }

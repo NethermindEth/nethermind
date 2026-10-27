@@ -13,7 +13,6 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
 {
     /// <summary>Maximum retained wrapper size, bounded by the protocol ceiling.</summary>
     public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
-    public const int MaxWrapperTransactions = Eip8288Constants.MaxTxsPerWrapper;
     /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
     public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;
     /// <summary>Distinct witness records a sender may retain through pending transactions.</summary>

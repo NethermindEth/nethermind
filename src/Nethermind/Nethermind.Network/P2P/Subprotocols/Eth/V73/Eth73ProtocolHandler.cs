@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
@@ -22,15 +19,15 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
-using GetPooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 /// <summary>
-/// EIP-8437 <c>eth/73</c>: <c>eth/72</c> plus announcement and retrieval of EIP-8288 proof wrappers, with the envelopes they
-/// list recovered and served through GetPooledTransactions.
+/// EIP-8437 <c>eth/73</c>: <c>eth/72</c> plus announcement and retrieval of EIP-8288 proof wrappers, which carry their full
+/// transactions.
 /// </summary>
-/// <remarks>The protocol version and the message IDs <c>0x16</c> to <c>0x18</c> are provisional.</remarks>
+/// <remarks>The protocol version and the message IDs <c>0x16</c> to <c>0x18</c> are provisional. As on every <c>eth</c>
+/// version, dependency-bearing transactions never travel through the transaction messages.</remarks>
 public class Eth73ProtocolHandler(
     ISession session,
     IMessageSerializationService serializer,
@@ -76,11 +73,10 @@ public class Eth73ProtocolHandler(
             if (Volatile.Read(ref _disposed) != 0 && Volatile.Read(ref _wrapperPeer) is { } registered) wrapperTransport.Remove(registered);
             return handled;
         }
-        if (message.PacketType == Eth66MessageCode.PooledTransactions && TryHandleEnvelopes(message, size)) return true;
         if (!Eth73MessageCode.IsWrapperMessage(message.PacketType)) return base.HandleMessageCore(message);
         // A wrapper message before Status is a protocol violation, rejected like any other eth message before this is reached.
-        // While EIP-8288 is inactive there is no wrapper exchange; such messages establish nothing.
-        if (Volatile.Read(ref _wrapperPeer) is not { } peer)
+        // Until EIP-8288 is enabled for local mempool validation, wrapper messages are ignored without penalty (EIP-8437).
+        if (!wrapperTransport.IsEnabled || Volatile.Read(ref _wrapperPeer) is not { } peer)
         {
             ReportIn($"eth/73 wrapper message {message.PacketType} ignored without wrapper exchange", size);
             return true;
@@ -101,40 +97,6 @@ public class Eth73ProtocolHandler(
         return true;
     }
 
-    /// <summary>Hands a PooledTransactions response to an envelope-recovery request to the wrapper transport.</summary>
-    /// <returns>False for any other response, which the <c>eth/72</c> handling correlates with its own requests.</returns>
-    private bool TryHandleEnvelopes(ZeroPacket message, int size)
-    {
-        if (Volatile.Read(ref _wrapperPeer) is not { } peer || !Eth66RequestId.TryPeek(message.Content, out long requestId)
-            || !wrapperTransport.IsEnvelopeRequest(peer, requestId)) return false;
-        byte[] data = new byte[message.Content.ReadableBytes];
-        message.Content.ReadBytes(data);
-        (long id, byte[][] envelopes) = PooledEnvelopes.Decode(data);
-        wrapperTransport.OnPooledEnvelopes(peer, id, envelopes);
-        ReportIn($"eth/73 PooledTransactions with {envelopes.Length} recovered envelopes", size);
-        return true;
-    }
-
-    /// <summary>On <c>eth/73</c> a dependency-bearing envelope is served like any pooled transaction; below it, it is
-    /// unavailable.</summary>
-    protected override bool ServesDependencyBearingTransactions => true;
-
-    /// <summary>On <c>eth/73</c> pooled dependency-bearing transactions propagate through Transactions and
-    /// NewPooledTransactionHashes alongside their covering wrappers' announcements, under the existing fan-out.</summary>
-    protected override bool PropagatesDependencyBearingTransactions => true;
-
-    /// <summary>Retains a pushed dependency-bearing envelope for a covering wrapper; it is not admitted or relayed before
-    /// that wrapper is fully validated.</summary>
-    protected override void HandleDependencyBearingTransaction(Transaction tx)
-    {
-        if (Volatile.Read(ref _wrapperPeer) is { } peer) wrapperTransport.RetainEnvelope(peer, tx);
-    }
-
-    /// <summary>Serves from the pool, then from the wrapper-envelope cache, which keeps every envelope a held wrapper lists
-    /// after pool rejection or eviction.</summary>
-    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
-        => base.TryGetPooledTransactionToServe(hash, out tx) || wrapperTransport.TryGetEnvelope(hash, out tx);
-
     void IWrapperLink.Send(P2PMessage message)
     {
         if (Volatile.Read(ref _disposed) != 0 || Session.IsClosing)
@@ -148,26 +110,11 @@ public class Eth73ProtocolHandler(
             case NewProofWrapperHashesMessage announce: Send(announce); break;
             case GetProofWrappersMessage request: Send(request); break;
             case ProofWrappersMessage response: Send(response); break;
-            case GetPooledTransactionsMessage66 request: Send(request); break;
             default: throw new ArgumentException($"{message.GetType().Name} is not a wrapper message", nameof(message));
         }
     }
 
     void IWrapperLink.Penalize(string reason) => Disconnect(DisconnectReason.BreachOfProtocol, reason);
-
-    /// <summary>Counts an envelope pushed without a covering wrapper as an unaccepted transaction, lowering the peer's gossip
-    /// standing without disconnecting it.</summary>
-    void IWrapperLink.LowerScore(string reason)
-    {
-        if (Logger.IsDebug) Logger.Debug($"{Session} {reason}");
-        ReportUnacceptedTransaction(AcceptTxResult.MissingDependencyProof);
-    }
-
-    /// <summary>Checks a recovered envelope against the type and size this peer announced for it, taking the announcement as
-    /// a delivered PooledTransactions entry does.</summary>
-    bool IWrapperLink.MatchesAnnouncedShape(Transaction transaction) =>
-        transaction.Hash is not { } hash || !TryTakeTxShape(hash.ValueHash256, out (int Size, TxType Type) shape)
-        || transaction.Type == shape.Type && MatchesAnnouncedTransactionSize(transaction, shape.Size);
 
     protected override void OnDisposed()
     {

@@ -3,33 +3,22 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
-/// <summary>A wrapper transaction hash, with an optional locally resolved envelope. Only the hash is serialized.</summary>
-public readonly struct WrapperTransaction
-{
-    public Transaction? Full { get; }
-    public Hash256? Hash { get; }
-
-    public WrapperTransaction(Transaction full) => Full = full;
-    public WrapperTransaction(Hash256 hash) => Hash = hash;
-
-    public bool IsHashOnly => Full is null;
-}
-
 /// <summary>
-/// EIP-8288 mempool wrapper <c>[transactions, mode, content]</c>: bundles frame transactions with
-/// either their direct dependency proofs (mode 0) or a single recursive STARK over all of them
-/// (mode 1). Not a valid transaction; used to move pre-aggregated proofs between mempool actors.
+/// EIP-8288 mempool wrapper <c>[transactions, mode, content]</c>: full frame transactions with either their direct
+/// dependency proofs (mode 0) or a single recursive STARK over all of them (mode 1). Not a valid transaction; used to move
+/// transactions and their proofs between mempool actors.
 /// </summary>
 public sealed class MempoolWrapper
 {
     public const byte ModeDirect = 0;
     public const byte ModeRecursive = 1;
 
-    public required IReadOnlyList<WrapperTransaction> Transactions { get; init; }
+    /// <summary>Full EIP-8141 transactions in their pooled network form, in strictly ascending transaction-hash order.</summary>
+    /// <remarks>Each <see cref="Transaction.Hash"/> is the consensus hash, which excludes any blob network wrapper.</remarks>
+    public required IReadOnlyList<Transaction> Transactions { get; init; }
     public required byte Mode { get; init; }
 
     /// <summary>Sorted, deduplicated union of wrapped transaction dependencies.</summary>

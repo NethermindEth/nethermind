@@ -137,7 +137,7 @@ public class Eip8288BlockProductionTests
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [.. new[] { first, second }.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => new WrapperTransaction(tx))],
+            Transactions = [.. new[] { first, second }.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => tx)],
             Deps = Eip8288Dependencies.Canonicalize([firstDependency, secondDependency]),
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
@@ -640,7 +640,7 @@ public class Eip8288BlockProductionTests
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero]);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
-            Transactions = [new(transaction)],
+            Transactions = [transaction],
             Deps = [dependency],
             Mode = MempoolWrapper.ModeRecursive,
             RecursiveStark = new RecursiveStark(hash.ToByteArray(), new Hash256(hash))
@@ -1080,7 +1080,7 @@ public class Eip8288BlockProductionTests
     }
 
     private static async Task<Result<Hash256[]>> AcceptWrapper(ProofWrapperService service, byte[] wrapper, params Transaction[] transactions)
-        => (await service.AcceptDetailedAsync(wrapper, transactions.ToDictionary(static tx => tx.Hash!.ValueHash256))).Result;
+        => (await service.AcceptDetailedAsync(wrapper)).Result;
     private static Transaction CreatePlainTransaction(BasicTestBlockchain chain) =>
         Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(chain.SpecProvider.ChainId).WithNonce(0)
             .WithTo(TestItem.AddressA).WithValue(1).WithGasLimit(100_000).WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1.GWei)
@@ -1088,7 +1088,7 @@ public class Eip8288BlockProductionTests
 
     private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
     {
-        Transactions = [.. transactions.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => new WrapperTransaction(tx))],
+        Transactions = [.. transactions.OrderBy(static tx => tx.Hash!.ToString()).Select(static tx => tx)],
         Deps = [dependency],
         Mode = MempoolWrapper.ModeDirect,
         Proofs = [[1]]

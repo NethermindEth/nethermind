@@ -80,8 +80,6 @@ public class NativeProofWrapperTransportTests
         Route<NewProofWrapperHashesMessage>(context);
         Route<GetProofWrappersMessage>(context);
         Route<ProofWrappersMessage>(context);
-        Route<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(context);
-        Route<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>(context);
         return context;
     }
 
@@ -143,7 +141,7 @@ public class NativeProofWrapperTransportTests
     {
         using Context context = await Create();
         Init(context);
-        WireMessage request = Encode(context, new GetProofWrappersMessage(1, [TestItem.KeccakA.ValueHash256]));
+        WireMessage request = Encode(context, new GetProofWrappersMessage(1, true, [TestItem.KeccakA.ValueHash256]));
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<SubprotocolException>(() => Receive(context, request));

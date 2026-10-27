@@ -8,12 +8,15 @@ namespace Nethermind.Consensus.ProofAggregation;
 
 public enum ProofWrapperAcceptanceStatus
 {
+    /// <summary>A proof or dependency-rule failure: EIP-8437 discards the wrapper without penalizing its sender.</summary>
     Invalid,
+    /// <summary>A malformed or noncanonical encoding, including fork-independent count, length and ordering violations.</summary>
+    Malformed,
     Accepted,
     PoolRejected,
     Busy,
     LocalFailure,
-    /// <summary>Within EIP-8288's limits but beyond what the local verifier can check: refused locally, never invalid.</summary>
+    /// <summary>A wrapper this client does not support, such as one carrying blobs: refused locally, never invalid.</summary>
     Refused
 }
 
@@ -22,6 +25,7 @@ public readonly record struct ProofWrapperAcceptance(ProofWrapperAcceptanceStatu
 {
     public bool HasValidProof => Status is ProofWrapperAcceptanceStatus.Accepted or ProofWrapperAcceptanceStatus.PoolRejected;
     public static ProofWrapperAcceptance Invalid(string error) => new(ProofWrapperAcceptanceStatus.Invalid, Result<Hash256[]>.Fail(error));
+    public static ProofWrapperAcceptance Malformed(string error) => new(ProofWrapperAcceptanceStatus.Malformed, Result<Hash256[]>.Fail(error));
     public static ProofWrapperAcceptance LocalFailure(string error) => new(ProofWrapperAcceptanceStatus.LocalFailure, Result<Hash256[]>.Fail(error));
     public static ProofWrapperAcceptance Refused(string error) => new(ProofWrapperAcceptanceStatus.Refused, Result<Hash256[]>.Fail(error));
 }
