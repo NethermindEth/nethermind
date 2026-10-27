@@ -152,7 +152,11 @@ public class Snapshot : RefCountingDisposable
     /// </remarks>
     internal void BuildFilters()
     {
-        if (!_isSorted) Volatile.Write(ref _filters, new SnapshotContentFilters(_mutable!, Counts));
+        if (_isSorted) return;
+
+        SnapshotContentFilters filters = _mutable!.Filters;
+        filters.Build(_mutable, Counts);
+        Volatile.Write(ref _filters, filters);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -198,6 +202,10 @@ public sealed class SnapshotContent : IDisposable, IResettable
     /// unchanged values and evict them from the carry-forward cache.
     /// </remarks>
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> ReadAccounts = new();
+
+    /// <summary>Filters a <see cref="Snapshot"/> of this content builds; kept across resets so their arrays are reused.</summary>
+    /// <remarks>Rebuilt in place, which is safe for the same reason <see cref="Reset"/> is: no reader holds the previous snapshot.</remarks>
+    internal readonly SnapshotContentFilters Filters = new();
 
     public void Reset()
     {
