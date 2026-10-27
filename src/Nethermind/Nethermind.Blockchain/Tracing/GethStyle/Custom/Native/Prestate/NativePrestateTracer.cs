@@ -24,6 +24,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     public UInt256 InstructionMask { get; }
 
+    /// <inheritdoc/>
+    /// <remarks>The prestate reads operands from the stack snapshot of the instructions in <see cref="InstructionMask"/>.</remarks>
+    public override bool IsTracingStackPushes => false;
+
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
     private static readonly EthereumEcdsa AuthorityRecovery = new(0);
 

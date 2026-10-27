@@ -10,8 +10,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -1290,16 +1292,21 @@ public partial class DebugRpcModuleTests
             foreach (bool streaming in values)
                 foreach (bool parentAvailable in values)
                 {
-                    yield return new TestCaseData(method, streaming, parentAvailable, "");
+                    yield return new TestCaseData(method, streaming, parentAvailable, true, false, "");
+                    if (method == "debug_traceBlockByNumber")
+                    {
+                        yield return new TestCaseData(method, streaming, parentAvailable, false, false, "");
+                        yield return new TestCaseData(method, streaming, parentAvailable, true, true, "");
+                    }
                     if (usesRlp)
                         foreach (string suffix in suffixes)
-                            yield return new TestCaseData(method, streaming, parentAvailable, suffix);
+                            yield return new TestCaseData(method, streaming, parentAvailable, true, false, suffix);
                 }
     }
 
     [TestCaseSource(nameof(ReplayAvailabilityCases))]
     public async Task Debug_traceBlock_checks_replay_parent_state(
-        string method, bool streaming, bool parentAvailable, string suffix)
+        string method, bool streaming, bool parentAvailable, bool bodyAvailable, bool cachedOnly, string suffix)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
@@ -1328,6 +1335,18 @@ public partial class DebugRpcModuleTests
             Assert.That(chain.StateReader.HasStateForBlock(parent), Is.EqualTo(parentAvailable));
             Assert.That(chain.StateReader.HasStateForBlock(unprocessed.Header), Is.EqualTo(!parentAvailable));
         }
+        if (!bodyAvailable || cachedOnly)
+        {
+            chain.BlockTree.DeleteOldBlock(unprocessed.Number, unprocessed.Hash!);
+            if (cachedOnly) chain.Container.Resolve<IBlockStore>().Cache(unprocessed);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chain.BlockTree.HasBlock(unprocessed.Number, unprocessed.Hash!), Is.False);
+                Assert.That(chain.BlockTree.FindBlock(unprocessed.Hash!, BlockTreeLookupOptions.None), cachedOnly ? Is.Not.Null : Is.Null);
+                Assert.That(chain.BlockTree.FindHeader(unprocessed.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(chain.BlockTree.FindHash(unprocessed.Number), Is.EqualTo(unprocessed.Hash));
+            }
+        }
         object selector = method switch
         {
             "debug_traceBlockByHash" => unprocessed.Hash!,
@@ -1342,6 +1361,16 @@ public partial class DebugRpcModuleTests
         };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameters);
         JToken actual = JToken.Parse(response);
+        if (!bodyAvailable)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual["result"], Is.Null, response);
+                Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo($"block #{unprocessed.Number} not found"));
+            }
+            return;
+        }
         if (method == "debug_traceBlock" && suffix.Length != 0)
         {
             using (Assert.EnterMultipleScope())

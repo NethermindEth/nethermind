@@ -165,9 +165,7 @@ public class GethStyleTracer(
         if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
         options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
         if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
-        IReleaseSpec overrideSpec = callSpec.WithoutEip158();
-        state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
-        state.Commit(overrideSpec);
+        state.ApplyStateOverrides(codeInfoRepository, options.StateOverrides, callSpec, tracedBlock.Header.Number, merkleize: false);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
             // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
@@ -367,7 +365,7 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(txHash);
 
         // For a synthetic tx trace (`debug_traceCall`), the base block must be the block itself rather than
-        // its parent, so that state overrides applied in `BuildAndOverride` bind to the correct state root.
+        // its parent, so that the call runs on the block's post-state.
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
@@ -375,8 +373,9 @@ public class GethStyleTracer(
 
         // The scope is opened before the block override lands on the header: the parent lookup keys on the
         // header's number, and an overridden number (zero included) would resolve the wrong state, or none.
+        // A synthetic call applies its state overrides when it starts, without merkleizing them, as an indexed call does.
         using Scope<BlockProcessingComponents> scope = useBlockAsBase
-            ? blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides, blockOverride: options.BlockOverrides)
+            ? blockProcessingEnv.BuildAndOverride(block.Header, stateOverride: null, blockOverride: options.BlockOverrides)
             : blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         if (!useBlockAsBase)
@@ -402,7 +401,8 @@ public class GethStyleTracer(
         }
 
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
-        long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        long destroyRefund = (long)spec.GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
@@ -410,10 +410,20 @@ public class GethStyleTracer(
 
         try
         {
+            IBlockTracer traced = GethLikeBlockDeadlineTracer.WithCancellation(tracer, cancellationToken);
+            CallAtIndexBlockTracer? overridesTracer = null;
+            if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
+            {
+                IWorldState state = scope.Component.WorldState;
+                traced = overridesTracer = new CallAtIndexBlockTracer(traced, block.Header, block.Transactions[0],
+                    _ => state.ApplyStateOverrides(codeInfoRepository, stateOverrides, spec, block.Number, merkleize: false));
+            }
+
             // A seed skips the prefix, whose logs a traced prefix is there to count.
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                GethLikeBlockDeadlineTracer.WithCancellation(tracer, cancellationToken), txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
+                traced, txHash, !useBlockAsBase && unaltered && !tracePreceding ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
+            if (overridesTracer is { IsPrepared: false }) throw new InvalidOperationException($"The state overrides of the call in block {block.Number} were not applied.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
         catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
