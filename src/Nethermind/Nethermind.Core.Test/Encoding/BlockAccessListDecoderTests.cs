@@ -255,8 +255,19 @@ public class BlockAccessListDecoderTests
                 .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
     }
 
+    [Test]
+    public void Decode_account_changes_rejects_change_count_above_max_txs([Range(2, 4)] int balanceNonceOrCodeField)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, balanceNonceOrCodeField, Eip7928Constants.MaxTxs + 1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpLimitException>()
+                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+    }
+
     /// <summary>
-    /// One sender of 65,536 transactions has a balance, nonce and storage change at every index up to the post-execution one,
+    /// One sender of 65,536 transactions has a balance, nonce, storage and code change at every index up to the post-execution one,
     /// beyond the uint16 range of the old index.
     /// </summary>
     [Test]
@@ -266,12 +277,14 @@ public class BlockAccessListDecoderTests
         BalanceChange[] balanceChanges = new BalanceChange[changeCount];
         NonceChange[] nonceChanges = new NonceChange[changeCount];
         StorageChange[] storageChanges = new StorageChange[changeCount];
+        CodeChange[] codeChanges = new CodeChange[changeCount];
         for (int i = 0; i < changeCount; i++)
         {
             uint index = (uint)i + 1;
             balanceChanges[i] = new BalanceChange(index, index);
             nonceChanges[i] = new NonceChange(index, index);
             storageChanges[i] = new StorageChange(index, index);
+            codeChanges[i] = new CodeChange(index, [0xab]);
         }
 
         ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
@@ -279,6 +292,7 @@ public class BlockAccessListDecoderTests
             .WithStorageChanges(1, storageChanges)
             .WithBalanceChanges(balanceChanges)
             .WithNonceChanges(nonceChanges)
+            .WithCodeChanges(codeChanges)
             .TestObject;
 
         byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
@@ -324,7 +338,7 @@ public class BlockAccessListDecoderTests
     [TestCase(4, TestName = "code_changes")]
     public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
     {
-        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, malformedFieldIndex);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
@@ -791,10 +805,11 @@ public class BlockAccessListDecoderTests
         return bytes;
     }
 
-    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    private static byte[] EncodeAccountChangesWithEmptyListElements(Address address, int malformedFieldIndex, int elementCount = 1)
     {
         const int fieldCount = 5;
-        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+        int malformedFieldContentLength = elementCount * Rlp.OfEmptyList.Length;
+        int malformedFieldLength = Rlp.LengthOfSequence(malformedFieldContentLength);
 
         int contentLength = Rlp.LengthOfAddressRlp;
         for (int i = 0; i < fieldCount; i++)
@@ -810,8 +825,11 @@ public class BlockAccessListDecoderTests
         {
             if (i == malformedFieldIndex)
             {
-                writer.StartSequence(Rlp.OfEmptyList.Length);
-                writer.Encode(Rlp.OfEmptyList);
+                writer.StartSequence(malformedFieldContentLength);
+                for (int j = 0; j < elementCount; j++)
+                {
+                    writer.Encode(Rlp.OfEmptyList);
+                }
             }
             else
             {
