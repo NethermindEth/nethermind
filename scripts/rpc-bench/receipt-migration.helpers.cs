@@ -42,8 +42,31 @@ internal static partial class ReceiptMigrationGate
         }
     }
 
-    internal static async Task<(bool Running, string Logs)> SnapshotAsync(string container, CancellationToken cancellationToken)
+    internal static async Task CheckSpaceAsync(string path, long minimumBytes, CancellationToken cancellationToken)
     {
+        using var probe = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        probe.CancelAfter(TimeSpan.FromSeconds(30));
+        (int Code, string Output, string Error) disk;
+        try { disk = await BenchmarkProcess.RunAsync("df", ["-B1", "--output=avail", path], probe.Token); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("cannot establish available disk space before probe timeout at " + path);
+        }
+        var value = disk.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+        if (disk.Code != 0 || !long.TryParse(value, out var available)) throw new IOException("cannot establish available disk space at " + path);
+        BenchmarkProcess.Log($"Migration disk guard: {path}, available={available} bytes, reserve={minimumBytes} bytes");
+        if (available < minimumBytes) throw new IOException($"unsafe migration disk pressure at {path}: {available} bytes available, {minimumBytes} required");
+    }
+
+    internal static async Task CheckSpaceAsync(string scratch, CancellationToken cancellationToken)
+    {
+        await CheckSpaceAsync(scratch, 128L * 1024 * 1024 * 1024, cancellationToken);
+        await CheckSpaceAsync("/", 2L * 1024 * 1024 * 1024, cancellationToken);
+    }
+
+    internal static async Task<(bool Running, string Logs)> SnapshotAsync(string container, string scratch, CancellationToken cancellationToken)
+    {
+        await CheckSpaceAsync(scratch, cancellationToken);
         var running = await BenchmarkProcess.RunAsync("docker", ["inspect", "--format", "{{.State.Running}}", container], cancellationToken);
         var logs = await BenchmarkProcess.RunAsync("docker", ["logs", container], cancellationToken);
         if (running.Code != 0 || logs.Code != 0) throw new IOException("cannot inspect receipt migration readiness");

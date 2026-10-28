@@ -119,7 +119,10 @@ log both `Adding transaction hashes to stored receipts, blocks ...` and the
 subsequent positive `Transaction hashes added to stored receipts of ... blocks,
 ... bytes added.` before any warmup or timed requests. Migration failure, node
 exit, an unreadable probe, cancellation, or timeout aborts timing; teardown and
-snapshot verification still run. Raw readiness logs are kept under the arm's
+snapshot verification still run. Before node startup and at every readiness
+probe, disk checks require at least 128 GiB free on scratch and 2 GiB on `/`;
+unobservable or unsafe free space fails closed. Actual preflight `df` output is
+saved as `migration-disk-preflight.txt`. Raw readiness logs are kept under the arm's
 state directory as `receipt-migration.log`. A completed/resumed dataset that
 emits no fresh-pass marker deliberately does not qualify through this gate.
 

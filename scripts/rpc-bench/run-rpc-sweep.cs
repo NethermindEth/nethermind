@@ -242,6 +242,14 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         if (pull.Code != 0) Console.WriteLine($"pull failed — assuming {arm.Image} is local");
         var state = Path.Combine(Get("STATE_ROOT"), label);
         Directory.CreateDirectory(state);
+        if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
+        {
+            using var preflight = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            preflight.CancelAfter(TimeSpan.FromSeconds(30));
+            var disk = await BenchmarkProcess.RunAsync("df", ["-B1", Get("SCRATCH_ROOT"), "/"], preflight.Token);
+            await File.WriteAllTextAsync(Path.Combine(state, "migration-disk-preflight.txt"), disk.Output + disk.Error, cancellationToken);
+            await ReceiptMigrationGate.CheckSpaceAsync(Get("SCRATCH_ROOT"), cancellationToken);
+        }
         var container = $"rpcbench-sweep-{label}-{BenchmarkProcess.EnvironmentValue("GITHUB_RUN_ID", "local")}";
         Console.WriteLine($"::group::sweep {label} (type={arm.Client}, image={arm.Image}, isolation={configuration.Isolation(arm.Client)})");
         var environment = new Dictionary<string, string>
@@ -266,7 +274,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             if (Get("NODE_IO_DIAGNOSTICS") == "true")
                 await NodeIoDiagnostics.CaptureAsync(container, Path.Combine(state, "io-security.txt"), cancellationToken);
             if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
-                await ReceiptMigrationGate.WaitAsync(token => ReceiptMigrationGate.SnapshotAsync(container, token),
+                await ReceiptMigrationGate.WaitAsync(token => ReceiptMigrationGate.SnapshotAsync(container, Get("SCRATCH_ROOT"), token),
                     Path.Combine(state, "receipt-migration.log"), TimeSpan.FromSeconds(configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT")), cancellationToken);
             if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0 || Get("NODE_IO_DIAGNOSTICS") == "true")
                 await NodeIoDiagnostics.CaptureIdentityAsync(Rpc, arm.Image, flags, Path.Combine(state, "runtime-identity.json"), cancellationToken);

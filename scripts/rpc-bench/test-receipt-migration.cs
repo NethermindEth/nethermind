@@ -58,4 +58,23 @@ tests.Case("probe errors fail closed", () =>
     catch (IOException exception) when (exception.Message == "probe unavailable") { return; }
     throw new InvalidOperationException("probe error swallowed");
 });
+if (OperatingSystem.IsLinux())
+{
+    var originalPath = Environment.GetEnvironmentVariable("PATH");
+    var disk = Path.Combine(tests.DirectoryPath, "df");
+    try
+    {
+        Environment.SetEnvironmentVariable("PATH", tests.DirectoryPath + Path.PathSeparator + originalPath);
+        foreach (var (value, exit, expected) in new[] { ("2048", 0, ""), ("512", 0, "unsafe migration disk pressure"), ("unknown", 0, "cannot establish"), ("2048", 1, "cannot establish") })
+            tests.Case("disk reserve probe " + value + " " + exit, () =>
+            {
+                File.WriteAllText(disk, $"#!/bin/sh\nprintf 'Avail\\n{value}\\n'\nexit {exit}\n");
+                File.SetUnixFileMode(disk, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                try { ReceiptMigrationGate.CheckSpaceAsync(tests.DirectoryPath, 1024, CancellationToken.None).GetAwaiter().GetResult(); }
+                catch (IOException exception) when (expected.Length > 0 && exception.Message.Contains(expected, StringComparison.Ordinal)) { return; }
+                RpcScriptTests.Assert(expected.Length == 0, "unsafe or unobservable disk accepted");
+            });
+    }
+    finally { Environment.SetEnvironmentVariable("PATH", originalPath); }
+}
 tests.Complete();
