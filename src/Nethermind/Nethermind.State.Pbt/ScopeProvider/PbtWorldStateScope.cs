@@ -32,6 +32,15 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private static readonly IMetricLabels _balStorageLabel = new PbtBalPrefetchLabel("bal", "storage");
     private static readonly IMetricLabels _nodeGroupStateLabel = new PbtBalPrefetchLabel("node_group", "state");
     private static readonly IMetricLabels _nodeGroupStorageLabel = new PbtBalPrefetchLabel("node_group", "storage");
+    private static readonly PbtBalPrefetchSkipLabel _balStateCancelledSkip = new("bal", "state", "cancelled");
+    private static readonly PbtBalPrefetchSkipLabel _balStorageCancelledSkip = new("bal", "storage", "cancelled");
+    private static readonly PbtBalPrefetchSkipLabel _balStorageNoWriteSkip = new("bal", "storage", "no_write");
+    private static readonly PbtBalPrefetchSkipLabel _balStorageBufferedRunSkip = new("bal", "storage", "buffered_run");
+    private static readonly PbtBalPrefetchSkipLabel _nodeGroupStateCancelledSkip = new("node_group", "state", "cancelled");
+    private static readonly PbtBalPrefetchSkipLabel _nodeGroupStateNoWriteSkip = new("node_group", "state", "no_write");
+    private static readonly PbtBalPrefetchSkipLabel _nodeGroupStateSharedGroupSkip = new("node_group", "state", "shared_group");
+    private static readonly PbtBalPrefetchSkipLabel _nodeGroupStorageCancelledSkip = new("node_group", "storage", "cancelled");
+    private static readonly PbtBalPrefetchSkipLabel _nodeGroupStorageSharedGroupSkip = new("node_group", "storage", "shared_group");
 
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
@@ -142,7 +151,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         ParallelUnbalancedWork.For(0, keys.Accounts.Count, (bundle, keys, sink, reads), static (position, state) =>
         {
-            if (state.reads.IsCancellationRequested) return state;
+            if (state.reads.IsCancellationRequested)
+            {
+                RecordSkips(_balStateCancelledSkip, 1);
+                return state;
+            }
             int index = (int)state.keys.Accounts[position].Value.ToUInt256().u0;
             ReadOnlyAccountChanges accountChanges = state.keys.Bal.AccountChanges.AsSpan()[index];
             long start = Stopwatch.GetTimestamp();
@@ -164,22 +177,36 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ParallelUnbalancedWork.For(0, (slots.Count + SlotChunkLength - 1) / SlotChunkLength, (bundle, keys, slots, sink, reads), static (chunk, state) =>
         {
             TKey? bufferedRun = null;
-            for (int position = chunk * SlotChunkLength; position < Math.Min(state.slots.Count, (chunk + 1) * SlotChunkLength); position++)
+            int end = Math.Min(state.slots.Count, (chunk + 1) * SlotChunkLength);
+            long writesNothing = 0;
+            long inBufferedRun = 0;
+            int position = chunk * SlotChunkLength;
+            for (; position < end && !state.reads.IsCancellationRequested; position++)
             {
-                if (state.reads.IsCancellationRequested) return state;
                 TKey key = state.slots[position].Key;
                 ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(key);
-                if (state.keys.WritesNothing(addressHash, out int index)) continue;
+                if (state.keys.WritesNothing(addressHash, out int index))
+                {
+                    writesNothing++;
+                    continue;
+                }
                 TKey run = SlotRun.RunKey(key);
                 if (!state.keys.Missing[index] && ReadSlotToSink(state.bundle, state.sink, state.keys.Bal.AccountChanges.AsSpan()[index].Address, addressHash, key, state.slots[position].Value))
                 {
                     bufferedRun = run;
                     continue;
                 }
-                if (bufferedRun is { } previous && previous.Equals(run)) continue;
+                if (bufferedRun is { } previous && previous.Equals(run))
+                {
+                    inBufferedRun++;
+                    continue;
+                }
                 ReadSlot(state.bundle, key, addressHash);
                 bufferedRun = run;
             }
+            RecordSkips(_balStorageNoWriteSkip, writesNothing);
+            RecordSkips(_balStorageBufferedRunSkip, inBufferedRun);
+            RecordSkips(_balStorageCancelledSkip, end - position);
             return state;
         });
 
@@ -187,7 +214,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey> =>
         ParallelUnbalancedWork.For(0, slots.Count, (bundle, keys, slots, sink, reads), static (position, state) =>
         {
-            if (state.reads.IsCancellationRequested) return state;
+            if (state.reads.IsCancellationRequested)
+            {
+                RecordSkips(_balStorageCancelledSkip, 1);
+                return state;
+            }
             TKey key = state.slots[position].Key;
             ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(key);
             int index = state.keys.AccountIndex(addressHash);
@@ -207,21 +238,32 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private static void PrefetchNodeGroups(PbtSnapshotBundle bundle, BalKeys keys, CancellationToken cancellation)
     {
         HashSet<PbtStorageNodePath> accountGroups = [];
+        long writesNothing = 0;
+        long sharedGroups = 0;
         foreach (PbtWriteOperation<PbtPath> account in keys.Accounts)
         {
             PbtPath key = account.Key;
-            if (keys.Bal.AccountChanges.AsSpan()[(int)account.Value.ToUInt256().u0].HasBalanceNonceOrCodeChanges) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+            if (!keys.Bal.AccountChanges.AsSpan()[(int)account.Value.ToUInt256().u0].HasBalanceNonceOrCodeChanges) writesNothing++;
+            else if (!accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth))) sharedGroups++;
         }
         foreach (PbtWriteOperation<PbtPath> slot in keys.HeaderWrites)
         {
             PbtPath key = slot.Key;
-            if (!keys.WritesNothing(Eip8297KeyDerivation.AddressHashOf(key), out _)) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+            if (keys.WritesNothing(Eip8297KeyDerivation.AddressHashOf(key), out _)) writesNothing++;
+            else if (!accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth))) sharedGroups++;
         }
+        RecordSkips(_nodeGroupStateNoWriteSkip, writesNothing);
+        RecordSkips(_nodeGroupStateSharedGroupSkip, sharedGroups);
         PbtStorageNodePath[] accountGroupPaths = [.. accountGroups];
         using ArrayPoolList<Range> storageAccounts = keys.StorageAccounts();
         ParallelUnbalancedWork.For(0, accountGroupPaths.Length + storageAccounts.Count, (bundle, keys, accountGroupPaths, storageAccounts, cancellation), static (item, state) =>
         {
-            if (state.cancellation.IsCancellationRequested) return state;
+            if (state.cancellation.IsCancellationRequested)
+            {
+                if (item < state.accountGroupPaths.Length) RecordSkips(_nodeGroupStateCancelledSkip, 1);
+                else RecordSkips(_nodeGroupStorageCancelledSkip, state.storageAccounts[item - state.accountGroupPaths.Length].GetOffsetAndLength(state.keys.StorageWrites.Count).Length);
+                return state;
+            }
             if (item < state.accountGroupPaths.Length) WarmUp(state.bundle, state.accountGroupPaths[item], [], _nodeGroupStateLabel);
             else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountGroupPaths.Length]], state.cancellation);
             return state;
@@ -236,6 +278,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
         WarmUp(bundle, GroupOf(previous.Bytes, StorageGroupDepth), descendantBytes, _nodeGroupStorageLabel);
 
+        long sharedGroups = 0;
         for (int position = 0; position < slots.Length; position++)
         {
             PbtStoragePath key = slots[position].Key;
@@ -246,11 +289,26 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             for (int level = 1; level <= levels; level++)
             {
                 int depth = StorageGroupDepth + level * PbtThreeLevelGroupGeometry.LevelsPerGroup;
-                if (depth <= sharedBits) continue;
-                if (cancellation.IsCancellationRequested) return;
+                if (depth <= sharedBits)
+                {
+                    sharedGroups++;
+                    continue;
+                }
+                if (cancellation.IsCancellationRequested)
+                {
+                    RecordSkips(_nodeGroupStorageSharedGroupSkip, sharedGroups);
+                    RecordSkips(_nodeGroupStorageCancelledSkip, slots.Length - position);
+                    return;
+                }
                 WarmUp(bundle, GroupOf(key.Bytes, depth), [], _nodeGroupStorageLabel);
             }
         }
+        RecordSkips(_nodeGroupStorageSharedGroupSkip, sharedGroups);
+    }
+
+    private static void RecordSkips(PbtBalPrefetchSkipLabel reason, long count)
+    {
+        if (count > 0) Metrics.PbtBalPrefetchSkips.AddBy(reason, count);
     }
 
     /// <summary>The path of the group at <paramref name="depth"/> above the leaf at <paramref name="key"/>.</summary>

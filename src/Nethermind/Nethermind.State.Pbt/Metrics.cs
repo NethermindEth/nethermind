@@ -48,6 +48,15 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["phase", "tree"])]
     public static IMetricObserver PbtBalPrefetchKeyTime { get; set; } = new NoopMetricObserver();
 
+    /// <remarks>
+    /// Counts accounts and slots in the <c>bal</c> phase. In the <c>node_group</c> phase, <c>state</c> counts account groups
+    /// (accounts and header slots for <c>no_write</c>) and <c>storage</c> counts groups, except <c>cancelled</c>, which counts the slots left.
+    /// </remarks>
+    [CounterMetric]
+    [Description("Reads the pbt HintBal prefetch skipped, by phase (bal, node_group), tree (state, storage) and reason: cancelled (the prefetch stopped first), no_write (the block access list writes nothing there), buffered_run (the slot run was read already), shared_group (another key read the node group)")]
+    [KeyIsLabel("phase", "tree", "reason")]
+    public static ConcurrentDictionary<PbtBalPrefetchSkipLabel, long> PbtBalPrefetchSkips { get; } = new();
+
     [DetailedMetric]
     [Description("Time preparing pbt leaf changes in the world state scope (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
@@ -271,10 +280,17 @@ public static class Metrics
 }
 
 /// <summary>Metric labels identifying a PBT HintBal prefetch phase and the tree its key belongs to.</summary>
-public readonly record struct PbtBalPrefetchLabel(string Phase, string Tree) : IMetricLabels
+public sealed class PbtBalPrefetchLabel(string phase, string tree) : IStableMetricLabels
 {
     /// <inheritdoc/>
-    public string[] Labels => [Phase, Tree];
+    public string[] Labels { get; } = [phase, tree];
+}
+
+/// <summary>Metric labels identifying a PBT HintBal prefetch phase, the tree its key belongs to and why a read was skipped.</summary>
+public sealed class PbtBalPrefetchSkipLabel(string phase, string tree, string reason) : IMetricLabels
+{
+    /// <inheritdoc/>
+    public string[] Labels { get; } = [phase, tree, reason];
 }
 
 /// <summary>Metric labels identifying a PBT partition and whether a node-group read found a group.</summary>
