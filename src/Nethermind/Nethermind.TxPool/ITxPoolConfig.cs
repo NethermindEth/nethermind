@@ -83,7 +83,7 @@ public interface ITxPoolConfig : IConfig
     ulong FrameTxWidthCap { get; set; }
 
     [ConfigItem(DefaultValue = "524288",
-        Description = "The max number of cached hashes of already known transactions. Set automatically by the memory hint.")]
+        Description = "The max number of cached hashes of already known transactions.")]
     int HashCacheSize { get; set; }
 
     [ConfigItem(DefaultValue = "null",

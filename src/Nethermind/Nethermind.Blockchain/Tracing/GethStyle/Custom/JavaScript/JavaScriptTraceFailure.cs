@@ -9,7 +9,10 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 internal sealed class JavaScriptTraceFailure(Exception inner, string? message = null) : Exception(message ?? inner.Message, inner)
 {
-    internal static bool IsInputFailure(Exception exception, JavaScriptInputException expected)
+    internal static bool IsInputFailure(Exception exception, JavaScriptInputException expected) =>
+        IsInterruption(exception, expected);
+
+    internal static bool IsInterruption(Exception exception, JavaScriptInputException? expected = null)
     {
         while (true)
         {

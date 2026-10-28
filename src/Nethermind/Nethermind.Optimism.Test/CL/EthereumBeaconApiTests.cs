@@ -18,7 +18,10 @@ public class EthereumBeaconApiTests
         EthereumBeaconApi.GetBlobSidecarsResponse response = new EthereumJsonSerializer().Deserialize<EthereumBeaconApi.GetBlobSidecarsResponse>(json)!;
 
         Assert.That(response.Data, Has.Length.EqualTo(1));
-        Assert.That(response.Data[0].Blob, Is.EqualTo(new byte[] { 1, 2 }));
-        Assert.That(response.Data[0].KzgCommitment, Is.EqualTo(new byte[] { 3, 4 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data[0].Blob, Is.EqualTo(new byte[] { 1, 2 }));
+            Assert.That(response.Data[0].KzgCommitment, Is.EqualTo(new byte[] { 3, 4 }));
+        }
     }
 }

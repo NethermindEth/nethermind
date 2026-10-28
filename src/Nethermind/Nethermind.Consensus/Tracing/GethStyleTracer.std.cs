@@ -460,7 +460,11 @@ public class GethStyleTracer(
 
         // As in geth, a block trace reports a JavaScript tracer's error on the failing transaction's entry, while a
         // single-transaction trace fails the call. Unlike geth, this also covers a JavaScript child of muxTracer.
-        if (options.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+        options = options with
+        {
+            CaptureJavaScriptErrors = options.CaptureJavaScriptErrors || options.Tracer is { Length: > 0 },
+            ExecutionCancellationToken = cancellationToken
+        };
 
         // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
         // block and keeps one result, and the seeded single-transaction path produces the same result without the

@@ -39,7 +39,7 @@ jobs:
       BENCHMARK_PROJECT: src/Nethermind/Nethermind.Evm.Benchmark/Nethermind.Evm.Benchmark.csproj
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
       - name: Set artifact directory
@@ -94,7 +94,7 @@ jobs:
           } 2>&1 | tee "$ARTIFACTS/run.log"
           expected_cases=12
           if [[ "$MODE" == fixture ]]; then expected_cases=2; fi
-          DOTNET_TieredCompilation= dotnet run --file scripts/CheckBalCatchupResults.cs -- "$ARTIFACTS" "$expected_cases"
+          DOTNET_TieredCompilation= dotnet run --file scripts/check-bal-catchup-results.cs -- "$ARTIFACTS" "$expected_cases"
       - name: Publish summary
         if: always()
         shell: bash

@@ -90,6 +90,57 @@ public class DebugModuleTests
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
     [Test]
+    public void DebugTraceBlockByHash_missing_header_preserves_temporary_status([Values] bool temporary)
+    {
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = CreateModule().debug_traceBlockByHash(TestItem.KeccakA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo($"block {TestItem.KeccakA} not found"));
+            Assert.That(result.IsTemporary, Is.EqualTo(temporary));
+        }
+    }
+
+    [Test]
+    public void DebugTraceBlock_streamed_missing_body_message_is_route_scoped([Values] bool byHash)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(new Block(header));
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(new Block(header));
+        _blockFinder.FindBlock(header.Hash!, header.Number).ReturnsNull();
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        GethTraceOptions options = new() { StreamMode = true };
+        DebugRpcModule module = CreateModule();
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = byHash
+            ? module.debug_traceBlockByHash(header.Hash!, options)
+            : module.debug_traceBlockByNumber(new BlockParameter(header.Hash!), options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo(byHash
+                ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
+        }
+        if (byHash)
+            _blockFinder.Received(1).FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+        _blockFinder.Received(1).FindBlock(header.Hash!, header.Number);
+    }
+
+    [Test]
+    public void DebugTraceBlockByHash_preserves_lookup_exception()
+    {
+        InvalidOperationException failure = new("lookup unavailable");
+        _blockFinder.FindHeader(TestItem.KeccakA).Returns(_ => throw failure);
+        Assert.That(Assert.Throws<InvalidOperationException>(() => CreateModule().debug_traceBlockByHash(TestItem.KeccakA)), Is.SameAs(failure));
+    }
+
+    [Test]
     public void DebugTraceBlockByNumber_DoesNotMapHostFormatFailureToInvalidInput()
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
@@ -353,7 +404,9 @@ public class DebugModuleTests
         // timeout CTS has been disposed). The second bundle throws unconditionally, so the
         // call only succeeds if the result is a deferred sequence and we stop after the first.
         using IEnumerator<IEnumerable<GethLikeTxTrace>> outer = result.Data.GetEnumerator();
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(outer.MoveNext(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(outer.Current.Count(), Is.EqualTo(1));
     }
 
@@ -439,9 +492,12 @@ public class DebugModuleTests
             }
         );
 
-        Assert.That(debugTraceCall.Result, Is.EqualTo(expected.Result));
-        Assert.That(debugTraceCall.ErrorCode, Is.EqualTo(expected.ErrorCode));
-        Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(debugTraceCall.Result, Is.EqualTo(expected.Result));
+            Assert.That(debugTraceCall.ErrorCode, Is.EqualTo(expected.ErrorCode));
+            Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
+        }
     }
 
     [TestCase(null, false, false)]
@@ -520,6 +576,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(new BlockParameter(block.Number)).Returns(block.Header);
         _blockFinder.LowestServedBlock.Returns(historyPruned ? block.Number + 1 : 0UL);
         _blockFinder.HasBlock(block.Number, block.Hash!).Returns(!cachedOnly);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
         _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
@@ -534,6 +591,8 @@ public class DebugModuleTests
         {
             Assert.That(response["error"], Is.Null, response.ToString());
             Assert.That(response["result"], Is.EqualTo(new JArray()).Using(JToken.EqualityComparer));
+            _blockFinder.Received(byHash ? 1 : 0).FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number);
+            _blockFinder.Received(byHash ? streaming ? 1 : 0 : cachedOnly ? 2 : 1).FindBlock(block.Hash!, block.Number);
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(parameter => parameter.BlockHash == block.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
         }
@@ -655,9 +714,12 @@ public class DebugModuleTests
 
         ResultWrapper<IEnumerable<string>> actual = StandardTraceToFile(CreateModule(), isBadBlock, blockHash);
 
-        Assert.That(actual.Result, Is.EqualTo(Result.Success));
-        Assert.That(actual.ErrorCode, Is.Zero);
-        Assert.That(actual.Data, Is.EqualTo(GetFileNames(blockHash)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result, Is.EqualTo(Result.Success));
+            Assert.That(actual.ErrorCode, Is.Zero);
+            Assert.That(actual.Data, Is.EqualTo(GetFileNames(blockHash)));
+        }
     }
 
     [Test]
@@ -668,9 +730,12 @@ public class DebugModuleTests
 
         ResultWrapper<IEnumerable<string>> actual = StandardTraceToFile(CreateModule(), isBadBlock, blockHash);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-        Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
+        }
     }
 
     [Test]
@@ -689,9 +754,12 @@ public class DebugModuleTests
 
         ResultWrapper<IEnumerable<string>> actual = StandardTraceToFile(CreateModule(), isBadBlock, blockHash);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
-        Assert.That(actual.Result.Error, Does.Contain("No state available"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Does.Contain("No state available"));
+        }
     }
 
     [Test]
@@ -714,8 +782,11 @@ public class DebugModuleTests
 
         ResultWrapper<IReadOnlyCollection<Hash256>> actual = CreateModule().debug_intermediateRoots(blockHash);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(actual.Data, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(actual.Data, Is.EqualTo(expected));
+        }
     }
 
     [TestCaseSource(nameof(IntermediateRootsErrorCases))]
@@ -729,8 +800,11 @@ public class DebugModuleTests
 
         ResultWrapper<IReadOnlyCollection<Hash256>> actual = CreateModule().debug_intermediateRoots(blockHash);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(actual.ErrorCode, Is.EqualTo(expectedErrorCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(expectedErrorCode));
+        }
         if (expectedErrorSubstring is not null)
         {
             Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
@@ -749,6 +823,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
         _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
         _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
         Assert.That(_blockFinder.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None, block.Number - 1), Is.Null);
         object selector = method switch
@@ -804,6 +879,7 @@ public class DebugModuleTests
         _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
         _blockFinder.FindBlock(header.Hash!, header.Number).Returns(block);
         _blockFinder.FindBlock(header.Hash!).Returns(block);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(block);
         _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
         _blockFinder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeaderMissing ? null : parent);
         // The RLP-decoded block of debug_traceBlock is a copy, so headers are matched by hash.
@@ -1167,14 +1243,20 @@ public class DebugModuleTests
 
         if (availability != "available")
         {
-            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(actual.ErrorCode, Is.EqualTo(availability == "body" ? ErrorCodes.ResourceNotFound : ErrorCodes.ResourceUnavailable));
-            Assert.That(_debugBridge.ReceivedCalls(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+                Assert.That(actual.ErrorCode, Is.EqualTo(availability == "body" ? ErrorCodes.ResourceNotFound : ErrorCodes.ResourceUnavailable));
+                Assert.That(_debugBridge.ReceivedCalls(), Is.Empty);
+            }
             return;
         }
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(actual.Data, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(actual.Data, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+        }
         using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
         ((GethLikeTxTraceStreamingBlockResult)actual.Data).WriteAsJson(writer);
         _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
@@ -1230,6 +1312,17 @@ public class DebugModuleTests
 
         JToken? result = JToken.Parse(response)["result"];
         Assert.That(result?.Select(static b => (string?)b["hash"]), Is.EqualTo(blocks.Select(static b => b.Hash!.ToString())));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_returns_block_access_list_when_present([Values] bool hasBal)
+    {
+        byte[] bal = [0xc1, 0xc0];
+        _debugBridge.GetBadBlocks().Returns([Build.A.Block.WithNumber(1).WithEncodedBlockAccessList(hasBal ? bal : null).TestObject]);
+
+        JToken result = JToken.Parse(await SerializedRequest("debug_getBadBlocks"))["result"]![0]!;
+
+        Assert.That((string?)result["blockAccessList"], Is.EqualTo(hasBal ? bal.ToHexString(true) : null));
     }
 
     [Test]
@@ -1497,8 +1590,11 @@ public class DebugModuleTests
 
         ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
         _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
     }
 
@@ -1513,8 +1609,11 @@ public class DebugModuleTests
 
         ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
         _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
     }
 
@@ -1524,8 +1623,11 @@ public class DebugModuleTests
     {
         ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [null!]);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
         _debugBridge.DidNotReceiveWithAnyArgs().InsertReceipts(default!, default!);
     }
 
@@ -1543,8 +1645,11 @@ public class DebugModuleTests
 
         ResultWrapper<bool> result = await CreateModule().debug_insertReceipts(new BlockParameter(1), [receipt]);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(inserted, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(inserted, Is.Not.Null);
+        }
         Assert.That(inserted![0].FrameReceipts!.Select(static f => (f.Status, f.ExecutionGasUsed)),
             Is.EqualTo(new[] { (TxFrameReceipt.StatusSuccess, 21_000UL), (TxFrameReceipt.StatusFailure, 30_000UL) }));
     }

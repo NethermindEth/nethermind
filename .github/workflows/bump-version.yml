@@ -20,12 +20,12 @@ jobs:
           ref: master
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Bump up the version
         id: version
         run: |
-          dotnet run --file scripts/BumpVersion.cs -- "${{ github.ref }}" "src/Nethermind/Directory.Build.props" > version_output.txt
+          dotnet run --file scripts/bump-version.cs -- "${{ github.ref }}" "src/Nethermind/Directory.Build.props" > version_output.txt
 
           # Read the output and set step outputs
           while IFS= read -r line; do

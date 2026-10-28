@@ -77,9 +77,12 @@ internal class SubnetEpochSwitchManagerTests
         XdcSubnetBlockHeader parent = builder.TestObject;
 
         // currentRound is deliberately varied — subnet ignores it
-        Assert.That(_epochSwitchManager.IsEpochSwitchAtRound(0, parent), Is.EqualTo(expected));
-        Assert.That(_epochSwitchManager.IsEpochSwitchAtRound(999, parent), Is.EqualTo(expected));
-        Assert.That(_epochSwitchManager.IsEpochSwitchAtRound(ulong.MaxValue, parent), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_epochSwitchManager.IsEpochSwitchAtRound(0, parent), Is.EqualTo(expected));
+            Assert.That(_epochSwitchManager.IsEpochSwitchAtRound(999, parent), Is.EqualTo(expected));
+            Assert.That(_epochSwitchManager.IsEpochSwitchAtRound(ulong.MaxValue, parent), Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -105,8 +108,11 @@ internal class SubnetEpochSwitchManagerTests
 
         Assert.That(result, Is.Not.Null);
         // Penalties must come from SubnetSnapshot, NOT from header
-        Assert.That(result!.Penalties, Is.EquivalentTo(snapshotPenalties));
-        Assert.That(result.Penalties, Is.Not.EquivalentTo(headerPenalties));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result!.Penalties, Is.EquivalentTo(snapshotPenalties));
+            Assert.That(result.Penalties, Is.Not.EquivalentTo(headerPenalties));
+        }
     }
 
     [Test]

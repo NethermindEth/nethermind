@@ -272,20 +272,25 @@ internal static unsafe class GuestWord
     {
         ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
         slot = ZkEvmBitOperations.Swap(words[3], m8, m16);
-        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.Swap(words[2], m8, m16);
-        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.Swap(words[1], m8, m16);
-        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.Swap(words[0], m8, m16);
+        Unsafe.Add(ref slot, 1) = SwapUpperLimb(words[2], m8, m16);
+        Unsafe.Add(ref slot, 2) = SwapUpperLimb(words[1], m8, m16);
+        Unsafe.Add(ref slot, 3) = SwapUpperLimb(words[0], m8, m16);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void StoreAlignedBigEndian(ulong* words, ulong limb3, ulong limb2, ulong limb1, ulong limb0)
     {
         ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
-        words[0] = ZkEvmBitOperations.Swap(limb3, m8, m16);
-        words[1] = ZkEvmBitOperations.Swap(limb2, m8, m16);
-        words[2] = ZkEvmBitOperations.Swap(limb1, m8, m16);
+        words[0] = SwapUpperLimb(limb3, m8, m16);
+        words[1] = SwapUpperLimb(limb2, m8, m16);
+        words[2] = SwapUpperLimb(limb1, m8, m16);
         words[3] = ZkEvmBitOperations.Swap(limb0, m8, m16);
     }
+
+    /// <summary><see cref="ZkEvmBitOperations.Swap"/> of one of a word's three upper limbs, which skips the swap when the limb is zero.</summary>
+    /// <remarks>Most words in memory are small, so their upper limbs are mostly zero; one branch costs less than the swap's thirteen instructions.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong SwapUpperLimb(ulong limb, ulong m8, ulong m16) => limb == 0 ? 0 : ZkEvmBitOperations.Swap(limb, m8, m16);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsWordAligned(ref byte bytes) => ((nuint)Unsafe.AsPointer(ref bytes) & (sizeof(ulong) - 1)) == 0;

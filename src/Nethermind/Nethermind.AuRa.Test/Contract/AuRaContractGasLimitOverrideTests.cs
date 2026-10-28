@@ -66,8 +66,11 @@ public class AuRaContractGasLimitOverrideTests
     {
         using TestGasLimitContractBlockchain chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
         bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out ulong? expectedGasLimit);
-        Assert.That(isValid, Is.False);
-        Assert.That(expectedGasLimit, Is.EqualTo(CorrectHeadGasLimit));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(expectedGasLimit, Is.EqualTo(CorrectHeadGasLimit));
+        }
     }
 
     [Test]
