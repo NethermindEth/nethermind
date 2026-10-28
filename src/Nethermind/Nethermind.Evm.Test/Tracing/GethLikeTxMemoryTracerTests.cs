@@ -166,12 +166,15 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     {
         byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
         byte[] create = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done;
+        byte[] create2 = Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Done;
         return
         [
             new TestCaseData(sstore, 3000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE execution"),
             new TestCaseData(sstore, 14000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE state"),
             new TestCaseData(create, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE execution"),
             new TestCaseData(create, 20000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE state"),
+            new TestCaseData(create2, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE2 execution"),
+            new TestCaseData(create2, 12013UL, Eip8038Constants.CreateAccess + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("CREATE2 dynamic"),
         ];
     }
 
@@ -180,10 +183,12 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(1).Done, 2UL, GasCostOf.VeryLow).SetArgDisplayNames("PUSH1"),
         new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 11UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP base"),
         new TestCaseData(Prepare.EvmCode.PushData(2).PushData(2).Op(Instruction.EXP).Done, 30UL, GasCostOf.Exp + GasCostOf.ExpByteEip160).SetArgDisplayNames("EXP"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 20UL, GasCostOf.Sha3).SetArgDisplayNames("KECCAK256 base"),
         new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).Op(Instruction.KECCAK256).Done, 40UL, GasCostOf.Sha3 + GasCostOf.Sha3Word + GasCostOf.Memory).SetArgDisplayNames("KECCAK256"),
         new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(0).Op(Instruction.LOG3).Done, 100UL, GasCostOf.Log + 3 * GasCostOf.LogTopic).SetArgDisplayNames("LOG3"),
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done, 3000UL, GasCostOf.SSet).SetArgDisplayNames("SSTORE"),
         new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 1000UL, GasCostOf.Create).SetArgDisplayNames("CREATE"),
+        new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE).Done, 32010UL, GasCostOf.Create + GasCostOf.Memory).SetArgDisplayNames("CREATE dynamic"),
     ];
 
     [Test]
