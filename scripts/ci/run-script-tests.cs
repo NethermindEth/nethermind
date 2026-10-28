@@ -27,9 +27,14 @@ try
         var files = File.Exists(path)
             ? [path]
             : Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories)
-                .Where(file => !file.EndsWith(".helpers.cs", StringComparison.Ordinal) &&
-                    !Path.GetRelativePath(path, file).Split(Path.DirectorySeparatorChar).Any(part => part is "build" or "bin" or "obj"))
+                .Where(file => !Path.GetRelativePath(path, file).Split(Path.DirectorySeparatorChar).Any(part => part is "build" or "bin" or "obj"))
                 .Order(StringComparer.Ordinal).ToArray();
+        foreach (var file in files)
+            if (!ScriptName().IsMatch(Path.GetFileName(file)))
+                throw new InvalidOperationException($"Script filename must be lowercase kebab-case (with optional .helpers suffix): {file}");
+        files = files.Where(file => !file.EndsWith(".helpers.cs", StringComparison.Ordinal)).ToArray();
+        if (files.Length == 0)
+            throw new InvalidOperationException($"No C# entry points to check in {path}; helpers are checked through the scripts that include them.");
         var artifacts = Directory.CreateTempSubdirectory("nethermind-script-check-");
         try
         {
@@ -96,6 +101,8 @@ static async Task<string> Run(string executable, string[] arguments, Cancellatio
 
 partial class Program
 {
+    [GeneratedRegex(@"\A[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.helpers)?\.cs\z")]
+    private static partial Regex ScriptName();
     [GeneratedRegex(@"\bRan [1-9][0-9]* tests?\b")]
     private static partial Regex PythonSummary();
     [GeneratedRegex(@"(?m)^Passed [1-9][0-9]* tests?\.\r?$")]

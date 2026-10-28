@@ -621,6 +621,11 @@ jobs:
               'test_refused_approval_charges_memory_expansion'
               'test_approve_creates_sender.*sender_emptied_by_earlier_frame'
               'test_approve_sender_creation_unaffordable.*sender_emptied_by_earlier_frame'
+              # The release encodes frame fees as [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas],
+              # where EIP-8141 now takes [max_fee, max_priority_fee_per_gas] (ethereum/EIPs#12414). Every fixture
+              # carrying a frame transaction therefore awaits a refill; only the legacy-transaction ones still run.
+              # Drop this once a release is filled with the max_fee shape.
+              '(?!test_diff_instructions_in_legacy_transaction\[)test_'
             )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
