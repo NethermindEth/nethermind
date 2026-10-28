@@ -508,6 +508,7 @@ public class DebugModuleTests
         _jsonRpcConfig.EnableTracingStreamMode = streaming;
         _blockFinder.Head.Returns(parent);
         _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
         _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
         _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
@@ -521,6 +522,8 @@ public class DebugModuleTests
         {
             Assert.That(response["error"], Is.Null, response.ToString());
             Assert.That(response["result"], Is.EqualTo(new JArray()).Using(JToken.EqualityComparer));
+            _blockFinder.Received(1).FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number);
+            _blockFinder.Received(streaming ? 1 : 0).FindBlock(block.Hash!, block.Number);
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(parameter => parameter.BlockHash == block.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
         }
