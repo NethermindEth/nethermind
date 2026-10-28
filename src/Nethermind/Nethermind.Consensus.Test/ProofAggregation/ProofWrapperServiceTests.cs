@@ -778,6 +778,7 @@ public class ProofWrapperServiceTests
         using ManualResetEventSlim release = new();
         verifier.OnVerification = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
+        service.MaxAdmissionWaiters = 0;
         Task<ProofWrapperAcceptance> first = service.AcceptDetailedAsync(encoded);
         try
         {
@@ -791,6 +792,38 @@ public class ProofWrapperServiceTests
         verifier.OnVerification = null;
         Assert.That((await service.AcceptDetailedAsync(original)).HasValidProof, Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the memo belongs to the original owned bytes");
+    }
+
+    [TestCase(1, 5_000, false, TestName = "Concurrent_admission_waits_its_turn")]
+    [TestCase(1, 50, true, TestName = "Concurrent_admission_is_busy_after_its_wait_timeout")]
+    [TestCase(0, 5_000, true, TestName = "Concurrent_admission_is_busy_beyond_the_waiter_bound")]
+    public async Task Concurrent_admission_waits_in_a_bounded_queue(int waiters, int timeoutMs, bool busy)
+    {
+        (ProofWrapperService producer, _) = Create(2, 0);
+        byte[] first = producer.BuildWrapper().Data!;
+        FakeLeanProofVerifier verifier = new(true);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        verifier.OnVerification = () => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
+        service.MaxAdmissionWaiters = waiters;
+        service.AdmissionWaitTimeout = TimeSpan.FromMilliseconds(timeoutMs);
+        Task<ProofWrapperAcceptance> admitting = service.AcceptDetailedAsync(first);
+        Task<ProofWrapperAcceptance> waiting;
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(2)), Is.True);
+            waiting = service.AcceptDetailedAsync(first);
+            if (busy) Assert.That((await waiting.WaitAsync(TimeSpan.FromSeconds(2))).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Busy));
+            else
+            {
+                await Task.Delay(100);
+                Assert.That(waiting.IsCompleted, Is.False, "a queued caller waits for the admission in progress");
+            }
+        }
+        finally { release.Set(); }
+        Assert.That((await admitting).HasValidProof, Is.True);
+        if (!busy) Assert.That((await waiting.WaitAsync(TimeSpan.FromSeconds(5))).Status, Is.Not.EqualTo(ProofWrapperAcceptanceStatus.Busy));
     }
 
     [Test]

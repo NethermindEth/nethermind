@@ -39,7 +39,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private const int MaxRememberedVerifications = 128;
     private readonly object _aggregationLock = new();
     private int _rotation;
-    private int _admissionActive;
+    // Admission runs one wrapper at a time; a bounded number of callers wait for it before being told to retry.
+    private readonly SemaphoreSlim _admission = new(1, 1);
+    private int _admissionCallers;
+
+    /// <summary>Callers that may wait for admission while another wrapper is admitted.</summary>
+    internal int MaxAdmissionWaiters { get; set; } = 16;
+
+    /// <summary>How long a waiting caller waits for admission before it is told to retry.</summary>
+    internal TimeSpan AdmissionWaitTimeout { get; set; } = TimeSpan.FromSeconds(5);
     // Remembered verifications are keyed by AGGREGATED_VK too, so none answers under another verifier.
     private readonly Dictionary<(ValueHash256 Wrapper, ValueHash256 Verifier), string?> _verifiedWrappers = [];
     private readonly Queue<(ValueHash256 Wrapper, ValueHash256 Verifier)> _verifiedWrapperOrder = [];
@@ -179,8 +187,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > Eip8288Constants.MaxWrapperBytes)
             return ProofWrapperAcceptance.Malformed("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
-        if (Interlocked.CompareExchange(ref _admissionActive, 1, 0) != 0)
-            return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
+        if (Interlocked.Increment(ref _admissionCallers) > MaxAdmissionWaiters + 1)
+        {
+            Interlocked.Decrement(ref _admissionCallers);
+            return AdmissionBusy();
+        }
+        bool entered = false;
+        try { entered = await _admission.WaitAsync(AdmissionWaitTimeout, cancellationToken); }
+        finally { if (!entered) Interlocked.Decrement(ref _admissionCallers); }
+        if (!entered) return AdmissionBusy();
         try
         {
             // Inside the try, so a verifier-change-rule fault is a local failure rather than an exception escaping to the caller.
@@ -270,8 +285,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
-        finally { Volatile.Write(ref _admissionActive, 0); }
+        finally
+        {
+            _admission.Release();
+            Interlocked.Decrement(ref _admissionCallers);
+        }
     }
+
+    private static ProofWrapperAcceptance AdmissionBusy() =>
+        new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
 
     /// <summary>The wrapper as EIP-8437 relays it: unchanged unless a transaction carries blob data, which is elided, leaving
     /// its commitments and cell proofs. Null when a transaction's blobs have no cell proofs, so it cannot be relayed.</summary>
