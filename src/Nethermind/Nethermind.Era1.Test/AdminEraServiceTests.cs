@@ -4,6 +4,7 @@
 using Nethermind.Config;
 using Nethermind.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace Nethermind.Era1.Test;
 
@@ -81,5 +82,20 @@ public class AdminEraServiceTests
         // Not throw — wait for fire-and-forget continuation to release the in-progress lock
         Assert.That(() => adminEraService.ExportHistory("somewhere", 99, 999),
             Throws.Nothing.After(5000, 50));
+    }
+
+    [Test]
+    public void RejectedExportThrowsAndReleasesTheExportLock()
+    {
+        IEraExporter exporter = Substitute.For<IEraExporter>();
+        exporter.Export("somewhere", 99, 999).Throws(new ArgumentException("Cannot export to a block after head block"));
+        AdminEraService adminEraService = new(
+            Substitute.For<IEraImporter>(),
+            exporter,
+            Substitute.For<IProcessExitSource>(),
+            LimboLogs.Instance);
+
+        Assert.That(() => adminEraService.ExportHistory("somewhere", 99, 999), Throws.ArgumentException);
+        Assert.That(() => adminEraService.ExportHistory("somewhere", 0, 0), Throws.Nothing);
     }
 }
