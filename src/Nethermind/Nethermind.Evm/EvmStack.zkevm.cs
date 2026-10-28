@@ -12,6 +12,9 @@ namespace Nethermind.Evm;
 
 public ref partial struct EvmStack
 {
+    /// <summary>The code info this stack runs, whose dispatch cells the guest's chain reads.</summary>
+    internal readonly CodeAnalysis.CodeInfo? CodeInfo => _codeInfo;
+
     /// <summary>A copy of <paramref name="frame"/> with the head and code guest dispatch carries in registers.</summary>
     internal EvmStack(in EvmStack frame, nint head, ref byte code)
     {
