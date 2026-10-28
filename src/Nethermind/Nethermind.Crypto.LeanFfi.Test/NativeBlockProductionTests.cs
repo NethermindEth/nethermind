@@ -149,10 +149,10 @@ public class NativeBlockProductionTests
     }
 
     [Test]
-    public async Task Produces_and_validates_real_dependency_block([Values] bool preAggregate)
+    public async Task Produces_and_validates_real_mixed_dependency_block([Values] bool preAggregate)
     {
         FrameDependency signature = NativeLeanProofVerifierTests.Dependency("sphincs");
-        FrameDependency second = NativeLeanProofVerifierTests.Dependency("second");
+        FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         CountingNativeVerifier verifier = new();
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
@@ -163,10 +163,10 @@ public class NativeBlockProductionTests
         AcceptTxResult missing = chain.TxPool.SubmitTx(transaction, TxHandlingOptions.None);
         Assert.That(missing.ToString(), Does.Contain("MissingDependencyProof"));
 
-        byte[][] witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("second")];
+        byte[][] witnesses = [NativeLeanProofVerifierTests.Witness("sphincs"), NativeLeanProofVerifierTests.Witness("stark")];
         Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanSphincs(signature.DataHash, signature.VerificationKey, witnesses[0]), Is.True);
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanSphincs(second.DataHash, second.VerificationKey, witnesses[1]), Is.True);
-        proofs.AddVerified([signature, second], witnesses, null);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyLeanStark(stark.DataHash, stark.VerificationKey, witnesses[1]), Is.True);
+        proofs.AddVerified([signature, stark], witnesses, null);
         transaction.Hash = transaction.CalculateHash();
         ValidationResult wellFormed = new TxValidator(chain.SpecProvider.ChainId).IsWellFormed(transaction, Eip8288Prototype.Instance);
         Assert.That((bool)wellFormed, Is.True, wellFormed.ToString());
@@ -186,7 +186,7 @@ public class NativeBlockProductionTests
             using CancellationTokenSource deadline = new();
             Block first = (await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token))!;
             Assert.That(first.Transactions, Is.Empty);
-            List<FrameDependency> deps = Eip8288Dependencies.Canonicalize([signature, second]);
+            List<FrameDependency> deps = Eip8288Dependencies.Canonicalize([signature, stark]);
             Assert.That(() => proofs.TryGetRecursiveProof(deps, out _), Is.True.After(180_000, 100));
         }
         Block block = await chain.Container.Resolve<TestBlockchainUtil>()
@@ -216,6 +216,8 @@ public class NativeBlockProductionTests
         public void EnsureAvailable() => NativeLeanProofVerifier.Instance.EnsureAvailable();
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
             => NativeLeanProofVerifier.Instance.VerifyLeanSphincs(in dataHash, in verificationKey, witness);
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+            => NativeLeanProofVerifier.Instance.VerifyLeanStark(in dataHash, in verificationKey, witness);
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
             => NativeLeanProofVerifier.Instance.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
@@ -227,13 +229,13 @@ public class NativeBlockProductionTests
     internal static Transaction CreateTransaction(BasicTestBlockchain chain)
     {
         FrameDependency signature = NativeLeanProofVerifierTests.Dependency("sphincs");
-        FrameDependency second = NativeLeanProofVerifierTests.Dependency("second");
+        FrameDependency stark = NativeLeanProofVerifierTests.Dependency("stark");
         TxFrame[] frames =
         [
             FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
             new(FrameMode.DepVerify, FrameFlags.None, null,
-                3 * Eip8288Constants.LeanSphincsVerificationGas,
-                UInt256.Zero, Eip8288Dependencies.Serialize([signature, second, signature]))
+                2 * Eip8288Constants.LeanSphincsVerificationGas + Eip8288Constants.LeanStarkVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize([signature, stark, signature]))
         ];
         Transaction transaction = new()
         {

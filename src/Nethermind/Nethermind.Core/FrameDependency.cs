@@ -10,7 +10,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// 32-byte public key (leanSPHINCS); leanSTARK is reserved.
+/// 32-byte public key (leanSPHINCS) or the public commitment and program key hash (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -174,17 +174,37 @@ public static class Eip8288Dependencies
         return dependencies;
     }
 
+    // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
+    private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
+
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
-    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where the key is the raw leanSPHINCS
+    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where a leanSPHINCS key is the raw
     /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
     /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses BLAKE2s-256, the hash the pinned aggregation circuit uses for its
-    /// dependency digest. The digest omits the scheme, so it is defined only for leanSPHINCS lists (see
-    /// <see cref="IsAcceptedScheme"/>).</remarks>
+    /// dependency digest. A leanSPHINCS-only list hashes exactly as the EIP specifies. The EIP reserves leanSTARK until
+    /// <c>get_deps_hash</c> is defined for it; as a deviation, a list holding any leanSTARK dependency commits to
+    /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
+    /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries.</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
     {
         dependencies = Canonicalize(dependencies);
+        int split = 0;
+        while (split < dependencies.Count && dependencies[split].Scheme == Eip8288Constants.LeanSphincsScheme) split++;
+        ValueHash256 sphincs = ListDepsHash(dependencies, 0, split);
+        if (split == dependencies.Count) return sphincs;
+
+        ValueHash256 stark = ListDepsHash(dependencies, split, dependencies.Count);
         Blake2s hash = Blake2s.Create();
-        for (int i = 0; i < dependencies.Count; i++)
+        hash.Update(sphincs.Bytes);
+        hash.Update(stark.Bytes);
+        hash.Update(LeanStarkDepsDomain);
+        return hash.Finish();
+    }
+
+    private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, int start, int end)
+    {
+        Blake2s hash = Blake2s.Create();
+        for (int i = start; i < end; i++)
         {
             hash.Update(dependencies[i].DataHash.Bytes);
             hash.Update(dependencies[i].VerificationKey.Bytes);
@@ -193,13 +213,29 @@ public static class Eip8288Dependencies
         return hash.Finish();
     }
 
-    /// <summary>Whether a dependency scheme is enabled: leanSPHINCS only. EIP-8288 reserves leanSTARK, so a frame, wrapper,
-    /// inclusion-list proof or aggregation input carrying it is invalid.</summary>
-    public static bool IsAcceptedScheme(byte scheme) => scheme == Eip8288Constants.LeanSphincsScheme;
+    /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from
+    /// EIP-8288 (see <see cref="ComputeDepsHash"/>).</summary>
+    public static bool IsAcceptedScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
 
-    /// <summary>Whether a dependency scheme is one EIP-8288 defines, enabled or reserved. Wrapper decoding accepts every known
-    /// scheme, so a reserved one fails validation as a dependency-rule violation rather than as malformed encoding.</summary>
+    /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>
     public static bool IsKnownScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
+
+    /// <summary>The leanSTARK dependencies in <paramref name="dependencies"/>, repeats included.</summary>
+    public static int CountLeanStark(IEnumerable<FrameDependency> dependencies)
+    {
+        int count = 0;
+        foreach (FrameDependency dependency in dependencies)
+            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) count++;
+        return count;
+    }
+
+    /// <summary>Whether one dependency list of the pinned recursive guest can hold <paramref name="dependencies"/>: at most
+    /// <see cref="Eip8288Constants.MaxProofDependencies"/>, <see cref="Eip8288Constants.MaxGenericStarkProofs"/> of them
+    /// leanSTARK.</summary>
+    /// <remarks>A local proving and verification bound: a statement over it is split or deferred when built and refused locally,
+    /// without penalty, when received.</remarks>
+    public static bool FitsProofList(IReadOnlyCollection<FrameDependency> dependencies) =>
+        dependencies.Count <= Eip8288Constants.MaxProofDependencies && CountLeanStark(dependencies) <= Eip8288Constants.MaxGenericStarkProofs;
 
     /// <summary>Whether every dependency's scheme is enabled (<see cref="IsAcceptedScheme"/>).</summary>
     public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)

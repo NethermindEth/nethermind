@@ -48,6 +48,7 @@ internal static class NativeStartupProbe
             NativeLeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
             ExpectFault("VerifyRecursiveStark", () => verifier.VerifyRecursiveStark(default, new byte[32], new byte[1]));
             ExpectFault("VerifyLeanSphincs", () => verifier.VerifyLeanSphincs(default, default, new byte[Eip8288Constants.LeanSphincsWitnessBytes]));
+            ExpectFault("VerifyLeanStark", () => verifier.VerifyLeanStark(default, default, new byte[1]));
         }
         Environment.Exit(0);
     }

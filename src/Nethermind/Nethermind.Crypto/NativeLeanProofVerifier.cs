@@ -13,13 +13,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto;
 
-/// <summary>Checks leanSPHINCS signature claims and recursive proofs with the pinned native backend;
+/// <summary>Checks leanSPHINCS signatures, leanSTARK proofs and recursive proofs with the pinned native backend;
 /// a native fault, ABI mismatch or missing library throws instead of returning a verdict.</summary>
 // Pinned spans remain valid for each call; Rust bounds all buffers and owns returned proof allocations.
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 8;
+    private const uint ExpectedAbiVersion = 9;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
@@ -34,9 +34,10 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         {
             if (!AggregatedVerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
                 throw new InvalidOperationException("The native Lean recursive guest key does not match this node.");
-            Span<uint> limits = stackalloc uint[6];
+            Span<uint> limits = stackalloc uint[9];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
-                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
+                MaxRecursiveInputs, Eip8288Constants.LeanSphincsWitnessBytes,
+                Eip8288Constants.MaxGenericStarkProofs, Eip8288Constants.MaxLeanStarkInstructions, 65535, Eip8288Constants.MaxAggregationInputBytes, Eip8288Constants.MaxMixedGuestProofBytes];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -76,6 +77,20 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
                 return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leansphincs(d, v, w, (nuint)witness.Length));
+        }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
+    }
+
+    /// <inheritdoc/>
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+    {
+        if (witness.IsEmpty || witness.Length > MaxProofBytes) return false;
+        try
+        {
+            fixed (byte* d = dataHash.Bytes)
+            fixed (byte* v = verificationKey.Bytes)
+            fixed (byte* w = witness)
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(d, v, w, (nuint)witness.Length));
         }
         catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
@@ -262,6 +277,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int nlean_verify_leansphincs(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int nlean_verify_leanstark(byte* dataHash, byte* vk, byte* witness, nuint witnessLen);
     [LibraryImport(Library)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     private static partial int nlean_verify_recursive(byte* depsHash, byte* vk, nuint vkLen, byte* proof, nuint proofLen);

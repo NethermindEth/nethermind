@@ -59,7 +59,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
             long size = Eip8288Constants.IlProofBytes(held.Proof.Length, held.InnerDeps.Count);
             List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(held.InnerDeps);
             if (size > Eip8288Constants.MaxIlProofBytes || held.Proof.IsEmpty || proofDeps.Count != held.InnerDeps.Count
-                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps))
+                || !Eip8288Dependencies.AreSchemesEnabled(proofDeps) || !Eip8288Dependencies.FitsProofList(proofDeps))
                 continue;
             byte[] starkProof = held.Proof.ToArray();
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps);
@@ -111,14 +111,20 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         return proven;
     }
 
-    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies is not verified: the pinned
-    /// guest commits to at most that many, so none verifies, and the builder could not fold one into its block aggregate.</remarks>
+    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies, or more than
+    /// <see cref="Eip8288Constants.MaxGenericStarkProofs"/> leanSTARK ones, is not verified: the pinned guest commits to at most that
+    /// many, so none verifies, and the builder could not fold one into its block aggregate. The list then imposes no
+    /// dependency-bearing obligation.</remarks>
     private bool TryVerify(CommitteeInclusionList list, IReleaseSpec spec, out List<FrameDependency>? proofDeps)
     {
         proofDeps = null;
         if (list.StarkProof.Length == 0 || list.ProofDeps.Length is 0 or > Eip8288Constants.MaxProofDependencies
-            || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps))
+            || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps)
+            || !Eip8288Dependencies.FitsProofList(proofDeps!))
+        {
+            proofDeps = null;
             return false;
+        }
         Eip8288Verifier forkVerifier = Eip8288Verifier.For(spec);
         ValueHash256 proofHash = ValueKeccak.Compute(list.StarkProof);
         (ValueHash256, ValueHash256, ValueHash256) key = (proofHash, Eip8288Dependencies.ComputeDepsHash(proofDeps!), forkVerifier.AggregatedVk);
@@ -155,8 +161,8 @@ public sealed record HeldInclusionListProof(byte[] StarkProof, byte[][] ProofDep
 /// <summary>EIP-8288 inclusion-list rules shared by the Engine API, block building and inclusion enforcement.</summary>
 public static class InclusionListProofValidator
 {
-    /// <summary>Parses <c>proof_deps</c>, failing when an entry is not a 96-byte leanSPHINCS encoding, the only accepted scheme, or
-    /// the list is not sorted and deduplicated; either invalidates the proof, not the signed list.</summary>
+    /// <summary>Parses <c>proof_deps</c>, failing when an entry is not a 96-byte encoding under an enabled scheme, or the list is not
+    /// sorted and deduplicated; either invalidates the proof, not the signed list.</summary>
     public static bool TryParseProofDeps(byte[][] encoded, out List<FrameDependency>? proofDeps)
     {
         proofDeps = new List<FrameDependency>(encoded.Length);

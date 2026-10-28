@@ -35,6 +35,7 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     public int Calls => Volatile.Read(ref _calls);
     public void EnsureAvailable() { }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
     /// <summary>When set, recursive STARK checks wait for it, as a slow verification would.</summary>
     public ManualResetEventSlim? Hold { get; set; }
@@ -157,7 +158,7 @@ internal static class WrapperTestObjects
             NonceKeys = [UInt256.Zero],
             ChainId = 1,
             SenderAddress = Address.Zero,
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));

@@ -30,6 +30,7 @@ internal sealed class FakeLeanProofVerifier(bool result) : ILeanProofVerifier
         return result;
     }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Verify();
+    public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Verify();
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         => Verify() && aggregatedVk.SequenceEqual(Eip8288Verifier.PinnedAggregatedVk.Bytes);
     public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)

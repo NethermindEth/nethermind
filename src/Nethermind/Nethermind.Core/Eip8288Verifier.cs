@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Core;
 
 /// <summary>
-/// The EIP-8288 verifier a fork fixes: <c>AGGREGATED_VK</c> for aggregate proofs, and the leanSPHINCS verification
+/// The EIP-8288 verifier a fork fixes: <c>AGGREGATED_VK</c> for aggregate proofs, and each enabled scheme's verification
 /// parameters for direct witnesses.
 /// </summary>
 /// <remarks>
@@ -28,14 +28,19 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
 
     /// <summary>The identifier of the verification parameters for <paramref name="scheme"/>, or the zero hash for a scheme this
     /// verifier does not know.</summary>
-    /// <remarks>The backend pins one leanSPHINCS parameter set, so a fork can change only <see cref="AggregatedVk"/>.</remarks>
-    public ValueHash256 SchemeParams(byte scheme) =>
-        scheme == Eip8288Constants.LeanSphincsScheme ? SchemeParameters.LeanSphincs : default;
+    /// <remarks>The backend pins one parameter set per scheme, so a fork can change only <see cref="AggregatedVk"/>.</remarks>
+    public ValueHash256 SchemeParams(byte scheme) => scheme switch
+    {
+        Eip8288Constants.LeanSphincsScheme => SchemeParameters.LeanSphincs,
+        Eip8288Constants.LeanStarkScheme => SchemeParameters.LeanStark,
+        _ => default
+    };
 
     // Fork construction needs only the aggregate key; defer hashing until direct-witness validation.
     private static class SchemeParameters
     {
         internal static readonly ValueHash256 LeanSphincs = ValueKeccak.Compute("ethereum/8288/leanSPHINCS/pinned-keccak-sphincs"u8);
+        internal static readonly ValueHash256 LeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu"u8);
     }
 
     public override string ToString() => $"AGGREGATED_VK {AggregatedVk.ToShortString()}";

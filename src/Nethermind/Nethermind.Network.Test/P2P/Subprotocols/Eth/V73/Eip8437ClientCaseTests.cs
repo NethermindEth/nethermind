@@ -113,17 +113,22 @@ public class Eip8437ClientCaseTests
     }
 
     // Discard a wrapper failing proof or dependency validation without penalizing its sender; malformed transport or
-    // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change).
+    // mismatched announced hashes remain penalizable (see ProofWrapperTransportTests for the verifier change). A mode-1 wrapper
+    // over more leanSTARK dependencies than the pinned guest's lists hold is refused locally, also without penalty.
     [TestCase("proof", false)]
     [TestCase("dependency union", false)]
-    [TestCase("reserved scheme", false)]
+    [TestCase("leanSTARK over the local bound", false)]
     [TestCase("announced hash", true)]
     public async Task Proof_and_dependency_failures_are_discarded_without_penalty(string scenario, bool penalized)
     {
-        // EIP-8288 reserves the leanSTARK scheme: a dependency under it fails the fork's rules, it is not malformed transport.
-        Transaction a = scenario == "reserved scheme" ? FrameTransaction(1, Eip8288Constants.LeanStarkScheme) : FrameTransaction(1),
-            b = FrameTransaction(2);
-        byte[] wrapper = scenario == "dependency union" ? MismatchedUnion(a, b) : Wrapper(64, a, b);
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        byte[] wrapper = scenario switch
+        {
+            "dependency union" => MismatchedUnion(a, b),
+            "leanSTARK over the local bound" => Wrapper(64, [.. Enumerable.Range(1, Eip8288Constants.MaxGenericStarkProofs + 1)
+                .Select(static i => FrameTransaction(i, Eip8288Constants.LeanStarkScheme))]),
+            _ => Wrapper(64, a, b)
+        };
         using WrapperTestNode node = new();
         node.Verifier.Valid = scenario != "proof";
         FakeWrapperLink link = new();
@@ -161,10 +166,11 @@ public class Eip8437ClientCaseTests
     // ProofWrapperOmissionTests.
 
     // A complete wrapper can be validated without envelope requests: the transport has no other request than GetProofWrappers.
+    // leanSTARK dependencies, enabled here as a deviation from EIP-8288, are carried like leanSPHINCS ones.
     [Test]
-    public async Task Complete_wrapper_is_validated_without_envelope_requests()
+    public async Task Complete_wrapper_is_validated_without_envelope_requests([Values] bool mixed)
     {
-        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        Transaction a = FrameTransaction(1), b = mixed ? FrameTransaction(2, Eip8288Constants.LeanStarkScheme) : FrameTransaction(2);
         byte[] wrapper = Wrapper(64, a, b);
         using WrapperTestNode node = new();
         FakeWrapperLink link = new();

@@ -237,6 +237,8 @@ public class ProofWrapperServiceTests
     [TestCase("transaction limit", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("wide", ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase("wider than the local bound", ProofWrapperAcceptanceStatus.LocalFailure)]
+    [TestCase("leanstark within the local bound", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("leanstark wider than the local bound", ProofWrapperAcceptanceStatus.LocalFailure)]
     [TestCase("reference", ProofWrapperAcceptanceStatus.Malformed)]
     [TestCase("order", ProofWrapperAcceptanceStatus.Malformed)]
     public async Task Proof_and_dependency_failures_are_invalid_and_encoding_failures_malformed(string scenario, ProofWrapperAcceptanceStatus expected)
@@ -249,16 +251,20 @@ public class ProofWrapperServiceTests
             "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
             "wider than the local bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
                 static _ => Eip8288Constants.MaxSigsPerTx),
+            // The pinned guest holds at most MaxGenericStarkProofs leanSTARK dependencies per list.
+            "leanstark within the local bound" => (Eip8288Constants.MaxGenericStarkProofs, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark wider than the local bound" => (Eip8288Constants.MaxGenericStarkProofs + 1, static _ => Eip8288Constants.MaxStarksPerTx),
             "unsorted" => (1, static _ => 2),
             _ => (1, (Func<int, int>)(static _ => 1))
         };
         Transaction[] transactions = [.. Enumerable.Range(0, count).Select(i =>
         {
             int own = perTransaction(i);
+            byte scheme = scenario.StartsWith("leanstark", StringComparison.Ordinal) ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
             Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"sig{i}"), default), Keccak.Compute($"tx{i}"));
             FrameDependency[] dependencies = [.. Enumerable.Range(0, own)
-                .Select(j => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"sig{i}:{j}"), default))];
-            transaction.Frames![0] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)own * Eip8288Constants.LeanSphincsVerificationGas,
+                .Select(j => new FrameDependency(scheme, ValueKeccak.Compute($"sig{i}:{j}"), default))];
+            transaction.Frames![0] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)own * dependencies[0].VerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(dependencies));
             transaction.Hash = transaction.CalculateHash();
             return transaction;
@@ -507,6 +513,7 @@ public class ProofWrapperServiceTests
         public ValueHash256? RejectedStatement { get; set; }
         public void EnsureAvailable() { }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             VerifiedStatements.Add(depsHash);
@@ -531,7 +538,7 @@ public class ProofWrapperServiceTests
             ChainId = 1,
             SenderAddress = Address.Zero,
             Nonce = BitConverter.ToUInt32(key.Bytes[..4]),
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, dependency.VerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
         };
         transaction.Hash = transaction.CalculateHash();
@@ -651,11 +658,11 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public void Retained_large_roots_remain_eligible_for_gossip([Values] bool sameParent)
+    public void Retained_large_mixed_roots_remain_eligible_for_gossip([Values] bool sameParent)
     {
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([
             new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-signature"), default),
-            new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-root-second"), default)]);
+            new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("large-root-stark"), default)]);
         byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         if (sameParent) store.AddVerified(dependencies, null, proof);
@@ -674,7 +681,7 @@ public class ProofWrapperServiceTests
             ChainId = 1,
             SenderAddress = Address.Zero,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
-                2 * Eip8288Constants.LeanSphincsVerificationGas,
+                Eip8288Constants.LeanSphincsVerificationGas + Eip8288Constants.LeanStarkVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
         };
         transaction.Hash = transaction.CalculateHash();
@@ -796,11 +803,12 @@ public class ProofWrapperServiceTests
         IBlockFinder finder = Substitute.For<IBlockFinder>();
         finder.Head.Returns(Build.A.Block.TestObject);
         ProofWrapperService service = new(pool, new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), finder, store, new FakeLeanProofVerifier(true));
-        byte[] rejectedWitness = new byte[Eip8288Constants.LeanSphincsWitnessBytes];
+        // Enough near-maximum rejected witnesses to exceed the shared store several times over if they were retained.
+        byte[] rejectedWitness = new byte[LeanProofStore.MaxWrapperBytes - 16 * 1024];
         for (int i = 0; i < 40; i++)
         {
             FrameDependency accepted = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"accepted:{i}"), default);
-            FrameDependency rejected = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"rejected:{i}"), default);
+            FrameDependency rejected = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"rejected:{i}"), default);
             static Transaction Transaction(FrameDependency dependency, ulong nonce) => new()
             {
                 Type = TxType.FrameTx,
@@ -808,7 +816,9 @@ public class ProofWrapperServiceTests
                 ChainId = 1,
                 SenderAddress = Address.Zero,
                 Nonce = nonce,
-                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null,
+                    dependency.Scheme == Eip8288Constants.LeanSphincsScheme
+                        ? Eip8288Constants.LeanSphincsVerificationGas : Eip8288Constants.LeanStarkVerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
             };
             Transaction first = Transaction(accepted, 0), later = Transaction(rejected, 1);
@@ -1370,11 +1380,11 @@ public class ProofWrapperServiceTests
         }).Bytes;
     }
 
-    // EIP-8437: a dependency under the reserved leanSTARK scheme is a fork-dependent EIP-8288 rule failure, discarded without
-    // penalty; a scheme EIP-8288 does not define is malformed encoding.
-    [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Invalid)]
+    // leanSTARK, enabled here as a deviation from EIP-8288, is accepted like leanSPHINCS; a scheme EIP-8288 does not define is
+    // malformed encoding.
+    [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Malformed)]
-    public async Task Reserved_dependency_scheme_is_invalid_and_an_undefined_one_malformed(byte scheme, ProofWrapperAcceptanceStatus expected)
+    public async Task LeanStark_dependency_is_accepted_and_an_undefined_scheme_malformed(byte scheme, ProofWrapperAcceptanceStatus expected)
     {
         Transaction transaction = CreateTransaction(new(scheme, TestItem.KeccakA.ValueHash256, default), TestItem.KeccakA);
         ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true));

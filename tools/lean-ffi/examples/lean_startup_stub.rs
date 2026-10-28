@@ -5,9 +5,9 @@
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
     if std::env::var("NETHERMIND_LEAN_STARTUP_PROBE").as_deref() == Ok("abi") {
-        7
-    } else {
         8
+    } else {
+        9
     }
 }
 
@@ -23,9 +23,9 @@ pub unsafe extern "C" fn nlean_aggregated_vk(out: *mut u8) -> i32 {
         [0; 32]
     } else if mode.as_deref() == Ok("old-key") {
         [
-            0x00, 0xf2, 0x4b, 0xbd, 0xf4, 0x4a, 0x31, 0x13, 0x9c, 0x97, 0x52, 0x23, 0xb7, 0x75,
-            0x10, 0xcd, 0x93, 0xa9, 0x05, 0x66, 0x4d, 0xa3, 0xc4, 0xa5, 0x2b, 0x5e, 0xba, 0x4e,
-            0x9b, 0x07, 0xde, 0x9e,
+            0x6b, 0x99, 0xf3, 0x87, 0x2b, 0x5d, 0xc2, 0x34, 0x7c, 0xa1, 0x3a, 0x34, 0x8f, 0x1f,
+            0x29, 0x71, 0x92, 0xfa, 0xb7, 0x5a, 0x92, 0xd3, 0x62, 0x69, 0x75, 0x44, 0x74, 0x5f,
+            0x4a, 0x98, 0x11, 0x66,
         ]
     } else {
         rec_aggregation::eip8288_mixed::mixed_guest_key()
@@ -37,10 +37,10 @@ pub unsafe extern "C" fn nlean_aggregated_vk(out: *mut u8) -> i32 {
 }
 
 /// # Safety
-/// The non-null output must hold six u32 values.
+/// The non-null output must hold nine u32 values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nlean_limits(out: *mut u32, len: usize) -> i32 {
-    if out.is_null() || len != 6 {
+    if out.is_null() || len != 9 {
         return 0;
     }
     unsafe {

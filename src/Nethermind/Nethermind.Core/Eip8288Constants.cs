@@ -25,14 +25,23 @@ public static class Eip8288Constants
     /// never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
 
-    /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts.</summary>
+    /// <summary>Maximum leanSTARK dependencies in one dependency list of the pinned recursive guest, selected, child and discard
+    /// lists alike.</summary>
+    /// <remarks>A local proving and verification bound like <see cref="MaxProofDependencies"/>: a statement over more is split or
+    /// deferred by the builder and refused locally, without penalty, when received, never treated as invalid.</remarks>
+    public const int MaxGenericStarkProofs = 16;
+
+    /// <summary>Maximum instructions of a leanSTARK program the pinned generic verifier accepts.</summary>
+    public const int MaxLeanStarkInstructions = 2048;
+
+    /// <summary>Maximum encoded native direct witness or proof buffer the pinned backend accepts, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
     /// <summary>Local bound (1.25 MiB) on every serialized recursive aggregate proof of the pinned <see cref="AggregatedVk"/>
     /// guest, including a private recursive input, in blocks, wrappers and inclusion lists alike, checked before proof decoding
     /// or verification.</summary>
     /// <remarks>Not an EIP-8288 constant: the EIP no longer bounds <c>stark_proof</c> and leaves its size to the proof system.
-    /// This is a pinned-prover limit with margin above the guest's measured 265–300 KB root proofs; a guest or key change
+    /// This is a pinned-prover limit with margin above the guest's measured 265–325 KB root proofs; a guest or key change
     /// must revisit it.</remarks>
     public const int MaxAggregateProofBytes = 1_310_720;
 
@@ -61,9 +70,10 @@ public static class Eip8288Constants
     public const int LeanSphincsWitnessBytes = 32 + 6176;
 
     public const byte LeanSphincsScheme = 0x10;
-
-    /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>: reserved. A dependency frame that uses it is invalid until <c>get_deps_hash</c>
-    /// is defined for it.</summary>
+    /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>, enabled here as a deviation from the EIP.</summary>
+    /// <remarks>The EIP reserves it until <c>get_deps_hash</c> is defined for it. This node enables it with the pinned guest's
+    /// generic CPU-proof profile and the split-domain digest of <see cref="Eip8288Dependencies.ComputeDepsHash"/>, which leaves
+    /// every leanSPHINCS-only list at the spec digest.</remarks>
     public const byte LeanStarkScheme = 0x11;
 
     public const ulong LeanSphincsVerificationGas = 3_000;
@@ -93,5 +103,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("6b99f3872b5dc2347ca13a348f1f297192fab75a92d362697544745f4a981166");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("417152e8bd83e0dfb6f3e2bb8991e948f62c7f15d74b693b55979a40b239efa1");
 }

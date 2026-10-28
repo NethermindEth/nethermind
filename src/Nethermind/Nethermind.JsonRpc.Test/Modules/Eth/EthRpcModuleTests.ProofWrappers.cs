@@ -145,6 +145,7 @@ public partial class EthRpcModuleTests
 
         public AggregationInput? LastInput { get; private set; }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) { VerificationCalls++; return !witness.IsEmpty; }
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) { VerificationCalls++; return !witness.IsEmpty; }
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) { VerificationCalls++; return !proof.IsEmpty; }
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {

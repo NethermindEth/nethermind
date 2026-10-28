@@ -40,8 +40,8 @@ public class LeanProofBudgetTests
     public void Compressed_parents_share_one_output_reservation()
     {
         LeanProofBudget budget = new();
-        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
-        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
+        FrameDependency first = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("second"), default);
         static AggregationInput Input(FrameDependency dependency) => new()
         {
             RecursiveProofs = [new([dependency], LeanProofTestEnvelope.CreateMaximal([dependency]))]
@@ -59,8 +59,8 @@ public class LeanProofBudgetTests
     [Test]
     public void Public_inclusion_proof_can_supply_claims_beyond_private_coverage()
     {
-        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
-        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("second"), default);
+        FrameDependency first = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("second"), default);
         FrameDependency sphincs = Dependency(3);
         LeanProofBudget budget = new();
         AggregationInput privateParent = new() { RecursiveProofs = [new([first, second], LeanProofTestEnvelope.Create([first, second]))] };
@@ -97,11 +97,12 @@ public class LeanProofBudgetTests
     }
 
     [Test]
-    public void Proof_union_limit_rejects_a_new_claim_but_preserves_existing_coverage()
+    public void Proof_union_limit_rejects_a_new_claim_but_preserves_existing_coverage([Values] bool generic)
     {
         LeanProofBudget budget = new();
-        byte scheme = Eip8288Constants.LeanSphincsScheme;
-        FrameDependency[] dependencies = new FrameDependency[Eip8288Constants.MaxProofDependencies];
+        int maximum = generic ? Eip8288Constants.MaxGenericStarkProofs : Eip8288Constants.MaxProofDependencies;
+        byte scheme = generic ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme;
+        FrameDependency[] dependencies = new FrameDependency[maximum];
         for (int i = 0; i < dependencies.Length; i++)
             dependencies[i] = new(scheme, ValueKeccak.Compute(i.ToString()), default);
         AggregationInput parent = new() { RecursiveProofs = [new(dependencies, LeanProofTestEnvelope.Create(dependencies))] };
@@ -110,7 +111,7 @@ public class LeanProofBudgetTests
         Assert.That(budget.TryPrepare(new(), [dependencies[0]], out _, out _), Is.True);
         FrameDependency extra = new(scheme, ValueKeccak.Compute("extra"), default);
         Assert.That(budget.TryPrepare(new() { Deps = [extra], Witnesses = [new byte[] { 1 }] }, [extra], out _, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo("Dependency proof count limit exceeded"));
+        Assert.That(error, Is.EqualTo(generic ? "Generic STARK proof count limit exceeded" : "Dependency proof count limit exceeded"));
     }
 
     private static FrameDependency Dependency(int index) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(index.ToString()), default);

@@ -238,9 +238,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
-            // EIP-8288 sets no mode-1 dependency-count limit, but the pinned guest commits to at most MaxProofDependencies, so a
-            // wider recursive proof cannot be verified, stored or reaggregated here: a local refusal, without penalty.
-            if (decoded.Mode == MempoolWrapper.ModeRecursive && decoded.Deps.Count > Eip8288Constants.MaxProofDependencies)
+            // EIP-8288 sets no mode-1 dependency-count limit, but the pinned guest commits to at most MaxProofDependencies, at most
+            // MaxGenericStarkProofs of them leanSTARK, so a wider recursive proof cannot be verified, stored or reaggregated here:
+            // a local refusal, without penalty.
+            if (decoded.Mode == MempoolWrapper.ModeRecursive && !Eip8288Dependencies.FitsProofList(decoded.Deps))
                 return ProofWrapperAcceptance.LocalFailure(WiderThanLocalProofBound);
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
@@ -603,7 +604,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 List<FrameDependency> combined = [.. deps, .. transactionDeps];
                 combined = Eip8288Dependencies.Canonicalize(combined);
                 if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
-                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies) continue;
+                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
+                    || !Eip8288Dependencies.FitsProofList(combined)) continue;
                 // Mode-0 witnesses fold directly into the aggregate and proven aggregates merge whole; the wrapper ends once the
                 // proving work would exceed the budget, whichever way the previous wrapper's proof is reused.
                 if (ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost)

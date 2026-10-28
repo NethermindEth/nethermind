@@ -120,13 +120,14 @@ public class BlockValidatorTests
     }
 
     // EIP-8288 Test Case 11: with sufficient gas and a valid proof, no dependency-count or weighted budget limits a block.
-    [TestCase(257)]
-    [TestCase(4097)]
-    public void Eip8288_has_no_block_dependency_quota(int dependencies)
+    [TestCase(4097, 0)]
+    [TestCase(257, 257)]
+    [TestCase(3857, 16)]
+    public void Eip8288_has_no_block_dependency_quota(int dependencies, int leanStark)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize)
-            .WithTransactions(DependencyTx(dependencies)).TestObject;
+            .WithTransactions(DependencyTx(dependencies, leanStark)).TestObject;
         block.StarkProof = [1];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         FixedLeanProofVerifier verifier = new(true);
@@ -194,12 +195,12 @@ public class BlockValidatorTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
         byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
-        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        depData[31] = Eip8288Constants.LeanStarkScheme;
         Transaction depTx = new()
         {
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData)],
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanStarkVerificationGas, UInt256.Zero, depData)],
             FrameSignatures = [],
         };
         depTx.Hash = depTx.CalculateHash();
@@ -298,11 +299,11 @@ public class BlockValidatorTests
         return (builder.TestObject, parent);
     }
 
-    private static Transaction DependencyTx(int dependencies)
+    private static Transaction DependencyTx(int dependencies, int leanStark)
     {
         FrameDependency[] all = new FrameDependency[dependencies];
         for (int i = 0; i < dependencies; i++)
-            all[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+            all[i] = new(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
         Transaction depTx = new()
         {
             Type = TxType.FrameTx,
@@ -346,6 +347,7 @@ public class BlockValidatorTests
         public void EnsureAvailable() { }
 
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             RecursiveCalls++;

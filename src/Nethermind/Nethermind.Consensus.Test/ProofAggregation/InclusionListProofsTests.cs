@@ -109,7 +109,7 @@ public class InclusionListProofsTests
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
         InclusionListProofService service = new(verifier);
         Transaction ordinary = new();
-        Transaction covered = ValidDependencyFrame(default);
+        Transaction covered = ValidDependencyFrame(default, Eip8288Constants.LeanStarkScheme);
         Transaction other = scenario switch
         {
             "malformed" => Malformed(),
@@ -180,17 +180,23 @@ public class InclusionListProofsTests
         Assert.That(verifier.VerificationCalls - otherVerifications, Is.EqualTo(1));
     }
 
-    [Test]
-    public void A_list_proof_beyond_the_proving_bound_obligates_nothing_and_is_not_verified()
+    // A proof the pinned guest cannot have produced, over more dependencies or more leanSTARK dependencies than one of its lists
+    // holds, is refused locally without verification: the list then obligates no dependency-bearing entry.
+    [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0, false)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 1, Eip8288Constants.MaxGenericStarkProofs + 1, false)]
+    [TestCase(Eip8288Constants.MaxGenericStarkProofs + 8, Eip8288Constants.MaxGenericStarkProofs, true)]
+    public void A_list_proof_beyond_the_proving_bound_obligates_nothing_and_is_not_verified(int count, int leanStark, bool withinBound)
     {
         FakeLeanProofVerifier verifier = new(true);
-        FrameDependency[] dependencies = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1).Select(i => Dependency($"wide-{i}"))];
+        FrameDependency[] dependencies = [.. Enumerable.Range(0, count).Select(i => i < leanStark
+            ? new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"wide-{i}"), default)
+            : Dependency($"wide-{i}"))];
         CommitteeInclusionList[] lists = [new([ValidDependencyFrame(default)], [1], Encode(Eip8288Dependencies.Canonicalize(dependencies)))];
         new InclusionListProofService(verifier).ResolveObligations(lists, Eip8288Prototype.Instance);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lists[0].VerifiedProofDeps, Is.Null);
-            Assert.That(verifier.VerificationCalls, Is.Zero);
+            Assert.That(lists[0].VerifiedProofDeps, withinBound ? Is.Not.Null : Is.Null);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(withinBound ? 1 : 0));
         }
     }
 
@@ -237,13 +243,19 @@ public class InclusionListProofsTests
     [TestCase("invalid-proof")]
     [TestCase("other-fork")]
     [TestCase("without-eip8288")]
+    [TestCase("too-many-leanstark")]
     public void Held_proof_choice_needs_a_covering_proof_that_verifies(string scenario)
     {
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency wanted = Dependency("wanted");
         FrameDependency second = Dependency("second");
-        store.AddCachedRecursive([scenario is "uncovered" or "partly-covered" ? Dependency("held") : wanted], [9]);
+        if (scenario == "too-many-leanstark")
+            // Over the pinned guest's leanSTARK bound for one list, so it is never attached, as no node could verify it.
+            store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([wanted, .. Enumerable.Range(0, Eip8288Constants.MaxGenericStarkProofs + 1)
+                .Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"stark:{i}"), default))]), [9]);
+        else
+            store.AddCachedRecursive([scenario is "uncovered" or "partly-covered" ? Dependency("held") : wanted], [9]);
         if (scenario == "partly-covered") store.AddCachedRecursive([wanted], [8]);
         IReleaseSpec target = scenario switch
         {

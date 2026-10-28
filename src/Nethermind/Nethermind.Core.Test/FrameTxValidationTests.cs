@@ -643,7 +643,7 @@ public class FrameTxValidationTests
         disabled.IsEip7623Enabled.Returns(floorEnabled);
         enabled.IsEip7623Enabled.Returns(floorEnabled);
         enabled.IsEip8288Enabled.Returns(true);
-        byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme];
+        byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme];
         Transaction tx = CreateValidFrameTx(t =>
         {
             t.Frames = [SelfVerifyFrame(), Frame(data: floorBinds ? new byte[100_000] : [])];
@@ -724,12 +724,10 @@ public class FrameTxValidationTests
     {
         yield return DepCase("SingleLeanSphincsDependency_Valid",
             static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme)], null);
-        // EIP-8288 reserves LEANSTARK_SCHEME: a frame that uses it is invalid until get_deps_hash is defined for it.
-        yield return DepCase("SingleLeanStarkDependency_InvalidDependencyScheme",
-            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme)], FrameTxValidation.InvalidDependencyScheme);
-        yield return DepCase("MixedSchemesInOneFrame_InvalidDependencyScheme",
-            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)],
-            FrameTxValidation.InvalidDependencyScheme);
+        yield return DepCase("SingleLeanStarkDependency_Valid",
+            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme)], null);
+        yield return DepCase("MixedSchemesInOneFrame_Valid",
+            static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)], null);
 
         yield return DepCase("EmptyData_DependencyFrameDataLength",
             static tx => tx.Frames = [new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Array.Empty<byte>())],
@@ -782,9 +780,9 @@ public class FrameTxValidationTests
         yield return DepCase("TooManySigDeps_TooManySigDeps",
             static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxSigsPerTx + 1).ToArray())],
             null);
-        yield return DepCase("TooManyStarkDeps_InvalidDependencyScheme",
+        yield return DepCase("TooManyStarkDeps_TooManyStarkDeps",
             static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkScheme)],
-            FrameTxValidation.InvalidDependencyScheme);
+            null);
     }
 
     private static TestCaseData DepCase(string name, Action<Transaction> mutate, string? expectedError) =>

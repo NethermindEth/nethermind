@@ -137,17 +137,17 @@ public class MempoolWrapperTests
         Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.True, error);
     }
 
-    // LEANSTARK_SCHEME is reserved: a transaction whose dependency frame uses it is rejected before verification.
+    // LEANSTARK_SCHEME, enabled here as a deviation from EIP-8288, is valid beside leanSPHINCS in both modes; mode 0 still
+    // bounds it by MAX_LEANSTARK_DEPS_PER_WRAPPER.
     [Test]
-    public void Wrapper_rejects_reserved_leanstark_deps([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    public void Wrapper_accepts_mixed_leanstark_deps([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
     {
-        MempoolWrapper wrapper = Batch(mode, [[Stark("a")]]);
+        MempoolWrapper wrapper = Batch(mode, [[Stark("a"), Sphincs("b")]]);
         FakeLeanProofVerifier verifier = new(true);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(MempoolWrapperValidator.MalformedDependencyFrame));
-            Assert.That(verifier.VerificationCalls, Is.Zero);
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error), Is.True, error);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(mode == MempoolWrapper.ModeDirect ? 2 : 1));
         }
     }
 
@@ -384,9 +384,9 @@ public class MempoolWrapperTests
     // A zero data_hash stands for the containing transaction's signature hash, so a mode-0 witness is checked against the
     // signature hash, not the zero placeholder.
     [Test]
-    public void Direct_witness_for_a_zero_data_hash_verifies_against_the_signature_hash()
+    public void Direct_witness_for_a_zero_leanstark_data_hash_verifies_against_the_signature_hash()
     {
-        Transaction transaction = DepTx([new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, TestItem.KeccakA.ValueHash256)]);
+        Transaction transaction = DepTx([new FrameDependency(Eip8288Constants.LeanStarkScheme, default, TestItem.KeccakA.ValueHash256)]);
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         MempoolWrapper wrapper = new() { Transactions = [transaction], Mode = MempoolWrapper.ModeDirect, Deps = deps, Proofs = [[1]] };
         ValueHash256? checkedHash = null;
@@ -400,13 +400,14 @@ public class MempoolWrapperTests
         }
     }
 
-    /// <summary>Accepts every leanSPHINCS witness, reporting the statement it was checked against.</summary>
-    private sealed class DataHashVerifier(Action<ValueHash256> onVerify) : ILeanProofVerifier
+    /// <summary>Accepts every leanSTARK witness, reporting the statement it was checked against.</summary>
+    private sealed class DataHashVerifier(Action<ValueHash256> onLeanStark) : ILeanProofVerifier
     {
         public void EnsureAvailable() { }
-        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
         {
-            onVerify(dataHash);
+            onLeanStark(dataHash);
             return true;
         }
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => false;
@@ -426,7 +427,7 @@ public class MempoolWrapperTests
             Frames =
             [
                 .. deps.Count == 0 ? Array.Empty<TxFrame>() : [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
-                    Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize(deps))],
+                    deps.Aggregate(0UL, static (gas, dependency) => gas + dependency.VerificationGas), UInt256.Zero, Eip8288Dependencies.Serialize(deps))],
                 .. payload == 0 && deps.Count != 0 ? Array.Empty<TxFrame>()
                     : [new TxFrame(FrameMode.Sender, FrameFlags.None, Address.Zero, 100_000, UInt256.Zero, new byte[payload])]
             ]
