@@ -142,6 +142,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             }
         }
 
+        [TestCase("0x12")]
+        [TestCase("0x")]
+        [TestCase("0x00000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase("0x000000000000000000000000000000000000000000000000000000000000000000")]
+        public void TransactionHashesFilter_rejects_hash_of_wrong_length(string hash)
+        {
+            using JsonDocument document = JsonDocument.Parse($$"""{"transactionHashes":["{{hash}}"]}""");
+            TransactionHashesFilter filter = new();
+
+            Assert.That(() => filter.ReadJson(document.RootElement, EthereumJsonSerializer.JsonOptions), Throws.TypeOf<FormatException>());
+        }
+
         [Test]
         public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts([Values(null, "{}", """{"transactionHashes":[]}""")] string? filterJson)
         {
