@@ -656,11 +656,24 @@ public class StartupTests
     public async Task ProcessJsonRpcRequest_DebugDeadlineReportsFailureThroughKestrel(
         [Values(nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash))] string method,
         [Values] bool bufferResponse, [Values] bool flush, [Values] bool batch,
-        [Values(0, 32 * 1024)] int payloadSize)
+        [Values(0, 32 * 1024)] int payloadSize, [Values(true, false)] bool ownedDeadline)
     {
         using CancellationTokenSource resultCancellation = new();
         using GethLikeTxTraceStreamingBlockResult result = new((writer, pipe, token) =>
         {
+            if (!ownedDeadline)
+            {
+                using GethLikeBlockEnvelopeStreamingTracer tracer = new(GethTraceOptions.Default, writer, pipe, token);
+                using (((Nethermind.Evm.Tracing.IBlockTracer)tracer).StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("memory", new string('a', payloadSize == 0 ? 1 : payloadSize));
+                    writer.WriteEndObject();
+                    writer.Flush();
+                    if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("sentinel control");
+                }
+            }
             writer.WriteStringValue(new string('x', payloadSize));
             writer.Flush();
             if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
@@ -686,16 +699,44 @@ public class StartupTests
             EnabledModules = [ModuleType.Engine, ModuleType.Debug],
             BufferResponses = bufferResponse
         }, jsonRpcLocalStats: stats, debugModule: debugModule);
-        string selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? "\"latest\"" : JsonSerializer.Serialize(TestItem.KeccakA.ToString());
-        string request = CreateJsonRpcRequest(method, paramsJson: "[" + selector + ",{\"streamMode\":true}]");
-        if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
+        string selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber)
+            ? ownedDeadline ? "\"latest\"" : "\"0x1\""
+            : JsonSerializer.Serialize(TestItem.KeccakA.ToString());
+        string request = ownedDeadline
+            ? CreateJsonRpcRequest(method, paramsJson: "[" + selector + ",{\"streamMode\":true}]")
+            : CreateJsonRpcRequest(method, idJson: "7", paramsJson: "[" + selector + "]");
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: ownedDeadline ? "2" : "1") + "," + request + "]";
         long successes = JsonRpcMetrics.JsonRpcSuccesses;
         long errors = JsonRpcMetrics.JsonRpcErrors;
         JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine, ModuleType.Debug]);
         using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
         await using (KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url))
         {
-            if (bufferResponse || payloadSize == 0)
+            if (!ownedDeadline)
+            {
+                (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+                using JsonDocument document = JsonDocument.Parse(response);
+                JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+                Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.True);
+                Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+                    Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(7));
+                    Assert.That(envelope.TryGetProperty("error", out _), Is.False);
+                    Assert.That(traces[0].GetProperty("txHash").GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
+                    Assert.That(traces[0].GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
+                    Assert.That(traces[0].GetProperty("result").GetProperty("structLogs").GetArrayLength(), Is.EqualTo(1));
+                    Assert.That(traces[1].GetProperty("errorCode").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                    Assert.That(traces[1].GetProperty("error").GetString(), Does.Contain("sentinel control"));
+                    if (batch)
+                    {
+                        Assert.That(document.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
+                        Assert.That(document.RootElement[0].TryGetProperty("result", out _), Is.True);
+                    }
+                }
+            }
+            else if (bufferResponse || payloadSize == 0)
             {
                 (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
                 using JsonDocument document = JsonDocument.Parse(response);
@@ -724,15 +765,15 @@ public class StartupTests
                 }
             }
             RpcReport report = await reported.Task.WaitAsync(deadline.Token);
-            Assert.That(report.Success, Is.False);
+            Assert.That(report.Success, Is.EqualTo(!ownedDeadline));
         }
-        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == method && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == method && report.Success == !ownedDeadline), Arg.Any<long>(), Arg.Any<long?>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => resultCancellation.Token, Throws.TypeOf<ObjectDisposedException>(),
                 "the pipeline must release the result's source before fixture cleanup");
-            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo(batch ? 1 : 0));
-            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(1));
+            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo((batch ? 1 : 0) + (ownedDeadline ? 0 : 1)));
+            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(ownedDeadline ? 1 : 0));
         }
     }
 
