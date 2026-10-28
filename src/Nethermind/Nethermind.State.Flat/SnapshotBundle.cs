@@ -46,6 +46,7 @@ public sealed class SnapshotBundle : IDisposable
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
     private ConcurrentDictionary<HashedKey<Address>, byte>? _addressesWithChangedSlots;
+    private Dictionary<HashedKey<Address>, Account?>? _ownerReadAccounts;
 
     private bool _trieChanged = false;
 
@@ -64,15 +65,21 @@ public sealed class SnapshotBundle : IDisposable
     // block processing keeps the plain loop, so its reads do not depend on the filter.
     private readonly bool _filterInMemorySlotReads;
 
+    // The thread that opened the bundle, when its reads are cached in SnapshotContent.OwnerReadAccounts.
+    private readonly int _ownerThreadId;
+
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
+    /// <param name="cacheOwnerReadsWithoutLocks">Cache the accounts that the constructing thread reads in
+    /// <see cref="SnapshotContent.OwnerReadAccounts"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
-        bool filterInMemorySlotReads = false)
+        bool filterInMemorySlotReads = false,
+        bool cacheOwnerReadsWithoutLocks = false)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
@@ -81,6 +88,7 @@ public sealed class SnapshotBundle : IDisposable
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
         _filterInMemorySlotReads = filterInMemorySlotReads && readOnlySnapshotBundle.MayFilterSlots;
+        _ownerThreadId = cacheOwnerReadsWithoutLocks ? Environment.CurrentManagedThreadId : 0;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
@@ -98,7 +106,11 @@ public sealed class SnapshotBundle : IDisposable
         _changedStorageNodes = _currentPooledContent.StorageNodes;
         _changedStateNodes = _currentPooledContent.StateNodes;
         _selfDestructedAccountAddresses = _currentPooledContent.SelfDestructedStorageAddresses;
+        if (_ownerThreadId != 0) _ownerReadAccounts = _currentPooledContent.OwnerReadAccounts ??= [];
     }
+
+    private Dictionary<HashedKey<Address>, Account?>? OwnerReadAccounts =>
+        _ownerReadAccounts is { } ownerReadAccounts && Environment.CurrentManagedThreadId == _ownerThreadId ? ownerReadAccounts : null;
 
     public Account? GetAccount(Address address) => DoGetAccount(address, excludeChanged: false, out _);
 
@@ -111,7 +123,9 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && (_changedAccounts.TryGetValue(key, out Account? acc) || _readAccounts.TryGetValue(key, out acc)))
+        if (!excludeChanged && (_changedAccounts.TryGetValue(key, out Account? acc)
+            || OwnerReadAccounts?.TryGetValue(key, out acc) == true
+            || _readAccounts.TryGetValue(key, out acc)))
         {
             isInCurrentSnapshot = true;
             return acc;
@@ -509,7 +523,13 @@ public sealed class SnapshotBundle : IDisposable
     {
         // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
         HashedKey<Address> key = new(address);
-        if (!_changedAccounts.ContainsKey(key) && !_readAccounts.ContainsKey(key))
+        if (_changedAccounts.ContainsKey(key)) return;
+
+        if (OwnerReadAccounts is { } ownerReadAccounts)
+        {
+            ownerReadAccounts.TryAdd(key, account);
+        }
+        else if (!_readAccounts.ContainsKey(key))
         {
             _readAccounts.TryAdd(key, account);
         }
@@ -685,9 +705,14 @@ public sealed class SnapshotBundle : IDisposable
     /// <remarks>
     /// A snapshot never reads these entries, so keeping them would only hold memory that its estimate does not count.
     /// The clear takes the stripe locks because a warmer can still be promoting into this content, and it keeps the
-    /// grown table for the next block that reuses the pooled content.
+    /// grown table for the next block that reuses the pooled content. The owner's cache needs no lock: only the owner
+    /// thread uses it, and that thread does not read the scope while it commits.
     /// </remarks>
-    private static void DropReadAccounts(SnapshotContent content) => content.ReadAccounts.NoResizeClear();
+    private static void DropReadAccounts(SnapshotContent content)
+    {
+        content.ReadAccounts.NoResizeClear();
+        content.OwnerReadAccounts?.Clear();
+    }
 
     private void SwapTransientResource() =>
         Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
@@ -705,6 +730,7 @@ public sealed class SnapshotBundle : IDisposable
         _changedSlots = null!;
         _changedAccounts = null!;
         _readAccounts = null!;
+        _ownerReadAccounts = null;
         _changedStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 
