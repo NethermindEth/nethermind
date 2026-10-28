@@ -287,6 +287,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
+        finally
+        {
+            _availability.ForgetMatchedRoots();
+        }
     }
 
     /// <summary>Capture runs before every flat persist, so a flat state persisted above the watermark means history was
@@ -518,6 +522,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
         }
 
+        _availability.ForgetMatchedRoots();
+
         // The genesis floor a later walk connects to. Deliberately not proof of health: the nodes that reach the
         // seed (history enabled mid-life) are exactly the ones whose first walk fails.
         _availability.PublishWatermark(0, _formatVersion);
@@ -576,6 +582,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             HistoryAvailability.MarkBlock(columns.AvailableBlocks, pivotBlock, pivotStateRoot, _formatVersion);
         }
 
+        // A pivot at the watermark overwrites the marker a reader may already have matched.
+        _availability.ForgetMatchedRoots();
         _availability.PublishWatermark(pivotBlock, _formatVersion);
         Metrics.FlatHistoryWatermark = (long)pivotBlock;
         if (!hasFloor || pivotBlock >= currentFloor)
