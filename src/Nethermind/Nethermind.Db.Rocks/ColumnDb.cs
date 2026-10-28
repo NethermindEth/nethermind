@@ -12,7 +12,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IEpochSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
+public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -222,11 +222,11 @@ public class ColumnDb : IDb, ISnapshotSortedKeyValueStore, IEpochSortedKeyValueS
     }
 
     public bool TryGetCeilingAtEpoch(
-        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive, long epoch,
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
     {
         _mainDb.ThrowIfDisposing();
-        return DbOnTheRocks.TryGetCeilingAtEpochWithIterator(lowerBoundInclusive, upperBoundExclusive, epoch, _epochSeekIteratorManager.Value,
+        return DbOnTheRocks.TryGetCeilingAtEpochWithIterator(lowerBoundIncl, upperBoundExcl, epoch, _epochSeekIteratorManager.Value,
             keyBuffer, out keyLength, valueBuffer, out valueLength);
     }
 
