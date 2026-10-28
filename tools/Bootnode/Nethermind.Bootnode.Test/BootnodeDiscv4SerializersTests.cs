@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network;
@@ -36,31 +36,19 @@ public class BootnodeDiscv4SerializersTests
             FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
         };
 
-        IByteBuffer buffer = serializationService.ZeroSerialize(message);
-        int sourceUdpPort;
-        int sourceTcpPort;
-        int destinationUdpPort;
-        int destinationTcpPort;
-        try
-        {
-            RlpReader ctx = CreatePayloadContext(buffer);
-            ctx.ReadSequenceLength();
-            ctx.DecodeInt();
+        RlpReader ctx = CreatePayloadContext(Serialize(serializationService, message));
+        ctx.ReadSequenceLength();
+        ctx.DecodeInt();
 
-            ctx.ReadSequenceLength();
-            ctx.DecodeByteArraySpan(RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address)));
-            sourceUdpPort = ctx.DecodeInt();
-            sourceTcpPort = ctx.DecodeInt();
+        ctx.ReadSequenceLength();
+        ctx.DecodeByteArraySpan(RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address)));
+        int sourceUdpPort = ctx.DecodeInt();
+        int sourceTcpPort = ctx.DecodeInt();
 
-            ctx.ReadSequenceLength();
-            ctx.DecodeByteArraySpan(RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address)));
-            destinationUdpPort = ctx.DecodeInt();
-            destinationTcpPort = ctx.DecodeInt();
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        ctx.ReadSequenceLength();
+        ctx.DecodeByteArraySpan(RlpLimit.For<IPEndPoint>(16, nameof(IPEndPoint.Address)));
+        int destinationUdpPort = ctx.DecodeInt();
+        int destinationTcpPort = ctx.DecodeInt();
 
         using (Assert.EnterMultipleScope())
         {
@@ -87,25 +75,13 @@ public class BootnodeDiscv4SerializersTests
             FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
         };
 
-        IByteBuffer buffer = serializationService.ZeroSerialize(message);
-        int localUdpPort;
-        int localTcpPort;
-        int remoteUdpPort;
-        int remoteTcpPort;
-        try
-        {
-            RlpReader ctx = CreatePayloadContext(buffer);
-            ctx.ReadSequenceLength();
-            int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader ctx = CreatePayloadContext(Serialize(serializationService, message));
+        ctx.ReadSequenceLength();
+        int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
 
-            (localUdpPort, localTcpPort) = DecodeNeighborPorts(ref ctx);
-            (remoteUdpPort, remoteTcpPort) = DecodeNeighborPorts(ref ctx);
-            ctx.Check(nodesEnd);
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        (int localUdpPort, int localTcpPort) = DecodeNeighborPorts(ref ctx);
+        (int remoteUdpPort, int remoteTcpPort) = DecodeNeighborPorts(ref ctx);
+        ctx.Check(nodesEnd);
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,16 +109,7 @@ public class BootnodeDiscv4SerializersTests
             FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
         };
 
-        IByteBuffer buffer = serializationService.ZeroSerialize(message);
-        PingMsg deserialized;
-        try
-        {
-            deserialized = serializationService.Deserialize<PingMsg>(buffer);
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        PingMsg deserialized = serializationService.Deserialize<PingMsg>(Serialize(serializationService, message));
 
         using (Assert.EnterMultipleScope())
         {
@@ -169,16 +136,7 @@ public class BootnodeDiscv4SerializersTests
             FarAddress = new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)
         };
 
-        IByteBuffer buffer = serializationService.ZeroSerialize(message);
-        NeighborsMsg deserialized;
-        try
-        {
-            deserialized = serializationService.Deserialize<NeighborsMsg>(buffer);
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        NeighborsMsg deserialized = serializationService.Deserialize<NeighborsMsg>(Serialize(serializationService, message));
 
         Node deserializedTcpAndDiscoveryNode = deserialized.Nodes[0];
         Node deserializedDiscoveryOnlyNode = deserialized.Nodes[1];
@@ -208,11 +166,13 @@ public class BootnodeDiscv4SerializersTests
             SerializerInfo.Create(new EnrResponseMsgSerializer(ecdsa, privateKeyProvider, nodeIdResolver)));
     }
 
-    private static RlpReader CreatePayloadContext(IByteBuffer buffer)
+    private static byte[] Serialize<T>(IMessageSerializationService serializationService, T message) where T : DiscoveryMsg
     {
-        byte[] packet = buffer.ReadAllBytesAsArray();
-        return new RlpReader(packet.AsMemory((32 + 64 + 1 + 1)..));
+        using ArrayPoolSpan<byte> packet = serializationService.Serialize(message);
+        return ((ReadOnlySpan<byte>)packet).ToArray();
     }
+
+    private static RlpReader CreatePayloadContext(byte[] packet) => new(packet.AsMemory((32 + 64 + 1 + 1)..));
 
     private static (int udpPort, int tcpPort) DecodeNeighborPorts(ref RlpReader ctx)
     {
