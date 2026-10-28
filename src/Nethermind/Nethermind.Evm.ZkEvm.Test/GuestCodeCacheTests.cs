@@ -30,4 +30,34 @@ public class GuestCodeCacheTests
         cache.Clear();
         Assert.That(cache.Get(in Stored), Is.Null);
     }
+
+    [Test]
+    public void Serves_every_code_through_slot_collisions_replacement_and_growth([Values] bool sameSlot)
+    {
+        GuestCodeCache cache = new(4);
+        ValueHash256[] hashes = new ValueHash256[100];
+        CodeInfo[] codes = new CodeInfo[hashes.Length];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            byte[] bytes = new byte[32];
+            bytes[sameSlot ? 31 : 0] = (byte)(i + 1);
+            hashes[i] = new ValueHash256(bytes);
+            codes[i] = new CodeInfo(new byte[] { (byte)Instruction.STOP });
+            cache.Set(in hashes[i], codes[i]);
+        }
+
+        CodeInfo replacement = new(new byte[] { (byte)Instruction.STOP });
+        cache.Set(in hashes[7], replacement);
+        codes[7] = replacement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                Assert.That(cache.Get(in hashes[i]), Is.SameAs(codes[i]));
+            }
+
+            Assert.That(cache.Get(in Absent), Is.Null);
+        }
+    }
 }
