@@ -612,13 +612,15 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_traceBlockByNumber_null_boolean_preserves_trace_output(
         [Values("disableStorage", "disableStack", "enableMemory", "enableReturnData")] string property,
-        [Values] bool enabled, [Values] bool streamMode)
+        [Values] bool enabled, [Values] bool streamMode, [Values] bool nullFirst)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         string members = $"\"limit\":1000,\"streamMode\":{streamMode.ToString().ToLowerInvariant()},\"{property}\":{enabled.ToString().ToLowerInvariant()}";
         using JsonDocument baselineOptions = JsonDocument.Parse("{" + members + "}");
-        using JsonDocument nullOptions = JsonDocument.Parse($"{{\"{property}\":null," + members + "}");
+        using JsonDocument nullOptions = JsonDocument.Parse(nullFirst
+            ? $"{{\"{property}\":null," + members + "}"
+            : "{" + members + $",\"{property}\":null" + "}");
 
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, baselineOptions.RootElement);
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, nullOptions.RootElement);
