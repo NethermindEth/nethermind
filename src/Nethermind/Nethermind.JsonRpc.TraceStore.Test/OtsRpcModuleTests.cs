@@ -14,7 +14,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -31,7 +30,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
-using Nethermind.Core.Test;
 
 namespace Nethermind.JsonRpc.TraceStore.Test;
 
@@ -44,7 +42,8 @@ public class OtsRpcModuleTests
     [TestCase(false, 1ul, new[] { 3, 3 }, true, false)]
     [TestCase(false, 3ul, new int[0], true, false)]
     [TestCase(false, ulong.MaxValue, new int[0], true, false)]
-    [TestCase(true, ulong.MaxValue, new[] { 3, 3 }, false, false)]
+    [TestCase(true, 4ul, new[] { 3, 3 }, true, false)]
+    [TestCase(true, ulong.MaxValue, new[] { 3, 3 }, true, false)]
     public void Search_preserves_exclusive_cursor_whole_blocks_order_and_flags(bool backwards, ulong cursor, int[] numbers, bool first, bool last)
     {
         using Fixture f = new();
@@ -235,6 +234,32 @@ public class OtsRpcModuleTests
             Assert.That(entries[4].GetProperty("output").GetString(), Is.EqualTo("0xdead"));
             Assert.That(entries[5].GetProperty("input").GetString(), Is.EqualTo("0x"));
             Assert.That(entries[0].GetProperty("depth").ValueKind, Is.EqualTo(JsonValueKind.Number));
+        }
+    }
+
+    [Test]
+    public void Trace_maps_root_failures_without_an_entered_frame([Values] bool creation)
+    {
+        using Fixture f = new();
+        f.AddBlock(new ParityTraceAction { From = TestItem.AddressB, To = creation ? null : TestItem.AddressC });
+        Block block = f.Blocks[^1];
+        Transaction tx = block.Transactions[0];
+        Address recipient = creation ? ContractAddress.From(tx.SenderAddress, tx.Nonce) : tx.To!;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        tracer.MarkAsFailed(recipient, default, [], creation ? nameof(EvmExceptionType.TransactionCollision) : nameof(EvmExceptionType.OutOfGas));
+        f.Traces[(int)block.Number][0] = tracer.BuildResult();
+        f.Save((int)block.Number);
+
+        using ResultWrapper<List<OtsTraceEntry>> response = f.Module.ots_traceTransaction(tx.Hash!);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data[0].Type, Is.EqualTo(creation ? "CREATE" : "CALL"));
+            Assert.That(response.Data[0].Depth, Is.Zero);
+            Assert.That(response.Data[0].From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(response.Data[0].To, Is.EqualTo(recipient));
+            Assert.That(response.Data[0].Output, Is.Empty);
         }
     }
 

@@ -116,7 +116,7 @@ public sealed class OtsRpcModule(
             result.Txs.Reverse();
             result.Receipts.Reverse();
         }
-        result.FirstPage = backwards ? cursor == 0 : !hasMore;
+        result.FirstPage = backwards ? cursor == 0 || cursor > head.Number : !hasMore;
         result.LastPage = backwards ? !hasMore : cursor == 0;
         return ResultWrapper<OtsSearchResult>.Success(result);
     }
@@ -220,6 +220,9 @@ public sealed class OtsRpcModule(
                 if (!action.IsPrecompiled)
                 {
                     Address? to = action.To ?? action.Result?.Address;
+                    if (to is null && frame.Depth == 0 && action.CallType == "init" && action.From is not null
+                        && !block.Transactions[index].IsMessageCall)
+                        to = ContractAddress.From(action.From, block.Transactions[index].Nonce);
                     if (action.From is null || to is null)
                         return ResultWrapper<List<OtsTraceEntry>>.Fail("Stored trace lacks a call's sender or destination.", ErrorCodes.ResourceUnavailable);
 
@@ -228,6 +231,8 @@ public sealed class OtsRpcModule(
                         "create" => action.CreationMethod == "create2" ? "CREATE2" : "CREATE",
                         "suicide" => "SELFDESTRUCT",
                         "call" => action.CallType?.ToUpperInvariant() ?? "CALL",
+                        null when action.CallType == "init" => "CREATE",
+                        null when action.CallType == "call" => "CALL",
                         _ => "UNKNOWN"
                     };
                     entries.Add(new()
