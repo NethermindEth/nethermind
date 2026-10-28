@@ -192,7 +192,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             try
             {
                 return new(db, genesisHash, SpecProvider, GetHeaderAsync, FetchLogHeaderPageAsync, _logger,
-                    clock: _clock, directory: directory, prefetchPage: BeginLogHeaderPage);
+                    clock: _clock, directory: directory, prefetchPages: BeginLogHeaderPages);
             }
             catch { db.Dispose(); throw; }
         });
@@ -678,46 +678,126 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private Task<BlockHeader[]> FetchLogHeaderPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken) =>
         RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
 
-    private VerifiedHeaderHistory.PageRequest BeginLogHeaderPage(ulong number, int count, CancellationToken cancellationToken)
+    private VerifiedHeaderHistory.PageRequest[] BeginLogHeaderPages(ulong number, int count, CancellationToken cancellationToken)
     {
-        HeaderPrefetch prefetch = new();
-        Task<BlockHeader[]> fetch = RequestExecutionAsync(AllocationContexts.Headers,
-            (peer, token) => ReadUnverifiedLogHeaderPageAsync(peer, number, count, token), cancellationToken,
-            prefetch: prefetch);
-        return new(fetch, AuthenticateAsync);
-
-        async Task<BlockHeader[]> AuthenticateAsync(BlockHeader cursor, CancellationToken token)
+        if (count is < 1 or > VerifiedHeaderHistory.WireBatchSize || number < (ulong)count)
+            throw new ArgumentOutOfRangeException(nameof(count));
+        ulong first = number - (ulong)count;
+        HeaderPrefetch group = new();
+        Task<BlockHeader[]> probe = RequestExecutionAsync(AllocationContexts.Headers,
+            (peer, token) => ReadLogHeaderBatchAsync(peer, first, count, token), cancellationToken,
+            prefetch: group);
+        ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
+        VerifiedHeaderHistory.PageRequest[] pages = new VerifiedHeaderHistory.PageRequest[
+            (count + VerifiedHeaderHistory.PageSize - 1) / VerifiedHeaderHistory.PageSize];
+        int remaining = count;
+        for (int i = 0; i < pages.Length; i++)
         {
-            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
-            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token, timeout.Token);
-            if (prefetch.TryHandoff())
-            {
-                await ((Task)fetch).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-                deadline.Token.ThrowIfCancellationRequested();
-                return await FetchLogHeaderPageAsync(cursor, count, deadline.Token);
-            }
-            BlockHeader[] headers;
-            try { headers = await fetch.WaitAsync(deadline.Token); }
-            catch (RpcException) when (!deadline.IsCancellationRequested)
-            {
-                return await FetchLogHeaderPageAsync(cursor, count, deadline.Token);
-            }
-            deadline.Token.ThrowIfCancellationRequested();
-            ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
-            PeerInfo supplier = prefetch.Supplier;
-            bool IsCurrent(PeerInfo peer) => peer.IsInitialized && ReferenceEquals(pool.GetPeer(peer.SyncPeer.Node), peer);
-            bool CanPrefer(PeerInfo peer) => IsCurrent(peer) && !IsCooling(peer, AllocationContexts.Headers);
-            try { VerifiedHeaderHistory.VerifyPage(cursor, count, headers); }
-            catch (InvalidDataException exception)
-            {
-                deadline.Token.ThrowIfCancellationRequested();
-                if (IsCurrent(supplier)) RecordPeerFailure(pool, AllocationContexts.Headers, supplier, exception);
-                return await FetchLogHeaderPageAsync(cursor, count, deadline.Token);
-            }
-            deadline.Token.ThrowIfCancellationRequested();
-            PromotePeer(AllocationContexts.Headers, supplier, CanPrefer);
-            return headers;
+            int pageCount = Math.Min(VerifiedHeaderHistory.PageSize, remaining);
+            int offset = remaining - pageCount;
+            pages[i] = BeginPage(number, pageCount, offset);
+            number -= (ulong)pageCount;
+            remaining -= pageCount;
         }
+        return pages;
+
+        bool IsCurrent(PeerInfo peer) => peer.IsInitialized && ReferenceEquals(pool.GetPeer(peer.SyncPeer.Node), peer);
+
+        VerifiedHeaderHistory.PageRequest BeginPage(ulong pageNumber, int pageCount, int offset)
+        {
+            HeaderPrefetch page = new();
+            Task<BlockHeader[]> fetch = FetchAsync();
+            return new(fetch, AuthenticateAsync);
+
+            ReadOnlyMemory<BlockHeader> Prefix(ISyncPeer peer, BlockHeader[] batch)
+            {
+                int available = Math.Clamp(batch.Length - offset, 0, pageCount);
+                return available != 0 && ReferenceEquals(peer, group.Supplier.SyncPeer) && IsCurrent(group.Supplier)
+                    ? batch.AsMemory(offset, available) : default;
+            }
+
+            async Task<BlockHeader[]> FetchAsync()
+            {
+                BlockHeader[] batch = await probe;
+                int available = Math.Clamp(batch.Length - offset, 0, pageCount);
+                if (available == pageCount)
+                {
+                    page.Supplier = group.Supplier;
+                    return batch.AsSpan(offset, pageCount).ToArray();
+                }
+                // The probe has released its permits before independent page continuations start.
+                return await RequestExecutionAsync(AllocationContexts.Headers,
+                    (peer, token) => ReadUnverifiedLogHeaderPageAsync(peer, pageNumber, pageCount, token, Prefix(peer, batch)),
+                    cancellationToken, prefetch: page);
+            }
+
+            async Task<BlockHeader[]> ReadLeadingAsync(BlockHeader cursor, CancellationToken token)
+            {
+                BlockHeader[] batch = probe.IsCompletedSuccessfully ? await probe : [];
+                return await RequestExecutionAsync(AllocationContexts.Headers, async (peer, cancellation) =>
+                {
+                    BlockHeader[] headers = await ReadUnverifiedLogHeaderPageAsync(peer, pageNumber, pageCount,
+                        cancellation, Prefix(peer, batch));
+                    VerifiedHeaderHistory.VerifyPage(cursor, pageCount, headers);
+                    return headers;
+                }, token);
+            }
+
+            async Task<BlockHeader[]> AuthenticateAsync(BlockHeader cursor, CancellationToken token)
+            {
+                using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
+                using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token, timeout.Token);
+                BlockHeader[] headers;
+                try
+                {
+                    if (group.TryHandoff())
+                    {
+                        await ((Task)fetch).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                        deadline.Token.ThrowIfCancellationRequested();
+                        return await ReadLeadingAsync(cursor, deadline.Token);
+                    }
+                    BlockHeader[] batch = await probe.WaitAsync(deadline.Token);
+                    if (batch.Length < offset + pageCount && page.TryHandoff())
+                    {
+                        await ((Task)fetch).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                        deadline.Token.ThrowIfCancellationRequested();
+                        return await ReadLeadingAsync(cursor, deadline.Token);
+                    }
+                    headers = await fetch.WaitAsync(deadline.Token);
+                }
+                catch (Exception exception) when (!deadline.IsCancellationRequested && (exception is RpcException
+                    || exception is OperationCanceledException && (group.HandedOff || page.HandedOff)))
+                {
+                    await ((Task)fetch).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    deadline.Token.ThrowIfCancellationRequested();
+                    return await ReadLeadingAsync(cursor, deadline.Token);
+                }
+                deadline.Token.ThrowIfCancellationRequested();
+                PeerInfo supplier = page.Supplier;
+                bool CanPrefer(PeerInfo peer) => IsCurrent(peer) && !IsCooling(peer, AllocationContexts.Headers);
+                try { VerifiedHeaderHistory.VerifyPage(cursor, pageCount, headers); }
+                catch (InvalidDataException exception)
+                {
+                    deadline.Token.ThrowIfCancellationRequested();
+                    if (IsCurrent(supplier)) RecordPeerFailure(pool, AllocationContexts.Headers, supplier, exception);
+                    return await ReadLeadingAsync(cursor, deadline.Token);
+                }
+                deadline.Token.ThrowIfCancellationRequested();
+                PromotePeer(AllocationContexts.Headers, supplier, CanPrefer);
+                return headers;
+            }
+        }
+    }
+
+    private static async Task<BlockHeader[]> ReadLogHeaderBatchAsync(ISyncPeer peer, ulong first, int count,
+        CancellationToken cancellationToken)
+    {
+        using IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(first, count, 0, cancellationToken);
+        if (headers is null || headers.Count == 0 || headers.Count > count)
+            throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
+        BlockHeader[] result = new BlockHeader[headers.Count];
+        CopyLogHeaders(headers, result, first);
+        return result;
     }
 
     internal static async Task<BlockHeader[]> ReadLogHeaderPageAsync(ISyncPeer peer, BlockHeader cursor, int count,
@@ -729,13 +809,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     }
 
     private static async Task<BlockHeader[]> ReadUnverifiedLogHeaderPageAsync(ISyncPeer peer, ulong number, int count,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ReadOnlyMemory<BlockHeader> prefix = default)
     {
-        if (count is < 1 or > VerifiedHeaderHistory.PageSize || number < (ulong)count)
+        if (count is < 1 or > VerifiedHeaderHistory.PageSize || number < (ulong)count || prefix.Length > count)
             throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
         BlockHeader[] result = new BlockHeader[count];
         ulong first = number - (ulong)count;
-        int received = 0;
+        prefix.Span.CopyTo(result);
+        int received = prefix.Length;
         while (received < count)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -743,17 +824,22 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             using IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(first + (ulong)received, requested, 0, cancellationToken);
             if (headers is null || headers.Count == 0 || headers.Count > requested)
                 throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
-            for (int i = 0; i < headers.Count; i++)
-            {
-                BlockHeader header = headers[i];
-                if (header is null || header.Number != first + (ulong)(received + i)
-                    || _logHeaderDecoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes)
-                    throw new InvalidDataException("Execution peer supplied an invalid log header page.");
-                result[received + i] = header;
-            }
+            CopyLogHeaders(headers, result.AsSpan(received), first + (ulong)received);
             received += headers.Count;
         }
         return result;
+    }
+
+    private static void CopyLogHeaders(IOwnedReadOnlyList<BlockHeader> headers, Span<BlockHeader> result, ulong first)
+    {
+        for (int i = 0; i < headers.Count; i++)
+        {
+            BlockHeader header = headers[i];
+            if (header is null || header.Number != first + (ulong)i
+                || _logHeaderDecoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes)
+                throw new InvalidDataException("Execution peer supplied an invalid log header page.");
+            result[i] = header;
+        }
     }
 
     private async Task<BlockHeader[]> ReadTransientLogHeadersAsync(VerifiedHead anchor, ulong first, ulong last,

@@ -18,8 +18,9 @@ namespace Nethermind.LightClient;
 internal sealed class VerifiedHeaderHistory : IAsyncDisposable
 {
     internal const int PageSize = 128;
+    internal const int WireBatchSize = 4 * PageSize;
     internal const int MaxHeaderBytes = 2048;
-    private const int PrefetchPages = 3;
+    private const int PrefetchPages = 3 * WireBatchSize / PageSize;
     internal readonly struct PageRequest(Task fetch, Func<BlockHeader, CancellationToken, Task<BlockHeader[]>> authenticate)
     {
         internal readonly Task Fetch = fetch;
@@ -31,7 +32,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
     private readonly HeaderDecoder _decoder;
     private readonly Func<VerifiedHead, CancellationToken, Task<BlockHeader>> _getAnchor;
     private readonly Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> _fetchPage;
-    private readonly Func<ulong, int, CancellationToken, PageRequest>? _prefetchPage;
+    private readonly Func<ulong, int, CancellationToken, PageRequest[]>? _prefetchPages;
     private readonly Nethermind.Logging.ILogger _logger;
     private readonly TimeProvider _clock;
     private readonly TimeSpan _runBudget;
@@ -61,7 +62,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> fetchPage, Nethermind.Logging.ILogger logger,
         TimeProvider? clock = null, int capacity = VerifiedLogHeaders.HistoryCapacity,
         TimeSpan? runBudget = null, string? directory = null,
-        Func<ulong, int, CancellationToken, PageRequest>? prefetchPage = null)
+        Func<ulong, int, CancellationToken, PageRequest[]>? prefetchPages = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 2);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, VerifiedLogHeaders.HistoryCapacity);
@@ -69,7 +70,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         _decoder = new(specProvider);
         _getAnchor = getAnchor;
         _fetchPage = fetchPage;
-        _prefetchPage = prefetchPage;
+        _prefetchPages = prefetchPages;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
         _runBudget = runBudget ?? TimeSpan.FromMinutes(30);
@@ -333,12 +334,25 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
                 if (active is not null)
                 {
                     if (pending.Count == 0) next = cursor.Number - (ulong)count;
-                    while (_prefetchPage is not null && pending.Count < PrefetchPages && next > first)
+                    while (_prefetchPages is not null && next > first)
                     {
-                        int prefetched = (int)Math.Min(PageSize, next - first);
-                        if (await IsPagePresentAsync(next, prefetched, stopping.Token)) break;
-                        pending.Enqueue((next, _prefetchPage(next, prefetched, stopping.Token)));
-                        next -= (ulong)prefetched;
+                        int planned = (int)Math.Min(WireBatchSize, next - first);
+                        if (pending.Count + (planned + PageSize - 1) / PageSize > PrefetchPages) break;
+                        int prefetched = 0;
+                        while (prefetched < planned)
+                        {
+                            int pageCount = Math.Min(PageSize, planned - prefetched);
+                            if (await IsPagePresentAsync(next - (ulong)prefetched, pageCount, stopping.Token)) break;
+                            prefetched += pageCount;
+                        }
+                        if (prefetched == 0) break;
+                        foreach (PageRequest request in _prefetchPages(next, prefetched, stopping.Token))
+                        {
+                            pending.Enqueue((next, request));
+                            int pageCount = Math.Min(PageSize, prefetched);
+                            next -= (ulong)pageCount;
+                            prefetched -= pageCount;
+                        }
                     }
                     page = await active;
                     active = null;
