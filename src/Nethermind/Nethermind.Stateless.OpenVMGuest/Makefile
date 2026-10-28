@@ -8,6 +8,10 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
+# The order of the moduli and curves in the package is part of the ABI: a guest
+# and a VM that disagree compute in the wrong field and do not fail to load.
+# Package 2.1.0.61 agrees with SdkVmConfig::standard() of the runner; check it
+# again whenever the pin of Nethermind.OpenVM.Runtime moves.
 GUEST_PACKAGE := Nethermind.OpenVM.Runtime
 
 # MUL on the bigint extension without the frame a call from managed code takes.
@@ -33,8 +37,9 @@ OPT_FLAGS += \
 # it. `main` is still rv32 and rejects a 64-bit ELF, so the line is not a version
 # preference. OPENVM_RUNNER overrides it with a host binary. The VM configuration
 # is SdkVmConfig::standard() of the SDK, as in ere, so the guest has no
-# openvm.toml. The image of this tag still takes a configuration argument: "-"
-# selects the standard one that it ships.
+# openvm.toml. The runner of this tag still takes a configuration argument: "-"
+# selects the standard one that it ships. A host OPENVM_RUNNER is a build of the
+# same tag, so it gets the same arguments.
 OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:dc2db86864d19c749929b0665e909122afdfbbaecdab25dbf83f3b68549ac945
 OPENVM_RUNNER ?=
 
@@ -47,5 +52,5 @@ ifeq ($(strip $(OPENVM_RUNNER)),)
 		$(OPENVM_IMAGE) \
 		/n/nethermind - /n/$(INPUT).raw
 else
-	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/nethermind - $(GUEST_DIR)/bin/$(INPUT).raw
 endif

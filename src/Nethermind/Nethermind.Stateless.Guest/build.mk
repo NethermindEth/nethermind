@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 #
 # Settings shared by every zkVM guest (zisk, sp1, openvm); each guest's Makefile
-# adds only what differs: the libc, the bindings manifest, the harness and the
+# adds only what differs: the libc, the runtime package, the harness and the
 # exit protocol. Shared rather than copied because they have to agree - cycle
 # counts are comparable across targets only if the same closure is built by the
 # same toolchain, and BFLAT_REFS drifting in one guest would break that silently.
@@ -127,6 +127,7 @@ dotnet-build:
 # ILC embeds every manifest resource of every input assembly and the guest reads
 # none, so they are dead weight (6.9 MB of chainspecs once rode along).
 build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
+	@[ -n "$(GUEST_PACKAGE_VERSION)" ] || { echo "error: no version of $(GUEST_PACKAGE) in Directory.Packages.props; the pin must be exact: Version=\"[x]\"" >&2; exit 1; }
 	@[ -f "$(GUEST_NUPKG_PATH)" ] || { echo "error: $(GUEST_NUPKG_PATH) is not there; restore puts it in NUGET_PACKAGES" >&2; exit 1; }
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
