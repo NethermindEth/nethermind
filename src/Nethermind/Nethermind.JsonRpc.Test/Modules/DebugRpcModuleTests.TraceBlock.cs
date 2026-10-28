@@ -1856,8 +1856,11 @@ public partial class DebugRpcModuleTests
         Assert.That(chain.BlockTree.FindHash(orphan.Number), Is.EqualTo(canonical.Hash));
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", orphan.Hash!);
         JToken actual = JToken.Parse(response);
-        Assert.That(actual["error"], Is.Null, response);
-        Assert.That((JArray)actual["result"]!, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, response);
+            Assert.That((JArray)actual["result"]!, Is.Empty);
+        }
     }
 
     [Test]
@@ -1867,8 +1870,11 @@ public partial class DebugRpcModuleTests
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         BlockHeader genesis = chain.BlockTree.Genesis!;
         if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
-        Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
-        Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
+        }
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", genesis.Hash!);
         JToken actual = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
