@@ -107,6 +107,44 @@ public class HistoryReaderTests
         Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 restarted) && restarted == 0x22, Is.True, "a restart drops kept answers");
     }
 
+    // A capture that covers the block while the read runs must not make the answer read from the older rows final.
+    [Test]
+    public void An_answer_read_before_a_capture_covered_its_block_is_not_kept([Values] bool storage)
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        int views = 0;
+        HookedColumns<FlatHistoryColumns> hooked = new(_historyColumns,
+            storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { },
+            view => views++ == 0 ? new DisposeHookedView(view, CaptureBlockEightAndCover) : view);
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig());
+        HistoryReader reader = new(_db, hooked, availability, rowFormat, LimboLogs.Instance);
+
+        if (storage)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.TryGetStorage(10, Address, Slot, out UInt256 during) && during == 0x11, Is.True, "read before the capture");
+                Assert.That(reader.TryGetStorage(10, Address, Slot, out UInt256 after) && after == 0x22, Is.True, "the older answer is not kept");
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.TryGetAccount(10, Address, out AccountStruct during) && during.Nonce == 5, Is.True, "read before the capture");
+                Assert.That(reader.TryGetAccount(10, Address, out AccountStruct after) && after.Nonce == 8, Is.True, "the older answer is not kept");
+            }
+        }
+    }
+
+    private void CaptureBlockEightAndCover()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 8, new Account(8, 800));
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 8, [0x22]);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+    }
+
     [Test]
     public void Cached_reads_return_the_same_account_and_do_not_allocate()
     {
@@ -474,6 +512,20 @@ public class HistoryReaderTests
         public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
 
         public void Dispose() { }
+    }
+
+    private sealed class DisposeHookedView(ISortedView inner, Action afterDispose) : ISortedView
+    {
+        public ReadOnlySpan<byte> CurrentKey => inner.CurrentKey;
+        public ReadOnlySpan<byte> CurrentValue => inner.CurrentValue;
+        public bool StartBefore(ReadOnlySpan<byte> value) => inner.StartBefore(value);
+        public bool MoveNext() => inner.MoveNext();
+
+        public void Dispose()
+        {
+            inner.Dispose();
+            afterDispose();
+        }
     }
 
     private sealed class TrackedView(ISortedView inner) : IRebindableSortedView

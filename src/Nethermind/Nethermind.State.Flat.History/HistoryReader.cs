@@ -114,8 +114,9 @@ public sealed class HistoryReader
         ReadCache? reads = Volatile.Read(ref _reads);
         if (reads is not null && reads.Accounts.TryGetValue(in key, out Account? cached)) return cached;
 
+        bool covered = _availability.IsCovered(block);
         Account? account = ReadAccount(block, address, out AccountStruct value, scope) ? value.ToAccount() : null;
-        if (IsSettled(block, records))
+        if (IsSettled(covered, records))
         {
             (reads ?? CreateReads()).Accounts.Set(in key, account);
             DropIfRestartedDuring(records);
@@ -184,8 +185,9 @@ public sealed class HistoryReader
             return cached.Exists;
         }
 
+        bool covered = _availability.IsCovered(block);
         bool exists = ReadStorage(block, address, index, out value, clearsCache, scope);
-        if (IsSettled(block, records))
+        if (IsSettled(covered, records))
         {
             (reads ?? CreateReads()).Slots.Set(in key, new CachedSlot(exists, value));
             DropIfRestartedDuring(records);
@@ -351,9 +353,10 @@ public sealed class HistoryReader
         return reads;
     }
 
-    /// <summary>Only a covered block's answer is final, and only if no restart removed the records it was read from.</summary>
-    private bool IsSettled(ulong block, long records) =>
-        _availability.IsCovered(block) && _availability.RecordsGeneration == records;
+    /// <summary>Only an answer read while its block was already covered is final, and only if no restart removed the
+    /// records it was read from. Coverage is sampled before the read, since a capture can land during it.</summary>
+    private bool IsSettled(bool coveredBeforeRead, long records) =>
+        coveredBeforeRead && _availability.RecordsGeneration == records;
 
     /// <summary>A restart between the settle check and the store can clear the cache first, so the store is checked
     /// again afterwards.</summary>
