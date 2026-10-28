@@ -85,6 +85,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     internal int BackwardExitFloor => _backwardExitFloor;
     private int _stallTicks;
     private bool _stallWarned;
+    private bool _forwardBelowBarrierWarned;
+    // The forward walk starts below the pivot when the stored index ends below the barrier the pivot is raised to.
+    private ulong _forwardProgressStart;
 
     public string Description => "log index builder";
 
@@ -179,7 +182,8 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             if (!_pivotTask.IsCompleted && _logger.IsInfo)
                 _logger.Info($"{GetLogPrefix()}: waiting for the first block...");
 
-            await _pivotTask;
+            ulong pivot = await _pivotTask;
+            _forwardProgressStart = GetNextBlockNumber(isForward: true) is { } next ? ulong.Min(pivot, (ulong)next) : pivot;
 
             StartProcessing(isForward: true);
             StartProcessing(isForward: false);
@@ -447,6 +451,13 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
+                    if (isForward && (ulong)start < MinTargetBlockNumber && !_forwardBelowBarrierWarned)
+                    {
+                        _forwardBelowBarrierWarned = true;
+                        if (_logger.IsWarn) _logger.Warn(
+                            $"{GetLogPrefix(isForward)}: the stored log index ends at block {start - 1}, below the ancient receipts barrier {MinTargetBlockNumber}, and the receipts for block {start} are unavailable - the forward index cannot advance. Restart once with LogIndex.Reset=true to rebuild the log index.");
+                    }
+
                     ulong lowestStored = _blockTree.GetLowestBlock();
                     if (!isForward && (ulong)start < lowestStored)
                     {
@@ -519,11 +530,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         if (forward.Progress is { HasEnded: false } forwardProgress)
         {
             ulong bestKnown = _blockTree.BestKnownNumber;
-            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + pivotNumber
-                ? bestKnown - MaxReorgDepth - pivotNumber + 1UL
+            forwardProgress.TargetValue = bestKnown >= MaxReorgDepth + _forwardProgressStart
+                ? bestKnown - MaxReorgDepth - _forwardProgressStart + 1UL
                 : 0UL;
-            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= pivotNumber
-                ? (ulong)max - pivotNumber + 1UL
+            forwardProgress.Update(_logIndexStorage.MaxBlockNumber is { } max && (ulong)max >= _forwardProgressStart
+                ? (ulong)max - _forwardProgressStart + 1UL
                 : 0UL);
             forwardProgress.CurrentQueued = forward.Queue!.QueueCount;
         }

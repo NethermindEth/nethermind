@@ -279,6 +279,53 @@ public class LogIndexBuilderTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Should_WarnOnce_WhenTheStoredIndexEndsBelowTheBarrierAndReceiptsThereAreUnavailable(CancellationToken cancellation)
+    {
+        const int barrier = 10;
+        const int storedMax = 2;
+        const int forwardStart = storedMax + 1;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        TestLogger logger = new();
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IBlockTree realTree = _blockTree;
+        IBlockTree prunedTree = Substitute.For<IBlockTree>();
+        prunedTree.SyncPivot.Returns(realTree.SyncPivot);
+        prunedTree.BestKnownNumber.Returns(realTree.BestKnownNumber);
+        prunedTree.GetLowestBlock().Returns((ulong)barrier);
+        int forwardPolls = 0;
+        TaskCompletionSource polledThrice = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        prunedTree
+            .FindBlock(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
+            .Returns(ci =>
+            {
+                ulong number = ci.ArgAt<ulong>(0);
+                if (number == forwardStart && Interlocked.Increment(ref forwardPolls) == 3)
+                    polledThrice.TrySetResult();
+
+                return number < barrier ? null : realTree.FindBlock(number, ci.ArgAt<BlockTreeLookupOptions>(1));
+            });
+
+        TestLogIndexStorage storage = new() { MinBlockNumber = 0, MaxBlockNumber = storedMax };
+        LogIndexBuilder builder = GetService(storage, prunedTree);
+
+        await builder.StartAsync();
+        // The third poll starts only after the second one has finished its empty-batch handling.
+        await polledThrice.Task.WaitAsync(cancellation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList.FindAll(static line => line.Contains("below the ancient receipts barrier")), Has.Count.EqualTo(1),
+                "a forward index stuck below the barrier must tell the operator once instead of polling silently forever");
+            Assert.That(builder.LastError, Is.Null);
+            Assert.That(storage.MaxBlockNumber, Is.EqualTo(storedMax));
+        }
+
+        await builder.StopAsync();
+    }
+
     [TestCase(-1, TestName = "Should_ForwardError_FromQueueingLoop")]
     [TestCase(0, TestName = "Should_ForwardError_FromStorage_Immediately")]
     [TestCase(1, TestName = "Should_ForwardError_FromStorage_AfterOneBatch")]
