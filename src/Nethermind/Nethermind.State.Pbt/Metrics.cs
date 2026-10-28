@@ -42,6 +42,12 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
     public static IMetricObserver PbtBeginScopeTime { get; set; } = new NoopMetricObserver();
 
+    /// <remarks>Slots embedded in the account header report under the <c>storage</c> tree in the <c>bal</c> phase, and their node groups under <c>state</c>.</remarks>
+    [DetailedMetric]
+    [Description("Time of one key read by the pbt HintBal prefetch, by phase (bal: an account or slot the block access list names; node_group: a node group the fold walks into) and tree (state, storage) (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["phase", "tree"])]
+    public static IMetricObserver PbtBalPrefetchKeyTime { get; set; } = new NoopMetricObserver();
+
     [DetailedMetric]
     [Description("Time preparing pbt leaf changes in the world state scope (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
@@ -262,6 +268,13 @@ public static class Metrics
     [Description("Newest pbt trie node log generation merged into RocksDB, by shard")]
     [KeyIsLabel("shard")]
     public static ConcurrentDictionary<string, long> PbtTrieNodeLogFlushedGeneration { get; } = new();
+}
+
+/// <summary>Metric labels identifying a PBT HintBal prefetch phase and the tree its key belongs to.</summary>
+public readonly record struct PbtBalPrefetchLabel(string Phase, string Tree) : IMetricLabels
+{
+    /// <inheritdoc/>
+    public string[] Labels => [Phase, Tree];
 }
 
 /// <summary>Metric labels identifying a PBT partition and whether a node-group read found a group.</summary>
