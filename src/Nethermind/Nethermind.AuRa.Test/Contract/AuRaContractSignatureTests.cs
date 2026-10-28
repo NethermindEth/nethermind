@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -55,15 +56,8 @@ public class AuRaContractSignatureTests
     }
 
     [TestCaseSource(nameof(Functions))]
-    public void Function_matches_pinned_abi<TArgs, TResult>(ContractFunction<TArgs, TResult> function, string signature, string selector, string returns)
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(function.Signature.ToString(), Is.EqualTo(signature));
-            Assert.That(function.Signature.MethodId.ToHexString(true), Is.EqualTo(selector));
-            Assert.That(function.Returns.ToString(), Is.EqualTo(returns));
-        }
-    }
+    public void Function_matches_pinned_abi<TArgs, TResult>(ContractFunction<TArgs, TResult> function, string signature, string selector, string returns) =>
+        AbiAssert.FunctionMatches(function, signature, selector, returns);
 
     [TestCaseSource(nameof(Calls))]
     public void Call_matches_pinned_abi<TArgs>(AbiSignature<TArgs> call, string signature, string selector)

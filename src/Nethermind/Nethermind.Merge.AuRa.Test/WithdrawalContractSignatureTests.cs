@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Contracts;
 using NUnit.Framework;
@@ -20,15 +21,8 @@ public class WithdrawalContractSignatureTests
     }
 
     [TestCaseSource(nameof(Functions))]
-    public void Function_matches_pinned_abi<TArgs, TResult>(ContractFunction<TArgs, TResult> function, string signature, string selector, string returns)
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(function.Signature.ToString(), Is.EqualTo(signature));
-            Assert.That(function.Signature.MethodId.ToHexString(true), Is.EqualTo(selector));
-            Assert.That(function.Returns.ToString(), Is.EqualTo(returns));
-        }
-    }
+    public void Function_matches_pinned_abi<TArgs, TResult>(ContractFunction<TArgs, TResult> function, string signature, string selector, string returns) =>
+        AbiAssert.FunctionMatches(function, signature, selector, returns);
 
     [Test]
     public void ExecuteSystemWithdrawals_calldata_matches_golden_encoding()
