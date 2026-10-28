@@ -28,6 +28,7 @@ public class AdminEraService(
         try
         {
             Task export = _eraExporter.Export(destination, from, to, cancellation: _processExit.Token);
+            if (export.IsFaulted) export.GetAwaiter().GetResult();
             _ = StartExportTask(export, destination);
         }
         catch (Exception)
