@@ -10,6 +10,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -28,6 +29,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private const int StorageGroupDepth = PbtNodeGroupLayout.StemTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
     private const long AverageNodeGroupBytes = 512;
     private const int SlotChunkLength = 64;
+
+    private static readonly IMetricLabels _balStateLabel = new PbtBalPrefetchLabel("bal", "state");
+    private static readonly IMetricLabels _balStorageLabel = new PbtBalPrefetchLabel("bal", "storage");
+    private static readonly IMetricLabels _nodeGroupStateLabel = new PbtBalPrefetchLabel("node_group", "state");
+    private static readonly IMetricLabels _nodeGroupStorageLabel = new PbtBalPrefetchLabel("node_group", "storage");
 
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
@@ -144,7 +150,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             if (state.reads.IsCancellationRequested) return state;
             int index = (int)state.keys.Accounts[position].Value.ToUInt256().u0;
             ReadOnlyAccountChanges accountChanges = state.keys.Bal.AccountChanges.AsSpan()[index];
+            long start = Stopwatch.GetTimestamp();
             Account? account = state.bundle.ReadAccount(Eip8297KeyDerivation.AddressHashOf(state.keys.Accounts[position].Key), promote: accountChanges.HasStateChanges);
+            Metrics.PbtBalPrefetchKeyTime.Observe(Stopwatch.GetTimestamp() - start, _balStateLabel);
             if (state.sink?.StillNeeded(accountChanges.Address, out _) == true) state.sink.OnAccountRead(accountChanges.Address, account);
             state.keys.Missing[index] = account is null;
             return state;
@@ -174,7 +182,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                     continue;
                 }
                 if (bufferedRun is { } previous && previous.Equals(run)) continue;
-                state.bundle.GetSlot(key, addressHash);
+                ReadSlot(state.bundle, key, addressHash);
                 bufferedRun = run;
             }
             return state;
@@ -219,7 +227,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ParallelUnbalancedWork.For(0, accountGroupPaths.Length + storageAccounts.Count, (bundle, keys, accountGroupPaths, storageAccounts, cancellation), static (item, state) =>
         {
             if (state.cancellation.IsCancellationRequested) return state;
-            if (item < state.accountGroupPaths.Length) ((IDisposable?)ReadNodeGroup(state.bundle, state.accountGroupPaths[item]))?.Dispose();
+            if (item < state.accountGroupPaths.Length) ((IDisposable?)ReadNodeGroup(state.bundle, state.accountGroupPaths[item], _nodeGroupStateLabel))?.Dispose();
             else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountGroupPaths.Length]], state.cancellation);
             return state;
         });
@@ -231,7 +239,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         PbtStoragePath previous = slots[0].Key;
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
-        using (RefCountingMemory? storageGroup = ReadNodeGroup(bundle, GroupOf(previous.Bytes, StorageGroupDepth)))
+        using (RefCountingMemory? storageGroup = ReadNodeGroup(bundle, GroupOf(previous.Bytes, StorageGroupDepth), _nodeGroupStorageLabel))
             if (storageGroup is not null) PbtNodeGroupCodec.ReadDescendantBytes(storageGroup.GetSpan(), descendantBytes);
 
         for (int position = 0; position < slots.Length; position++)
@@ -246,7 +254,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 int depth = StorageGroupDepth + level * PbtThreeLevelGroupGeometry.LevelsPerGroup;
                 if (depth <= sharedBits) continue;
                 if (cancellation.IsCancellationRequested) return;
-                ((IDisposable?)ReadNodeGroup(bundle, GroupOf(key.Bytes, depth)))?.Dispose();
+                ((IDisposable?)ReadNodeGroup(bundle, GroupOf(key.Bytes, depth), _nodeGroupStorageLabel))?.Dispose();
             }
         }
     }
@@ -262,8 +270,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     /// <summary>Reads a group from the snapshots, or else from persistence.</summary>
     /// <returns>A caller-owned group lease, or null when the group is absent.</returns>
-    private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path) =>
-        bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot : bundle.GetPersistedNodeGroup(path);
+    private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path, IMetricLabels label)
+    {
+        long start = Stopwatch.GetTimestamp();
+        RefCountingMemory? group = bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot : bundle.GetPersistedNodeGroup(path);
+        Metrics.PbtBalPrefetchKeyTime.Observe(Stopwatch.GetTimestamp() - start, label);
+        return group;
+    }
+
+    private static UInt256 ReadSlot<TKey>(PbtSnapshotBundle bundle, in TKey key, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
+    {
+        long start = Stopwatch.GetTimestamp();
+        UInt256 value = bundle.GetSlot(key, addressHash);
+        Metrics.PbtBalPrefetchKeyTime.Observe(Stopwatch.GetTimestamp() - start, _balStorageLabel);
+        return value;
+    }
 
     /// <summary>Reads the slot and forwards it to <paramref name="sink"/> when the sink still needs it.</summary>
     /// <returns>Whether the slot was read.</returns>
@@ -272,7 +293,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         StorageCell cell = new(address, slot.ToUInt256());
         if (sink?.StillNeeded(in cell) != true) return false;
-        UInt256 value = bundle.GetSlot(key, addressHash);
+        UInt256 value = ReadSlot(bundle, key, addressHash);
         sink.OnStorageRead(in cell, value);
         return true;
     }
