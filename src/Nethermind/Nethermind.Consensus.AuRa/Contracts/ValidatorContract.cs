@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -57,12 +58,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public ValidatorContract(
             ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
             Address contractAddress,
             IWorldState stateProvider,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ISigner signer)
-            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            : base(transactionProcessor, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -77,17 +77,22 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, FinalizeChangeFunction, Address.SystemUser, UnlimitedGas, default, out _);
 
-        internal static readonly string GetValidatorsFunction = AbiDefinition.GetName(nameof(GetValidators));
+        internal static readonly ContractFunction<ValueTuple, ValueTuple> FinalizeChangeFunction = new AbiSignature("finalizeChange").With().Returns();
+
+        internal static readonly ContractFunction<ValueTuple, Address[]> GetValidatorsFunction = new AbiSignature("getValidators").With().Returns(AbiType.Array(AbiType.Address));
 
         /// <summary>
         /// Get current validator set (last enacted or initial if no changes ever made)
         /// function getValidators() constant returns (address[] _validators);
         /// </summary>
-        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero);
+        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call(parentHeader, GetValidatorsFunction, Address.Zero, default);
 
-        internal const string InitiateChange = nameof(InitiateChange);
+        internal static readonly AbiSignature<(ValueHash256, Address[])> InitiateChangeEvent = new AbiSignature("InitiateChange").With(AbiType.Bytes32, AbiType.Array(AbiType.Address));
+
+        /// <summary>Non-indexed parameters of <see cref="InitiateChangeEvent"/>, encoded in the log data.</summary>
+        internal static readonly AbiSignature<Address[]> InitiateChangeData = new AbiSignature().With(AbiType.Array(AbiType.Address));
 
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
@@ -104,22 +109,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            LogEntry logEntry = GetSearchLogEntry(InitiateChange, blockHeader.ParentHash);
+            LogEntry logEntry = GetSearchLogEntry(InitiateChangeEvent.Hash, blockHeader.ParentHash);
             if (blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry,
                 logsFindOrder: FindOrder.Ascending /* tracing forwards, parity inconsistency issue */))
             {
-                addresses = DecodeAddresses(foundEntry.Data);
+                addresses = DecodeData(InitiateChangeData, foundEntry.Data);
                 return true;
             }
 
             addresses = null;
             return false;
-        }
-
-        private Address[] DecodeAddresses(byte[] data)
-        {
-            object[] objects = DecodeReturnData(nameof(GetValidators), data);
-            return (Address[])objects[0];
         }
 
         public void EnsureSystemAccount() => EnsureSystemAccount(_stateProvider);
