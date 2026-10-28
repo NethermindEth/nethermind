@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Specs;
@@ -394,7 +395,8 @@ public class ProofWrapperTransportTests
         node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
         Answer(node, peer, link, wrapper);
         await WrapperTestNode.Until(() => node.Verifier.Calls == 1);
-        Assert.That(node.Transport.ChargedBytes, Is.EqualTo(wrapper.Length));
+        // Charged like transaction gossip: the larger of its bytes and a per-transaction overhead.
+        Assert.That(node.Transport.ChargedBytes, Is.EqualTo(Math.Max(wrapper.Length, InboundTransactionBudget.TransactionCharge)));
 
         node.Tick(WrapperTransportLimits.FetchDeadline + TimeSpan.FromSeconds(1));
         hold.Set();
