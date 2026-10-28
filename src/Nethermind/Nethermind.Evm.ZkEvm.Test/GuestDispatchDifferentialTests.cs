@@ -948,7 +948,7 @@ public class GuestDispatchDifferentialTests
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
             if ((spec ?? ReleaseSpec).IsEip7979Enabled) stack.UseCallDestinations();
             stack.HoistInputData(inputData);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Dispatch = entries, Vm = vm, Memory = ref frame.Memory };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
                 entries[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(ref stack, gas, ref state, ref stack.Code, stack.Head, entries, ref stack.Code, ref Unsafe.Add(ref stack.Bottom, stack.Head * EvmStack.WordSize));
             pc = state.FinalProgramCounter;

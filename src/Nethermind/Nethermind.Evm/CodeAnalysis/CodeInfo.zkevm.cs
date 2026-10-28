@@ -35,6 +35,27 @@ public sealed partial class CodeInfo
 
     internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
 
+    private nint[]? _dispatchCells;
+    private object? _dispatchCellsTable;
+
+    /// <summary>One Airbender dispatch cell for each byte of <see cref="ExecutionCodeSpan"/> and its padding, for the paired <paramref name="table"/>.</summary>
+    /// <remarks>
+    /// A cell caches the table's entry for an opcode at that position, written on the first dispatch there, and zero
+    /// means not yet. The cells of another table start empty again. A fresh array costs the guest nothing to clear,
+    /// as its memory has never been written.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal nint[] GetDispatchCells(object table)
+    {
+        if (_dispatchCellsTable != table)
+        {
+            _dispatchCells = new nint[CodeLength + ExecutionPadding];
+            _dispatchCellsTable = table;
+        }
+
+        return _dispatchCells!;
+    }
+
     // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;
