@@ -55,6 +55,20 @@ public class TxPriorityContractTests
     }
 
     [Test]
+    public async Task getters_return_empty_when_contract_does_not_exist()
+    {
+        using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+        TxPriorityContract contract = new(Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
+        BlockHeader head = chain.BlockTree.Head.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contract.GetSendersWhitelist(head), Is.Empty);
+            Assert.That(contract.GetMinGasPrices(head), Is.Empty);
+            Assert.That(contract.GetPriorities(head), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task whitelist_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();

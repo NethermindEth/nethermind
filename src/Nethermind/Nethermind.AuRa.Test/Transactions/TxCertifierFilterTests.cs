@@ -95,6 +95,15 @@ public class TxCertifierFilterTests
     }
 
     [Test]
+    public async Task should_not_certify_when_contract_does_not_exist()
+    {
+        using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+        RegisterContract registerContract = new(Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
+        CertifierContract contract = new(registerContract, chain.ReadOnlyTxProcessingEnvFactory.Create());
+        Assert.That(contract.Certified(chain.BlockTree.Head.Header, new Address("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78")), Is.False);
+    }
+
+    [Test]
     public async Task registry_contract_returns_correct_address()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
