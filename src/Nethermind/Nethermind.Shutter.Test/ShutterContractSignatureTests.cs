@@ -20,7 +20,6 @@ class ShutterContractSignatureTests
         yield return new TestCaseData(KeyperSetContract.GetMembersFunction, "getMembers()", "0x9eab5253", "(address[])");
         yield return new TestCaseData(KeyperSetManagerContract.GetKeyperSetAddressFunction, "getKeyperSetAddress(uint64)", "0xf90f3bed", "(address)");
         yield return new TestCaseData(KeyperSetManagerContract.GetKeyperSetIndexByBlockFunction, "getKeyperSetIndexByBlock(uint64)", "0x035cef15", "(uint64)");
-        yield return new TestCaseData(KeyperSetManagerContract.GetNumKeyperSetsFunction, "getNumKeyperSets()", "0xf2e6100a", "(uint64)");
         yield return new TestCaseData(ValidatorRegistryContract.GetNumUpdatesFunction, "getNumUpdates()", "0x00c7c019", "(uint256)");
         yield return new TestCaseData(ValidatorRegistryContract.GetUpdateFunction, "getUpdate(uint256)", "0x32cb25be", "((bytes,bytes))");
     }

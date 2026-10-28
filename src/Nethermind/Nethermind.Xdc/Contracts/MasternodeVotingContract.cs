@@ -48,15 +48,6 @@ internal class MasternodeVotingContract(
         return constant.Call(blockHeader, GetCandidateOwnerFunction, Address.SystemUser, candidate);
     }
 
-    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
-    {
-        byte[] result = base.CallCore(transactionProcessor, blockHeader, GetCandidateOwnerFunction.Signature.Name, GenerateTransaction<Transaction>(AbiCodec.Encode(GetCandidateOwnerFunction.Signature, candidate), Address.SystemUser), true);
-        if (result.Length != 32)
-            throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
-        return new Address(result.AsSpan().Slice(32 - Address.Size));
-    }
-
-
     public Address GetCandidateOwner(IWorldState worldState, Address candidate) =>
         ReadAddress(worldState, ValidatorsStateSlot(candidate));
 
