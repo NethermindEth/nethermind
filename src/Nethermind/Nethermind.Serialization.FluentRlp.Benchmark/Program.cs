@@ -128,6 +128,33 @@ public class CurrentFluentBenchmark
     public AccessList DecodeFluent()
         => Rlp.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadAccessList());
 
+    /// <summary>Decodes with FluentRlp to the same type as the current decoder, to compare the readers alone.</summary>
+    [Benchmark]
+    [BenchmarkCategory("Decode")]
+    public Nethermind.Core.Eip2930.AccessList DecodeFluentToCurrentType()
+        => Rlp.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadSequence(static (scoped ref RlpReader r) =>
+        {
+            Nethermind.Core.Eip2930.AccessList.Builder builder = new();
+            while (r.HasNext)
+            {
+                r.ReadSequence(builder, static (scoped ref RlpReader r, Nethermind.Core.Eip2930.AccessList.Builder builder) =>
+                {
+                    builder.AddAddress(r.ReadAddress());
+                    return r.ReadSequence(builder, static (scoped ref RlpReader r, Nethermind.Core.Eip2930.AccessList.Builder builder) =>
+                    {
+                        while (r.HasNext)
+                        {
+                            builder.AddStorage(r.ReadStorageKey().Value);
+                        }
+
+                        return builder;
+                    });
+                });
+            }
+
+            return builder.Build();
+        }));
+
     private Nethermind.Core.Eip2930.AccessList BuildCurrent(Random rnd)
     {
         Nethermind.Core.Eip2930.AccessList.Builder builder = new();

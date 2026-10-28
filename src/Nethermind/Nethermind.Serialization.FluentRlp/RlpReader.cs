@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -76,7 +77,7 @@ public ref struct RlpReader
     public unsafe T ReadInteger<T>() where T : unmanaged, IBinaryInteger<T>
     {
         ReadOnlySpan<byte> bigEndian = ReadIntegerBytes();
-        if (bigEndian.Length > sizeof(T)) throw new RlpReaderException("RLP integer is too large");
+        if (bigEndian.Length > sizeof(T)) ThrowInvalid("RLP integer is too large");
 
         if (sizeof(T) <= sizeof(ulong))
         {
@@ -88,7 +89,7 @@ public ref struct RlpReader
 
             // A full-width value of a signed type would come out negative.
             int valueBits = sizeof(T) * 8 - (T.IsNegative(T.AllBitsSet) ? 1 : 0);
-            if (value >> (valueBits - 1) > 1) throw new RlpReaderException("RLP integer is too large");
+            if (value >> (valueBits - 1) > 1) ThrowInvalid("RLP integer is too large");
             return T.CreateTruncating(value);
         }
 
@@ -97,7 +98,7 @@ public ref struct RlpReader
         bigEndian.CopyTo(buffer[^bigEndian.Length..]);
         if (!T.TryReadBigEndian(buffer, isUnsigned: true, out T result) || T.IsNegative(result))
         {
-            throw new RlpReaderException("RLP integer is too large");
+            ThrowInvalid("RLP integer is too large");
         }
 
         return result;
@@ -109,7 +110,7 @@ public ref struct RlpReader
     public ReadOnlySpan<byte> ReadIntegerBytes()
     {
         ReadOnlySpan<byte> bigEndian = ReadBytes();
-        if (bigEndian.Length > 0 && bigEndian[0] == 0) throw new RlpReaderException("RLP integer has leading zero bytes");
+        if (bigEndian.Length > 0 && bigEndian[0] == 0) ThrowInvalid("RLP integer has leading zero bytes");
         return bigEndian;
     }
 
@@ -118,12 +119,40 @@ public ref struct RlpReader
     /// <exception cref="RlpReaderException">The item is not a canonical byte string.</exception>
     public ReadOnlySpan<byte> ReadBytes()
     {
-        int headerLength = ReadHeader(out int length, out bool isList);
-        if (isList) throw new RlpReaderException("RLP does not correspond to a byte string");
+        ReadOnlySpan<byte> buffer = _buffer;
+        int position = _position;
+        if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
 
-        ReadOnlySpan<byte> result = _buffer.Slice(_position + headerLength, length);
-        _position += headerLength + length;
-        return result;
+        byte prefix = buffer[position];
+        if (prefix < RlpPrefix.ShortString)
+        {
+            _position = position + 1;
+            return buffer.Slice(position, 1);
+        }
+
+        int start = position + 1;
+        int length = 0;
+        if (prefix <= RlpPrefix.LongString)
+        {
+            length = prefix - RlpPrefix.ShortString;
+            if (length == 1 && (uint)start < (uint)buffer.Length && buffer[start] < RlpPrefix.ShortString)
+            {
+                ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
+            }
+        }
+        else if (prefix < RlpPrefix.ShortList)
+        {
+            length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongString);
+            start += prefix - RlpPrefix.LongString;
+        }
+        else
+        {
+            ThrowInvalid("RLP does not correspond to a byte string");
+        }
+
+        if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
+        _position = start + length;
+        return buffer.Slice(start, length);
     }
 
     /// <summary>Reads a sequence with <paramref name="func"/>, which must consume the whole payload of the sequence.</summary>
@@ -145,26 +174,52 @@ public ref struct RlpReader
         return result;
     }
 
-    /// <returns>A reader over the payload of the next sequence, one level deeper.</returns>
-    private readonly RlpReader EnterSequence(out int itemLength)
+    /// <summary>Starts to read the next sequence without a delegate.</summary>
+    /// <param name="itemLength">The length of the whole sequence item, to pass to <see cref="ExitSequence"/>.</param>
+    /// <returns>A reader over the payload of the sequence. Read the payload with it, then call <see cref="ExitSequence"/>.</returns>
+    /// <exception cref="RlpReaderException">The item is not a canonical sequence, or the nesting is too deep.</exception>
+    public readonly RlpReader EnterSequence(out int itemLength)
     {
         // Untrusted input sets the nesting depth, so a deep input must not overflow the stack.
         int depth = _depth + 1;
         if (depth % StackCheckInterval == 0 && !RuntimeHelpers.TryEnsureSufficientExecutionStack())
         {
-            throw new RlpReaderException("RLP nesting is too deep");
+            ThrowInvalid("RLP nesting is too deep");
         }
 
-        int headerLength = ReadHeader(out int length, out bool isList);
-        if (!isList) throw new RlpReaderException("RLP does not correspond to a sequence");
+        ReadOnlySpan<byte> buffer = _buffer;
+        int position = _position;
+        if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
 
-        itemLength = headerLength + length;
-        return new RlpReader(_buffer.Slice(_position + headerLength, length), depth);
+        byte prefix = buffer[position];
+        int start = position + 1;
+        int length = 0;
+        if (prefix > RlpPrefix.LongList)
+        {
+            length = ReadLongLength(buffer, position, prefix - RlpPrefix.LongList);
+            start += prefix - RlpPrefix.LongList;
+        }
+        else if (prefix >= RlpPrefix.ShortList)
+        {
+            length = prefix - RlpPrefix.ShortList;
+        }
+        else
+        {
+            ThrowInvalid("RLP does not correspond to a sequence");
+        }
+
+        if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
+        itemLength = start + length - position;
+        return new RlpReader(buffer.Slice(start, length), depth);
     }
 
-    private void ExitSequence(scoped in RlpReader reader, int itemLength)
+    /// <summary>Ends a sequence that <see cref="EnterSequence"/> started, and moves past it.</summary>
+    /// <param name="reader">The reader that <see cref="EnterSequence"/> returned.</param>
+    /// <param name="itemLength">The item length that <see cref="EnterSequence"/> returned.</param>
+    /// <exception cref="RlpReaderException"><paramref name="reader"/> has unread items.</exception>
+    public void ExitSequence(scoped in RlpReader reader, int itemLength)
     {
-        if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
+        if (reader.HasNext) ThrowInvalid("RLP has trailing bytes");
         _position += itemLength;
     }
 
@@ -206,7 +261,7 @@ public ref struct RlpReader
     {
         ReadOnlySpan<byte> buffer = _buffer;
         int position = _position;
-        if ((uint)position >= (uint)buffer.Length) throw new RlpReaderException("RLP is truncated");
+        if ((uint)position >= (uint)buffer.Length) ThrowInvalid("RLP is truncated");
 
         byte prefix = buffer[position];
         int headerLength;
@@ -224,7 +279,7 @@ public ref struct RlpReader
             headerLength = 1;
             if (length == 1 && (uint)(position + 1) < (uint)buffer.Length && buffer[position + 1] < RlpPrefix.ShortString)
             {
-                throw new RlpReaderException("RLP single byte below 0x80 must not have a prefix");
+                ThrowInvalid("RLP single byte below 0x80 must not have a prefix");
             }
         }
         else if (prefix < RlpPrefix.ShortList)
@@ -246,17 +301,36 @@ public ref struct RlpReader
             headerLength = 1 + prefix - RlpPrefix.LongList;
         }
 
-        if ((long)position + headerLength + length > buffer.Length) throw new RlpReaderException("RLP is truncated");
+        if ((long)position + headerLength + length > buffer.Length) ThrowInvalid("RLP is truncated");
         return headerLength;
     }
 
+    // Throws from a separate method keep the hot read paths small after inlining.
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalid(string message) => throw new RlpReaderException(message);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ReadLongLength(ReadOnlySpan<byte> buffer, int position, int lengthOfLength)
     {
-        if (lengthOfLength > sizeof(int)) throw new RlpReaderException("RLP length is too large");
-        if ((long)position + 1 + lengthOfLength > buffer.Length) throw new RlpReaderException("RLP is truncated");
+        // A one-byte length is the common case. A value of at most 55, including zero, must use the short form.
+        if (lengthOfLength == 1 && (uint)(position + 1) < (uint)buffer.Length)
+        {
+            int length = buffer[position + 1];
+            if (length <= RlpPrefix.MaxShortLength) ThrowInvalid("RLP length below 56 must use the short form");
+            return length;
+        }
+
+        return ReadMultiByteLength(buffer, position, lengthOfLength);
+    }
+
+    private static int ReadMultiByteLength(ReadOnlySpan<byte> buffer, int position, int lengthOfLength)
+    {
+        if (lengthOfLength > sizeof(int)) ThrowInvalid("RLP length is too large");
+        if ((long)position + 1 + lengthOfLength > buffer.Length) ThrowInvalid("RLP is truncated");
 
         ReadOnlySpan<byte> binaryLength = buffer.Slice(position + 1, lengthOfLength);
-        if (binaryLength[0] == 0) throw new RlpReaderException("RLP length has leading zero bytes");
+        if (binaryLength[0] == 0) ThrowInvalid("RLP length has leading zero bytes");
 
         uint length = 0;
         foreach (byte b in binaryLength)
@@ -264,8 +338,8 @@ public ref struct RlpReader
             length = (length << 8) | b;
         }
 
-        if (length > int.MaxValue) throw new RlpReaderException("RLP length is too large");
-        if (length <= RlpPrefix.MaxShortLength) throw new RlpReaderException("RLP length below 56 must use the short form");
+        if (length > int.MaxValue) ThrowInvalid("RLP length is too large");
+        if (length <= RlpPrefix.MaxShortLength) ThrowInvalid("RLP length below 56 must use the short form");
         return (int)length;
     }
 }
