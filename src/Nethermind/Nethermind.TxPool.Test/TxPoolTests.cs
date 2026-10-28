@@ -6573,8 +6573,8 @@ namespace Nethermind.TxPool.Test
                 DecodedMaxFeePerGas = feePerGas ?? 1.GWei,
                 MaxFee = (UInt256)1_000_000 * (feePerGas ?? 1.GWei),
             };
-            // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
-            // signatures are taken with the entries already installed, then their bytes are filled in.
+            // compute_sig_hash replaces each empty-msg entry's signature bytes with their length, so the entries are
+            // installed with 65-byte placeholders before hashing, then their bytes are filled in.
             ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
             tx.FrameSignatures =
             [
