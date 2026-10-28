@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
@@ -124,6 +125,18 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Assert.That(subscription, Is.Not.Null);
                 Assert.That(subscription.Id, Does.StartWith("0x"));
             }
+        }
+
+        [TestCase("0x12")]
+        [TestCase("0x")]
+        [TestCase("0x00000000000000000000000000000000000000000000000000000000000000")]
+        [TestCase("0x000000000000000000000000000000000000000000000000000000000000000000")]
+        public void TransactionHashesFilter_rejects_hash_of_wrong_length(string hash)
+        {
+            using JsonDocument document = JsonDocument.Parse($$"""{"transactionHashes":["{{hash}}"]}""");
+            TransactionHashesFilter filter = new();
+
+            Assert.That(() => filter.ReadJson(document.RootElement, EthereumJsonSerializer.JsonOptions), Throws.TypeOf<FormatException>());
         }
 
         [Test]
