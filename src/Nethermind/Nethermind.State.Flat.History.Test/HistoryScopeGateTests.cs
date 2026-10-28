@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -88,6 +89,56 @@ public class HistoryScopeGateTests
         Assert.That(secondDrain, Is.False, "a scope opened after the drain must be waited on by the next one, not skipped");
 
         gate.ExitScope(scope);
+    }
+
+    [Test]
+    public void TryDrainForFloorAdvance_AScopeOpenAcrossSeveralAdvances_IsWaitedOnUntilItCloses()
+    {
+        HistoryScopeGate gate = new();
+        long stuckScope = gate.EnterScope();
+
+        for (int advance = 0; advance < 3; advance++)
+        {
+            gate.ExitScope(gate.EnterScope());
+            Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.False,
+                "generations that emptied in between must not hide the older one the stuck scope is counted on");
+        }
+
+        gate.ExitScope(stuckScope);
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
+    }
+
+    [Test]
+    public void TryDrain_WithScopesOpeningAndClosingOnManyThreads_WaitsOnlyForScopesOpenedBeforeTheAdvance()
+    {
+        HistoryScopeGate gate = new();
+        long stuckScope = gate.EnterScope();
+        using CancellationTokenSource stop = new();
+        Task[] churn = new Task[Math.Max(2, Environment.ProcessorCount)];
+        for (int i = 0; i < churn.Length; i++)
+        {
+            churn[i] = Task.Run(() =>
+            {
+                while (!stop.IsCancellationRequested) gate.ExitScope(gate.EnterScope());
+            });
+        }
+
+        long generation = 0;
+        for (int advance = 0; advance < 100; advance++) generation = gate.BeginFloorAdvance();
+
+        bool drainedWhileStuck = gate.TryDrain(generation, TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        gate.ExitScope(stuckScope);
+        bool drainedAfterClose = gate.TryDrain(generation, TimeSpan.FromSeconds(5), CancellationToken.None);
+        stop.Cancel();
+        Task.WaitAll(churn);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drainedWhileStuck, Is.False, "the scope opened before every advance must hold the drain");
+            Assert.That(drainedAfterClose, Is.True, "scopes still opening on other threads join the newest generation and must not hold it");
+            Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True,
+                "every scope closed, so none may be left counted");
+        }
     }
 
     [Test]
