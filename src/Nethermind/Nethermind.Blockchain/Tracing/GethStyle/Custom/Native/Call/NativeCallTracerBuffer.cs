@@ -17,10 +17,12 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 internal struct NativeCallTracerBuffer
 {
     private const int MinChunkLength = 4 * 1024;
+    // Below the large object heap, so a trace of many frames does not rent ever larger, half-empty arrays.
+    private const int MaxChunkLength = 64 * 1024;
 
     private byte[]? _chunk;
     private int _used;
-    // Doubles per chunk; an oversized copy gets a chunk of its own size and does not raise it.
+    // Doubles per chunk up to MaxChunkLength; an oversized copy gets a chunk of its own size and does not raise it.
     private int _chunkLength;
     private ArrayPoolList<byte[]>? _filledChunks;
 
@@ -49,7 +51,7 @@ internal struct NativeCallTracerBuffer
             (_filledChunks ??= new ArrayPoolList<byte[]>(4)).Add(_chunk);
         }
 
-        _chunkLength = _chunkLength == 0 ? MinChunkLength : (int)Math.Min(2L * _chunkLength, Array.MaxLength);
+        _chunkLength = _chunkLength == 0 ? MinChunkLength : Math.Min(2 * _chunkLength, MaxChunkLength);
         _chunk = ArrayPool<byte>.Shared.Rent(Math.Max(length, _chunkLength));
         _used = 0;
         return _chunk;
