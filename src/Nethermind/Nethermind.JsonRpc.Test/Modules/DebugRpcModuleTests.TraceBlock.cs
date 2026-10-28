@@ -302,7 +302,8 @@ public partial class DebugRpcModuleTests
             {
                 engine.AbortInput("deadline input marker");
                 engine.Interrupt();
-            },
+            }
+            ,
             _ => () => { }
         };
         using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failDeadlineTrace=action;}}"))
