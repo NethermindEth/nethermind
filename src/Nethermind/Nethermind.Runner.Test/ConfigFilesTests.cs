@@ -133,6 +133,20 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
     }
 
+    [Test]
+    public void Removed_memory_hint_settings_are_still_accepted()
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new ArgsConfigSource(new Dictionary<string, string>
+        {
+            { "Init.MemoryHint", "2000000000" },
+            { "Db.SkipMemoryHintSetting", "true" }
+        }));
+        configProvider.Initialize();
+
+        Assert.That(configProvider.FindIncorrectSettings().Errors, Is.Empty);
+    }
+
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
     {
