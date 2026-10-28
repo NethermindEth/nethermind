@@ -83,8 +83,8 @@ internal sealed class HistoryStore
         upperBound[^1] = 0x00;
 
         Span<byte> foundKey = stackalloc byte[keyLen];
-        bool found = captureGeneration is { } generation && _history is IEpochSortedKeyValueStore epochHistory
-            ? epochHistory.TryGetCeilingAtEpoch(seekKey, upperBound, generation, foundKey, out int foundKeyLen, outBuffer, out int valueLength)
+        bool found = captureGeneration is { } generation
+            ? _history.TryGetCeilingAtEpoch(seekKey, upperBound, generation, foundKey, out int foundKeyLen, outBuffer, out int valueLength)
             : _history.TryGetCeiling(seekKey, upperBound, foundKey, out foundKeyLen, outBuffer, out valueLength);
         if (!found || foundKeyLen != keyLen)
             return -1;

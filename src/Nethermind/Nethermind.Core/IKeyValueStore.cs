@@ -145,6 +145,15 @@ namespace Nethermind.Core
         /// <paramref name="keyLength"/> and <paramref name="valueLength"/> always report the stored lengths.
         /// A buffer too short for its part is left untouched instead of throwing.
         /// </remarks>
+        /// <summary>Same as <see cref="TryGetCeiling"/>, but may reuse a per-thread point-in-time view while the
+        /// caller's <paramref name="epoch"/> stays the same.</summary>
+        /// <remarks>The caller must change the epoch, before it reads them, whenever rows it must observe were
+        /// written. Writes it need not observe leave the epoch unchanged, so the view outlives them.</remarks>
+        bool TryGetCeilingAtEpoch(
+            scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+            TryGetCeiling(lowerBoundIncl, upperBoundExcl, keyBuffer, out keyLength, valueBuffer, out valueLength);
+
         bool TryGetCeiling(
             scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
             Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
@@ -176,21 +185,6 @@ namespace Nethermind.Core
         /// Neither buffer changes on a miss. The lower bound is inclusive; the upper bound is exclusive.</remarks>
         bool TryGetCeilingInSnapshot(
             scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
-            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
-    }
-
-    /// <summary>Provides ceiling reads that may reuse a per-thread point-in-time view while the caller's epoch stays
-    /// the same.</summary>
-    public interface IEpochSortedKeyValueStore : ISortedKeyValueStore
-    {
-        /// <summary>Finds the first key in the range in a view taken at or after the caller moved to
-        /// <paramref name="epoch"/>.</summary>
-        /// <remarks>The caller must change the epoch, before it reads them, whenever rows it must observe were
-        /// written. Writes it need not observe leave the epoch unchanged, so the view outlives them. Reports the stored
-        /// lengths. A buffer too short for its part remains unchanged. Neither buffer changes on a miss. The lower
-        /// bound is inclusive; the upper bound is exclusive.</remarks>
-        bool TryGetCeilingAtEpoch(
-            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive, long epoch,
             Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
     }
 

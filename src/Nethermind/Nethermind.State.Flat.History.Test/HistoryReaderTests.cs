@@ -45,6 +45,22 @@ public class HistoryReaderTests
         _historyColumns.Dispose();
     }
 
+    // A snap-pivot image writes rows and publishes the watermark without a capture; a reused view must still see them.
+    [Test]
+    public void A_watermark_published_without_a_capture_refreshes_reused_views()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using ColumnsDb<FlatHistoryColumns> history = RocksHistoryTestDb.CreateColumns(directory.Path);
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, new FlatDbConfig());
+        HistoryReader reader = new(_db, history, availability, rowFormat, LimboLogs.Instance);
+        Assert.That(reader.TryGetAccount(10, Address, out _), Is.False);
+
+        HistoryColumnsWriter.RecordAccount(history, Address, 5, new Account(5, 500));
+        availability.PublishWatermark(10, HistoryAvailability.FormatVersion);
+
+        Assert.That(reader.TryGetAccount(10, Address, out AccountStruct account) && account.Nonce == 5, Is.True);
+    }
+
     [TestCase(3ul, -1)]
     [TestCase(5ul, 5)]
     [TestCase(19ul, 5)]

@@ -58,7 +58,9 @@ public sealed class HistoryAvailability
     private long _observedFloor = -1;
 
     // Bumped once a capture batch is durable and always before the persist that supersedes the live column, so a
-    // reader that sees it unchanged across its live read knows no row can have appeared under it.
+    // reader that sees it unchanged across its live read knows no row can have appeared under it. Every watermark
+    // publication and record reset bumps it too, so a reader that reuses a view from an older generation never
+    // serves a block that view was taken before.
     private long _captureGeneration;
 
     // Generation-guarded: a scan only publishes if its generation is still current, so a racing write wins.
@@ -281,6 +283,7 @@ public sealed class HistoryAvailability
     /// history at a snap pivot; a cached watermark would keep covering reads that now have no rows.</summary>
     public void ForgetObservedRecords()
     {
+        MarkCapturePublished();
         Volatile.Write(ref _observedWatermark, -1);
         Volatile.Write(ref _observedFloor, -1);
         Volatile.Write(ref _cachedScopes, null);
@@ -531,6 +534,9 @@ public sealed class HistoryAvailability
     /// </summary>
     public void PublishWatermark(ulong watermark, byte formatVersion)
     {
+        // Before the watermark: a reader that observes it then samples a generation newer than any view taken
+        // before the rows it covers became visible. Unconditional, so no row-publishing path can skip it.
+        MarkCapturePublished();
         if (TryGetWatermark(out ulong current) && current >= watermark)
         {
             return;
