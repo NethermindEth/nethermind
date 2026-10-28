@@ -61,7 +61,7 @@ class CanonicalSnapshotTests(unittest.TestCase):
                 nodes[role].genesis_state_available = False
             complete = Path(directory) / "complete.json"
             prefix = self.invoke(complete, nodes, result, extra=("--genesis-evidence", str(initial)))
-            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
+            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192, "rollup0")
             self.assertEqual(2, json.loads(complete.read_text())["verified_blocks"])
             result["verified_native_transactions"] = 0
             rejected = Path(directory) / "rejected.json"
@@ -157,7 +157,7 @@ class CanonicalSnapshotTests(unittest.TestCase):
                 nodes[role].genesis_state_available = False
             output = Path(directory) / "later.json"
             prefix = self.invoke(output, nodes, result, extra=["--phase", "fresh-follower", "--genesis-evidence", str(evidence)])
-            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
+            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192, "rollup0")
             self.assertEqual(json.loads(output.read_text())["genesis_state"], json.loads(evidence.read_text())["genesis_state"])
             for role in ("reference", "candidate"):
                 self.assertEqual(nodes[role].genesis_queries, [])
