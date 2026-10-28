@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -10,7 +11,8 @@ public class DbConfig : IDbConfig
     public static DbConfig Default = new();
 
     public ulong SharedBlockCacheSize { get; set; } = 512UL.MiB;
-    bool IDbConfig.SkipMemoryHintSetting { get; set; }
+    [Obsolete]
+    public bool SkipMemoryHintSetting { get; set; }
 
     public bool WriteAheadLogSync { get; set; } = false;
     public bool EnableDbStatistics { get; set; } = false;

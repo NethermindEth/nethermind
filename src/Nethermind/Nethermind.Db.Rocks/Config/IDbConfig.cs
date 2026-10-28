@@ -14,7 +14,7 @@ public interface IDbConfig : IConfig
     [ConfigItem(Description = "The size of the block cache shared by the databases that have no block cache of their own, in bytes. The flat state account and storage columns use `FlatDb.BlockCacheSizeBudget` instead.", DefaultValue = "536870912")]
     ulong SharedBlockCacheSize { get; set; }
 
-    [Obsolete]
+    [Obsolete("Has no effect.")]
     [ConfigItem(Description = "Deprecated. Has no effect.", DefaultValue = "false", HiddenFromDocs = true)]
     bool SkipMemoryHintSetting { get; set; }
 

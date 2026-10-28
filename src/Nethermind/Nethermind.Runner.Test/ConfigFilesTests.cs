@@ -38,6 +38,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -134,17 +135,34 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [Test]
-    public void Removed_memory_hint_settings_are_still_accepted()
+    public void Removed_memory_hint_settings_are_accepted_and_reported_as_deprecated()
     {
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(new ArgsConfigSource(new Dictionary<string, string>
+        Dictionary<string, string> variables = new()
         {
-            { "Init.MemoryHint", "2000000000" },
-            { "Db.SkipMemoryHintSetting", "true" }
-        }));
+            { "NETHERMIND_INITCONFIG_MEMORYHINT", "2000000000" },
+            { "NETHERMIND_DBCONFIG_SKIPMEMORYHINTSETTING", "true" }
+        };
+        IEnvironment environment = Substitute.For<IEnvironment>();
+        environment.GetEnvironmentVariables().Returns(variables);
+        environment.GetEnvironmentVariable(Arg.Any<string>()).Returns(static c => null);
+        foreach ((string name, string value) in variables)
+            environment.GetEnvironmentVariable(name).Returns(value);
+
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new EnvConfigSource(environment));
         configProvider.Initialize();
 
-        Assert.That(configProvider.FindIncorrectSettings().Errors, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(configProvider.FindIncorrectSettings().Errors, Is.Empty);
+            Assert.That(configProvider.GetObsoleteSettingWarnings(), Is.EquivalentTo(new[]
+            {
+                "Init.MemoryHint is deprecated: Has no effect. Set Db.SharedBlockCacheSize to set the database cache size.",
+                "Db.SkipMemoryHintSetting is deprecated: Has no effect."
+            }));
+            Assert.That(configProvider.GetNonDefaultValues().Select(static v => v.Name),
+                Has.None.EqualTo("MemoryHint").And.None.EqualTo("SkipMemoryHintSetting"));
+        }
     }
 
     [TestCase("*")]

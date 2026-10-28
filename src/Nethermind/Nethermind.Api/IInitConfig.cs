@@ -70,7 +70,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
 
-    [Obsolete]
+    [Obsolete("Has no effect. Set Db.SharedBlockCacheSize to set the database cache size.")]
     [ConfigItem(Description = "Deprecated. Has no effect. Use `Db.SharedBlockCacheSize` to set the database cache size.", DefaultValue = "null", HiddenFromDocs = true)]
     ulong? MemoryHint { get; set; }
 
