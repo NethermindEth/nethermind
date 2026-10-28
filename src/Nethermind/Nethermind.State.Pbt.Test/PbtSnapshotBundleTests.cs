@@ -59,7 +59,7 @@ public class PbtSnapshotBundleTests
         memoryContent.Accounts[address] = null;
         PbtSnapshot memory = new(new StateId(0, default), new StateId(1, default), TestItem.KeccakB.ValueHash256, memoryContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
         repository.TryAdd(memory);
-        Reader reader = new(default, null);
+        Reader reader = new();
         using PbtReadOnlySnapshotBundle bundle = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(new StateId(1, default), StateId.PreGenesis), reader, slotFilterBitsPerKey: 0);
         Assert.That(bundle.TryLease(), Is.True);
         repository.RemoveMemoryState(new StateId(1, default));
@@ -91,7 +91,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0), PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), PbtSnapshotBundleTestExtensions.ReadOnlyBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader { Slot = (persistedKey, new ValueHash256(Value(1))) }, slotFilterBitsPerKey: 0), PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         UInt256[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
@@ -138,7 +138,7 @@ public class PbtSnapshotBundleTests
             local.RootGroupPointer = shared.RootGroupPointer;
         }
         if (memoryTier == 1) local.SetTree((path, memory));
-        Reader reader = new(default, null) { GroupPayload = database };
+        Reader reader = new() { GroupPayload = database };
         PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, shared), reader, false, persisted, PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, local), readOnly, PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool,
             PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
@@ -262,7 +262,7 @@ public class PbtSnapshotBundleTests
         content.SetTree((path, encoding));
         PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotPooledList chain = new(1) { source };
-        PbtReadOnlySnapshotBundle readOnly = new(chain, new Reader(default, null), false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
+        PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(chain, new Reader(), slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, sourceBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         Assert.Throws<InvalidOperationException>(() => branch.Collect(source.To, new StateId(2, default), TestItem.KeccakB.ValueHash256));
     }
@@ -282,7 +282,7 @@ public class PbtSnapshotBundleTests
         ulong rootPointer = source.RootGroupPointer;
         buffer.SetRoot(source.TreeRoot, rootPointer);
         Assert.That(repository.TryAdd(source), Is.True);
-        PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(source.To, StateId.PreGenesis), new Reader(default, null), slotFilterBitsPerKey: 0);
+        PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(source.To, StateId.PreGenesis), new Reader(), slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, buffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         repository.RemoveMemoryState(source.To);
         byte[]? independentlyOwned = branch.GetNodeGroup(path);
@@ -310,7 +310,7 @@ public class PbtSnapshotBundleTests
         // A single-leaf tree, so a walk to its leaf reads only the root group.
         PbtPath key = new(PbtStoreTestExtensions.ZoneKey("00"));
         byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, PbtTreeHarness.EncodeLeaf(key))], default);
-        Reader reader = new(default, null) { GroupPayload = encoding, CurrentRoot = TestItem.KeccakA.ValueHash256 };
+        Reader reader = new() { GroupPayload = encoding, CurrentRoot = TestItem.KeccakA.ValueHash256 };
         PbtSnapshotBundle bundle = CreateBundle(reader);
         byte[]? Load() => PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(path, action, groups));
 
@@ -382,7 +382,7 @@ public class PbtSnapshotBundleTests
     public void Dispose_ReturnsBuildersOnceEvenWhenOtherCleanupThrows()
     {
         TrackingBuilderPool pool = new() { ThrowOnBuilderReturn = true };
-        PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, new Reader(default, null));
+        PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, new Reader());
         Assert.Throws<IOException>(bundle.Dispose);
         Assert.DoesNotThrow(bundle.Dispose);
         Assert.That(pool.ReturnCount, Is.EqualTo(3));
@@ -428,8 +428,7 @@ public class PbtSnapshotBundleTests
     public void Storage_mutations_use_small_header_and_wide_storage_partitions([Values(0u, 63u, 64u, 256u, uint.MaxValue)] uint slotValue)
     {
         UInt256 slot = slotValue == uint.MaxValue ? UInt256.MaxValue : new UInt256(slotValue);
-        PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         UInt256 value = new(Value(9), isBigEndian: true);
         foreach (bool delete in new[] { false, true })
         {
@@ -453,7 +452,7 @@ public class PbtSnapshotBundleTests
     {
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         ValueHash256 flatValue = new(Value(9));
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         ValueHash256 root;
         root = bundle.FoldPublished(default, leafExists ? [(key.Bytes.ToArray(), Value(1))] : []);
         bundle.SetSlot(TestItem.AddressA, 1, new UInt256(flatValue.Bytes, isBigEndian: true));
@@ -492,14 +491,14 @@ public class PbtSnapshotBundleTests
         byte[] local = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))], default);
         byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
         // A non-empty persisted root that the buffer does not index, so only the newest in-memory tree can answer.
-        Reader reader = new(new PbtVariableTreeKey([0]), null) { GroupPayload = persisted, CurrentRoot = TestItem.KeccakA.ValueHash256 };
+        Reader reader = new() { GroupPayload = persisted, CurrentRoot = TestItem.KeccakA.ValueHash256 };
         PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
             ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, persisted, pool), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared, pool))
             : new(0);
         PbtSnapshotPooledList localSnapshots = newestTier >= 2
             ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, shared, pool), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local, pool))
             : new(0);
-        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0), PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        using PbtSnapshotBundle bundle = new(localSnapshots, PbtSnapshotBundleTestExtensions.ReadOnlyBundle(sharedSnapshots, reader, slotFilterBitsPerKey: 0), PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         if (newestTier == 3) PublishRoot(bundle, tombstone ? null : write);
 
         // An emptied snapshot tree has no root to walk the buffer from, so it falls through to persistence; a write buffer
@@ -542,7 +541,7 @@ public class PbtSnapshotBundleTests
             repository.TryAdd(new PbtSnapshot(persisted.To, head, TestItem.KeccakB.ValueHash256,
                 Content(path, tombstone ? null : memoryEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing));
         }
-        Reader reader = new(default, null) { GroupPayload = persistedEncoding };
+        Reader reader = new() { GroupPayload = persistedEncoding };
         using PbtReadOnlySnapshotBundle bundle = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(head, StateId.PreGenesis), reader, slotFilterBitsPerKey: 0);
         int persistenceReads = !newerMemory && tombstone ? 1 : 0;
         using (Assert.EnterMultipleScope())
@@ -562,7 +561,7 @@ public class PbtSnapshotBundleTests
     {
         PbtVariableTreeKey originalLeafKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
-        Reader reader = new(new PbtVariableTreeKey([0]), null)
+        Reader reader = new()
         {
             GroupPayload = malformed ? Bytes.FromHexString("01") : null,
             GroupReadException = malformed ? null : new InvalidDataException("Configured group read failure."),
@@ -592,7 +591,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Code_bearing_account_matches_pinned_eip_root()
     {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         Address address = new("0x0000000000000000000000000000000000000001");
         byte[] bytes = Bytes.FromHexString("6001");
         Account account = Build.An.Account.WithNonce(1).WithBalance(2).WithCode(bytes).TestObject;
@@ -605,7 +604,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Whole_account_and_code_survive_fold_and_seal_in_either_write_order([Values] bool codeFirst, [Values(0ul, 9ul)] ulong nonce)
     {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         byte[] bytes = new byte[160];
         Bytes.FromHexString("6001600055").CopyTo(bytes, 0);
         CodeInfo code = new(bytes);
@@ -648,7 +647,7 @@ public class PbtSnapshotBundleTests
     {
         const int WritesPerSlot = 2000;
         const int AccountCount = 64;
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         static byte[] CodeOf(int index) => [0x60, (byte)index];
         static Account AccountOf(int index) => Build.An.Account.WithNonce((ulong)index + 1).WithCode(CodeOf(index)).TestObject;
 
@@ -686,7 +685,7 @@ public class PbtSnapshotBundleTests
             ? [(3, 1), (64, 5), (5, 2), (70, 6), (3, 3), (1000, 7), (6, 4), (70, 0)]
             : [(3, 1), (3, 3), (5, 2), (6, 4), (64, 5), (70, 6), (70, 0), (1000, 7)];
         (uint Slot, uint Value)[] expected = [(3, 3), (5, 2), (6, 4), (64, 5), (70, 0), (1000, 7)];
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         (UInt256 Slot, UInt256 Value)[] slotWrites = Array.ConvertAll(writes, write => ((UInt256)write.Slot, (UInt256)write.Value));
         bundle.SetSlots(TestItem.AddressA, Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), slotWrites);
 
@@ -704,7 +703,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Shared_code_is_reapplied_for_each_holder_across_folds([Values] bool reverseOrder, [Values(1, 129, 258)] int chunkCount)
     {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         byte[] bytes = new byte[chunkCount * 31];
         bytes.AsSpan().Fill(0x5b);
         CodeInfo code = new(bytes);
@@ -741,7 +740,7 @@ public class PbtSnapshotBundleTests
     [TestCaseSource(nameof(CodeHashTransitionCases))]
     public void Code_hash_transitions_without_a_reference_count(byte[] previousCode, byte[]? nextCode, Type? expectedException)
     {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         Account previous = Build.An.Account.WithNonce(1).WithCode(previousCode).TestObject;
         Account? next = nextCode is null ? null : Build.An.Account.WithNonce(2).WithCode(nextCode).TestObject;
         Set(previous, previousCode);
@@ -763,7 +762,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Replacing_unknown_previous_code_throws()
     {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         bundle.SetAccount(TestItem.AddressA, Build.An.Account.WithCode(RealCode).TestObject);
         Assert.Throws<InvalidDataException>(() => bundle.SetAccount(TestItem.AddressA, Build.An.Account.WithCode(OtherRealCode).TestObject));
     }
@@ -785,7 +784,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Delegation_transitions_match_reference_leaves([Values] bool codeFirst, [Values] bool foldEachChange)
     {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader());
         byte[] secondDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000002");
         ValueHash256 root = default;
         Dictionary<Address, byte[]> accounts = [];
@@ -819,7 +818,7 @@ public class PbtSnapshotBundleTests
     public void Code_resolution_preserves_other_pending_accounts_and_survives_scratch_reuse([Values(0, 1, 40)] int accountCount)
     {
         TrackingBuilderPool pool = new();
-        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, new Reader(default, null));
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, new Reader());
         byte[] bytes = Bytes.FromHexString("6001600055");
         byte[] otherBytes = Bytes.FromHexString("6002600055");
         Account account = Build.An.Account.WithCode(bytes).TestObject;
@@ -850,7 +849,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Persisted_code_is_read_once_per_bundle_and_never_snapshotted()
     {
-        Reader reader = new(default, null);
+        Reader reader = new();
         using PbtSnapshotBundle bundle = CreateBundle(reader);
         byte[] bytes = Bytes.FromHexString("6001600055");
         Account account = Build.An.Account.WithBalance(1).WithCode(bytes).TestObject;
@@ -879,7 +878,7 @@ public class PbtSnapshotBundleTests
     public void Hinted_account_serves_the_write_path_without_a_persistence_read_and_never_shadows_a_write()
     {
         Account persisted = Build.An.Account.WithBalance(1).TestObject;
-        Reader reader = new(default, null) { Accounts = [new(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), persisted)] };
+        Reader reader = new() { Accounts = [new(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), persisted)] };
         using PbtSnapshotBundle bundle = CreateBundle(reader);
         bundle.HintAccount(TestItem.AddressA, persisted);
         Account written = persisted.WithChangedBalance(2);
@@ -904,7 +903,7 @@ public class PbtSnapshotBundleTests
     public void Failed_partition_fold_keeps_mutations_pending_without_completing_snapshot([Values(0x00, 0x01, 0xFF)] int failedZone)
     {
         using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
-        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), new Reader(default, null), buffer);
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), new Reader(), buffer);
         byte[] bytes = new byte[(256 + 2) * 31];
         bytes.AsSpan().Fill(0x5b);
         Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
@@ -974,10 +973,11 @@ public class PbtSnapshotBundleTests
         return PbtTreeHarness.EncodeBranch([], 0, left, right);
     }
 
-    private sealed class Reader(PbtVariableTreeKey key, ValueHash256? value) : IPbtPersistence.IReader
+    private sealed class Reader : IPbtPersistence.IReader
     {
+        public (PbtVariableTreeKey Key, ValueHash256 Value)? Slot { get; init; }
         public IEnumerable<KeyValuePair<ValueHash256, Account>> Accounts { get; init; } = [];
-        public PbtNodePath GroupKey { get; set; } = new([], 0);
+        public PbtNodePath GroupKey { get; } = new([], 0);
         public byte[]? GroupPayload { get; set; }
         public Exception? GroupReadException { get; set; }
         public int GroupReadCount { get; private set; }
@@ -997,10 +997,10 @@ public class PbtSnapshotBundleTests
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
         {
             PackedSlotRun run = SlotRun.Empty;
-            if (value is { } word && SlotRun.RunKey(key).Bytes.SequenceEqual(runKey.Bytes))
+            if (Slot is { } slot && SlotRun.RunKey(slot.Key).Bytes.SequenceEqual(runKey.Bytes))
             {
                 PackedSlotRun previous = run;
-                run = run.With(SlotRun.IndexOf(key), new UInt256(word.Bytes, isBigEndian: true));
+                run = run.With(SlotRun.IndexOf(slot.Key), new UInt256(slot.Value.Bytes, isBigEndian: true));
                 SlotRun.Return(previous);
             }
             return run;
@@ -1015,7 +1015,7 @@ public class PbtSnapshotBundleTests
         {
             GroupReadCount++;
             if (GroupReadException is not null) throw GroupReadException;
-            if (!PbtNodePathOperations.Equal(groupKey, GroupKey) || GroupPayload is null) return false;
+            if (!groupKey.ToPath<PbtStorageNodePath>().Equals(GroupKey.ToPath<PbtStorageNodePath>()) || GroupPayload is null) return false;
             action(GroupPayload, arg);
             return true;
         }

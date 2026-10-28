@@ -310,10 +310,7 @@ public class PbtRocksDbPersistence(
             }
             catch
             {
-                _completed = true;
-                batch.Clear();
-                batch.Dispose();
-                logBatch.Dispose();
+                Dispose();
                 throw;
             }
 

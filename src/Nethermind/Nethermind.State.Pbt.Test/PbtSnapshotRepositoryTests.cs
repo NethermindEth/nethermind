@@ -111,10 +111,8 @@ public class PbtSnapshotRepositoryTests
         }
 
         int secondBoundary = firstBoundary + 8;
-        using PbtSnapshotPooledList full = new(1);
-        using PbtSnapshotPooledList partial = new(1);
-        Assert.That(_repository.TryLeaseCompactionWindow(State(secondBoundary), firstBoundary, full), Is.True);
-        Assert.That(_repository.TryLeaseCompactionWindow(State(secondBoundary + 2), secondBoundary, partial), Is.True);
+        using PbtSnapshotPooledList full = _repository.LeaseCompactionWindow(State(secondBoundary), firstBoundary);
+        using PbtSnapshotPooledList partial = _repository.LeaseCompactionWindow(State(secondBoundary + 2), secondBoundary);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(full.Count, Is.EqualTo(1));
@@ -154,7 +152,7 @@ public class PbtSnapshotRepositoryTests
         [Values(SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.PersistedLargeCompacted)] SnapshotTier tier)
     {
         using PbtPersistedTestStore store = new();
-        using PbtPersistedSnapshot persisted = Persisted(store, State(0), State(1), tier);
+        using PbtPersistedSnapshot persisted = Persisted(store, State(0), State(1), tier, new());
         Assert.That(_repository.TryAddPersisted(persisted), Is.True);
         Assert.That(_repository.TryAddPersisted(persisted), Is.False);
         using (Assert.EnterMultipleScope())
@@ -183,7 +181,7 @@ public class PbtSnapshotRepositoryTests
             StateId from = State(8 - i);
             if (tier.IsPersisted())
             {
-                using PbtPersistedSnapshot persisted = Persisted(store, from, State(10), tier);
+                using PbtPersistedSnapshot persisted = Persisted(store, from, State(10), tier, new());
                 Assert.That(_repository.TryAddPersisted(persisted), Is.True);
             }
             else Add(State(9), State(10), tier == SnapshotTier.InMemoryCompacted);
@@ -200,7 +198,7 @@ public class PbtSnapshotRepositoryTests
         using PbtPersistedTestStore store = new();
         if (persisted)
         {
-            using PbtPersistedSnapshot edge = Persisted(store, State(0), State(4), SnapshotTier.PersistedCompactSized);
+            using PbtPersistedSnapshot edge = Persisted(store, State(0), State(4), SnapshotTier.PersistedCompactSized, new());
             _repository.TryAddPersisted(edge);
         }
         else Add(State(0), State(4), compacted: true);
@@ -214,7 +212,7 @@ public class PbtSnapshotRepositoryTests
     {
         using PbtPersistedTestStore store = new();
         Add(State(0), State(1));
-        using PbtPersistedSnapshot edge = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase);
+        using PbtPersistedSnapshot edge = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase, new());
         _repository.TryAddPersisted(edge);
         using PbtAssembledSnapshotResult assembled = _repository.TryLeaseReadChain(State(2), State(0));
         Assert.That(assembled.SnapshotCount, Is.Zero);
@@ -227,7 +225,7 @@ public class PbtSnapshotRepositoryTests
         using PbtPersistedTestStore store = new();
         Add(State(0), State(1));
         Add(State(1), State(2));
-        using PbtPersistedSnapshot edge = Persisted(store, State(0), State(2), SnapshotTier.PersistedLargeCompacted);
+        using PbtPersistedSnapshot edge = Persisted(store, State(0), State(2), SnapshotTier.PersistedLargeCompacted, new());
         _repository.TryAddPersisted(edge);
         (PbtPersistedSnapshot? persistedCandidate, PbtSnapshot? candidate) = _repository.FindCandidateToPersist(State(2), State(0), 1, state => state == State(1));
         using (candidate)
@@ -255,8 +253,8 @@ public class PbtSnapshotRepositoryTests
     public void Persisted_compaction_is_best_effort_and_sentinel_aware()
     {
         using PbtPersistedTestStore store = new();
-        using PbtPersistedSnapshot first = Persisted(store, StateId.PreGenesis, State(0), SnapshotTier.PersistedBase);
-        using PbtPersistedSnapshot second = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase);
+        using PbtPersistedSnapshot first = Persisted(store, StateId.PreGenesis, State(0), SnapshotTier.PersistedBase, new());
+        using PbtPersistedSnapshot second = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, new());
         _repository.TryAddPersisted(first); _repository.TryAddPersisted(second);
         using PbtAssembledSnapshotResult full = _repository.TryLeasePersistedChain(State(1), ulong.MaxValue);
         using PbtAssembledSnapshotResult partial = _repository.TryLeasePersistedChain(State(1), 0);
@@ -302,7 +300,7 @@ public class PbtSnapshotRepositoryTests
         using PbtPersistedTestStore store = new();
         FailingCatalog catalog = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtPersistedPublicationGate());
-        using PbtPersistedSnapshot persisted = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase);
+        using PbtPersistedSnapshot persisted = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, new());
         repository.TryAddPersisted(persisted);
         using PbtAssembledSnapshotResult held = repository.TryLeaseReadChain(State(1), State(0));
         Assert.Throws<IOException>(() => repository.RemovePersistedStatesBefore(2));
@@ -323,7 +321,7 @@ public class PbtSnapshotRepositoryTests
         StateId fork = new(2, TestItem.KeccakB.ValueHash256);
         foreach ((StateId from, StateId to) in new[] { (State(0), State(1)), (State(0), orphan), (State(1), State(2)), (State(1), fork), (orphan, orphanChild) })
         {
-            using PbtPersistedSnapshot snapshot = Persisted(store, from, to, SnapshotTier.PersistedBase);
+            using PbtPersistedSnapshot snapshot = Persisted(store, from, to, SnapshotTier.PersistedBase, new());
             _repository.TryAddPersisted(snapshot);
         }
         _repository.RemoveSiblingAndDescendents(State(1));
@@ -349,7 +347,7 @@ public class PbtSnapshotRepositoryTests
         {
             if ((block == 1) == persistedFirst)
             {
-                using PbtPersistedSnapshot snapshot = Persisted(store, State(block - 1), State(block), SnapshotTier.PersistedBase);
+                using PbtPersistedSnapshot snapshot = Persisted(store, State(block - 1), State(block), SnapshotTier.PersistedBase, new());
                 _repository.TryAddPersisted(snapshot);
             }
             else Add(State(block - 1), State(block));
@@ -374,10 +372,10 @@ public class PbtSnapshotRepositoryTests
         Add(State(1), abandoned);
         if (tier.IsPersisted())
         {
-            using PbtPersistedSnapshot parent = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase);
+            using PbtPersistedSnapshot parent = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, new());
             _repository.TryAddPersisted(parent);
-            using PbtPersistedSnapshot canonical = Persisted(store, State(1), State(2), tier);
-            using PbtPersistedSnapshot orphan = Persisted(store, State(1), abandoned, tier);
+            using PbtPersistedSnapshot canonical = Persisted(store, State(1), State(2), tier, new());
+            using PbtPersistedSnapshot orphan = Persisted(store, State(1), abandoned, tier, new());
             _repository.TryAddPersisted(canonical);
             _repository.TryAddPersisted(orphan);
         }
@@ -451,7 +449,7 @@ public class PbtSnapshotRepositoryTests
         });
         using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtPersistedPublicationGate());
         repository.TryAdd(Snapshot(State(0), State(1)));
-        using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase)) repository.TryAddPersisted(orphan);
+        using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase, new())) repository.TryAddPersisted(orphan);
         Task<bool> rewind = Task.Run(() => repository.TryRemoveUnreachableFrom(State(1), State(0), out _));
         try
         {
@@ -476,7 +474,7 @@ public class PbtSnapshotRepositoryTests
         using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtPersistedPublicationGate());
         repository.TryAdd(Snapshot(State(0), State(1)));
         repository.TryAdd(Snapshot(State(1), State(3)));
-        using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase)) repository.TryAddPersisted(orphan);
+        using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase, new())) repository.TryAddPersisted(orphan);
         Assert.Throws<IOException>(() => repository.TryRemoveUnreachableFrom(State(1), State(0), out _));
         Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(State(3)));
         Assert.That(repository.HasState(State(2)), Is.True);
@@ -490,12 +488,12 @@ public class PbtSnapshotRepositoryTests
     {
         using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
-        PbtPersistedSnapshot first = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
-        PbtPersistedSnapshot second = BloomSnapshot(store, State(1), State(2), SnapshotTier.PersistedBase, 2);
-        PbtPersistedSnapshot third = BloomSnapshot(store, State(2), State(3), SnapshotTier.PersistedBase, 3);
-        using PbtPersistedSnapshot fork = BloomSnapshot(store, State(1), new StateId(2, TestItem.KeccakB.ValueHash256), SnapshotTier.PersistedBase, 4);
-        using PbtPersistedSnapshot crossing = BloomSnapshot(store, StateId.PreGenesis, State(2), SnapshotTier.PersistedSmallCompacted, 5);
-        using PbtPersistedSnapshot wrongParent = BloomSnapshot(store, new StateId(1, TestItem.KeccakB.ValueHash256), State(3), SnapshotTier.PersistedSmallCompacted, 6);
+        PbtPersistedSnapshot first = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, CodeContent(1));
+        PbtPersistedSnapshot second = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase, CodeContent(2));
+        PbtPersistedSnapshot third = Persisted(store, State(2), State(3), SnapshotTier.PersistedBase, CodeContent(3));
+        using PbtPersistedSnapshot fork = Persisted(store, State(1), new StateId(2, TestItem.KeccakB.ValueHash256), SnapshotTier.PersistedBase, CodeContent(4));
+        using PbtPersistedSnapshot crossing = Persisted(store, StateId.PreGenesis, State(2), SnapshotTier.PersistedSmallCompacted, CodeContent(5));
+        using PbtPersistedSnapshot wrongParent = Persisted(store, new StateId(1, TestItem.KeccakB.ValueHash256), State(3), SnapshotTier.PersistedSmallCompacted, CodeContent(6));
         repository.TryAddPersisted(first);
         repository.TryAddPersisted(second);
         repository.TryAddPersisted(third);
@@ -524,7 +522,7 @@ public class PbtSnapshotRepositoryTests
             Assert.That(repository.ContainsPersistedStorageSource(first), Is.True);
             repository.RemovePersistedStatesBefore(2);
             Assert.That(repository.ContainsPersistedStorageSource(first), Is.False);
-            using PbtPersistedSnapshot reconverted = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
+            using PbtPersistedSnapshot reconverted = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, CodeContent(1));
             repository.TryAddPersisted(reconverted);
             Assert.That(repository.ContainsPersistedStorageSource(first), Is.False, "a different physical conversion is not the leased source");
             byte[] firstHash = new byte[32]; firstHash[^1] = 1;
@@ -545,11 +543,11 @@ public class PbtSnapshotRepositoryTests
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         for (int block = 1; block <= blocks; block++)
         {
-            using PbtPersistedSnapshot snapshot = BloomSnapshot(store, State(block - 1), State(block), SnapshotTier.PersistedBase, 1);
+            using PbtPersistedSnapshot snapshot = Persisted(store, State(block - 1), State(block), SnapshotTier.PersistedBase, CodeContent(1));
             repository.TryAddPersisted(snapshot);
             if (block > 1)
             {
-                using PbtPersistedSnapshot compacted = BloomSnapshot(store, State(0), State(block), SnapshotTier.PersistedSmallCompacted, 1);
+                using PbtPersistedSnapshot compacted = Persisted(store, State(0), State(block), SnapshotTier.PersistedSmallCompacted, CodeContent(1));
                 repository.TryAddPersisted(compacted);
             }
         }
@@ -564,14 +562,12 @@ public class PbtSnapshotRepositoryTests
         repository.Dispose();
     }
 
-    private PbtPersistedSnapshot BloomSnapshot(PbtPersistedTestStore store, StateId from, StateId to, SnapshotTier tier, byte key)
+    private static PbtSnapshotContent CodeContent(byte key)
     {
         PbtSnapshotContent content = new();
         byte[] hash = new byte[32]; hash[^1] = key;
         content.Codes[new ValueHash256(hash)] = new(new byte[65537]);
-        using PbtSnapshot memory = new(from, to, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
-        using PbtPersistedSnapshot built = store.Build(memory);
-        return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, built.BloomRef);
+        return content;
     }
 
     private sealed class CallbackCatalog(Action deleting) : ISnapshotCatalog
@@ -589,9 +585,9 @@ public class PbtSnapshotRepositoryTests
         public IEnumerable<CatalogEntry> Load() => [];
     }
 
-    private PbtPersistedSnapshot Persisted(PbtPersistedTestStore store, StateId from, StateId to, SnapshotTier tier)
+    private PbtPersistedSnapshot Persisted(PbtPersistedTestStore store, StateId from, StateId to, SnapshotTier tier, PbtSnapshotContent content)
     {
-        using PbtSnapshot memory = Snapshot(from, to);
+        using PbtSnapshot memory = new(from, to, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot built = store.Build(memory);
         return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, built.BloomRef);
     }

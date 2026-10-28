@@ -9,12 +9,15 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
+using NSubstitute;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -79,4 +82,15 @@ internal static class PbtTestLeaves
         foreach (RebuildEntry _ in leaves) { }
         return root;
     };
+
+    /// <summary>A database factory that places every database in <paramref name="directory"/>.</summary>
+    public static IDbFactory ScratchDbFactory(string directory)
+    {
+        IDbFactory dbFactory = Substitute.For<IDbFactory>();
+        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(directory);
+        return dbFactory;
+    }
+
+    public static PbtLeafIngestion LeafIngestion(PbtRocksDbPersistence target, IPbtConfig config, string scratchDirectory) =>
+        new(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), ScratchDbFactory(scratchDirectory), config, LimboLogs.Instance);
 }

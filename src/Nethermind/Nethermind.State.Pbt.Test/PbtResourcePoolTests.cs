@@ -189,7 +189,6 @@ public class PbtResourcePoolTests
             Assert.That(rented.RootGroupPointer, Is.Zero);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             Assert.That(rented.GroupRecordBuffer, Is.Null, "a reset layer keeps no generation pin");
-            Assert.That(buffer.PinCount(), Is.Zero);
             Assert.That(buffer.TryLocate(pointer, out _), Is.False);
         }
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);

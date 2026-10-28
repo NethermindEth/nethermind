@@ -153,7 +153,7 @@ public class PbtGroupRecordBufferTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << PbtGroupRecordBuffer.OffsetBits | GenerationBytes));
+            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << PbtGroupRecordCodec.OffsetBits | GenerationBytes));
             Assert.That(pointer, Is.GreaterThan(retain.WriteBoundary));
         }
     }
@@ -319,7 +319,8 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Compaction_failure_is_reported_and_does_not_prevent_shutdown_cleanup()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
+        // A compressed budget makes the buffer compact the dropped generation rather than drop it outright.
+        using PbtGroupRecordBuffer buffer = new(GenerationBytes, GenerationBytes);
         ulong pointer;
         using (IPbtGroupRecordWriteBatch batch = buffer.StartWriteBatch(GenerationBytes))
         {
@@ -560,12 +561,20 @@ public class PbtGroupRecordBufferTests
         return payload;
     }
 
+    /// <summary>Appends <paramref name="payload"/> as a root group, indexed under its Keccak.</summary>
+    public static ulong AppendRoot(IPbtGroupRecordBuffer buffer, byte[] payload)
+    {
+        ulong pointer = buffer.Append(default, payload, default);
+        buffer.SetRoot(ValueKeccak.Compute(payload), pointer);
+        return pointer;
+    }
+
     /// <summary>Whether the native storage <paramref name="record"/> borrows was released.</summary>
     public static bool IsFreed(PbtGroupRecord record)
     {
         try
         {
-            _ = record.Kind;
+            _ = record.Span;
             return false;
         }
         catch (ObjectDisposedException)

@@ -53,7 +53,6 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
 
     private const int MaxGenerations = 4096;
     private const ulong GenerationSlotMask = MaxGenerations - 1;
-    public const int OffsetBits = PbtGroupRecordCodec.OffsetBits;
 
     private readonly Lock _lock = new();
     private readonly Generation?[] _generations = new Generation?[MaxGenerations];
@@ -104,7 +103,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             ThrowIfUnavailable();
             ulong generation = _active.Id;
             long used = Math.Min(Volatile.Read(ref _active.Used), _active.Data!.Length);
-            PbtGroupRecordBufferPin pin = new(this, generation, generation << OffsetBits | (uint)used);
+            PbtGroupRecordBufferPin pin = new(this, generation, generation << PbtGroupRecordCodec.OffsetBits | (uint)used);
             _pinCount++;
             _active.PinCount++;
             _active.HeadPinCount++;
@@ -200,7 +199,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             record = default;
             return false;
         }
-        ulong id = pointer >> OffsetBits;
+        ulong id = pointer >> PbtGroupRecordCodec.OffsetBits;
         Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
         if (generation?.Id == id && !Volatile.Read(ref generation.Dropping))
         {
@@ -242,18 +241,18 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             pending.RemoveAt(pending.Count - 1);
             if (pointer == 0 || pointer < lowerBound || !TryLocate(pointer, out PbtGroupRecord record)) continue;
 
-            if (count == BloomBatchSize || pointer >> OffsetBits != generation)
+            if (count == BloomBatchSize || pointer >> PbtGroupRecordCodec.OffsetBits != generation)
             {
-                FindBloom(generation << OffsetBits)?.Add(pathKeyHashes[..count]);
+                FindBloom(generation << PbtGroupRecordCodec.OffsetBits)?.Add(pathKeyHashes[..count]);
                 count = 0;
-                generation = pointer >> OffsetBits;
+                generation = pointer >> PbtGroupRecordCodec.OffsetBits;
             }
 
             pathKeyHashes[count++] = (long)MemoryMarshal.AsRef<PbtGroupRecordHeader>(record.Span).PathKeyHash;
             for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++) pending.Add(record.GetLink(slot));
         }
 
-        FindBloom(generation << OffsetBits)?.Add(pathKeyHashes[..count]);
+        FindBloom(generation << PbtGroupRecordCodec.OffsetBits)?.Add(pathKeyHashes[..count]);
     }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
@@ -272,7 +271,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             {
                 buffer = data;
                 offset = (int)(end - alignedTotalLength);
-                return generation.Id << OffsetBits | (uint)offset;
+                return generation.Id << PbtGroupRecordCodec.OffsetBits | (uint)offset;
             }
 
             Rotate(generation.Id, alignedTotalLength);
@@ -397,7 +396,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     /// <remarks>The caller must hold a pin for the entire use of the filter.</remarks>
     private BloomFilter? FindBloom(ulong pointer)
     {
-        ulong id = pointer >> OffsetBits;
+        ulong id = pointer >> PbtGroupRecordCodec.OffsetBits;
         Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
         return generation?.Id == id ? Volatile.Read(ref generation.Bloom) : null;
     }
@@ -436,7 +435,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
                     newest = _active.Id;
                 }
 
-                PbtCompressedGeneration? compressed = Compress(generation, newest);
+                PbtCompressedGeneration? compressed = _compressedMaxMemory == 0 ? null : Compress(generation, newest);
                 try
                 {
                     lock (_lock)

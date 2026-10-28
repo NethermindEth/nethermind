@@ -39,7 +39,7 @@ internal static class PbtSnapshotBundleTestExtensions
 
     public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtGroupRecordBuffer? groupRecordBuffer = null) => new(
         new PbtSnapshotPooledList(0),
-        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), NoNodeGroupPin, slotFilterBitsPerKey: 0),
+        ReadOnlyBundle(new PbtSnapshotPooledList(0), reader, slotFilterBitsPerKey: 0),
         groupRecordBuffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
@@ -80,6 +80,10 @@ internal static class PbtSnapshotBundleTestExtensions
 
     public static PbtReadOnlySnapshotBundle ReadOnlyBundle(PbtAssembledSnapshotResult assembled, IPbtPersistence.IReader reader, double slotFilterBitsPerKey) =>
         new(assembled.InMemory, reader, recordDetailedMetrics: false, assembled.Persisted, NoNodeGroupPin, slotFilterBitsPerKey);
+
+    /// <summary>A read-only bundle over the in-memory <paramref name="chain"/> alone, with no persisted snapshots.</summary>
+    public static PbtReadOnlySnapshotBundle ReadOnlyBundle(PbtSnapshotPooledList chain, IPbtPersistence.IReader reader, double slotFilterBitsPerKey) =>
+        new(chain, reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), NoNodeGroupPin, slotFilterBitsPerKey);
 
     /// <remarks>A layer publishing a root group gets a tree root unique to that group, indexed in its buffer as a collected snapshot's is.</remarks>
     private static PbtSnapshot Layer(IPbtResourcePool pool, PbtSnapshotContent content, int index)

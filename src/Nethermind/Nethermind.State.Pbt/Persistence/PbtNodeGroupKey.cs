@@ -65,21 +65,21 @@ public static class PbtNodeGroupKey
         return true;
     }
 
+    /// <param name="key">An encoded group key.</param>
+    /// <param name="prefix">The <see cref="Encode{TPath}"/> encoding of the prefix path.</param>
+    /// <param name="prefixBitDepth">The bit depth of the prefix path.</param>
     /// <returns>Negative or positive when <paramref name="key"/> sorts before or after every key starting with the bits of <paramref name="prefix"/>, or zero when it starts with them.</returns>
-    private static int CompareToRange(ReadOnlySpan<byte> key, PbtStorageNodePath prefix)
+    private static int CompareToRange(ReadOnlySpan<byte> key, ReadOnlySpan<byte> prefix, int prefixBitDepth)
     {
-        Span<byte> bits = stackalloc byte[PbtVariableTreeKey.MaxLength];
-        bits.Clear();
-        PbtNodePathOperations.CopyTo(prefix, bits);
-        int fullBytes = prefix.BitDepth >> 3;
-        int order = key[..Math.Min(key.Length, fullBytes)].SequenceCompareTo(bits[..Math.Min(key.Length, fullBytes)]);
+        int fullBytes = prefixBitDepth >> 3;
+        int order = key[..Math.Min(key.Length, fullBytes)].SequenceCompareTo(prefix[..Math.Min(key.Length, fullBytes)]);
         if (order != 0) return order;
         if (key.Length < fullBytes) return -1;
-        int remainder = prefix.BitDepth & 7;
+        int remainder = prefixBitDepth & 7;
         if (remainder == 0) return 0;
         if (key.Length == fullBytes) return -1;
         int mask = 0xFF << (8 - remainder) & 0xFF;
-        return (key[fullBytes] & mask) - (bits[fullBytes] & mask);
+        return (key[fullBytes] & mask) - (prefix[fullBytes] & mask);
     }
 
     public readonly ref struct KeyOrderEnumerable(IPbtGroupRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
@@ -126,11 +126,12 @@ public static class PbtNodeGroupKey
                 ref Frame frame = ref _stack.GetRef(_stack.Count - 1);
                 if (frame.HasChild)
                 {
-                    if (_pending.Count > frame.PendingStart && CompareToRange(Encode(_pending[^1].Path, key), frame.Child.Path) < 0) return EmitLast();
+                    ReadOnlySpan<byte> encodedChild = Encode(frame.Child.Path, childKey);
+                    int childBitDepth = frame.Child.Path.BitDepth;
+                    if (_pending.Count > frame.PendingStart && CompareToRange(Encode(_pending[^1].Path, key), encodedChild, childBitDepth) < 0) return EmitLast();
 
                     int inside = _pending.Count;
-                    while (inside > frame.PendingStart && CompareToRange(Encode(_pending[inside - 1].Path, key), frame.Child.Path) == 0) inside--;
-                    ReadOnlySpan<byte> encodedChild = Encode(frame.Child.Path, childKey);
+                    while (inside > frame.PendingStart && CompareToRange(Encode(_pending[inside - 1].Path, key), encodedChild, childBitDepth) == 0) inside--;
                     int index = _pending.Count;
                     while (index > inside && Encode(_pending[index - 1].Path, key).SequenceCompareTo(encodedChild) < 0) index--;
                     PbtGroupRecord child = frame.Child;

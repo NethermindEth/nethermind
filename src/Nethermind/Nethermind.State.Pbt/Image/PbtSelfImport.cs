@@ -133,14 +133,13 @@ public sealed class PbtSelfImport(
             foreach (ReadOnlyAccountChanges account in bal.AccountChanges)
             {
                 // The zero tag and slot-hash region keep an account ahead of its own slots.
-                Array.Clear(key);
-                account.Address.ToAccountPath.Bytes.CopyTo(key);
+                ValueHash256 addressHash = account.Address.ToAccountPath;
+                PbtOfflineSource.WriteAccountPreimageKey(key, addressHash);
                 writer.Add(key, account.Address.Bytes);
-                key[ValueHash256.MemorySize] = 1;
                 foreach (UInt256 slot in account.ChangedSlots)
                 {
                     ValueHash256 slotKey = slot.ToValueHash();
-                    ValueKeccak.Compute(slotKey.Bytes).Bytes.CopyTo(key.AsSpan(ValueHash256.MemorySize + 1));
+                    PbtOfflineSource.WriteSlotPreimageKey(key, addressHash, ValueKeccak.Compute(slotKey.Bytes));
                     writer.Add(key, slotKey.Bytes);
                 }
             }
@@ -222,7 +221,7 @@ public sealed class PbtSelfImport(
             Array.Clear(_balKey);
             prefix.CopyTo(_balKey);
             SeekBalKey();
-            if (!_hasBalKey || !_balKeys.Key[..FlatAccountKeyLength].SequenceEqual(prefix) || _balKeys.Key[ValueHash256.MemorySize] != 0)
+            if (!_hasBalKey || !_balKeys.Key[..FlatAccountKeyLength].SequenceEqual(prefix) || _balKeys.Key[ValueHash256.MemorySize] != PbtOfflineSource.AccountPreimageTag)
                 throw new InvalidDataException($"Flat account {prefix.ToHexString()} has no preimage.");
             AddressHash = new ValueHash256(_balKeys.Key[..ValueHash256.MemorySize]);
             return new Address(_balKeys.Value);
@@ -238,9 +237,7 @@ public sealed class PbtSelfImport(
                 if (_preimages.SlotHash == slotHash) return new UInt256(_listedSlot.Bytes, isBigEndian: true);
             }
 
-            AddressHash.Bytes.CopyTo(_balKey);
-            _balKey[ValueHash256.MemorySize] = 1;
-            slotHash.Bytes.CopyTo(_balKey.AsSpan(ValueHash256.MemorySize + 1));
+            PbtOfflineSource.WriteSlotPreimageKey(_balKey, AddressHash, slotHash);
             SeekBalKey();
             if (!_hasBalKey || !_balKeys.Key.SequenceEqual(_balKey))
                 throw new InvalidDataException($"Flat slot {slotHash} of account {AddressHash} has no preimage.");

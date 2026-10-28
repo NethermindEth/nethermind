@@ -3,7 +3,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using Nethermind.Core.Collections;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
@@ -111,59 +110,91 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
         private readonly ResourcePool.ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
         private PbtTransientResource.Size _lastCachedResourceSize = new(1024);
-        private readonly ResourcePool.PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
-        private readonly ResourcePool.PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
-        private readonly ResourcePool.PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
+        private readonly PooledResourceMetrics _cachedResourceMetrics = new(usage, "CachedResource");
+        private readonly PooledResourceMetrics _writeBatchMetrics = new(usage, "PbtWriteBatchBuilder");
+        private readonly PooledResourceMetrics _storageWriteBatchMetrics = new(usage, "PbtStorageWriteBatchBuilder");
+        private readonly PooledResourceMetrics _snapshotMetrics = new(usage, nameof(PbtSnapshotContent));
 
         public PbtSnapshotContent GetSnapshotContent() =>
-            TryRent(_snapshotPool, _snapshotLabel, out PbtSnapshotContent? content) ? content : new PbtSnapshotContent();
+            TryRent(_snapshotPool, _snapshotMetrics, out PbtSnapshotContent? content) ? content : new PbtSnapshotContent();
 
-        public void ReturnSnapshotContent(PbtSnapshotContent content) => Return(_snapshotPool, _snapshotLabel, content);
+        public void ReturnSnapshotContent(PbtSnapshotContent content) => Return(_snapshotPool, _snapshotMetrics, content);
 
         public PbtWriteBatchBuilder<PbtPath> GetWriteBatch() =>
-            TryRent(_writeBatchPool, _writeBatchLabel, out PbtWriteBatchBuilder<PbtPath>? batch) ? batch : new PbtWriteBatchBuilder<PbtPath>();
+            TryRent(_writeBatchPool, _writeBatchMetrics, out PbtWriteBatchBuilder<PbtPath>? batch) ? batch : new PbtWriteBatchBuilder<PbtPath>();
 
-        public void ReturnWriteBatch(PbtWriteBatchBuilder<PbtPath> batch) => Return(_writeBatchPool, _writeBatchLabel, batch);
+        public void ReturnWriteBatch(PbtWriteBatchBuilder<PbtPath> batch) => Return(_writeBatchPool, _writeBatchMetrics, batch);
 
         public PbtWriteBatchBuilder<PbtStoragePath> GetStorageWriteBatch() =>
-            TryRent(_storageWriteBatchPool, _writeBatchLabel, out PbtWriteBatchBuilder<PbtStoragePath>? batch) ? batch : new PbtWriteBatchBuilder<PbtStoragePath>();
+            TryRent(_storageWriteBatchPool, _storageWriteBatchMetrics, out PbtWriteBatchBuilder<PbtStoragePath>? batch) ? batch : new PbtWriteBatchBuilder<PbtStoragePath>();
 
-        public void ReturnStorageWriteBatch(PbtWriteBatchBuilder<PbtStoragePath> batch) => Return(_storageWriteBatchPool, _writeBatchLabel, batch);
+        public void ReturnStorageWriteBatch(PbtWriteBatchBuilder<PbtStoragePath> batch) => Return(_storageWriteBatchPool, _storageWriteBatchMetrics, batch);
 
         public PbtTransientResource GetCachedResource() =>
-            TryRent(_cachedResourcePool, _cachedResourceLabel, out PbtTransientResource? resource) ? resource : new PbtTransientResource(_lastCachedResourceSize);
+            TryRent(_cachedResourcePool, _cachedResourceMetrics, out PbtTransientResource? resource) ? resource : new PbtTransientResource(_lastCachedResourceSize);
 
         public void ReturnCachedResource(PbtTransientResource transientResource)
         {
-            if (!Return(_cachedResourcePool, _cachedResourceLabel, transientResource)) _lastCachedResourceSize = transientResource.GetSize();
+            if (!Return(_cachedResourcePool, _cachedResourceMetrics, transientResource)) _lastCachedResourceSize = transientResource.GetSize();
         }
 
         /// <summary>Pops a pooled item; on a miss the caller creates one, counted as created.</summary>
-        private bool TryRent<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, [NotNullWhen(true)] out T? item) where T : class, IDisposable, IResettable
+        private static bool TryRent<T>(ResourcePool.ConcurrentStackPool<T> pool, PooledResourceMetrics metrics, [NotNullWhen(true)] out T? item) where T : class, IDisposable, IResettable
         {
-            Metrics.PbtActivePooledResource.AddBy(label, 1);
             if (pool.TryGet(out item))
             {
-                Metrics.PbtCachedPooledResource[label] = CachedCount(pool, label);
+                metrics.OnRented(pool.PooledItemCount);
                 return true;
             }
 
             // This grows indefinitely when the category's pool is too small.
-            Metrics.PbtCreatedPooledResource.AddBy(label, 1);
+            metrics.OnCreated(pool.PooledItemCount);
             return false;
         }
 
         /// <returns>Whether the pool kept <paramref name="item"/> rather than disposing it on overflow.</returns>
-        private bool Return<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, T item) where T : class, IDisposable, IResettable
+        private static bool Return<T>(ResourcePool.ConcurrentStackPool<T> pool, PooledResourceMetrics metrics, T item) where T : class, IDisposable, IResettable
         {
-            Metrics.PbtActivePooledResource.AddBy(label, -1);
             bool kept = pool.Return(item);
-            Metrics.PbtCachedPooledResource[label] = CachedCount(pool, label);
+            metrics.OnReturned(pool.PooledItemCount);
             return kept;
         }
+    }
 
-        // The two write-batch pools share one label, so its count covers both.
-        private long CachedCount<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label) where T : class, IDisposable, IResettable =>
-            (long)(ReferenceEquals(label, _writeBatchLabel) ? _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount : pool.PooledItemCount);
+    /// <summary>Counts one pooled resource type, writing the shared metric dictionaries only when detailed metrics are enabled.</summary>
+    private sealed class PooledResourceMetrics(Usage usage, string resourceType)
+    {
+        private readonly ResourcePool.PooledResourceLabel _label = new(usage.ToString(), resourceType);
+        private long _active;
+        private long _created;
+
+        public void OnRented(double pooledCount)
+        {
+            Interlocked.Increment(ref _active);
+            Publish(pooledCount);
+        }
+
+        public void OnCreated(double pooledCount)
+        {
+            Interlocked.Increment(ref _active);
+            Interlocked.Increment(ref _created);
+            Publish(pooledCount);
+        }
+
+        public void OnReturned(double pooledCount)
+        {
+            Interlocked.Decrement(ref _active);
+            Publish(pooledCount);
+        }
+
+        private void Publish(double pooledCount)
+        {
+            if (!Metrics.DetailedMetricsEnabled) return;
+
+            // Racing publishers may leave a gauge one operation stale until the next rent or return.
+            Metrics.PbtActivePooledResource[_label] = Volatile.Read(ref _active);
+            Metrics.PbtCreatedPooledResource[_label] = Volatile.Read(ref _created);
+            Metrics.PbtCachedPooledResource[_label] = (long)pooledCount;
+        }
     }
 }

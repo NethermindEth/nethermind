@@ -9,6 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
@@ -63,7 +64,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         ulong to = RootGroupPointer;
         if (to <= from) return 0;
 
-        long generations = (long)((to >> PbtGroupRecordBuffer.OffsetBits) - (from >> PbtGroupRecordBuffer.OffsetBits));
+        long generations = (long)((to >> PbtGroupRecordCodec.OffsetBits) - (from >> PbtGroupRecordCodec.OffsetBits));
         return generations * PbtGroupRecordBuffer.DefaultGenerationBytes + (uint)to - (uint)from;
     }
 

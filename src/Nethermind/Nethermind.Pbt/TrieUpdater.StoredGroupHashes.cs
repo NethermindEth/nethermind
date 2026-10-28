@@ -48,7 +48,7 @@ public static partial class TrieUpdater<TKey, TPath>
         /// </remarks>
         public void GetChildHashesPaired<TFrame>(ref TFrame frame, int leftPosition, int rightPosition,
             out ValueHash256 left, out ValueHash256 right)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
+            where TFrame : struct, IGroupFrame
         {
             Span<byte> leftBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
             Span<byte> rightBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
@@ -62,7 +62,7 @@ public static partial class TrieUpdater<TKey, TPath>
 
         /// <summary>The preimage <paramref name="position"/> still needs hashing, or empty when its hash is known or it holds no node.</summary>
         private ReadOnlySpan<byte> PendingPreimage<TFrame>(ref TFrame frame, int position, Span<byte> buffer)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
+            where TFrame : struct, IGroupFrame
         {
             if ((_known & (1u << position)) != 0) return default;
             ReadOnlyMemory<byte> encoding = frame.GetEncoding(position);

@@ -29,7 +29,7 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer
         _global = global;
         _globalPin = global.PinHead();
         _globalBoundary = _globalPin.WriteBoundary;
-        _localOffset = _globalBoundary >> PbtGroupRecordBuffer.OffsetBits << PbtGroupRecordBuffer.OffsetBits;
+        _localOffset = _globalBoundary >> PbtGroupRecordCodec.OffsetBits << PbtGroupRecordCodec.OffsetBits;
     }
 
     /// <inheritdoc/>

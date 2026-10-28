@@ -80,7 +80,7 @@ public static partial class TrieUpdater
             // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
             if (currentRoot.Hash == default)
             {
-                AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
+                AbsentGroupFrame emptyRoot = new(0, 0, 0, 0);
                 return FoldRoot(context, ref emptyRoot, default, touchedSlots, foldSlot);
             }
             if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !workingState.Loaded.TryLoad(store, rootPath, out rootRecord))
@@ -96,11 +96,11 @@ public static partial class TrieUpdater
 
     /// <summary>Rebuilds the root group of <paramref name="rootReader"/> around its touched slots, each folded by <paramref name="foldSlot"/>, and publishes it.</summary>
     private static (ValueHash256 Hash, ulong Pointer) FoldRoot<TRoot>(FoldContext context, ref TRoot rootReader, in BoundaryNode root, int touchedSlots, ForeignSlotFold foldSlot)
-        where TRoot : struct, IGroupFrame<PbtVariableTreeKey, PbtStorageNodePath>
+        where TRoot : struct, IGroupFrame
     {
         ValueHash256 hash = default;
         // A fold that throws leaves its writer to the collector rather than to the working state.
-        PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = context.WorkingState.RentWriter(0);
+        PbtNodeGroupWriter rootWriter = context.WorkingState.RentWriter(0);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
         StoredGroupHashes.Open(out StoredGroupHashes hashes);
         ComposedNode rootNode = WalkFrameOverForeignSlots(context, ref rootReader, ref hashes, rootWriter, root, rootPath, touchedSlots, foldSlot);
@@ -177,7 +177,7 @@ public static partial class TrieUpdater
                     TrieUpdater<TKey, TPath>.SortShards(context, operations.Slice(zoneStart, count), table.AsSpan());
                 TrieUpdater<TKey, TPath>.AssertSorted(operations);
                 long sorted = phaseTime is null ? 0 : Stopwatch.GetTimestamp();
-                TrieUpdater<TKey, TPath>.SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
+                SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
                     TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtVariableTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
                 long folded = Stopwatch.GetTimestamp();
                 foldTime?.Observe(folded - start, foldLabel);
@@ -186,7 +186,7 @@ public static partial class TrieUpdater
                     phaseTime.Observe(sorted - start, phaseLabels.Sort);
                     phaseTime.Observe(folded - sorted, phaseLabels.Fold);
                 }
-                return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta, GroupPointer = result.GroupPointer };
+                return result;
             }
             finally
             {

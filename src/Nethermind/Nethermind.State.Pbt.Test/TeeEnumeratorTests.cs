@@ -5,10 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Collections;
+using Nethermind.State.Pbt.Image;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Collections;
+namespace Nethermind.State.Pbt.Test;
 
 public class TeeEnumeratorTests
 {

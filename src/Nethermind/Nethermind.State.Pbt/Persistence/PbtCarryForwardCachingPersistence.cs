@@ -24,9 +24,9 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private readonly IPbtPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
-    private readonly ConcurrentDictionary<ValueHash256, PbtAccount?> _accounts = new();
-    private readonly ConcurrentDictionary<PbtPath, PackedSlotRun> _headerRuns = new();
-    private readonly ConcurrentDictionary<PbtStoragePath, PackedSlotRun> _storageRuns = new();
+    private ConcurrentDictionary<ValueHash256, PbtAccount?> _accounts;
+    private ConcurrentDictionary<PbtPath, PackedSlotRun> _headerRuns;
+    private ConcurrentDictionary<PbtStoragePath, PackedSlotRun> _storageRuns;
     private int _accountCount;
     private int _runCount;
 
@@ -34,10 +34,40 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private StateId _basis;
     private long _generation;
 
+    // Handed from one write batch to the next, so a persist does not grow fresh sets on the LOH. A spare keeps the
+    // capacity of the batch that filled it for the node's lifetime, so only sets within the cache's own per-kind
+    // capacity are kept.
+    private HashSet<ValueHash256>? _spareWrittenAccounts;
+    private HashSet<PbtPath>? _spareWrittenHeaderRuns;
+    private HashSet<PbtStoragePath>? _spareWrittenStorageRuns;
+
+    private HashSet<ValueHash256> RentWrittenAccounts() => Interlocked.Exchange(ref _spareWrittenAccounts, null) ?? [];
+
+    private HashSet<PbtPath> RentWrittenHeaderRuns() => Interlocked.Exchange(ref _spareWrittenHeaderRuns, null) ?? [];
+
+    private HashSet<PbtStoragePath> RentWrittenStorageRuns() => Interlocked.Exchange(ref _spareWrittenStorageRuns, null) ?? [];
+
+    private void ReturnWrittenSets(HashSet<ValueHash256>? writtenAccounts, HashSet<PbtPath>? writtenHeaderRuns, HashSet<PbtStoragePath>? writtenStorageRuns)
+    {
+        ReturnWrittenSet(ref _spareWrittenAccounts, writtenAccounts);
+        ReturnWrittenSet(ref _spareWrittenHeaderRuns, writtenHeaderRuns);
+        ReturnWrittenSet(ref _spareWrittenStorageRuns, writtenStorageRuns);
+    }
+
+    private void ReturnWrittenSet<TKey>(ref HashSet<TKey>? spare, HashSet<TKey>? written)
+    {
+        if (written is null || written.Count > _maxEntriesPerKind) return;
+        written.Clear();
+        Volatile.Write(ref spare, written);
+    }
+
     public PbtCarryForwardCachingPersistence(IPbtPersistence inner, int maxEntriesPerKind)
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
+        _accounts = NewAccountCache();
+        _headerRuns = NewRunCache<PbtPath>();
+        _storageRuns = NewRunCache<PbtStoragePath>();
         using IPbtPersistence.IReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
     }
@@ -65,6 +95,15 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         OnCommitted(reader.CurrentState, writtenAccounts: null, writtenHeaderRuns: null, writtenStorageRuns: null, clearAll: true);
     }
 
+    // Sized for the cap up front: a ConcurrentDictionary grows by re-creating every entry, which from the default
+    // capacity takes a dozen rounds on the way to the cap, the last ones tens of megabytes on whichever reader adds
+    // the entry that crosses a threshold. Clear() would shrink it back to the default, so a wipe swaps in a new one.
+    // One lock: every write already runs under _lock, and a dictionary grows once any one lock passes its share of
+    // the buckets, so with more locks the fullest one would still trigger a growth just short of the cap.
+    private ConcurrentDictionary<ValueHash256, PbtAccount?> NewAccountCache() => new(concurrencyLevel: 1, _maxEntriesPerKind);
+
+    private ConcurrentDictionary<TKey, PackedSlotRun> NewRunCache<TKey>() where TKey : struct, IPbtKey<TKey> => new(concurrencyLevel: 1, _maxEntriesPerKind);
+
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
     private ConcurrentDictionary<TKey, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -79,7 +118,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             if (_accounts.ContainsKey(addressHash)) return;
             if (_accountCount >= _maxEntriesPerKind)
             {
-                _accounts.Clear();
+                _accounts = NewAccountCache();
                 _accountCount = 0;
             }
             if (_accounts.TryAdd(addressHash, account)) _accountCount++;
@@ -89,20 +128,25 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     // Cached runs are never returned to their pool: a concurrent reader may still be cloning an evicted one.
     private void TryCacheRun<TKey>(in TKey runKey, PackedSlotRun run, long readerGeneration) where TKey : struct, IPbtKey<TKey>
     {
-        ConcurrentDictionary<TKey, PackedSlotRun> runs = Runs<TKey>();
-        using (_lock.EnterScope())
+        // Best effort: under many threads the reads would otherwise queue here, and a skipped insert only costs a later miss.
+        if (!_lock.TryEnter()) return;
+        try
         {
             if (_generation != readerGeneration) return;
-            if (runs.ContainsKey(runKey)) return;
+            if (Runs<TKey>().ContainsKey(runKey)) return;
             if (_runCount >= _maxEntriesPerKind) ClearRuns();
-            if (runs.TryAdd(runKey, run)) _runCount++;
+            if (Runs<TKey>().TryAdd(runKey, run)) _runCount++;
+        }
+        finally
+        {
+            _lock.Exit();
         }
     }
 
     private void ClearRuns()
     {
-        _headerRuns.Clear();
-        _storageRuns.Clear();
+        _headerRuns = NewRunCache<PbtPath>();
+        _storageRuns = NewRunCache<PbtStoragePath>();
         _runCount = 0;
     }
 
@@ -115,9 +159,10 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             _basis = to;
             if (clearAll)
             {
-                _accounts.Clear();
+                // An empty cache keeps its tables, so a clear with nothing cached allocates nothing. The counts are exact under _lock.
+                if (_accountCount != 0) _accounts = NewAccountCache();
                 _accountCount = 0;
-                ClearRuns();
+                if (_runCount != 0) ClearRuns();
                 return;
             }
             if (writtenAccounts is not null)
@@ -185,13 +230,13 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
 
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
-            (_writtenAccounts ??= []).Add(addressHash);
+            (_writtenAccounts ??= parent.RentWrittenAccounts()).Add(addressHash);
             inner.SetAccount(addressHash, account);
         }
 
         public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
         {
-            SlotRun.ByZone<TKey, HashSet<TKey>>(_writtenHeaderRuns ??= [], _writtenStorageRuns ??= []).Add(runKey);
+            SlotRun.ByZone<TKey, HashSet<TKey>>(_writtenHeaderRuns ??= parent.RentWrittenHeaderRuns(), _writtenStorageRuns ??= parent.RentWrittenStorageRuns()).Add(runKey);
             inner.SetSlotRun(runKey, run);
         }
 
@@ -205,6 +250,13 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             parent.OnCommitted(to, _writtenAccounts, _writtenHeaderRuns, _writtenStorageRuns, clearAll: false);
         }
 
-        public void Dispose() => inner.Dispose();
+        public void Dispose()
+        {
+            inner.Dispose();
+            parent.ReturnWrittenSets(_writtenAccounts, _writtenHeaderRuns, _writtenStorageRuns);
+            _writtenAccounts = null;
+            _writtenHeaderRuns = null;
+            _writtenStorageRuns = null;
+        }
     }
 }

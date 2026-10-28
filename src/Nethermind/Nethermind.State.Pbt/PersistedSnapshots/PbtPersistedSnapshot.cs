@@ -76,43 +76,10 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
         }
     }
 
-    private PbtPersistedSnapshot(PbtPersistedSnapshot source, RefCountedBloomFilter bloom)
-    {
-        _reservation = source._reservation;
-        _blobs = source._blobs;
-        _bloom = bloom;
-        From = source.From;
-        To = source.To;
-        TreeRoot = source.TreeRoot;
-        Tier = source.Tier;
-        Location = source.Location;
-        _reservation.AcquireLease();
-        bool bloomLeased = false;
-        try
-        {
-            bloom.AcquireLease();
-            bloomLeased = true;
-            _files.Capacity = source._files.Count;
-            foreach (BlobArenaFile file in source._files)
-            {
-                if (!_blobs.TryLeaseFile(file.BlobArenaId, out BlobArenaFile? leased))
-                    throw new InvalidOperationException("Persisted PBT blob lease disappeared while rebinding its bloom.");
-                _files.Add(leased);
-            }
-        }
-        catch
-        {
-            foreach (BlobArenaFile file in _files) file.Dispose();
-            if (bloomLeased) bloom.Dispose();
-            _reservation.Dispose();
-            throw;
-        }
-    }
-
     public PbtPersistedSnapshot WithBloom(RefCountedBloomFilter bloom)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
-        return new(this, bloom);
+        return new(new CatalogEntry(From, To, Location, Tier), _reservation, _blobs, bloom);
     }
 
     public bool TryLease() => TryAcquireLease();

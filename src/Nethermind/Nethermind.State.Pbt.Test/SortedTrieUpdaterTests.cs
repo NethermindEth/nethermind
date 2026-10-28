@@ -129,7 +129,7 @@ public class SortedTrieUpdaterTests
         return key;
     }
 
-    private static byte[] RandomBytes(Random random, int length)
+    public static byte[] RandomBytes(Random random, int length)
     {
         byte[] bytes = new byte[length];
         random.NextBytes(bytes);

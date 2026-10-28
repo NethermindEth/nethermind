@@ -3,10 +3,12 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Api.Monitoring;
+using Nethermind.Db;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -23,7 +25,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// Memory base and compacted layers coexist with four persisted tiers. Compacted edges are traversal
 /// shortcuts, not substitutes for independently available base snapshots.
 /// </remarks>
-public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtPersistedPublicationGate publicationGate) : IDisposable
+public class PbtSnapshotRepository(IMetricsConfig metricsConfig, [KeyFilter(DbNames.Pbt)] ISnapshotCatalog catalog, PbtPersistedPublicationGate publicationGate) : IDisposable
 {
     // Metrics are optional; operational memory accounting must remain active for byte-budget enforcement.
     private readonly bool _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
@@ -40,6 +42,14 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     public long InMemorySnapshotBytes { get { lock (_lock) return _memoryBytes; } }
     public int PersistedCount { get { lock (_lock) return _persisted.Count; } }
     private static long Bytes(PbtSnapshot snapshot) => snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
+
+    // Caller holds the repository lock.
+    private void TrackBase(in PbtSnapshotPayloadSize payloadSize, int direction)
+    {
+        _memoryBytes += direction * (payloadSize.Leaf + payloadSize.Node);
+        Metrics.AddPbtBaseSnapshotCount(direction);
+        if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshotMemory(payloadSize, direction);
+    }
 
 
     public int Count
@@ -71,10 +81,8 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
         {
             if (!_disposed && _snapshots.TryAdd(snapshot.To, snapshot))
             {
-                _memoryBytes += Bytes(snapshot);
+                TrackBase(payloadSize, 1);
                 _lastCommittedStateId = snapshot.To;
-                Metrics.AddPbtBaseSnapshotCount(1);
-                if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshotMemory(payloadSize, 1);
                 return true;
             }
         }
@@ -87,9 +95,10 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     /// <remarks>Returns false (and releases) when that state already has one — two compactions raced.</remarks>
     public bool TryAddCompacted(PbtSnapshot snapshot)
     {
+        long bytes = Bytes(snapshot);
         lock (_lock)
         {
-            if (!_disposed && _compactedSnapshots.TryAdd(snapshot.To, snapshot)) { _memoryBytes += Bytes(snapshot); return true; }
+            if (!_disposed && _compactedSnapshots.TryAdd(snapshot.To, snapshot)) { _memoryBytes += bytes; return true; }
         }
 
         snapshot.Dispose();
@@ -150,24 +159,19 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
 
     /// <summary>
     /// Leases the layers covering <paramref name="head"/> back to <paramref name="minBlockNumber"/>,
-    /// oldest first, for a compaction window. Returns false when the window cannot be assembled.
+    /// oldest first, for a compaction window. Empty when the window cannot be assembled.
     /// </summary>
     /// <remarks>
     /// The floor is a height rather than a state, because a window is defined by the schedule's block
     /// alignment and not by what happens to be persisted. It may sit below genesis, which is why it is
     /// signed: an early wide window simply cannot be assembled rather than wrapping into a huge one.
     /// </remarks>
-    public bool TryLeaseCompactionWindow(in StateId head, long minBlockNumber, PbtSnapshotPooledList chain)
+    public PbtSnapshotPooledList LeaseCompactionWindow(in StateId head, long minBlockNumber)
     {
-        using PbtAssembledSnapshotResult leased = Walk(head, MemoryPriority, (_, from, _) =>
+        PbtAssembledSnapshotResult leased = Walk(head, MemoryPriority, (_, from, _) =>
             Height(from) < minBlockNumber ? Step.Skip : Height(from) == minBlockNumber ? Step.Stop : Step.Traverse);
-        if (leased.SnapshotCount == 0) return false;
-        foreach (PbtSnapshot snapshot in leased.InMemory)
-        {
-            if (!snapshot.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
-            chain.Add(snapshot);
-        }
-        return true;
+        leased.Persisted.Dispose(); // in-memory-only priority yields no persisted entries
+        return leased.InMemory;
     }
 
     /// <summary>Removes and releases every layer, of either tier, at or below <paramref name="blockNumber"/> — persisted canonical layers and stale fork siblings alike.</summary>
@@ -177,12 +181,10 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
         lock (_lock)
         {
             int firstCompacted = Collect(_snapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
-            Metrics.AddPbtBaseSnapshotCount(-firstCompacted);
-            if (_recordDetailedMetrics)
-                for (int i = 0; i < firstCompacted; i++) Metrics.AddPbtBaseSnapshotMemory(removed[i].PayloadSize, -1);
+            for (int i = 0; i < firstCompacted; i++) TrackBase(removed[i].PayloadSize, -1);
 
             Collect(_compactedSnapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
-            foreach (PbtSnapshot snapshot in removed) _memoryBytes -= Bytes(snapshot);
+            for (int i = firstCompacted; i < removed.Count; i++) _memoryBytes -= Bytes(removed[i]);
         }
 
         foreach (PbtSnapshot snapshot in removed)
@@ -501,13 +503,14 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
             if (_snapshots.TryGetValue(snapshot.To, out PbtSnapshot? current) && ReferenceEquals(snapshot, current))
             {
                 _snapshots.Remove(snapshot.To);
-                Metrics.AddPbtBaseSnapshotCount(-1);
-                if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshotMemory(snapshot.PayloadSize, -1);
+                TrackBase(snapshot.PayloadSize, -1);
                 removed = true;
             }
             else if (_compactedSnapshots.TryGetValue(snapshot.To, out current) && ReferenceEquals(snapshot, current))
+            {
                 removed = _compactedSnapshots.Remove(snapshot.To);
-            if (removed) _memoryBytes -= Bytes(snapshot);
+                if (removed) _memoryBytes -= Bytes(snapshot);
+            }
         }
         if (removed) snapshot.Dispose();
         return removed;
@@ -566,8 +569,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
                 _disposed = true;
                 memory = [.. _snapshots.Values, .. _compactedSnapshots.Values];
                 persisted = _persisted.Clear();
-                Metrics.AddPbtBaseSnapshotCount(-_snapshots.Count);
-                if (_recordDetailedMetrics) foreach (PbtSnapshot snapshot in _snapshots.Values) Metrics.AddPbtBaseSnapshotMemory(snapshot.PayloadSize, -1);
+                foreach (PbtSnapshot snapshot in _snapshots.Values) TrackBase(snapshot.PayloadSize, -1);
                 _snapshots.Clear(); _compactedSnapshots.Clear(); _memoryBytes = 0;
             }
         foreach (PbtSnapshot snapshot in memory) snapshot.Dispose();

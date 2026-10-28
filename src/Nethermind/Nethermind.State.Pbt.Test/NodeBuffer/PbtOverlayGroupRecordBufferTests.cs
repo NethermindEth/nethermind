@@ -22,14 +22,14 @@ public class PbtOverlayGroupRecordBufferTests
     {
         ForwardingGroupRecordBuffer global = new(new PbtGroupRecordBuffer(0, 64 * 1024));
         using IDisposable globalReadPin = global.PinAll();
-        ulong beforePin = Append(global, BeforePinPayload);
+        ulong beforePin = PbtGroupRecordBufferTests.AppendRoot(global, BeforePinPayload);
 
         PbtOverlayGroupRecordBuffer overlay = new(global);
-        ulong afterPin = Append(global, AfterPinPayload);
+        ulong afterPin = PbtGroupRecordBufferTests.AppendRoot(global, AfterPinPayload);
         int globalWrites = global.CompletedWrites;
 
         IPbtGroupRecordBufferPin overlayPin = overlay.PinHead();
-        ulong written = Append(overlay, OverlayPayload);
+        ulong written = PbtGroupRecordBufferTests.AppendRoot(overlay, OverlayPayload);
 
         using (Assert.EnterMultipleScope())
         {
@@ -50,14 +50,6 @@ public class PbtOverlayGroupRecordBufferTests
         overlayPin.Dispose();
         Assert.That(global.OutstandingPins, Is.Zero);
         global.Dispose();
-    }
-
-    private static ulong Append(IPbtGroupRecordBuffer buffer, byte[] payload)
-    {
-        ValueHash256 hash = ValueKeccak.Compute(payload);
-        ulong pointer = buffer.Append(default, payload, default);
-        buffer.SetRoot(hash, pointer);
-        return pointer;
     }
 
     private sealed class ForwardingGroupRecordBuffer(IPbtGroupRecordBuffer inner) : IPbtGroupRecordBuffer

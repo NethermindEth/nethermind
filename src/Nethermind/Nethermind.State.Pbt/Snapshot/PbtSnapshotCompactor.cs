@@ -35,9 +35,9 @@ public class PbtSnapshotCompactor(
         if (width <= 1) return false;
         if (width < (ulong)config.CompactSize && stateId.BlockNumber >= (ulong)config.CompactSize)
             repository.RemoveCompactedAt(stateId.BlockNumber - (ulong)config.CompactSize);
-        using PbtSnapshotPooledList chain = new((int)width);
         long floor = checked((long)stateId.BlockNumber - (long)width);
-        if (!repository.TryLeaseCompactionWindow(stateId, floor, chain)) return false;
+        using PbtSnapshotPooledList chain = repository.LeaseCompactionWindow(stateId, floor);
+        if (chain.Count == 0) return false;
         if (_logger.IsDebug) _logger.Debug($"Compacting Pbt snapshots {chain[0].From} -> {stateId}: chainCount={chain.Count}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
         PbtSnapshot compacted = Compact(chain, PbtResourcePool.CompactUsage((int)width));
         bool added = repository.TryAddCompacted(compacted);

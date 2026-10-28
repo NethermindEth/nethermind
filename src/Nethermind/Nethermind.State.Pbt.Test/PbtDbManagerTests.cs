@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -51,184 +52,160 @@ public class PbtDbManagerTests
     [Test]
     public async Task Persisted_conversion_reopens_and_disabled_mode_leaves_files_untouched()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb catalogDb = new();
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
-        try
+        await using (IContainer container = PersistedContainer(tempPath.Path, catalogDb))
         {
-            await using (IContainer container = PersistedContainer(path, catalogDb))
+            container.Resolve<IPbtDbManager>();
+            PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+            PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, state);
+            snapshot.TryLease();
+            repository.TryAdd(snapshot);
+            using (snapshot)
             {
-                container.Resolve<IPbtDbManager>();
-                PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
-                PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, state);
-                snapshot.TryLease();
-                repository.TryAdd(snapshot);
-                using (snapshot)
+                IPbtPersistedSnapshotLoader loader = container.Resolve<IPbtPersistedSnapshotLoader>();
+                Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
+                Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
+                Assert.That(repository.Count, Is.EqualTo(1));
+                using (PbtReadOnlySnapshotBundle held = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(state, StateId.PreGenesis),
+                    container.Resolve<IPbtPersistence>().CreateReader(), slotFilterBitsPerKey: 0))
                 {
-                    IPbtPersistedSnapshotLoader loader = container.Resolve<IPbtPersistedSnapshotLoader>();
-                    Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
-                    Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
-                    Assert.That(repository.Count, Is.EqualTo(1));
-                    using (PbtReadOnlySnapshotBundle held = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(state, StateId.PreGenesis),
-                        container.Resolve<IPbtPersistence>().CreateReader(), slotFilterBitsPerKey: 0))
-                    {
-                        repository.RemoveMemoryState(state);
-                        Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
-                    }
-                    using IPbtPersistence.IReader reader = container.Resolve<IPbtPersistence>().CreateReader();
-                    Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+                    repository.RemoveMemoryState(state);
+                    Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
                 }
-            }
-            string[] files = Directory.GetFiles(path, "*.bin", SearchOption.AllDirectories);
-            byte[][] before = files.Select(File.ReadAllBytes).ToArray();
-            await using (IContainer disabled = PersistedContainer(path, catalogDb, enabled: false))
-            {
-                disabled.Resolve<IPbtDbManager>();
-                Assert.That(disabled.Resolve<PbtSnapshotRepository>().HasState(state), Is.False);
-                Assert.That(disabled.Resolve<IPbtPersistedSnapshotLoader>(), Is.TypeOf<NullPbtPersistedSnapshotLoader>());
-            }
-            for (int i = 0; i < files.Length; i++) Assert.That(File.ReadAllBytes(files[i]), Is.EqualTo(before[i]));
-            await using (IContainer reopened = PersistedContainer(path, catalogDb))
-            {
-                reopened.Resolve<IPbtDbManager>();
-                PbtSnapshotRepository repository = reopened.Resolve<PbtSnapshotRepository>();
-                Assert.That(repository.HasState(state), Is.True);
-                using PbtAssembledSnapshotResult assembled = repository.TryLeaseReadChain(state, StateId.PreGenesis);
-                PbtPersistedSnapshot persisted = assembled.Persisted[0];
-                Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
-                Assert.That(persisted.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
-                Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(new byte[65537]));
+                using IPbtPersistence.IReader reader = container.Resolve<IPbtPersistence>().CreateReader();
+                Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
             }
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        string[] files = Directory.GetFiles(tempPath.Path, "*.bin", SearchOption.AllDirectories);
+        byte[][] before = files.Select(File.ReadAllBytes).ToArray();
+        await using (IContainer disabled = PersistedContainer(tempPath.Path, catalogDb, enabled: false))
+        {
+            disabled.Resolve<IPbtDbManager>();
+            Assert.That(disabled.Resolve<PbtSnapshotRepository>().HasState(state), Is.False);
+            Assert.That(disabled.Resolve<IPbtPersistedSnapshotLoader>(), Is.TypeOf<NullPbtPersistedSnapshotLoader>());
+        }
+        for (int i = 0; i < files.Length; i++) Assert.That(File.ReadAllBytes(files[i]), Is.EqualTo(before[i]));
+        await using (IContainer reopened = PersistedContainer(tempPath.Path, catalogDb))
+        {
+            reopened.Resolve<IPbtDbManager>();
+            PbtSnapshotRepository repository = reopened.Resolve<PbtSnapshotRepository>();
+            Assert.That(repository.HasState(state), Is.True);
+            using PbtAssembledSnapshotResult assembled = repository.TryLeaseReadChain(state, StateId.PreGenesis);
+            PbtPersistedSnapshot persisted = assembled.Persisted[0];
+            Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+            Assert.That(persisted.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
+            Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(new byte[65537]));
+        }
     }
 
     [Test]
     public async Task Persisted_publication_failure_preserves_source_and_recoverable_files([Values] bool rollbackFails)
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-fault-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb db = new();
         LoaderFaultCatalog? fault = null;
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
-        try
+        await using (IContainer container = PersistedContainer(tempPath.Path, db, configure: builder =>
+            builder.Register(ctx => fault = new LoaderFaultCatalog(new PbtSnapshotCatalog(db), rollbackFails))
+                .Keyed<ISnapshotCatalog>(DbNames.Pbt).SingleInstance()))
         {
-            await using (IContainer container = PersistedContainer(path, db, configure: builder =>
-                builder.Register(ctx => fault = new LoaderFaultCatalog(new PbtSnapshotCatalog(db), rollbackFails))
-                    .Keyed<ISnapshotCatalog>(DbNames.Pbt).SingleInstance()))
+            container.Resolve<IPbtDbManager>();
+            PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+            PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, state);
+            snapshot.TryLease(); repository.TryAdd(snapshot);
+            using (snapshot)
             {
-                container.Resolve<IPbtDbManager>();
-                PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
-                PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, state);
-                snapshot.TryLease(); repository.TryAdd(snapshot);
-                using (snapshot)
-                {
-                    Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot),
-                        Throws.InstanceOf<Exception>());
-                    Assert.That(repository.Count, Is.EqualTo(1));
-                    Assert.That(repository.PersistedCount, Is.Zero);
-                }
-                fault!.Fail = false;
+                Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot),
+                    Throws.InstanceOf<Exception>());
+                Assert.That(repository.Count, Is.EqualTo(1));
+                Assert.That(repository.PersistedCount, Is.Zero);
             }
-            await using IContainer reopened = PersistedContainer(path, db);
-            reopened.Resolve<IPbtDbManager>();
-            Assert.That(reopened.Resolve<PbtSnapshotRepository>().HasState(state), Is.EqualTo(rollbackFails));
+            fault!.Fail = false;
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        await using IContainer reopened = PersistedContainer(tempPath.Path, db);
+        reopened.Resolve<IPbtDbManager>();
+        Assert.That(reopened.Resolve<PbtSnapshotRepository>().HasState(state), Is.EqualTo(rollbackFails));
     }
 
     [Test]
     public async Task Persisted_failed_startup_preserves_all_files([Values] bool badVersion)
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-corrupt-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb db = new();
-        try
+        await using (IContainer container = PersistedContainer(tempPath.Path, db))
         {
-            await using (IContainer container = PersistedContainer(path, db))
+            container.Resolve<IPbtDbManager>();
+            for (ulong i = 1; i <= 2; i++)
             {
-                container.Resolve<IPbtDbManager>();
-                for (ulong i = 1; i <= 2; i++)
-                {
-                    StateId state = new(i, TestItem.KeccakA.ValueHash256);
-                    PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, state);
-                    snapshot.TryLease(); container.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
-                    using (snapshot) Assert.That(container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Is.True);
-                }
+                StateId state = new(i, TestItem.KeccakA.ValueHash256);
+                Assert.That(ConvertLoaderSnapshot(container, StateId.PreGenesis, state), Is.True);
             }
-            CatalogEntry entry = new PbtSnapshotCatalog(db).Load().First();
-            string arenaPath = Directory.GetFiles(path, "*.bin", SearchOption.AllDirectories).First(f => Path.GetFileName(f).Contains("arena_"));
-            using (FileStream stream = new(arenaPath, FileMode.Open, FileAccess.Write))
-            {
-                stream.Position = badVersion ? entry.Location.Offset + entry.Location.Size - 1 : entry.Location.Offset;
-                stream.WriteByte(255); stream.Flush(true);
-            }
-            string[] files = Directory.GetFiles(path, "*.bin", SearchOption.AllDirectories);
-            byte[][] bytes = files.Select(File.ReadAllBytes).ToArray();
-            await using (IContainer failed = PersistedContainer(path, db))
-            {
-                Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
-                Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
-            }
-            for (int i = 0; i < files.Length; i++) Assert.That(File.ReadAllBytes(files[i]), Is.EqualTo(bytes[i]));
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        CatalogEntry entry = new PbtSnapshotCatalog(db).Load().First();
+        string arenaPath = Directory.GetFiles(tempPath.Path, "*.bin", SearchOption.AllDirectories).First(f => Path.GetFileName(f).Contains("arena_"));
+        using (FileStream stream = new(arenaPath, FileMode.Open, FileAccess.Write))
+        {
+            stream.Position = badVersion ? entry.Location.Offset + entry.Location.Size - 1 : entry.Location.Offset;
+            stream.WriteByte(255); stream.Flush(true);
+        }
+        string[] files = Directory.GetFiles(tempPath.Path, "*.bin", SearchOption.AllDirectories);
+        byte[][] bytes = files.Select(File.ReadAllBytes).ToArray();
+        await using (IContainer failed = PersistedContainer(tempPath.Path, db))
+        {
+            Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
+            Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
+        }
+        for (int i = 0; i < files.Length; i++) Assert.That(File.ReadAllBytes(files[i]), Is.EqualTo(bytes[i]));
     }
 
     [Test]
     public async Task Persisted_catalog_locations_are_checked_before_mapping([Values("negative", "overflow", "outside", "empty")] string fault)
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-location-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb db = new();
-        try
+        await using (IContainer initial = PersistedContainer(tempPath.Path, db))
         {
-            await using (IContainer initial = PersistedContainer(path, db))
-            {
-                initial.Resolve<IPbtDbManager>();
-                PbtSnapshot snapshot = LoaderSnapshot(initial, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
-                snapshot.TryLease(); initial.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
-                using (snapshot) initial.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
-            }
-            PbtSnapshotCatalog catalog = new(db);
-            CatalogEntry entry = catalog.Load().Single();
-            SnapshotLocation location = fault switch
-            {
-                "negative" => new(entry.Location.ArenaId, -1, entry.Location.Size),
-                "overflow" => new(entry.Location.ArenaId, long.MaxValue, entry.Location.Size),
-                "outside" => new(entry.Location.ArenaId, 0, long.MaxValue),
-                _ => new(entry.Location.ArenaId, entry.Location.Offset, 0),
-            };
-            catalog.Add(new(entry.From, entry.To, location, entry.Tier));
-            string[] files = Directory.GetFiles(path, "*.bin", SearchOption.AllDirectories);
-            byte[][] before = files.Select(File.ReadAllBytes).ToArray();
-            await using (IContainer failed = PersistedContainer(path, db))
-            {
-                Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
-                Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
-            }
-            for (int j = 0; j < files.Length; j++) Assert.That(File.ReadAllBytes(files[j]), Is.EqualTo(before[j]));
+            initial.Resolve<IPbtDbManager>();
+            ConvertLoaderSnapshot(initial, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        PbtSnapshotCatalog catalog = new(db);
+        CatalogEntry entry = catalog.Load().Single();
+        SnapshotLocation location = fault switch
+        {
+            "negative" => new(entry.Location.ArenaId, -1, entry.Location.Size),
+            "overflow" => new(entry.Location.ArenaId, long.MaxValue, entry.Location.Size),
+            "outside" => new(entry.Location.ArenaId, 0, long.MaxValue),
+            _ => new(entry.Location.ArenaId, entry.Location.Offset, 0),
+        };
+        catalog.Add(new(entry.From, entry.To, location, entry.Tier));
+        string[] files = Directory.GetFiles(tempPath.Path, "*.bin", SearchOption.AllDirectories);
+        byte[][] before = files.Select(File.ReadAllBytes).ToArray();
+        await using (IContainer failed = PersistedContainer(tempPath.Path, db))
+        {
+            Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
+            Assert.That(() => failed.Resolve<IPbtDbManager>(), Throws.InstanceOf<Autofac.Core.DependencyResolutionException>());
+        }
+        for (int j = 0; j < files.Length; j++) Assert.That(File.ReadAllBytes(files[j]), Is.EqualTo(before[j]));
     }
 
     [Test]
     public async Task Persisted_build_failure_leaves_source_and_catalog_unchanged()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-build-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb db = new();
-        try
+        await using IContainer container = PersistedContainer(tempPath.Path, db);
+        container.Resolve<IPbtDbManager>();
+        PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
+        snapshot.Content.HeaderStorages[new Nethermind.Core.Collections.HashedKey<PbtPath>(default)] = SlotRun.Empty;
+        snapshot.TryLease(); container.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
+        using (snapshot)
         {
-            await using IContainer container = PersistedContainer(path, db);
-            container.Resolve<IPbtDbManager>();
-            PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
-            snapshot.Content.HeaderStorages[new Nethermind.Core.Collections.HashedKey<PbtPath>(default)] = SlotRun.Empty;
-            snapshot.TryLease(); container.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
-            using (snapshot)
-            {
-                Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Throws.InstanceOf<InvalidDataException>());
-                Assert.That(container.Resolve<PbtSnapshotRepository>().ContainsMemorySource(snapshot), Is.True);
-                Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
-            }
+            Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(container.Resolve<PbtSnapshotRepository>().ContainsMemorySource(snapshot), Is.True);
+            Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
     }
 
     [Test]
@@ -248,75 +225,51 @@ public class PbtDbManagerTests
     [Test]
     public async Task Persisted_catalog_durable_reopen_uses_production_database_factory()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-rocks-" + Guid.NewGuid().ToString("N"));
-        PbtConfig config = new()
-        {
-            Enabled = true,
-            CompactionOffset = 0,
-            ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0,
-        };
+        using TempPath tempPath = TempPath.GetTempDirectory();
+        PbtConfig config = PersistedConfig();
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
-        try
+        for (int pass = 0; pass < 2; pass++)
         {
-            for (int pass = 0; pass < 2; pass++)
+            await using IContainer container = PbtTestContext.BuildProductionContainer(config,
+                builder => builder.AddSingleton<IDbFactory, Nethermind.Db.Rocks.RocksDbFactory>(),
+                new InitConfig { BaseDbPath = tempPath.Path });
+            container.Resolve<IPbtDbManager>();
+            PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+            if (pass == 0)
             {
-                await using IContainer container = PbtTestContext.BuildProductionContainer(config,
-                    builder => builder.AddSingleton<IDbFactory, Nethermind.Db.Rocks.RocksDbFactory>(),
-                    new InitConfig { BaseDbPath = path });
-                container.Resolve<IPbtDbManager>();
-                PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
-                if (pass == 0)
-                {
-                    PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, state);
-                    snapshot.TryLease(); repository.TryAdd(snapshot);
-                    using (snapshot) Assert.That(container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Is.True);
-                }
-                else Assert.That(repository.HasState(state), Is.True);
+                Assert.That(ConvertLoaderSnapshot(container, StateId.PreGenesis, state), Is.True);
             }
+            else Assert.That(repository.HasState(state), Is.True);
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
     }
 
     [Test]
     public async Task Persisted_index_admission_failure_rolls_back_catalog()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-index-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb db = new();
         LoaderFaultCatalog? catalog = null;
-        try
+        await using IContainer container = PersistedContainer(tempPath.Path, db, configure: builder =>
+            builder.Register(_ => catalog = new LoaderFaultCatalog(new PbtSnapshotCatalog(db), false) { Fail = false })
+                .Keyed<ISnapshotCatalog>(DbNames.Pbt).SingleInstance());
+        container.Resolve<IPbtDbManager>();
+        PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+        PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
+        snapshot.TryLease(); repository.TryAdd(snapshot);
+        catalog!.AfterAdd = repository.Dispose;
+        using (snapshot)
         {
-            await using IContainer container = PersistedContainer(path, db, configure: builder =>
-                builder.Register(_ => catalog = new LoaderFaultCatalog(new PbtSnapshotCatalog(db), false) { Fail = false })
-                    .Keyed<ISnapshotCatalog>(DbNames.Pbt).SingleInstance());
-            container.Resolve<IPbtDbManager>();
-            PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
-            PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
-            snapshot.TryLease(); repository.TryAdd(snapshot);
-            catalog!.AfterAdd = repository.Dispose;
-            using (snapshot)
-            {
-                Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Throws.InstanceOf<ObjectDisposedException>());
-                Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
-                Assert.That(snapshot.Content.Codes[TestItem.KeccakC.ValueHash256].CodeSpan.Length, Is.EqualTo(65537));
-            }
+            Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
+            Assert.That(snapshot.Content.Codes[TestItem.KeccakC.ValueHash256].CodeSpan.Length, Is.EqualTo(65537));
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
     }
 
     [Test]
     public async Task Persisted_services_are_isolated_from_flat_in_the_same_container()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-loader-dual-" + Guid.NewGuid().ToString("N"));
-        PbtConfig config = new()
-        {
-            Enabled = true,
-            CompactionOffset = 0,
-            ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0,
-        };
+        using TempPath tempPath = TempPath.GetTempDirectory();
+        PbtConfig config = PersistedConfig();
         FlatDbConfig flat = new()
         {
             CompactionOffset = 0,
@@ -324,147 +277,111 @@ public class PbtDbManagerTests
             PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
             PersistedSnapshotArenaPageCacheBytes = 0,
         };
-        try
+        await using IContainer container = PbtTestContext.BuildProductionContainer(config,
+            builder => builder.AddModule(new Nethermind.Init.Modules.FlatWorldStateModule(flat)),
+            new InitConfig { BaseDbPath = tempPath.Path }, flat);
+        container.Resolve<IPbtDbManager>();
+        container.Resolve<IPersistedSnapshotLoader>().Load();
+        using (Assert.EnterMultipleScope())
         {
-            await using IContainer container = PbtTestContext.BuildProductionContainer(config,
-                builder => builder.AddModule(new Nethermind.Init.Modules.FlatWorldStateModule(flat)),
-                new InitConfig { BaseDbPath = path }, flat);
-            container.Resolve<IPbtDbManager>();
-            container.Resolve<IPersistedSnapshotLoader>().Load();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(container.ResolveKeyed<IArenaManager>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<IArenaManager>()));
-                Assert.That(container.ResolveKeyed<BlobArenaManager>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<BlobArenaManager>()));
-                Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<ISnapshotCatalog>()));
-            }
-            PbtSnapshot snapshot = LoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
-            snapshot.TryLease(); container.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
-            using (snapshot) container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
-            Assert.That(container.Resolve<ISnapshotCatalog>().Load(), Is.Empty);
-            Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt).Load().Count(), Is.EqualTo(1));
-            Assert.That(Directory.Exists(Path.Combine(path, DbNames.Pbt, "persistedSnapshot")), Is.True);
-            Assert.That(Directory.Exists(Path.Combine(path, "persistedSnapshot")), Is.True);
+            Assert.That(container.ResolveKeyed<IArenaManager>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<IArenaManager>()));
+            Assert.That(container.ResolveKeyed<BlobArenaManager>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<BlobArenaManager>()));
+            Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<ISnapshotCatalog>()));
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        ConvertLoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
+        Assert.That(container.Resolve<ISnapshotCatalog>().Load(), Is.Empty);
+        Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt).Load().Count(), Is.EqualTo(1));
+        Assert.That(Directory.Exists(Path.Combine(tempPath.Path, DbNames.Pbt, "persistedSnapshot")), Is.True);
+        Assert.That(Directory.Exists(Path.Combine(tempPath.Path, "persistedSnapshot")), Is.True);
     }
 
     [Test]
     public async Task Persisted_compactor_production_disposal_drains_and_preserves_catalogued_outputs([Values] bool enabled)
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-compactor-reopen-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb catalog = new();
-        PbtConfig config = new()
-        {
-            Enabled = true,
-            EnableLongFinality = enabled,
-            CompactSize = 4,
-            CompactionOffset = 0,
-            ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0,
-        };
+        PbtConfig config = PersistedConfig();
+        config.EnableLongFinality = enabled;
+        config.CompactSize = 4;
         IContainer Open() => PbtTestContext.BuildProductionContainer(config,
             builder => builder.RegisterInstance(catalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned(),
-            new InitConfig { BaseDbPath = path });
-        try
+            new InitConfig { BaseDbPath = tempPath.Path });
+        await using (IContainer initial = Open())
         {
-            await using (IContainer initial = Open())
+            initial.Resolve<IPbtPersistedSnapshotLoader>().Load();
+            IPbtPersistedSnapshotCompactor compactor = initial.Resolve<IPbtPersistedSnapshotCompactor>();
+            Assert.That(compactor, enabled ? Is.TypeOf<PbtPersistedSnapshotCompactor>() : Is.TypeOf<NullPbtPersistedSnapshotCompactor>());
+            ArrayPoolList<StateId> batch = new(8);
+            if (enabled)
             {
-                initial.Resolve<IPbtPersistedSnapshotLoader>().Load();
-                IPbtPersistedSnapshotCompactor compactor = initial.Resolve<IPbtPersistedSnapshotCompactor>();
-                Assert.That(compactor, enabled ? Is.TypeOf<PbtPersistedSnapshotCompactor>() : Is.TypeOf<NullPbtPersistedSnapshotCompactor>());
-                ArrayPoolList<StateId> batch = new(8);
-                if (enabled)
+                for (ulong block = 1; block <= 8; block++)
                 {
-                    PbtSnapshotRepository repository = initial.Resolve<PbtSnapshotRepository>();
-                    for (ulong block = 1; block <= 8; block++)
-                    {
-                        StateId state = new(block, TestItem.KeccakA.ValueHash256);
-                        PbtSnapshot snapshot = LoaderSnapshot(initial, new(block - 1, TestItem.KeccakA.ValueHash256), state);
-                        snapshot.TryLease();
-                        repository.TryAdd(snapshot);
-                        using (snapshot) initial.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
-                        batch.Add(state);
-                    }
+                    StateId state = new(block, TestItem.KeccakA.ValueHash256);
+                    ConvertLoaderSnapshot(initial, new(block - 1, TestItem.KeccakA.ValueHash256), state);
+                    batch.Add(state);
                 }
-                await compactor.EnqueueAsync(batch, 0, CancellationToken.None);
-                if (!enabled) Assert.That(() => batch.Add(StateId.PreGenesis), Throws.InstanceOf<ObjectDisposedException>());
             }
-            if (!enabled)
-            {
-                Assert.That(Directory.Exists(Path.Combine(path, DbNames.Pbt, "persistedSnapshot")), Is.False);
-                return;
-            }
-            await using IContainer reopened = Open();
-            reopened.Resolve<IPbtPersistedSnapshotLoader>().Load();
-            PbtSnapshotRepository loaded = reopened.Resolve<PbtSnapshotRepository>();
-            StateId head = new(8, TestItem.KeccakA.ValueHash256);
-            Assert.That(loaded.TryLeasePersisted(head, 4, SnapshotTier.PersistedCompactSized, out PbtPersistedSnapshot? compactSized), Is.True);
-            using (compactSized) Assert.That(compactSized!.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
-            Assert.That(loaded.TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? large), Is.True);
-            large?.Dispose();
+            await compactor.EnqueueAsync(batch, 0, CancellationToken.None);
+            if (!enabled) Assert.That(() => batch.Add(StateId.PreGenesis), Throws.InstanceOf<ObjectDisposedException>());
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+        if (!enabled)
+        {
+            Assert.That(Directory.Exists(Path.Combine(tempPath.Path, DbNames.Pbt, "persistedSnapshot")), Is.False);
+            return;
+        }
+        await using IContainer reopened = Open();
+        reopened.Resolve<IPbtPersistedSnapshotLoader>().Load();
+        PbtSnapshotRepository loaded = reopened.Resolve<PbtSnapshotRepository>();
+        StateId head = new(8, TestItem.KeccakA.ValueHash256);
+        Assert.That(loaded.TryLeasePersisted(head, 4, SnapshotTier.PersistedCompactSized, out PbtPersistedSnapshot? compactSized), Is.True);
+        using (compactSized) Assert.That(compactSized!.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
+        Assert.That(loaded.TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? large), Is.True);
+        large?.Dispose();
     }
 
     [Test]
     public async Task Persisted_recompaction_to_another_depth_after_restart_replaces_snapshot_and_catalog_row()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-recompaction-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb catalog = new();
-        PbtConfig config = new()
-        {
-            Enabled = true,
-            CompactSize = 4,
-            CompactionOffset = 0,
-            ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0,
-        };
+        PbtConfig config = PersistedConfig();
+        config.CompactSize = 4;
         IContainer Open() => PbtTestContext.BuildProductionContainer(config,
             builder => builder.RegisterInstance(catalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned(),
-            new InitConfig { BaseDbPath = path });
+            new InitConfig { BaseDbPath = tempPath.Path });
         StateId head = new(8, TestItem.KeccakA.ValueHash256);
-        try
+        await using (IContainer initial = Open())
         {
-            await using (IContainer initial = Open())
+            initial.Resolve<IPbtPersistedSnapshotLoader>().Load();
+            ArrayPoolList<StateId> batch = new(8);
+            for (ulong block = 1; block <= 8; block++)
             {
-                initial.Resolve<IPbtPersistedSnapshotLoader>().Load();
-                PbtSnapshotRepository repository = initial.Resolve<PbtSnapshotRepository>();
-                ArrayPoolList<StateId> batch = new(8);
-                for (ulong block = 1; block <= 8; block++)
-                {
-                    StateId state = new(block, TestItem.KeccakA.ValueHash256);
-                    PbtSnapshot snapshot = LoaderSnapshot(initial, new(block - 1, TestItem.KeccakA.ValueHash256), state);
-                    snapshot.TryLease();
-                    repository.TryAdd(snapshot);
-                    using (snapshot) initial.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
-                    batch.Add(state);
-                }
-                await initial.Resolve<IPbtPersistedSnapshotCompactor>().EnqueueAsync(batch, 0, CancellationToken.None);
+                StateId state = new(block, TestItem.KeccakA.ValueHash256);
+                ConvertLoaderSnapshot(initial, new(block - 1, TestItem.KeccakA.ValueHash256), state);
+                batch.Add(state);
             }
-            // After a restart the persisted block clamps the large compaction at the same head to a shallower depth.
-            await using (IContainer restarted = Open())
-            {
-                restarted.Resolve<IPbtPersistedSnapshotLoader>().Load();
-                Assert.That(restarted.Resolve<PbtSnapshotRepository>().TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? deep), Is.True);
-                deep?.Dispose();
-                await restarted.Resolve<IPbtPersistedSnapshotCompactor>().EnqueueAsync(new ArrayPoolList<StateId>(1) { head }, 2, CancellationToken.None);
-            }
-            await using IContainer reopened = Open();
-            reopened.Resolve<IPbtPersistedSnapshotLoader>().Load();
-            PbtSnapshotRepository loaded = reopened.Resolve<PbtSnapshotRepository>();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(new PbtSnapshotCatalog(catalog).Load().Where(entry => entry.To == head && entry.Tier == SnapshotTier.PersistedLargeCompacted)
-                    .Select(entry => entry.From.BlockNumber), Is.EqualTo(new[] { 2UL }));
-                Assert.That(loaded.TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? replaced), Is.False);
-                replaced?.Dispose();
-                Assert.That(loaded.TryLeasePersisted(head, 6, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? large), Is.True);
-                using (large) Assert.That(large!.TryGetCode(TestItem.KeccakC.ValueHash256, out _), Is.True);
-            }
+            await initial.Resolve<IPbtPersistedSnapshotCompactor>().EnqueueAsync(batch, 0, CancellationToken.None);
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+        // After a restart the persisted block clamps the large compaction at the same head to a shallower depth.
+        await using (IContainer restarted = Open())
+        {
+            restarted.Resolve<IPbtPersistedSnapshotLoader>().Load();
+            Assert.That(restarted.Resolve<PbtSnapshotRepository>().TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? deep), Is.True);
+            deep?.Dispose();
+            await restarted.Resolve<IPbtPersistedSnapshotCompactor>().EnqueueAsync(new ArrayPoolList<StateId>(1) { head }, 2, CancellationToken.None);
+        }
+        await using IContainer reopened = Open();
+        reopened.Resolve<IPbtPersistedSnapshotLoader>().Load();
+        PbtSnapshotRepository loaded = reopened.Resolve<PbtSnapshotRepository>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new PbtSnapshotCatalog(catalog).Load().Where(entry => entry.To == head && entry.Tier == SnapshotTier.PersistedLargeCompacted)
+                .Select(entry => entry.From.BlockNumber), Is.EqualTo(new[] { 2UL }));
+            Assert.That(loaded.TryLeasePersisted(head, 8, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? replaced), Is.False);
+            replaced?.Dispose();
+            Assert.That(loaded.TryLeasePersisted(head, 6, SnapshotTier.PersistedLargeCompacted, out PbtPersistedSnapshot? large), Is.True);
+            using (large) Assert.That(large!.TryGetCode(TestItem.KeccakC.ValueHash256, out _), Is.True);
+        }
     }
 
     private sealed class LoaderSyncFailureDb : MemDb
@@ -478,21 +395,26 @@ public class PbtDbManagerTests
         }
     }
 
-    private static IContainer PersistedContainer(string path, IDb catalog, bool enabled = true, Action<ContainerBuilder>? configure = null) =>
-        PbtTestContext.BuildProductionContainer(new PbtConfig
-        {
-            Enabled = true,
-            EnableLongFinality = enabled,
-            CompactionOffset = 0,
-            ValidatePersistedSnapshot = true,
-            ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
-            PersistedSnapshotArenaPageCacheBytes = 0,
-        }, builder =>
+    private static PbtConfig PersistedConfig() => new()
+    {
+        Enabled = true,
+        CompactionOffset = 0,
+        ArenaFileSizeBytes = 1048576,
+        PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+        PersistedSnapshotArenaPageCacheBytes = 0,
+    };
+
+    private static IContainer PersistedContainer(string path, IDb catalog, bool enabled = true, Action<ContainerBuilder>? configure = null)
+    {
+        PbtConfig config = PersistedConfig();
+        config.EnableLongFinality = enabled;
+        config.ValidatePersistedSnapshot = true;
+        return PbtTestContext.BuildProductionContainer(config, builder =>
         {
             builder.RegisterInstance(catalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned();
             configure?.Invoke(builder);
         }, new InitConfig { BaseDbPath = path });
+    }
 
     private static PbtSnapshot LoaderSnapshot(IContainer container, StateId from, StateId to)
     {
@@ -506,6 +428,14 @@ public class PbtDbManagerTests
         content.Storages[SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, address, 1000))] = SlotRun.Empty;
         content.RootGroupPointer = 0;
         return new(from, to, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+    }
+
+    private static bool ConvertLoaderSnapshot(IContainer container, StateId from, StateId to)
+    {
+        using PbtSnapshot snapshot = LoaderSnapshot(container, from, to);
+        snapshot.TryLease();
+        container.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
+        return container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
     }
 
     private sealed class LoaderFaultCatalog(ISnapshotCatalog inner, bool rollbackFails) : ISnapshotCatalog
@@ -1030,7 +960,7 @@ public class PbtDbManagerTests
             return true;
         });
         using PbtPersistenceManager persistenceManager = new(harness.Config, harness.Finalized, harness.Persistence, harness.Repository,
-            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, new SchedulerCompactor(), CancellationToken.None);
+            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, new SchedulerCompactor(), new ProcessExitSource(CancellationToken.None));
         for (int b = 1; b <= 4; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
         harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 4, harness.Pool));
         await persistenceManager.CheckPersistenceAsync(PersistenceState(4));
@@ -1103,7 +1033,7 @@ public class PbtDbManagerTests
         });
         SchedulerCompactor compactor = new();
         using PbtPersistenceManager persistenceManager = new(harness.Config, harness.Finalized, harness.Persistence, harness.Repository,
-            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, compactor, CancellationToken.None);
+            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, compactor, new ProcessExitSource(CancellationToken.None));
         StateId fork1 = new(1, TestItem.KeccakB.ValueHash256), fork2 = new(2, TestItem.KeccakB.ValueHash256);
         harness.Repository.TryAdd(new(PersistenceState(0), fork1, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         harness.Repository.TryAdd(new(fork1, fork2, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
@@ -1127,38 +1057,32 @@ public class PbtDbManagerTests
     [Test]
     public async Task Scheduler_persisted_restart_gather_and_flush_preserve_tree_root()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-scheduler-reopen-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb catalog = new();
         SnapshotableMemColumnsDb<PbtColumns> baseDb = new("pbt");
         StateId state = PersistenceState(1);
         Action<ContainerBuilder> configure = builder => builder.RegisterInstance(baseDb).As<IColumnsDb<PbtColumns>>().ExternallyOwned();
-        try
+        await using (IContainer initial = PersistedContainer(tempPath.Path, catalog, configure: configure))
         {
-            await using (IContainer initial = PersistedContainer(path, catalog, configure: configure))
-            {
-                initial.Resolve<IPbtDbManager>();
-                PbtSnapshot snapshot = LoaderSnapshot(initial, StateId.PreGenesis, state);
-                snapshot.TryLease(); initial.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
-                using (snapshot) initial.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
-            }
-            await using IContainer reopened = PersistedContainer(path, catalog, configure: configure);
-            IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
-            PbtPersistenceManager persistenceManager = reopened.Resolve<PbtPersistenceManager>();
-            using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(state)!;
-            Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
-            Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.Null);
-            manager.FlushCache(CancellationToken.None);
-            using IPbtPersistence.IReader reader = reopened.Resolve<IPbtPersistence>().CreateReader();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(state));
-                Assert.That(reader.CurrentState, Is.EqualTo(state));
-                Assert.That(reader.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
-                Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
-                Assert.That(held.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
-            }
+            initial.Resolve<IPbtDbManager>();
+            ConvertLoaderSnapshot(initial, StateId.PreGenesis, state);
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        await using IContainer reopened = PersistedContainer(tempPath.Path, catalog, configure: configure);
+        IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
+        PbtPersistenceManager persistenceManager = reopened.Resolve<PbtPersistenceManager>();
+        using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(state)!;
+        Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
+        Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.Null);
+        manager.FlushCache(CancellationToken.None);
+        using IPbtPersistence.IReader reader = reopened.Resolve<IPbtPersistence>().CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(state));
+            Assert.That(reader.CurrentState, Is.EqualTo(state));
+            Assert.That(reader.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+            Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
+            Assert.That(held.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+        }
     }
 
     [Test]
@@ -1216,7 +1140,7 @@ public class PbtDbManagerTests
         });
         SchedulerCompactor compactor = new();
         using PbtPersistenceManager persistenceManager = new(harness.Config, harness.Finalized, harness.Persistence, harness.Repository,
-            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, compactor, CancellationToken.None);
+            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, compactor, new ProcessExitSource(CancellationToken.None));
         for (int b = 1; b <= 6; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
         if (failSecond) Assert.That(async () => await persistenceManager.CheckPersistenceAsync(PersistenceState(6)), Throws.TypeOf<IOException>());
         else await persistenceManager.CheckPersistenceAsync(PersistenceState(6));
@@ -1345,36 +1269,29 @@ public class PbtDbManagerTests
     [Test]
     public async Task Rewind_failed_persisted_delete_invalidates_cached_pruned_memory_but_preserves_held_reader()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-rewind-fault-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb db = new();
         RewindFaultCatalog fault = new(new PbtSnapshotCatalog(db));
-        try
+        await using IContainer container = PersistedContainer(tempPath.Path, db, configure: builder =>
+            builder.RegisterInstance(fault).Keyed<ISnapshotCatalog>(DbNames.Pbt));
+        IPbtDbManager manager = container.Resolve<IPbtDbManager>();
+        PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+        repository.TryAdd(LoaderSnapshot(container, StateId.PreGenesis, PersistenceState(1)));
+        repository.TryAdd(LoaderSnapshot(container, PersistenceState(1), PersistenceState(3)));
+        ConvertLoaderSnapshot(container, PersistenceState(1), PersistenceState(2));
+        repository.RemoveMemoryState(PersistenceState(2));
+        using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(PersistenceState(3))!;
+        fault.FailRemove = true;
+        Assert.Throws<IOException>(() => manager.DropStateNotReachableFrom(PersistenceState(1)));
+        using (Assert.EnterMultipleScope())
         {
-            await using IContainer container = PersistedContainer(path, db, configure: builder =>
-                builder.RegisterInstance(fault).Keyed<ISnapshotCatalog>(DbNames.Pbt));
-            IPbtDbManager manager = container.Resolve<IPbtDbManager>();
-            PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
-            repository.TryAdd(LoaderSnapshot(container, StateId.PreGenesis, PersistenceState(1)));
-            repository.TryAdd(LoaderSnapshot(container, PersistenceState(1), PersistenceState(3)));
-            PbtSnapshot orphan = LoaderSnapshot(container, PersistenceState(1), PersistenceState(2));
-            orphan.TryLease();
-            repository.TryAdd(orphan);
-            using (orphan) container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(orphan);
-            repository.RemoveMemoryState(PersistenceState(2));
-            using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(PersistenceState(3))!;
-            fault.FailRemove = true;
-            Assert.Throws<IOException>(() => manager.DropStateNotReachableFrom(PersistenceState(1)));
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(manager.HasStateForBlock(PersistenceState(3)), Is.False);
-                Assert.That(manager.TryGatherReadOnlyBundle(PersistenceState(3)), Is.Null);
-                Assert.That(manager.HasStateForBlock(PersistenceState(2)), Is.True);
-                Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
-                Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(PersistenceState(2)));
-            }
-            fault.FailRemove = false;
+            Assert.That(manager.HasStateForBlock(PersistenceState(3)), Is.False);
+            Assert.That(manager.TryGatherReadOnlyBundle(PersistenceState(3)), Is.Null);
+            Assert.That(manager.HasStateForBlock(PersistenceState(2)), Is.True);
+            Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
+            Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(PersistenceState(2)));
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        fault.FailRemove = false;
     }
 
     private sealed class RewindFaultCatalog(ISnapshotCatalog inner) : ISnapshotCatalog
@@ -1449,7 +1366,7 @@ public class PbtDbManagerTests
             return harness.Repository.TryAddPersisted(persisted);
         });
         using PbtPersistenceManager persistenceManager = new(harness.Config, harness.Finalized, harness.Persistence, harness.Repository,
-            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, new SchedulerCompactor(), CancellationToken.None);
+            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, new SchedulerCompactor(), new ProcessExitSource(CancellationToken.None));
         Task persistence = Task.Run(() => persistenceManager.CheckPersistenceAsync(PersistenceState(2)));
         Assert.That(converting.Wait(TimeSpan.FromSeconds(10)), Is.True);
         Task<bool> reset = Task.Run(() =>
@@ -1478,44 +1395,35 @@ public class PbtDbManagerTests
     [Test]
     public async Task Rewind_after_persisted_restart_prunes_durably_and_forwards_world_state()
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-rewind-reopen-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         using MemDb catalog = new();
         StateId reset = PersistenceState(1);
         StateId abandoned = PersistenceState(2);
-        try
+        await using (IContainer initial = PersistedContainer(tempPath.Path, catalog))
         {
-            await using (IContainer initial = PersistedContainer(path, catalog))
-            {
-                initial.Resolve<IPbtDbManager>();
-                foreach ((StateId from, StateId to) in new[] { (StateId.PreGenesis, reset), (reset, abandoned) })
-                {
-                    PbtSnapshot snapshot = LoaderSnapshot(initial, from, to);
-                    snapshot.TryLease();
-                    initial.Resolve<PbtSnapshotRepository>().TryAdd(snapshot);
-                    using (snapshot) initial.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot);
-                }
-            }
-            await using (IContainer reopened = PersistedContainer(path, catalog))
-            {
-                IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
-                using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(abandoned)!;
-                BlockHeader head = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
-                reopened.Resolve<ScopeProvider.PbtWorldStateManager>().DropStateNotReachableFrom(head);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(manager.HasStateForBlock(abandoned), Is.False);
-                    Assert.That(manager.HasStateForBlock(reset), Is.True);
-                    Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.EqualTo(reset));
-                    Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
-                    Assert.That(reopened.Resolve<PbtPersistenceManager>().GetCurrentPersistedStateId(), Is.EqualTo(StateId.PreGenesis));
-                }
-            }
-            await using IContainer final = PersistedContainer(path, catalog);
-            IPbtDbManager finalManager = final.Resolve<IPbtDbManager>();
-            Assert.That(finalManager.HasStateForBlock(reset), Is.True);
-            Assert.That(finalManager.HasStateForBlock(abandoned), Is.False);
+            initial.Resolve<IPbtDbManager>();
+            foreach ((StateId from, StateId to) in new[] { (StateId.PreGenesis, reset), (reset, abandoned) })
+                ConvertLoaderSnapshot(initial, from, to);
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        await using (IContainer reopened = PersistedContainer(tempPath.Path, catalog))
+        {
+            IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
+            using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(abandoned)!;
+            BlockHeader head = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
+            reopened.Resolve<ScopeProvider.PbtWorldStateManager>().DropStateNotReachableFrom(head);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(manager.HasStateForBlock(abandoned), Is.False);
+                Assert.That(manager.HasStateForBlock(reset), Is.True);
+                Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.EqualTo(reset));
+                Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
+                Assert.That(reopened.Resolve<PbtPersistenceManager>().GetCurrentPersistedStateId(), Is.EqualTo(StateId.PreGenesis));
+            }
+        }
+        await using IContainer final = PersistedContainer(tempPath.Path, catalog);
+        IPbtDbManager finalManager = final.Resolve<IPbtDbManager>();
+        Assert.That(finalManager.HasStateForBlock(reset), Is.True);
+        Assert.That(finalManager.HasStateForBlock(abandoned), Is.False);
     }
 
     private sealed class SchedulerLoader(Func<PbtSnapshot, bool> convert) : IPbtPersistedSnapshotLoader
@@ -1550,7 +1458,7 @@ public class PbtDbManagerTests
             Persistence.CreateReader().Returns(reader);
             Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>()).Returns(Batch);
             PersistenceManager = new(config, Finalized, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
-                NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
+                NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, new ProcessExitSource(CancellationToken.None));
         }
 
         public PbtConfig Config { get; }
@@ -1566,7 +1474,7 @@ public class PbtDbManagerTests
 
         public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs) =>
             new(Repository, PersistenceManager, Persistence, Pool, GroupRecordBuffer, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
-                new MetricsConfig(), NullPbtPersistedSnapshotLoader.Instance);
+                new MetricsConfig(), NullPbtPersistedSnapshotLoader.Instance, Config);
 
         public void Dispose()
         {
@@ -1586,7 +1494,7 @@ public class PbtDbManagerTests
     [TestCase(true, 1, 8, 4, true)]
     public async Task Differential_histories_match_persisted_base_tiers_and_available_states(bool longFinality, int offset, int finalized, int memoryLimit, bool bytePressure)
     {
-        string path = Path.Combine(Path.GetTempPath(), "pbt-flat-differential-" + Guid.NewGuid().ToString("N"));
+        using TempPath tempPath = TempPath.GetTempDirectory();
         PbtConfig pbtConfig = new()
         {
             Enabled = true,
@@ -1620,99 +1528,95 @@ public class PbtDbManagerTests
         PbtTestContext.TestFinalizedStateProvider finality = new() { FinalizedBlockNumber = (ulong)finalized };
         for (ulong height = 0; height <= (ulong)finalized; height++) finality.SetCanonicalRoot(height, TestItem.KeccakA);
         using MemDb pbtCatalog = new(), flatCatalog = new();
-        try
+        await using IContainer pbt = PbtTestContext.BuildProductionContainer(pbtConfig, builder =>
         {
-            await using IContainer pbt = PbtTestContext.BuildProductionContainer(pbtConfig, builder =>
+            builder.RegisterInstance(finality).As<IStateHeaderProvider>();
+            builder.RegisterInstance(pbtCatalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned();
+            builder.AddSingleton<IPbtPersistedSnapshotCompactor>(NullPbtPersistedSnapshotCompactor.Instance);
+        }, new InitConfig { BaseDbPath = Path.Combine(tempPath.Path, "pbt") });
+        await using IContainer flat = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(flatConfig))
+            .AddSingleton<IFlatDbConfig>(flatConfig)
+            .AddSingleton<IDbFactory, MemDbFactory>()
+            .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = Path.Combine(tempPath.Path, "flat") })
+            .AddSingleton<IFileSystem>(new RealFileSystem())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IMetricsConfig>(new MetricsConfig())
+            .AddSingleton<IBlocksConfig>(new BlocksConfig())
+            .AddSingleton<ISyncConfig>(new SyncConfig())
+            .AddSingleton<IProcessExitSource>(new ProcessExitSource(CancellationToken.None))
+            .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
+            .AddSingleton<IStateHeaderProvider>(finality)
+            .AddKeyedSingleton<IDb>(DbNames.Metadata, new MemDb())
+            .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, flatCatalog)
+            .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance)
+            .Build();
+        Assert.That(flat.Resolve<IFlatDbConfig>().EnableLongFinality, Is.EqualTo(longFinality));
+        IPbtPersistence pbtPersistence = pbt.Resolve<IPbtPersistence>();
+        using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, PersistenceState(0), TestItem.KeccakB.ValueHash256)) batch.Commit();
+        using (IPersistence.IWriteBatch batch = flat.Resolve<IPersistence>().CreateWriteBatch(StateId.PreGenesis, PersistenceState(0))) { }
+        PbtSnapshotRepository pbtRepository = pbt.Resolve<PbtSnapshotRepository>();
+        ISnapshotRepository flatRepository = flat.Resolve<ISnapshotRepository>();
+        pbt.Resolve<IPbtPersistedSnapshotLoader>().Load();
+        flat.Resolve<IPersistedSnapshotLoader>().Load();
+        PbtPersistenceManager pbtPersistenceManager = pbt.Resolve<PbtPersistenceManager>();
+        IPersistenceManager flatPersistenceManager = flat.Resolve<IPersistenceManager>();
+        IPbtResourcePool pbtPool = pbt.Resolve<IPbtResourcePool>();
+        IResourcePool flatPool = flat.Resolve<IResourcePool>();
+        List<StateId> states = [];
+        for (int height = 1; height <= 12; height++)
+        {
+            StateId state = PersistenceState(height);
+            // The fork is committed before the canonical block, which stays the committed head.
+            if (height == 3)
             {
-                builder.RegisterInstance(finality).As<IStateHeaderProvider>();
-                builder.RegisterInstance(pbtCatalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned();
-                builder.AddSingleton<IPbtPersistedSnapshotCompactor>(NullPbtPersistedSnapshotCompactor.Instance);
-            }, new InitConfig { BaseDbPath = Path.Combine(path, "pbt") });
-            await using IContainer flat = new ContainerBuilder()
-                .AddModule(new FlatWorldStateModule(flatConfig))
-                .AddSingleton<IFlatDbConfig>(flatConfig)
-                .AddSingleton<IDbFactory, MemDbFactory>()
-                .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = Path.Combine(path, "flat") })
-                .AddSingleton<IFileSystem>(new RealFileSystem())
-                .AddSingleton<ILogManager>(LimboLogs.Instance)
-                .AddSingleton<IMetricsConfig>(new MetricsConfig())
-                .AddSingleton<IBlocksConfig>(new BlocksConfig())
-                .AddSingleton<ISyncConfig>(new SyncConfig())
-                .AddSingleton<IProcessExitSource>(new ProcessExitSource(CancellationToken.None))
-                .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
-                .AddSingleton<IStateHeaderProvider>(finality)
-                .AddKeyedSingleton<IDb>(DbNames.Metadata, new MemDb())
-                .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, flatCatalog)
-                .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance)
-                .Build();
-            Assert.That(flat.Resolve<IFlatDbConfig>().EnableLongFinality, Is.EqualTo(longFinality));
-            IPbtPersistence pbtPersistence = pbt.Resolve<IPbtPersistence>();
-            using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, PersistenceState(0), TestItem.KeccakB.ValueHash256)) batch.Commit();
-            using (IPersistence.IWriteBatch batch = flat.Resolve<IPersistence>().CreateWriteBatch(StateId.PreGenesis, PersistenceState(0))) { }
-            PbtSnapshotRepository pbtRepository = pbt.Resolve<PbtSnapshotRepository>();
-            ISnapshotRepository flatRepository = flat.Resolve<ISnapshotRepository>();
-            pbt.Resolve<IPbtPersistedSnapshotLoader>().Load();
-            flat.Resolve<IPersistedSnapshotLoader>().Load();
-            PbtPersistenceManager pbtPersistenceManager = pbt.Resolve<PbtPersistenceManager>();
-            IPersistenceManager flatPersistenceManager = flat.Resolve<IPersistenceManager>();
-            IPbtResourcePool pbtPool = pbt.Resolve<IPbtResourcePool>();
-            IResourcePool flatPool = flat.Resolve<IResourcePool>();
-            List<StateId> states = [];
-            for (int height = 1; height <= 12; height++)
-            {
-                StateId state = PersistenceState(height);
-                // The fork is committed before the canonical block, which stays the committed head.
-                if (height == 3)
-                {
-                    StateId fork = new(3, TestItem.KeccakC.ValueHash256);
-                    AddDifferentialEdge(PersistenceState(2), fork, false);
-                    states.Add(fork);
-                }
-                AddDifferentialEdge(PersistenceState(height - 1), state, false);
-                states.Add(state);
-                if (height >= 4 && (height - offset) % 4 == 0)
-                    AddDifferentialEdge(PersistenceState(height - 4), state, true);
-                await pbtPersistenceManager.CheckPersistenceAsync(state);
-                await flatPersistenceManager.AddToPersistence(state);
-                Assert.That(pbtPersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(flatPersistenceManager.GetCurrentPersistedStateId()), $"base after {state}");
-                foreach (StateId known in states)
-                {
-                    Assert.That(pbtRepository.HasState(known) || known == pbtPersistenceManager.GetCurrentPersistedStateId(),
-                        Is.EqualTo(flatRepository.HasState(known) || known == flatPersistenceManager.GetCurrentPersistedStateId()), $"availability {known} after {state}");
-                    foreach (SnapshotTier tier in (SnapshotTier[])[SnapshotTier.InMemoryBase, SnapshotTier.InMemoryCompacted])
-                    {
-                        bool pbtHasTier = pbtRepository.TryLeaseMemoryState(known, tier, out PbtSnapshot? pbtLease);
-                        pbtLease?.Dispose();
-                        bool flatHasTier = flatRepository.TryLeaseInMemoryState(known, tier, out FlatSnapshot? flatLease);
-                        flatLease?.Dispose();
-                        Assert.That(pbtHasTier, Is.EqualTo(flatHasTier), $"{tier} presence {known} after {state}");
-                    }
-                }
+                StateId fork = new(3, TestItem.KeccakC.ValueHash256);
+                AddDifferentialEdge(PersistenceState(2), fork, false);
+                states.Add(fork);
             }
-            StateId reset = PersistenceState(10);
-            Assert.That(pbtPersistenceManager.DropStateNotReachableFrom(reset), Is.True);
-            flatPersistenceManager.DropStateNotReachableFrom(reset);
-            Assert.That(pbtRepository.GetLastCommittedStateId(), Is.EqualTo(flatRepository.GetLastCommittedStateId()));
-            AddDifferentialEdge(reset, new(11, TestItem.KeccakD.ValueHash256), false);
-            Assert.That(pbtPersistenceManager.FlushToPersistenceState(CancellationToken.None), Is.EqualTo(flatPersistenceManager.FlushToPersistence(CancellationToken.None)));
-            using IPbtPersistence.IReader persistedPbt = pbtPersistence.CreateReader();
-            Assert.That(persistedPbt.GetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes))!.Value.ToAccount().Nonce, Is.EqualTo((ulong)11));
-            Assert.That(persistedPbt.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256), "PBT root is independent of shared header StateId");
-
-            void AddDifferentialEdge(StateId from, StateId to, bool compacted)
+            AddDifferentialEdge(PersistenceState(height - 1), state, false);
+            states.Add(state);
+            if (height >= 4 && (height - offset) % 4 == 0)
+                AddDifferentialEdge(PersistenceState(height - 4), state, true);
+            await pbtPersistenceManager.CheckPersistenceAsync(state);
+            await flatPersistenceManager.AddToPersistence(state);
+            Assert.That(pbtPersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(flatPersistenceManager.GetCurrentPersistedStateId()), $"base after {state}");
+            foreach (StateId known in states)
             {
-                PbtSnapshotContent content = pbtPool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-                content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = PbtAccount.From(new Account(to.BlockNumber, 100), null);
-                PbtSnapshot pbtSnapshot = new(from, to, TestItem.KeccakB.ValueHash256, content, pbtPool, PbtResourcePool.Usage.MainBlockProcessing);
-                if (compacted) pbtRepository.TryAddCompacted(pbtSnapshot); else pbtRepository.TryAdd(pbtSnapshot);
-                FlatSnapshot flatSnapshot = flatPool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
-                flatSnapshot.Content.Accounts[TestItem.AddressA] = new Account(to.BlockNumber, 100);
-                flatRepository.TryAdd(flatSnapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
-                flatRepository.AddStateId(to);
-                if (!compacted) flatRepository.SetLastCommittedStateId(to);
+                Assert.That(pbtRepository.HasState(known) || known == pbtPersistenceManager.GetCurrentPersistedStateId(),
+                    Is.EqualTo(flatRepository.HasState(known) || known == flatPersistenceManager.GetCurrentPersistedStateId()), $"availability {known} after {state}");
+                foreach (SnapshotTier tier in (SnapshotTier[])[SnapshotTier.InMemoryBase, SnapshotTier.InMemoryCompacted])
+                {
+                    bool pbtHasTier = pbtRepository.TryLeaseMemoryState(known, tier, out PbtSnapshot? pbtLease);
+                    pbtLease?.Dispose();
+                    bool flatHasTier = flatRepository.TryLeaseInMemoryState(known, tier, out FlatSnapshot? flatLease);
+                    flatLease?.Dispose();
+                    Assert.That(pbtHasTier, Is.EqualTo(flatHasTier), $"{tier} presence {known} after {state}");
+                }
             }
         }
-        finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
+        StateId reset = PersistenceState(10);
+        Assert.That(pbtPersistenceManager.DropStateNotReachableFrom(reset), Is.True);
+        flatPersistenceManager.DropStateNotReachableFrom(reset);
+        Assert.That(pbtRepository.GetLastCommittedStateId(), Is.EqualTo(flatRepository.GetLastCommittedStateId()));
+        AddDifferentialEdge(reset, new(11, TestItem.KeccakD.ValueHash256), false);
+        Assert.That(pbtPersistenceManager.FlushToPersistenceState(CancellationToken.None), Is.EqualTo(flatPersistenceManager.FlushToPersistence(CancellationToken.None)));
+        using IPbtPersistence.IReader persistedPbt = pbtPersistence.CreateReader();
+        Assert.That(persistedPbt.GetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes))!.Value.ToAccount().Nonce, Is.EqualTo((ulong)11));
+        Assert.That(persistedPbt.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256), "PBT root is independent of shared header StateId");
+
+        void AddDifferentialEdge(StateId from, StateId to, bool compacted)
+        {
+            PbtSnapshotContent content = pbtPool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+            content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = PbtAccount.From(new Account(to.BlockNumber, 100), null);
+            PbtSnapshot pbtSnapshot = new(from, to, TestItem.KeccakB.ValueHash256, content, pbtPool, PbtResourcePool.Usage.MainBlockProcessing);
+            if (compacted) pbtRepository.TryAddCompacted(pbtSnapshot); else pbtRepository.TryAdd(pbtSnapshot);
+            FlatSnapshot flatSnapshot = flatPool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
+            flatSnapshot.Content.Accounts[TestItem.AddressA] = new Account(to.BlockNumber, 100);
+            flatRepository.TryAdd(flatSnapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+            flatRepository.AddStateId(to);
+            if (!compacted) flatRepository.SetLastCommittedStateId(to);
+        }
     }
 
     /// <summary>The state the first write <see cref="PbtPersistenceManager.CheckPersistenceAsync"/> makes for <paramref name="latest"/> persists, or null when it persists nothing.</summary>

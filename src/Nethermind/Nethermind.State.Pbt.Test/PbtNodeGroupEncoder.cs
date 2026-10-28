@@ -9,7 +9,7 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>Batch node-group encoder used as the oracle for <see cref="PbtNodeGroupWriter{TPath}"/> output.</summary>
+/// <summary>Batch node-group encoder used as the oracle for <see cref="PbtNodeGroupWriter"/> output.</summary>
 internal static class PbtNodeGroupEncoder
 {
     private const int MaxOffset = ushort.MaxValue;
@@ -43,7 +43,7 @@ internal static class PbtNodeGroupEncoder
         {
             PbtNodeRecord record = nodes[index] ?? throw new InvalidDataException("A PBT node group contains a null record.");
             PbtNodeGroupLocation<PbtStorageNodePath> location = PbtTestPaths.Locate(record.Path);
-            if (!PbtNodePathOperations.Equal(location.GroupKey, groupKey)) throw new InvalidDataException("Node does not belong to the group key.");
+            if (!location.GroupKey.Equals(groupKey.ToPath<PbtStorageNodePath>())) throw new InvalidDataException("Node does not belong to the group key.");
             if ((uint)location.Position >= PbtThreeLevelGroupGeometry.PositionCount
                 || (location.Position == PbtThreeLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0))
                 throw new InvalidDataException("The group contains a reserved node position.");

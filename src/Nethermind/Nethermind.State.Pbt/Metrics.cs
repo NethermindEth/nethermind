@@ -88,6 +88,9 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["partition", "result"])]
     public static IMetricObserver PbtTrieUpdaterNodeGroupReadTimes { get; set; } = new NoopMetricObserver();
 
+    [DetailedMetricOnFlag]
+    public static bool DetailedMetricsEnabled { get; set; }
+
     [DetailedMetric]
     [Description("Pbt pooled resources currently rented, by category and type")]
     [KeyIsLabel("category", "resource_type")]
@@ -117,18 +120,15 @@ public static class Metrics
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
     /// <remarks>
-    /// Shares the node-group labels of <see cref="PbtReadOnlySnapshotBundleTimes"/>, whose histogram already counts
-    /// the reads, so size and count divide into a mean payload per tier and partition. Only a read that found a
-    /// group has a size, so the <c>_null</c> tiers of that label set do not appear here.
+    /// Shares the node-group persistence labels of <see cref="PbtReadOnlySnapshotBundleTimes"/>, whose histogram already counts
+    /// the reads, so size and count divide into a mean payload per partition. Only a read that found a
+    /// group has a size, so the <c>_null</c> labels of that set do not appear here.
     /// </remarks>
     [DetailedMetric]
-    [Description("Total payload bytes of the node groups read through the pbt read-only snapshot bundle, by node-group partition and tier")]
+    [Description("Total payload bytes of the node groups read from persistence through the pbt read-only snapshot bundle, by node-group partition")]
     [KeyIsLabel("type")]
     public static ConcurrentDictionary<string, long> PbtReadOnlySnapshotBundleNodeGroupBytes { get; } = new()
     {
-        ["node_group_account_snapshot"] = 0,
-        ["node_group_code_snapshot"] = 0,
-        ["node_group_storage_snapshot"] = 0,
         ["node_group_account_persistence"] = 0,
         ["node_group_code_persistence"] = 0,
         ["node_group_storage_persistence"] = 0,
@@ -309,8 +309,8 @@ public sealed class PbtBalPrefetchSkipLabel(string phase, string tree, string re
 }
 
 /// <summary>Metric labels identifying a PBT partition and whether a node-group read found a group.</summary>
-public readonly record struct PbtNodeGroupReadLabel(string Partition, string Result) : IMetricLabels
+public sealed class PbtNodeGroupReadLabel(string partition, string result) : IStableMetricLabels
 {
     /// <inheritdoc/>
-    public string[] Labels => [Partition, Result];
+    public string[] Labels { get; } = [partition, result];
 }

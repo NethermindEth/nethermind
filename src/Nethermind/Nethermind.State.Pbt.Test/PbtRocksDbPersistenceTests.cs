@@ -11,6 +11,7 @@ using FastEnumUtility;
 using Autofac;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Evm;
@@ -295,7 +296,7 @@ public class PbtRocksDbPersistenceTests
                 PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
                 PbtPersistenceManager persistenceManager = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
                     repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, NullPbtPersistedSnapshotLoader.Instance,
-                    NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
+                    NullPbtPersistedSnapshotCompactor.Instance, new ProcessExitSource(CancellationToken.None));
                 for (ulong number = 0; number <= 5; number++)
                 {
                     StateId next = new(number, TestItem.KeccakA.ValueHash256);
@@ -835,14 +836,7 @@ public class PbtProtocolStorageClearTests
             else manager.FlushCache(CancellationToken.None);
         }
         if (survives) Assert.That(codeDb[ValueKeccak.Compute(destroy).Bytes], Is.EqualTo(destroy));
-        (Hash256 cleanRoot, string[] expectedRecords) = await ExpectedRoot(history, expectedNonce, factoryCode, destroy, contract, survives);
-        if (!persisted && history == History.Create2Recreate)
-        {
-            string[] actualRecords = Canonical(baseDb);
-            TestContext.Out.WriteLine($"factoryCodeHash={ValueKeccak.Compute(factoryCode)} childCodeHash={ValueKeccak.Compute(destroy)}");
-            TestContext.Out.WriteLine("ACTUAL ONLY: " + string.Join("\n", actualRecords.Except(expectedRecords)));
-            TestContext.Out.WriteLine("EXPECTED ONLY: " + string.Join("\n", expectedRecords.Except(actualRecords)));
-        }
+        Hash256 cleanRoot = await ExpectedRoot(history, expectedNonce, factoryCode, destroy, contract, survives);
         Assert.That(finalRoot, Is.EqualTo(cleanRoot), "root is rebuilt from the expected surviving state, not transient execution snapshots");
         await using (IContainer reopened = Open())
         {
@@ -917,7 +911,7 @@ public class PbtProtocolStorageClearTests
         }
     }
 
-    private static async Task<(Hash256, string[])> ExpectedRoot(History history, ulong senderNonce, byte[] factoryCode,
+    private static async Task<Hash256> ExpectedRoot(History history, ulong senderNonce, byte[] factoryCode,
         byte[] contractCode, Address contract, bool survives)
     {
         await using IContainer container = PbtTestContext.BuildProductionContainer(
@@ -943,19 +937,7 @@ public class PbtProtocolStorageClearTests
             }
             state.Commit(Prague.Instance);
             state.CommitTree(2);
-            container.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
-            return (state.StateRoot, Canonical(container.Resolve<IColumnsDb<PbtColumns>>()));
+            return state.StateRoot;
         }
-    }
-
-    private static string[] Canonical(IColumnsDb<PbtColumns> db)
-    {
-        List<PbtPhysicalPayload> payloads = [];
-        foreach (PbtColumns column in new[] { PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
-            foreach (KeyValuePair<byte[], byte[]> entry in db.GetColumnDb(column).GetAll())
-                payloads.Add(new(PbtNodeGroupKey.Decode(entry.Key), entry.Value));
-        if (db.GetColumnDb(PbtColumns.Metadata)["rootNodeGroup"u8] is byte[] root) payloads.Add(new(default, root));
-        using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads(payloads);
-        return store.CanonicalRecords();
     }
 }

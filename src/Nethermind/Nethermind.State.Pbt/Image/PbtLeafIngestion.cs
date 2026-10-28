@@ -4,7 +4,6 @@
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
@@ -69,7 +68,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         try
         {
             ValueHash256 root;
-            using (foldLeaves) root = await Task.Run(() => rebuilder.Rebuild(foldLeaves, config.ImportWindowSize, linked.Token), CancellationToken.None);
+            using (foldLeaves) root = await Task.Run(() => rebuilder.Rebuild(foldLeaves, windowSize, linked.Token), CancellationToken.None);
             linked.Token.ThrowIfCancellationRequested();
             target.Flush();
             if (expectedRoot is { } expected && root != expected)

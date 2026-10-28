@@ -12,10 +12,10 @@ namespace Nethermind.Pbt;
 /// <summary>Reads a node group that is physically stored, as one frame of a fold.</summary>
 /// <remarks>
 /// A frame reader only ever wraps a stored payload: never construct one for a group that does not exist. A group the
-/// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
+/// boundary node proves absent is folded through <see cref="AbsentGroupFrame"/> instead, and the tree
 /// root's group is loaded through its direct reference or <see cref="IPbtStore.TryLoad"/>.
 /// </remarks>
-public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>
+public struct GroupFrameReader<TKey, TPath> : IGroupFrame
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
@@ -67,7 +67,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>
     }
 
     /// <inheritdoc/>
-    public readonly void CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
+    public readonly void CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition)
     {
         uint copied = _stored & ((1u << endPosition) - 1) & ~((1u << startPosition) - 1);
         if (copied == 0) return;

@@ -96,7 +96,7 @@ public sealed class PbtMigrationBootstrap(
             try
             {
                 await using FileStream exportedSnapshot = new(Path.Combine(directory, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
-                await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+                await using FileStream exportedPreimages = new(Path.Combine(directory, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 20);
                 PbtOfflineSource.WriteArtifacts(source, dbProvider.CodeDb, anchor,
                     directory, exportedSnapshot, exportedPreimages, logManager,
                     configuration.ImportSortBufferBytes, configuration.ImportConcurrency, cancellationToken);

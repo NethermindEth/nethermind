@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
-
 namespace Nethermind.Pbt;
 
 /// <summary>Maps canonical node paths to the positions in their three-level node group.</summary>
@@ -52,9 +50,6 @@ public static class PbtThreeLevelGroupGeometry
         int length = PositionDepths[position];
         return new(PositionPaths[position] << (LevelsPerGroup - length), length);
     }
-
-    /// <summary>The position of the node at boundary slot <paramref name="slot"/>.</summary>
-    public static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
     public static int WidthOf(int position) => BoundarySlots >> PositionDepths[position];
 

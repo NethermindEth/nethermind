@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -36,14 +37,8 @@ public class PbtWorldStateScopeTests
         PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
         PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
-        Hash256 canonicalRoot;
-        using (IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
-        {
-            Write(scope, 1);
-            scope.Commit(1);
-            canonicalRoot = scope.RootHash;
-        }
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(canonicalRoot).TestObject;
+        BlockHeader parent = CommitCanonical(manager, null, 1, 1);
+        Hash256 canonicalRoot = parent.StateRoot!;
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
         using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
         {
@@ -141,10 +136,7 @@ public class PbtWorldStateScopeTests
     [Test]
     public async Task Lifecycle_logging_respects_debug_level([Values] bool debugEnabled)
     {
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsDebug.Returns(debugEnabled);
-        List<string> messages = [];
-        logger.When(log => log.Debug(Arg.Any<string>())).Do(call => messages.Add(call.Arg<string>()));
+        TestLogger logger = new() { IsDebug = debugEnabled };
         await using PbtTestContext ctx = new();
         IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(logManager: new OneLoggerLogManager(new ILogger(logger)))
             .BeginScope(null, new LocalMetrics());
@@ -156,14 +148,14 @@ public class PbtWorldStateScopeTests
         scope.Dispose();
 
         string[] stages = ["opened", "commit begin", "root calculation begin", "root calculated", "commit completed", "close begin", "closed"];
-        Assert.That(messages, Has.Count.EqualTo(debugEnabled ? stages.Length : 0));
+        Assert.That(logger.LogList, Has.Count.EqualTo(debugEnabled ? stages.Length : 0));
         using (Assert.EnterMultipleScope())
         {
-            for (int index = 0; index < messages.Count; index++)
+            for (int index = 0; index < logger.LogList.Count; index++)
             {
-                Assert.That(messages[index], Does.Contain(stages[index]));
-                Assert.That(messages[index], Does.Contain("managedBytes="));
-                Assert.That(messages[index], Does.Contain("state="));
+                Assert.That(logger.LogList[index], Does.Contain(stages[index]));
+                Assert.That(logger.LogList[index], Does.Contain("managedBytes="));
+                Assert.That(logger.LogList[index], Does.Contain("state="));
             }
         }
     }

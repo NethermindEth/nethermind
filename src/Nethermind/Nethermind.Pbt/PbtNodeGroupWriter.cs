@@ -17,8 +17,7 @@ namespace Nethermind.Pbt;
 /// <see cref="Reset"/> keeps for the next group and <see cref="Dispose"/> releases.
 /// DetachTo finalizes directly into caller-owned storage.
 /// </remarks>
-public sealed class PbtNodeGroupWriter<TPath> : IDisposable
-    where TPath : struct, IPbtNodePath<TPath>
+public sealed class PbtNodeGroupWriter : IDisposable
 {
     private const int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
     /// <summary>A scratch size that holds most groups outright, so growth rarely copies more than once.</summary>
@@ -119,11 +118,13 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>The exact canonical payload length, or zero for an empty group.</summary>
+    /// <param name="descendantMask">Receives the boundary slots whose descendant size is stored, which <see cref="DetachTo"/> takes.</param>
     /// <exception cref="InvalidDataException">The group exceeds <see cref="PbtNodeGroupCodec.MaxPayloadLength"/>.</exception>
-    public int GetPayloadLength(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    public int GetPayloadLength(ReadOnlySpan<long> descendantBytes, ushort candidateSlots, out ushort descendantMask)
     {
+        descendantMask = 0;
         if (_availability == 0) return 0;
-        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
+        descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
         int length = PbtNodeGroupCodec.HeaderLength + _written + PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
         return length <= MaxCapacity ? length : ThrowTooLarge();
     }
@@ -131,15 +132,15 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     [DoesNotReturn, StackTraceHidden]
     private static int ThrowTooLarge() => throw new InvalidDataException("A PBT node group exceeds the maximum payload length.");
 
-    /// <summary>Finishes the canonical payload in an exactly sized destination.</summary>
-    public void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    /// <summary>Finishes the canonical payload in a destination sized by <see cref="GetPayloadLength"/>, with the mask it returned.</summary>
+    public void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort descendantMask)
     {
-        int length = GetPayloadLength(descendantBytes, candidateSlots);
-        if (payload.Length != length) throw new ArgumentException("The destination must match the canonical payload length.", nameof(payload));
-        if (length != 0)
+        Debug.Assert(payload.Length == (_availability == 0 ? 0
+            : PbtNodeGroupCodec.HeaderLength + _written + PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes)),
+            "The destination must match the canonical payload length.");
+        if (payload.Length != 0)
         {
-            ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
-            int trailerLength = length - PbtNodeGroupCodec.HeaderLength - _written;
+            int trailerLength = payload.Length - PbtNodeGroupCodec.HeaderLength - _written;
             PbtNodeGroupCodec.Header.CopyTo(payload);
             _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength, _written).CopyTo(payload[PbtNodeGroupCodec.HeaderLength..]);
             PbtNodeGroupCodec.WriteFooter(payload.Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength), _offsets, _availability, descendantMask,

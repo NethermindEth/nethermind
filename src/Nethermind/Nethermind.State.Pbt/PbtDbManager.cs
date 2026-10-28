@@ -63,7 +63,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         IProcessExitSource processExitSource,
         ILogManager logManager,
         IMetricsConfig metricsConfig,
-        IPbtPersistedSnapshotLoader persistedLoader)
+        IPbtPersistedSnapshotLoader persistedLoader,
+        IPbtConfig config)
     {
         persistedLoader.Load();
         _repository = repository;
@@ -75,10 +76,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _processExitToken = processExitSource.Token;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
-        _inlineCompaction = persistenceManager.Configuration.InlineCompaction;
-        _inMemorySlotFilterBitsPerKey = persistenceManager.Configuration.InMemorySnapshotBloomBitsPerKey;
-        _persistenceJobs = Channel.CreateBounded<StateId>(persistenceManager.Configuration.MaxInFlightCompactJob);
-        _compactionJobs = Channel.CreateBounded<StateId>(persistenceManager.Configuration.MaxInFlightCompactJob);
+        _inlineCompaction = config.InlineCompaction;
+        _inMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey;
+        _persistenceJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
+        _compactionJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _stopSource = new CancellationTokenSource();
         _persistenceWorker = Task.Run(RunPersistenceWorker);
         _compactionWorker = Task.Run(RunCompactionWorker);

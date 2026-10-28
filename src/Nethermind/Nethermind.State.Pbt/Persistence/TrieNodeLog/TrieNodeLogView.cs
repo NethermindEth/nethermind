@@ -61,28 +61,13 @@ public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNo
         if (_misses != 0) Metrics.PbtTrieNodeLogReads.AddBy(secondLevel ? TrieNodeLog.SecondLevelMissLabel : TrieNodeLog.MissLabel, _misses);
     }
 
-    /// <summary>Whether the shard holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
-    [SkipLocalsInit]
-    public bool TryGet(ReadOnlySpan<byte> key, out byte[]? value)
-    {
-        Span<byte> buffer = stackalloc byte[ReadBufferSize];
-        if (!TryFind(key, buffer, out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header, out long offset, out int bytesRead))
-        {
-            value = null;
-            return false;
-        }
-
-        value = header.Type == TrieNodeLogRecord.Delete ? null : generation.ReadValue(offset, header, buffer, bytesRead);
-        return true;
-    }
-
     /// <summary>Whether the shard holds the record for <paramref name="key"/> at this view's version, passing its value to <paramref name="action"/>, which must not keep it.</summary>
     /// <returns>Whether the shard holds a record; a found tombstone sets <paramref name="tombstone"/> and passes nothing.</returns>
     [SkipLocalsInit]
-    public bool TryGet<TArg>(ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct
+    public bool TryGet<TArg>(ulong hash, ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone) where TArg : allows ref struct
     {
         Span<byte> buffer = stackalloc byte[ReadBufferSize];
-        if (!TryFind(key, buffer, out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header, out long offset, out int bytesRead))
+        if (!TryFind(hash, key, buffer, out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header, out long offset, out int bytesRead))
         {
             tombstone = false;
             return false;
@@ -94,10 +79,9 @@ public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNo
     }
 
     /// <summary>Finds the record for <paramref name="key"/> at this view's version, leaving its first <paramref name="bytesRead"/> bytes in <paramref name="buffer"/>.</summary>
-    private bool TryFind(ReadOnlySpan<byte> key, Span<byte> buffer, [NotNullWhen(true)] out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header,
+    private bool TryFind(ulong hash, ReadOnlySpan<byte> key, Span<byte> buffer, [NotNullWhen(true)] out TrieNodeLogGeneration? generation, out TrieNodeLogRecord header,
         out long offset, out int bytesRead)
     {
-        ulong hash = TrieNodeLogRecord.Hash(key);
         for (int i = pinned.Count - 1; i >= 0; i--)
         {
             generation = pinned[i];

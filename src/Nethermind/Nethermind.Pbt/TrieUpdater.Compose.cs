@@ -19,9 +19,9 @@ public static partial class TrieUpdater<TKey, TPath>
     /// which <paramref name="path"/>, the group's, supplies.
     /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
+    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter writer,
         scoped in PbtTraversalPath path, in ComposedNode node, int position)
-        where TFrame : struct, IGroupFrame<TKey, TPath>
+        where TFrame : struct, IGroupFrame
     {
         if (node.RiseBitCount == 0) return node;
         int childPosition = node.EntryPosition;

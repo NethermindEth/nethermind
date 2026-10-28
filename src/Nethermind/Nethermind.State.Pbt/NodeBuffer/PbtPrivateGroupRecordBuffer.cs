@@ -32,10 +32,10 @@ public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroup
         lock (_lock)
         {
             AddPin();
-            if (_active is null) return new BufferPin(this, _firstGeneration << PbtGroupRecordBuffer.OffsetBits);
+            if (_active is null) return new BufferPin(this, _firstGeneration << PbtGroupRecordCodec.OffsetBits);
 
             long used = Math.Min(Volatile.Read(ref _active.Used), _active.Data.Length);
-            return new BufferPin(this, _active.Id << PbtGroupRecordBuffer.OffsetBits | (uint)used);
+            return new BufferPin(this, _active.Id << PbtGroupRecordCodec.OffsetBits | (uint)used);
         }
     }
 
@@ -46,7 +46,7 @@ public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroup
     /// <inheritdoc/>
     public bool TryLocate(ulong pointer, out PbtGroupRecord record)
     {
-        ulong index = (pointer >> PbtGroupRecordBuffer.OffsetBits) - _firstGeneration;
+        ulong index = (pointer >> PbtGroupRecordCodec.OffsetBits) - _firstGeneration;
         Generation?[] generations = Volatile.Read(ref _generations);
         if (index < (ulong)generations.Length && Volatile.Read(ref generations[index]) is { } generation)
         {
@@ -71,7 +71,7 @@ public sealed class PbtPrivateGroupRecordBuffer(int generationBytes) : IPbtGroup
                 if (end <= generation.Data.Length)
                 {
                     int offset = (int)(end - alignedTotalLength);
-                    return new WriteBatch(generation.Id << PbtGroupRecordBuffer.OffsetBits | (uint)offset, generation.Data, offset, alignedTotalLength);
+                    return new WriteBatch(generation.Id << PbtGroupRecordCodec.OffsetBits | (uint)offset, generation.Data, offset, alignedTotalLength);
                 }
             }
 

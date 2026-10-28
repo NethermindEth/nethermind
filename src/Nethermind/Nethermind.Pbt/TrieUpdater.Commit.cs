@@ -26,15 +26,15 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>Takes <paramref name="writer"/>'s finished group of <paramref name="payloadLength"/> bytes, detached into the store by the next <see cref="Commit"/>.</summary>
         /// <remarks>The writer is kept until then, so the group is written once, straight into the commit's batch, and goes back to the pool after.</remarks>
         /// <returns>The pointer standing for the group in its parent's links until it is committed.</returns>
-        public ulong AddPendingGroup(PbtNodeGroupWriter<TPath> writer, in PbtStorageNodePath path, in PbtGroupLinks links,
-            ReadOnlySpan<long> descendantBytes, ushort candidateSlots, int payloadLength)
+        public ulong AddPendingGroup(PbtNodeGroupWriter writer, in PbtStorageNodePath path, in PbtGroupLinks links,
+            ReadOnlySpan<long> descendantBytes, ushort descendantMask, int payloadLength)
         {
             PendingGroup group = new()
             {
                 Writer = writer,
                 Path = path,
                 Links = links,
-                CandidateSlots = candidateSlots,
+                DescendantMask = descendantMask,
                 PayloadLength = payloadLength,
                 Length = PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payloadLength)),
             };
@@ -115,7 +115,7 @@ public static partial class TrieUpdater<TKey, TPath>
 
             int start = offset;
             group.Writer!.DetachTo(PbtGroupRecordCodec.WriteGroup(bytes[start..], group.Path, group.Links, group.PayloadLength), group.DescendantBytes,
-                group.CandidateSlots);
+                group.DescendantMask);
             ReturnWriter(group.Writer);
             group.Writer = null;
             offset += group.Length;
@@ -135,11 +135,11 @@ public static partial class TrieUpdater<TKey, TPath>
         private struct PendingGroup
         {
             /// <summary>The writer holding the group until it is committed, then null.</summary>
-            public PbtNodeGroupWriter<TPath>? Writer;
+            public PbtNodeGroupWriter? Writer;
             public PbtStorageNodePath Path;
             public PbtGroupLinks Links;
             public DescendantBytesBuffer DescendantBytes;
-            public ushort CandidateSlots;
+            public ushort DescendantMask;
             public int PayloadLength;
             public int Length;
         }

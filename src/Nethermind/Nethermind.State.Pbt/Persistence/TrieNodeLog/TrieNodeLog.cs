@@ -221,10 +221,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     /// <summary>Shard of a column key: its column's partition, then bits of the key's hash.</summary>
     /// <remarks>Group keys start with the zone byte, so their leading bytes would put most groups in one shard.</remarks>
-    private int ShardIndex(PbtColumns column, ReadOnlySpan<byte> key)
+    private int ShardIndex(PbtColumns column, ulong keyHash)
     {
         int partition = PartitionOf(column);
-        return _partitionOffset[partition] + ((int)(TrieNodeLogRecord.Hash(key) >> ShardHashShift) & _partitionMask[partition]);
+        return _partitionOffset[partition] + ((int)(keyHash >> ShardHashShift) & _partitionMask[partition]);
     }
 
     public ITrieNodeLog.IView OpenView(IColumnsDb<PbtColumns> db)
@@ -319,32 +319,36 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
         private sealed class Column(TrieNodeLog log, ArrayPoolList<TrieNodeLogView> views, PbtColumns column, IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
         {
-            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-                TryGet(key, out byte[]? value) ? value : inner.Get(key, flags);
-
-            public bool KeyExists(ReadOnlySpan<byte> key) =>
-                TryGet(key, out byte[]? value) ? value is not null : inner.KeyExists(key);
-
-            // A miss keeps RocksDB's zero-copy memory.
-            public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-                TryGet(key, out byte[]? value) ? value is null or { Length: 0 } ? null : ArrayMemoryManager.From(value) : inner.GetOwnedMemory(key, flags);
-
-            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
-                where TArg : allows ref struct
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
-                int shard = log.ShardIndex(column, key);
-                if (views[shard].TryGet(key, action, arg, out bool tombstone)
-                    || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(key, action, arg, out tombstone)))
-                    return !tombstone;
-                return inner.TryGet(key, action, arg, flags);
+                byte[]? value = null;
+                return TryGet(key, static (bytes, result) => result.Value = bytes.ToArray(), new PbtReadResult<byte[]?>(ref value), out _) ? value : inner.Get(key, flags);
             }
 
-            /// <summary>The first level, then its second-level shard, which follows the first-level views.</summary>
-            private bool TryGet(ReadOnlySpan<byte> key, out byte[]? value)
+            public bool KeyExists(ReadOnlySpan<byte> key) =>
+                TryGet(key, static (_, _) => { }, 0, out bool tombstone) ? !tombstone : inner.KeyExists(key);
+
+            // A miss keeps RocksDB's zero-copy memory.
+            public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
-                int shard = log.ShardIndex(column, key);
-                return views[shard].TryGet(key, out value)
-                    || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(key, out value));
+                byte[]? value = null;
+                return TryGet(key, static (bytes, result) => result.Value = bytes.ToArray(), new PbtReadResult<byte[]?>(ref value), out _)
+                    ? value is null or { Length: 0 } ? null : ArrayMemoryManager.From(value)
+                    : inner.GetOwnedMemory(key, flags);
+            }
+
+            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
+                where TArg : allows ref struct =>
+                TryGet(key, action, arg, out bool tombstone) ? !tombstone : inner.TryGet(key, action, arg, flags);
+
+            /// <summary>The first level, then its second-level shard, which follows the first-level views.</summary>
+            private bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, out bool tombstone)
+                where TArg : allows ref struct
+            {
+                ulong hash = TrieNodeLogRecord.Hash(key);
+                int shard = log.ShardIndex(column, hash);
+                return views[shard].TryGet(hash, key, action, arg, out tombstone)
+                    || (log._secondLevelShards.Length != 0 && views[log._shards.Length + shard].TryGet(hash, key, action, arg, out tombstone));
             }
         }
     }
@@ -375,7 +379,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         public IWriteBatch Wrap(PbtColumns column, IWriteBatch inner) => Covers(column) ? new Column(this, column) : inner;
 
         private void Stage(PbtColumns column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, bool delete) =>
-            _writers[_log.ShardIndex(column, key)].Stage(key, value, delete);
+            _writers[_log.ShardIndex(column, TrieNodeLogRecord.Hash(key))].Stage(key, value, delete);
 
         public void Commit()
         {

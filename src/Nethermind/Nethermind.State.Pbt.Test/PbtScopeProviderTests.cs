@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -224,7 +223,7 @@ public class PbtScopeProviderTests
                 firstRoot = first.RootHash;
             }
             ctx.Manager.FlushCache(CancellationToken.None);
-            storedBefore = StoredGroups(db);
+            storedBefore = PbtStoreTestExtensions.PersistedNodeGroupKeys(db).Count;
             using (PbtWorldStateScope second = ctx.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(firstRoot).TestObject))
             {
                 using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = second.StartWriteBatch(addresses.Length - 1))
@@ -233,7 +232,7 @@ public class PbtScopeProviderTests
                 secondRoot = second.RootHash;
             }
             ctx.Manager.FlushCache(CancellationToken.None);
-            storedAfter = StoredGroups(db);
+            storedAfter = PbtStoreTestExtensions.PersistedNodeGroupKeys(db).Count;
         }
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, addresses[0], 1, 1);
@@ -253,10 +252,6 @@ public class PbtScopeProviderTests
             Assert.That(removed, Is.Null);
             Assert.That(scope.RootHash.ValueHash256, Is.EqualTo(PbtReferenceModel.Root(model)), "stale groups never reach the reopened tree");
         }
-
-        static int StoredGroups(SnapshotableMemColumnsDb<PbtColumns> db) =>
-            new[] { PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups }
-                .Sum(column => db.GetColumnDb(column).GetAllKeys().Count());
     }
 
     [Test]

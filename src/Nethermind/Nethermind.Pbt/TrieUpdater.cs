@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt.NodeBuffer;
@@ -31,6 +32,20 @@ public static partial class TrieUpdater
         ParentRight,
         /// <summary>The encoding is this leaf's own, which only a single-leaf tree's root is stored as.</summary>
         Stored,
+    }
+
+    /// <summary>A node a fold encoded for its caller to place, anchored at the depth the caller places it at.</summary>
+    public struct SlotNode(int length, in ValueHash256 hash)
+    {
+        /// <summary>The encoding's length, or zero when the subtree folded away.</summary>
+        public readonly int Length = length;
+        /// <summary>The node's hash, or default when its encoding still has to be hashed.</summary>
+        public readonly ValueHash256 Hash = hash;
+        /// <summary>The change in stored size across the groups this node was folded from, still owed to the caller's boundary slot.</summary>
+        public long SizeDelta;
+        /// <summary>The first physical group owned by the result, including a descendant surviving a removed group.</summary>
+        public ulong GroupPointer;
+        public readonly bool IsEmpty => Length == 0;
     }
 
     /// <summary>Runs <paramref name="work"/> with <paramref name="state"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
@@ -112,8 +127,8 @@ public static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     public readonly record struct GroupPublication(long SizeDelta, ulong Pointer);
 
-    public static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
-        scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame<TKey, TPath>
+    public static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter writer,
+        scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame
     {
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
         ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
@@ -135,15 +150,15 @@ public static partial class TrieUpdater<TKey, TPath>
                 links[slot] = PbtGroupRecordCodec.PersistentPointer(surviving);
             }
         }
-        int length = writer.GetPayloadLength(descendantBytes, candidateSlots);
+        int length = writer.GetPayloadLength(descendantBytes, candidateSlots, out ushort descendantMask);
         ulong pointer = surviving;
-        if (length != 0) pointer = context.WorkingState.AddPendingGroup(writer, path.ToPath<PbtStorageNodePath>(), links, descendantBytes, candidateSlots, length);
+        if (length != 0) pointer = context.WorkingState.AddPendingGroup(writer, path.ToPath<PbtStorageNodePath>(), links, descendantBytes, descendantMask, length);
         else context.WorkingState.ReturnWriter(writer);
         return new GroupPublication(length - reader.PayloadLength + deltaTotal, pointer);
     }
 
-    private static void InitializeDescendantPointers<TFrame>(ref TFrame reader, PbtNodeGroupWriter<TPath> writer)
-        where TFrame : struct, IGroupFrame<TKey, TPath>
+    private static void InitializeDescendantPointers<TFrame>(ref TFrame reader, PbtNodeGroupWriter writer)
+        where TFrame : struct, IGroupFrame
     {
         for (uint remaining = reader.DescendantMask; remaining != 0; remaining &= remaining - 1)
         {

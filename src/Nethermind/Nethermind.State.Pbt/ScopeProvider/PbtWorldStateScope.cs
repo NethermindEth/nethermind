@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -144,11 +145,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// </remarks>
     private static void PrefetchBal(PbtSnapshotBundle bundle, BalKeys keys, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads)
     {
-        ParallelUnbalancedWork.For(0, keys.Accounts.Count, (bundle, keys, sink, reads), static (position, state) =>
+        StrongBox<long> cancelled = new();
+        ParallelUnbalancedWork.For(0, keys.Accounts.Count, (bundle, keys, sink, reads, cancelled), static (position, state) =>
         {
             if (state.reads.IsCancellationRequested)
             {
-                RecordSkips(_balStateCancelledSkip, 1);
+                Interlocked.Increment(ref state.cancelled.Value);
                 return state;
             }
             int index = (int)state.keys.Accounts[position].Value.ToUInt256().u0;
@@ -160,6 +162,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             state.keys.Missing[index] = account is null;
             return state;
         });
+        RecordSkips(_balStateCancelledSkip, cancelled.Value);
         BufferSlots(bundle, keys, keys.HeaderWrites, sink, reads);
         BufferSlots(bundle, keys, keys.StorageWrites, sink, reads);
         if (sink is null) return;
@@ -206,12 +209,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         });
 
     private static void ReadSlotsToSink<TKey>(PbtSnapshotBundle bundle, BalKeys keys, ArrayPoolList<PbtWriteOperation<TKey>> slots,
-        IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey> =>
-        ParallelUnbalancedWork.For(0, slots.Count, (bundle, keys, slots, sink, reads), static (position, state) =>
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey>
+    {
+        StrongBox<long> cancelled = new();
+        ParallelUnbalancedWork.For(0, slots.Count, (bundle, keys, slots, sink, reads, cancelled), static (position, state) =>
         {
             if (state.reads.IsCancellationRequested)
             {
-                RecordSkips(_balStorageCancelledSkip, 1);
+                Interlocked.Increment(ref state.cancelled.Value);
                 return state;
             }
             TKey key = state.slots[position].Key;
@@ -221,6 +226,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 ReadSlotToSink(state.bundle, state.sink, state.keys.Bal.AccountChanges.AsSpan()[index].Address, addressHash, key, state.slots[position].Value);
             return state;
         });
+        RecordSkips(_balStorageCancelledSkip, cancelled.Value);
+    }
 
     /// <summary>Reads the node groups the fold of the writes in <paramref name="keys"/> walks into, so the bundle keeps the persisted ones for the fold.</summary>
     /// <remarks>
@@ -243,28 +250,32 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
         RecordSkips(_nodeGroupStateNoWriteSkip, writesNothing);
         using ArrayPoolList<Range> storageAccounts = keys.StorageAccounts();
-        ParallelUnbalancedWork.For(0, accountKeys.Count + storageAccounts.Count, (bundle, keys, accountKeys, storageAccounts, cancellation), static (item, state) =>
+        StrongBox<long> cancelledAccounts = new();
+        StrongBox<long> cancelledSlots = new();
+        ParallelUnbalancedWork.For(0, accountKeys.Count + storageAccounts.Count, (bundle, keys, accountKeys, storageAccounts, cancellation, cancelledAccounts, cancelledSlots), static (item, state) =>
         {
             if (state.cancellation.IsCancellationRequested)
             {
-                if (item < state.accountKeys.Count) RecordSkips(_nodeGroupStateCancelledSkip, 1);
-                else RecordSkips(_nodeGroupStorageCancelledSkip, state.storageAccounts[item - state.accountKeys.Count].GetOffsetAndLength(state.keys.StorageWrites.Count).Length);
+                if (item < state.accountKeys.Count) Interlocked.Increment(ref state.cancelledAccounts.Value);
+                else Interlocked.Add(ref state.cancelledSlots.Value, state.storageAccounts[item - state.accountKeys.Count].GetOffsetAndLength(state.keys.StorageWrites.Count).Length);
                 return state;
             }
             if (item < state.accountKeys.Count) WarmUp<PbtPath, PbtNodePath>(state.bundle, state.accountKeys[item], _nodeGroupStateLabel);
-            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountKeys.Count]], state.cancellation);
+            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountKeys.Count]], state.cancellation, state.cancelledSlots);
             return state;
         });
+        RecordSkips(_nodeGroupStateCancelledSkip, cancelledAccounts.Value);
+        RecordSkips(_nodeGroupStorageCancelledSkip, cancelledSlots.Value);
     }
 
     /// <summary>Reads the groups on the paths of one account's sorted written slots.</summary>
-    private static void PrefetchStorageGroups(PbtSnapshotBundle bundle, ReadOnlySpan<PbtWriteOperation<PbtStoragePath>> slots, CancellationToken cancellation)
+    private static void PrefetchStorageGroups(PbtSnapshotBundle bundle, ReadOnlySpan<PbtWriteOperation<PbtStoragePath>> slots, CancellationToken cancellation, StrongBox<long> cancelledSlots)
     {
         for (int position = 0; position < slots.Length; position++)
         {
             if (cancellation.IsCancellationRequested)
             {
-                RecordSkips(_nodeGroupStorageCancelledSkip, slots.Length - position);
+                Interlocked.Add(ref cancelledSlots.Value, slots.Length - position);
                 return;
             }
             WarmUp<PbtStoragePath, PbtStorageNodePath>(bundle, slots[position].Key, _nodeGroupStorageLabel);
@@ -568,11 +579,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <summary>The keys a block access list names, as EIP-8297 paths sorted per list, so the slots of one run, stem or group are adjacent.</summary>
     private sealed class BalKeys : IDisposable
     {
-        private readonly Dictionary<ValueHash256, int> _accountIndexes = [];
+        private readonly Dictionary<ValueHash256, int> _accountIndexes;
 
         private BalKeys(ReadOnlyBlockAccessList bal)
         {
             Bal = bal;
+            _accountIndexes = new(bal.AccountChanges.Count);
             Missing = new bool[bal.AccountChanges.Count];
             Accounts = new(bal.AccountChanges.Count);
         }

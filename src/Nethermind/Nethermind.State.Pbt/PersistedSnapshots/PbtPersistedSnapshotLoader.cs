@@ -66,11 +66,8 @@ public sealed class PbtPersistedSnapshotLoader(
                 reservations.Add(reservation);
                 using RefCountedBloomFilter bloom = RefCountedBloomFilter.AlwaysTrue();
                 using PbtPersistedSnapshot snapshot = new(entry, reservation, blobs, bloom);
-                lock (publicationGate.Sync)
-                {
-                    if (!repository.TryAddPersisted(snapshot))
-                        throw new InvalidDataException($"Duplicate persisted PBT catalog identity {entry.To}.");
-                }
+                if (!repository.TryAddPersisted(snapshot))
+                    throw new InvalidDataException($"Duplicate persisted PBT catalog identity {entry.To}.");
             }
             ReconstructBloom(entries);
             blobs.SweepUnreferenced();

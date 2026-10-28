@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -40,9 +41,6 @@ public sealed class PbtImageVerifier : IDisposable
 {
     private const string ReadPhase = "PBT verify preimages";
     private const string MptPhase = "PBT verify MPT";
-
-    /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
-    private const int PathKeyLength = 65;
 
     private readonly string _directory;
     private readonly ILogManager _logManager;
@@ -102,9 +100,10 @@ public sealed class PbtImageVerifier : IDisposable
         using SortedSpool.Cursor listed = _byTreeKey.Read();
         using SortedSpool.Writer writer = _byPath.CreateWriter();
         bool hasListed = listed.MoveNext();
-        byte[] path = new byte[PathKeyLength];
+        byte[] path = new byte[PbtOfflineSource.PreimageKeyLength];
         ValueHash256? stem = null;
         bool accountListed = false;
+        ValueHash256 addressPath = default;
         ValueHash256 basicData = default;
         ValueHash256? codeHash = null;
         ValueHash256? delegation = null;
@@ -124,7 +123,7 @@ public sealed class PbtImageVerifier : IDisposable
                 {
                     case PbtKeyDerivation.BasicDataLeafKey:
                         Match(entry.Key);
-                        listed.Value.CopyTo(path);
+                        addressPath = new ValueHash256(listed.Value);
                         accountListed = true;
                         basicData = entry.Leaf;
                         hasListed = listed.MoveNext();
@@ -160,10 +159,14 @@ public sealed class PbtImageVerifier : IDisposable
         void AddSlot(in RebuildEntry entry)
         {
             Match(entry.Key);
-            listed.Value[..ValueHash256.MemorySize].CopyTo(path);
-            path[ValueHash256.MemorySize] = 1;
-            listed.Value[ValueHash256.MemorySize..].CopyTo(path.AsSpan(ValueHash256.MemorySize + 1));
-            writer.Add(path, Rlp.Encode(entry.Leaf.ToUInt256()).Bytes);
+            PbtOfflineSource.WriteSlotPreimageKey(path, new ValueHash256(listed.Value[..ValueHash256.MemorySize]),
+                new ValueHash256(listed.Value[ValueHash256.MemorySize..]));
+            ValueHash256 leaf = entry.Leaf;
+            // WithoutLeadingZeros keeps one zero byte, but RLP encodes zero as the empty string.
+            ReadOnlySpan<byte> value = leaf.Bytes.IsZero() ? [] : leaf.Bytes.WithoutLeadingZeros();
+            Span<byte> encoded = stackalloc byte[ValueHash256.MemorySize + 1];
+            Rlp.Encode(encoded, 0, value);
+            writer.Add(path, encoded[..Rlp.LengthOf(value)]);
             hasListed = listed.MoveNext();
         }
 
@@ -173,8 +176,7 @@ public sealed class PbtImageVerifier : IDisposable
             if (!accountListed) throw new InvalidDataException("Snapshot holds state its preimages do not list.");
             ValueHash256 codeLeaf = delegation ?? codeHash ?? throw new InvalidDataException("Account has no code-hash leaf.");
             Account account = new PbtAccount(basicData, codeLeaf, IsDelegation: delegation is not null).ToAccount();
-            // The address path was copied in when the basic-data leaf was joined.
-            path.AsSpan(ValueHash256.MemorySize).Clear();
+            PbtOfflineSource.WriteAccountPreimageKey(path, addressPath);
             writer.Add(path, AccountDecoder.Slim.Encode(account).Bytes);
             stem = null;
             accountListed = false;
@@ -204,7 +206,7 @@ public sealed class PbtImageVerifier : IDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 // An account's tag sorts ahead of its slots', so its slots are the records up to the next account.
-                if (cursor.Key[ValueHash256.MemorySize] == 1)
+                if (cursor.Key[ValueHash256.MemorySize] == PbtOfflineSource.SlotPreimageTag)
                 {
                     foldedSlots++;
                     storageRoot.Add(new ValueHash256(cursor.Key[(ValueHash256.MemorySize + 1)..]), cursor.Value);

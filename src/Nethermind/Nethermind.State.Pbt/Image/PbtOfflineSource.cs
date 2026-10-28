@@ -31,6 +31,12 @@ public static class PbtOfflineSource
     /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
     public const int PreimageKeyLength = 65;
 
+    /// <summary>Preimage key tag of an account, which keeps it ahead of its own slots.</summary>
+    public const byte AccountPreimageTag = 0;
+
+    /// <summary>Preimage key tag of a slot.</summary>
+    public const byte SlotPreimageTag = 1;
+
     /// <summary>Address ranges per worker, so an uneven spread of storage still balances out.</summary>
     private const int PartitionsPerWorker = 16;
 
@@ -131,7 +137,7 @@ public static class PbtOfflineSource
                 while (cursor.MoveNext())
                 {
                     progress.Update(++written);
-                    if (cursor.Key[32] != 0) throw new InvalidDataException("Orphan source slot.");
+                    if (cursor.Key[32] != AccountPreimageTag) throw new InvalidDataException("Orphan source slot.");
                     ValueHash256 accountHash = new(cursor.Key[..32]);
                     uint count = BinaryPrimitives.ReadUInt32BigEndian(cursor.Value[Address.Size..]);
                     yield return new(new Address(cursor.Value[..Address.Size]), count, Slots());
@@ -139,7 +145,7 @@ public static class PbtOfflineSource
                     {
                         for (uint index = 0; index < count; index++)
                         {
-                            if (!cursor.MoveNext() || cursor.Key[32] != 1 || !cursor.Key[..32].SequenceEqual(accountHash.Bytes))
+                            if (!cursor.MoveNext() || cursor.Key[32] != SlotPreimageTag || !cursor.Key[..32].SequenceEqual(accountHash.Bytes))
                                 throw new InvalidDataException("Source slot count mismatch.");
                             writtenSlots++;
                             yield return new ValueHash256(cursor.Value);
@@ -152,6 +158,23 @@ public static class PbtOfflineSource
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    /// <summary>Writes the <see cref="PreimageKeyLength"/>-byte preimage key of the account at the Keccak path <paramref name="addressHash"/>.</summary>
+    public static void WriteAccountPreimageKey(Span<byte> key, in ValueHash256 addressHash)
+    {
+        addressHash.Bytes.CopyTo(key);
+        key[ValueHash256.MemorySize] = AccountPreimageTag;
+        key[(ValueHash256.MemorySize + 1)..].Clear();
+    }
+
+    /// <summary>Writes the <see cref="PreimageKeyLength"/>-byte preimage key of the slot at the Keccak path <paramref name="slotHash"/>
+    /// of the account at <paramref name="addressHash"/>.</summary>
+    public static void WriteSlotPreimageKey(Span<byte> key, in ValueHash256 addressHash, in ValueHash256 slotHash)
+    {
+        addressHash.Bytes.CopyTo(key);
+        key[ValueHash256.MemorySize] = SlotPreimageTag;
+        slotHash.Bytes.CopyTo(key[(ValueHash256.MemorySize + 1)..]);
     }
 
     /// <summary>Scans every account and slot of <paramref name="source"/> into <paramref name="leaves"/> as tree leaves, and
@@ -306,9 +329,7 @@ public static class PbtOfflineSource
                     _pendingLeaves++;
                     if (rawKeys is not null)
                     {
-                        addressHash.Bytes.CopyTo(_preimageKey);
-                        _preimageKey[32] = 1;
-                        ValueKeccak.Compute(slot.Bytes).Bytes.CopyTo(_preimageKey.AsSpan(33));
+                        WriteSlotPreimageKey(_preimageKey, addressHash, ValueKeccak.Compute(slot.Bytes));
                         rawKeys.Add(_preimageKey, slot.Bytes);
                     }
                     count = checked(count + 1);
@@ -318,8 +339,7 @@ public static class PbtOfflineSource
             if (rawKeys is not null)
             {
                 // The zero tag and slot-hash region keep an account ahead of its own slots.
-                Array.Clear(_preimageKey);
-                addressHash.Bytes.CopyTo(_preimageKey);
+                WriteAccountPreimageKey(_preimageKey, addressHash);
                 address.Bytes.CopyTo(_accountValue);
                 BinaryPrimitives.WriteUInt32BigEndian(_accountValue.AsSpan(Address.Size), count);
                 rawKeys.Add(_preimageKey, _accountValue);

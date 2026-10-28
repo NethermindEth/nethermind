@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
@@ -20,19 +23,11 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>Coordinates base persistence and durable snapshot conversion.</summary>
 public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
-    IPbtPersistence persistence, PbtSnapshotRepository repository, ICompactionSchedule schedule,
+    IPbtPersistence persistence, PbtSnapshotRepository repository, [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
     IStatePersistenceBarrier persistenceBarrier, ILogManager logManager, IPbtPersistedSnapshotLoader loader,
-    IPbtPersistedSnapshotCompactor compactor, CancellationToken shutdown) : IDisposable
+    IPbtPersistedSnapshotCompactor compactor, IProcessExitSource processExitSource) : IDisposable
 {
-    private readonly IPbtConfig _config = config;
-    private readonly IStateHeaderProvider _finalized = finalizedStateProvider;
-    private readonly IPbtPersistence _persistence = persistence;
-    private readonly PbtSnapshotRepository _repository = repository;
-    private readonly ICompactionSchedule _schedule = schedule;
-    private readonly IStatePersistenceBarrier _barrier = persistenceBarrier;
-    private readonly IPbtPersistedSnapshotLoader _loader = loader;
-    private readonly IPbtPersistedSnapshotCompactor _compactor = compactor;
-    private readonly CancellationToken _shutdown = shutdown;
+    private readonly CancellationToken _shutdown = processExitSource.Token;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtPersistenceManager>();
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
     private readonly ulong _backstopReorgDepth = Math.Max(config.EnableLongFinality ? config.LongFinalityMaxReorgDepth : (ulong)config.MaxReorgDepth,
@@ -40,14 +35,12 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
     // StateId is wider than an atomic write; publish immutable boxes so readers cannot observe torn roots.
     private StrongBox<StateId>? _currentPersistedState;
 
-    public IPbtConfig Configuration => _config;
-
     public StateId GetCurrentPersistedStateId()
     {
         StrongBox<StateId>? current = Volatile.Read(ref _currentPersistedState);
         if (current is null)
         {
-            using IPbtPersistence.IReader reader = _persistence.CreateReader();
+            using IPbtPersistence.IReader reader = persistence.CreateReader();
             StrongBox<StateId> loaded = new(reader.CurrentState);
             current = Interlocked.CompareExchange(ref _currentPersistedState, loaded, null) ?? loaded;
         }
@@ -56,8 +49,8 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
 
     public void ResetPersistedStateId()
     {
-        _persistence.ClearCaches();
-        using IPbtPersistence.IReader reader = _persistence.CreateReader();
+        persistence.ClearCaches();
+        using IPbtPersistence.IReader reader = persistence.CreateReader();
         Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(reader.CurrentState));
     }
 
@@ -75,10 +68,10 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         ulong depth = persisted == StateId.PreGenesis ? latest.BlockNumber + 1 : latest.BlockNumber.SaturatingSub(persisted.BlockNumber);
         if (persisted != StateId.PreGenesis && latest.BlockNumber < persisted.BlockNumber && _logger.IsWarn)
             _logger.Warn($"Latest PBT snapshot {latest} is below persisted state {persisted}.");
-        ulong nextBoundary = _schedule.NextFullCompactionAfter(persisted);
-        if (_finalized.FinalizedBlockNumber >= nextBoundary
-            && latest.BlockNumber.SaturatingSub(nextBoundary) >= (ulong)_config.MinReorgDepth
-            && _finalized.GetFinalizedHeader(nextBoundary)?.StateRoot is Hash256 root)
+        ulong nextBoundary = schedule.NextFullCompactionAfter(persisted);
+        if (finalizedStateProvider.FinalizedBlockNumber >= nextBoundary
+            && latest.BlockNumber.SaturatingSub(nextBoundary) >= (ulong)config.MinReorgDepth
+            && finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot is Hash256 root)
         {
             (PbtPersistedSnapshot?, PbtSnapshot?) candidate = FindCandidate(new(nextBoundary, root), persisted);
             if (candidate is not (null, null)) return new() { Persist = candidate };
@@ -88,33 +81,33 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
             (PbtPersistedSnapshot?, PbtSnapshot?) candidate = FindCandidate(ForcedSeed(latest), persisted);
             if (candidate is not (null, null)) return new() { Persist = candidate };
         }
-        if (_config.EnableLongFinality && _repository.Count > _config.MaxInMemoryBaseSnapshotCount)
+        if (config.EnableLongFinality && repository.Count > config.MaxInMemoryBaseSnapshotCount)
         {
-            using ArrayPoolList<StateId> ordered = _repository.GetInMemoryStates();
+            using ArrayPoolList<StateId> ordered = repository.GetInMemoryStates();
             foreach (StateId state in ordered)
             {
-                if (!_repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted)) continue;
-                if (unchecked(compacted!.To.BlockNumber - compacted.From.BlockNumber) == (ulong)_config.CompactSize
-                    && _repository.IsOnDisk(compacted.From, persisted)) return new() { Convert = compacted, ConvertRange = true };
+                if (!repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted)) continue;
+                if (unchecked(compacted!.To.BlockNumber - compacted.From.BlockNumber) == (ulong)config.CompactSize
+                    && repository.IsOnDisk(compacted.From, persisted)) return new() { Convert = compacted, ConvertRange = true };
                 compacted.Dispose();
             }
             foreach (StateId state in ordered)
             {
-                if (!_repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot)) continue;
-                if (_repository.IsOnDisk(snapshot!.From, persisted)) return new() { Convert = snapshot };
+                if (!repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot)) continue;
+                if (repository.IsOnDisk(snapshot!.From, persisted)) return new() { Convert = snapshot };
                 snapshot.Dispose();
             }
         }
-        if (_config.MaxInMemorySnapshotBytes > 0 && depth > (ulong)_config.MinReorgDepth
-            && (ulong)_repository.InMemorySnapshotBytes > _config.MaxInMemorySnapshotBytes)
+        if (config.MaxInMemorySnapshotBytes > 0 && depth > (ulong)config.MinReorgDepth
+            && (ulong)repository.InMemorySnapshotBytes > config.MaxInMemorySnapshotBytes)
         {
             // Do not skip a persisted candidate to find a memory candidate: it is the next edge to the base.
             (PbtPersistedSnapshot? persistedCandidate, PbtSnapshot? memoryCandidate) = FindCandidate(ForcedSeed(latest), persisted);
             persistedCandidate?.Dispose();
             if (memoryCandidate is not null)
             {
-                StateId head = _repository.GetLastCommittedStateId() ?? latest;
-                if (head.BlockNumber.SaturatingSub(memoryCandidate.To.BlockNumber) >= (ulong)_config.MinReorgDepth)
+                StateId head = repository.GetLastCommittedStateId() ?? latest;
+                if (head.BlockNumber.SaturatingSub(memoryCandidate.To.BlockNumber) >= (ulong)config.MinReorgDepth)
                     return new() { Persist = (null, memoryCandidate) };
                 memoryCandidate.Dispose();
             }
@@ -122,10 +115,10 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         return new();
     }
 
-    private StateId ForcedSeed(in StateId latest) => _repository.GetLastCommittedStateId() ?? _repository.GetLastSnapshotId() ?? latest;
-    private bool AcceptFinalizedRoot(StateId state) => _finalized.GetFinalizedHeader(state.BlockNumber)?.StateRoot is not { } root || state.StateRoot == root.ValueHash256;
+    private StateId ForcedSeed(in StateId latest) => repository.GetLastCommittedStateId() ?? repository.GetLastSnapshotId() ?? latest;
+    private bool AcceptFinalizedRoot(StateId state) => finalizedStateProvider.GetFinalizedHeader(state.BlockNumber)?.StateRoot is not { } root || state.StateRoot == root.ValueHash256;
     private (PbtPersistedSnapshot? Persisted, PbtSnapshot? InMemory) FindCandidate(in StateId seed, in StateId persisted) =>
-        _repository.FindCandidateToPersist(seed, persisted, (ulong)_config.CompactSize, AcceptFinalizedRoot);
+        repository.FindCandidateToPersist(seed, persisted, (ulong)config.CompactSize, AcceptFinalizedRoot);
 
     /// <summary>Evaluates at most four persistence or conversion actions.</summary>
     public async Task<bool> CheckPersistenceAsync(StateId latestSnapshot)
@@ -144,7 +137,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
                 }
                 else break;
             }
-            _repository.RemoveFinalizedPersistedForks(GetCurrentPersistedStateId(), _finalized);
+            repository.RemoveFinalizedPersistedForks(GetCurrentPersistedStateId(), finalizedStateProvider);
             return changed;
         }
         finally { _persistenceLock.Release(); }
@@ -156,21 +149,21 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         try
         {
             StateId persisted = GetCurrentPersistedStateId();
-            using ArrayPoolList<StateId> states = range ? _repository.GetInMemoryStates() : new(1) { candidate.To };
+            using ArrayPoolList<StateId> states = range ? repository.GetInMemoryStates() : new(1) { candidate.To };
             foreach (StateId state in states)
             {
                 _shutdown.ThrowIfCancellationRequested();
                 if (range && ((long)state.BlockNumber <= (long)candidate.From.BlockNumber || (long)state.BlockNumber > (long)candidate.To.BlockNumber)) continue;
-                if (!_repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot)) continue;
+                if (!repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot)) continue;
                 using (snapshot)
                 {
-                    if (!_repository.IsOnDisk(snapshot!.From, persisted) && !converted.Contains(snapshot.From)) continue;
-                    if (!_loader.ConvertAndRegister(snapshot)) continue;
+                    if (!repository.IsOnDisk(snapshot!.From, persisted) && !converted.Contains(snapshot.From)) continue;
+                    if (!loader.ConvertAndRegister(snapshot)) continue;
                     converted.Add(state);
-                    _repository.RemoveMemorySource(snapshot);
-                    if (_repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted))
+                    repository.RemoveMemorySource(snapshot);
+                    if (repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted))
                     {
-                        using (compacted) _repository.RemoveMemorySource(compacted!);
+                        using (compacted) repository.RemoveMemorySource(compacted!);
                     }
                 }
             }
@@ -179,7 +172,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         finally
         {
             if (converted.Count == 0) converted.Dispose();
-            else await _compactor.EnqueueAsync(converted, GetCurrentPersistedStateId().BlockNumber, _shutdown);
+            else await compactor.EnqueueAsync(converted, GetCurrentPersistedStateId().BlockNumber, _shutdown);
         }
     }
 
@@ -189,14 +182,14 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         try
         {
             StateId persisted = GetCurrentPersistedStateId();
-            StateId? head = _repository.GetLastCommittedStateId() ?? _repository.GetLastSnapshotId();
+            StateId? head = repository.GetLastCommittedStateId() ?? repository.GetLastSnapshotId();
             if (head is null) return persisted;
             while (!cancellationToken.IsCancellationRequested && (persisted == StateId.PreGenesis || persisted.BlockNumber < head.Value.BlockNumber))
             {
                 StateId seed = head.Value;
-                ulong finalized = _finalized.FinalizedBlockNumber;
+                ulong finalized = finalizedStateProvider.FinalizedBlockNumber;
                 if ((persisted == StateId.PreGenesis || finalized > persisted.BlockNumber)
-                    && _finalized.GetFinalizedHeader(finalized)?.StateRoot is Hash256 root) seed = new(finalized, root);
+                    && finalizedStateProvider.GetFinalizedHeader(finalized)?.StateRoot is Hash256 root) seed = new(finalized, root);
                 (PbtPersistedSnapshot? persistedCandidate, PbtSnapshot? memoryCandidate) = FindCandidate(seed, persisted);
                 if (persistedCandidate is null && memoryCandidate is null) break;
                 using (persistedCandidate)
@@ -212,9 +205,9 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
     private void Persist((PbtPersistedSnapshot? Persisted, PbtSnapshot? InMemory) candidate, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _barrier.FlushDeferred();
+        persistenceBarrier.FlushDeferred();
         StateId to = candidate.InMemory?.To ?? candidate.Persisted!.To;
-        using (IPbtPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(candidate.InMemory?.From ?? candidate.Persisted!.From, to,
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(candidate.InMemory?.From ?? candidate.Persisted!.From, to,
             candidate.InMemory?.TreeRoot ?? candidate.Persisted!.TreeRoot))
         {
             if (candidate.InMemory is { } snapshot)
@@ -231,9 +224,9 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
             batch.Commit();
         }
         Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(to));
-        _repository.RemoveSiblingAndDescendents(to);
-        _repository.RemoveStatesUntil(to.BlockNumber);
-        _repository.RemovePersistedStatesBefore(to.BlockNumber);
+        repository.RemoveSiblingAndDescendents(to);
+        repository.RemoveStatesUntil(to.BlockNumber);
+        repository.RemovePersistedStatesBefore(to.BlockNumber);
     }
 
     public bool DropStateNotReachableFrom(in StateId head)
@@ -242,7 +235,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         try
         {
             StateId persisted = GetCurrentPersistedStateId();
-            if (!_repository.TryRemoveUnreachableFrom(head, persisted, out int removed))
+            if (!repository.TryRemoveUnreachableFrom(head, persisted, out int removed))
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot reset PBT head to {head}: its state is unavailable or does not descend from persisted state {persisted}.");
                 return false;

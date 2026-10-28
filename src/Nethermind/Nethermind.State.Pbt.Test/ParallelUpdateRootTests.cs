@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -742,7 +743,7 @@ public class ParallelUpdateRootTests
             _persisted = persisted;
             Assert.That(Buffer.TryLocate(RootPointer, out PbtGroupRecord record), Is.True);
             using PbtGroupRecordBufferPin parent = Buffer.PinHead();
-            RootPointer = Buffer.Append(default, record.Payload.Span, unknownLinks ? default : record.Links);
+            RootPointer = Buffer.Append(default, record.Payload.Span, unknownLinks ? default : MemoryMarshal.AsRef<PbtGroupRecordHeader>(record.Span).Links);
             DiscardUncommittedState();
             _groups[default] = RootPointer;
         }

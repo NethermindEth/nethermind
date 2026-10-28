@@ -117,8 +117,7 @@ public class PbtExportTests
 
             IPersistence flatPersistence = Substitute.For<IPersistence>();
             flatPersistence.CreateReader().Returns(Substitute.For<IPersistence.IPersistenceReader>());
-            IDbFactory dbFactory = Substitute.For<IDbFactory>();
-            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(Path.GetTempPath());
+            IDbFactory dbFactory = PbtTestLeaves.ScratchDbFactory(Path.GetTempPath());
             IDbProvider dbProvider = Substitute.For<IDbProvider>();
             dbProvider.CodeDb.Returns(new MemDb());
 

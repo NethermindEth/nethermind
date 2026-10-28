@@ -364,7 +364,7 @@ public class MigrationBalFollowerTests
             using FileStream preimages = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin"));
             PbtConfig config = new();
             PbtRocksDbPersistence target = new(_target, config, NullTrieNodeLog.Instance);
-            await new PbtAnchorImport(target, _target, _pbt.PersistenceManager, _blockTree, new PbtLeafIngestion(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), ScratchFactory(), config, LimboLogs.Instance), config, LimboLogs.Instance)
+            await new PbtAnchorImport(target, _target, _pbt.PersistenceManager, _blockTree, PbtTestLeaves.LeafIngestion(target, config, _scratch.Path), config, LimboLogs.Instance)
                 .ImportSnapshot(snapshot, preimages, anchor, _scratch.Path, default);
         }
 
@@ -375,13 +375,6 @@ public class MigrationBalFollowerTests
             _target.Dispose();
             _balDb.Dispose();
             _scratch.Dispose();
-        }
-
-        private IDbFactory ScratchFactory()
-        {
-            IDbFactory dbFactory = Substitute.For<IDbFactory>();
-            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(_scratch.Path);
-            return dbFactory;
         }
     }
     public class AcquisitionTests

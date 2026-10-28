@@ -14,15 +14,10 @@ namespace Nethermind.Pbt;
 /// <param name="slot">The boundary slot everything stored below the group lies under.</param>
 /// <param name="descendantBytes">The summed payload lengths of the groups stored below <paramref name="slot"/>.</param>
 /// <param name="descendantPointer">The first physical group below the continuing compressed route.</param>
-public readonly struct AbsentGroupFrame<TKey, TPath>(int bitDepth, int slot, long descendantBytes, ulong descendantPointer) : IGroupFrame<TKey, TPath>
-    where TKey : unmanaged, IPbtKey<TKey>
-    where TPath : struct, IPbtNodePath<TPath>
+public readonly struct AbsentGroupFrame(int bitDepth, int slot, long descendantBytes, ulong descendantPointer) : IGroupFrame
 {
     private readonly ushort _descendantMask = descendantBytes == 0 ? (ushort)0 : (ushort)(1 << slot);
     private readonly long _descendantBytes = descendantBytes;
-
-    /// <summary>Creates a stand-in without direct traversal metadata.</summary>
-    public AbsentGroupFrame(int bitDepth, int slot, long descendantBytes) : this(bitDepth, slot, descendantBytes, 0) { }
 
     public int BitDepth { get; } = bitDepth;
 
@@ -39,5 +34,5 @@ public readonly struct AbsentGroupFrame<TKey, TPath>(int bitDepth, int slot, lon
 
     public ReadOnlyMemory<byte> GetEncoding(int position) => default;
 
-    public void CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition) { }
+    public void CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition) { }
 }

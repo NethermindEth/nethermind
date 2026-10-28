@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
-using System.Threading;
 
-namespace Nethermind.Core.Collections;
+namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Passes <paramref name="source"/> through, handing each item it yields to the follower taken with <see cref="Tee"/>.</summary>
 /// <remarks>

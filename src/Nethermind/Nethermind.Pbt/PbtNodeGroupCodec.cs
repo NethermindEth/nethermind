@@ -144,14 +144,6 @@ public static class PbtNodeGroupCodec
     public static uint ReadAvailability(ReadOnlySpan<byte> payload) =>
         BinaryPrimitives.ReadUInt16LittleEndian(payload[^(AvailabilityLength + DescendantsLength(payload))..]);
 
-    /// <summary>Reads the subtree size of every boundary slot that has one into <paramref name="descendantBytes"/>, leaving the other slots untouched.</summary>
-    public static void ReadDescendantBytes(ReadOnlySpan<byte> payload, Span<long> descendantBytes)
-    {
-        ushort mask = ReadDescendantMask(payload);
-        for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
-            if ((mask & (1 << slot)) != 0) descendantBytes[slot] = ReadDescendantBytes(payload, mask, slot);
-    }
-
     public static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
     {
         int width = ReadDescendantWidth(payload);

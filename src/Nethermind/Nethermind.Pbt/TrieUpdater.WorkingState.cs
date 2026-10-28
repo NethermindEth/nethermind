@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Pbt.NodeBuffer;
+using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
 
@@ -22,8 +23,9 @@ public static partial class TrieUpdater<TKey, TPath>
         private const int MaxPooledWriters = 64;
 
         private static readonly ConcurrentQueue<FoldWorkingState> Pool = new();
+        private static int _count;
 
-        private readonly Stack<PbtNodeGroupWriter<TPath>> _writers = new();
+        private readonly Stack<PbtNodeGroupWriter> _writers = new();
         private readonly Stack<(byte[] Encodings, SlotNode[] Nodes)> _foldedAhead = new();
 
         /// <summary>The groups loaded from the store, readable until the state is returned.</summary>
@@ -35,32 +37,47 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>The ends of the runs <see cref="Folds"/> is folded in.</summary>
         public int[] RunEnds { get; } = new int[PbtThreeLevelGroupGeometry.BoundarySlots];
 
-        public static FoldWorkingState Rent() => Pool.TryDequeue(out FoldWorkingState? state) ? state : new FoldWorkingState();
+        public static FoldWorkingState Rent()
+        {
+            if (Volatile.Read(ref _count) > 0 && Pool.TryDequeue(out FoldWorkingState? state))
+            {
+                Interlocked.Decrement(ref _count);
+                return state;
+            }
+
+            return new FoldWorkingState();
+        }
 
         public static void Return(FoldWorkingState state)
         {
-            if (Pool.Count < MaxPooled && state.IsPoolable)
-            {
-                state.Loaded.Clear();
-                state.ClearPending();
-                Pool.Enqueue(state);
-            }
-            else
+            if (!state.IsPoolable)
             {
                 state.Dispose();
+                return;
             }
+
+            if (Interlocked.Increment(ref _count) > MaxPooled)
+            {
+                Interlocked.Decrement(ref _count);
+                state.Dispose();
+                return;
+            }
+
+            state.Loaded.Clear();
+            state.ClearPending();
+            Pool.Enqueue(state);
         }
 
         /// <summary>A writer of an empty group at <paramref name="bitDepth"/>, until <see cref="ReturnWriter"/>.</summary>
-        public PbtNodeGroupWriter<TPath> RentWriter(int bitDepth)
+        public PbtNodeGroupWriter RentWriter(int bitDepth)
         {
-            if (!_writers.TryPop(out PbtNodeGroupWriter<TPath>? writer)) return new PbtNodeGroupWriter<TPath>(bitDepth);
+            if (!_writers.TryPop(out PbtNodeGroupWriter? writer)) return new PbtNodeGroupWriter(bitDepth);
 
             writer.Reset(bitDepth);
             return writer;
         }
 
-        public void ReturnWriter(PbtNodeGroupWriter<TPath> writer)
+        public void ReturnWriter(PbtNodeGroupWriter writer)
         {
             if (_writers.Count < MaxPooledWriters) _writers.Push(writer);
             else writer.Dispose();
@@ -79,7 +96,7 @@ public static partial class TrieUpdater<TKey, TPath>
         public void Dispose()
         {
             Loaded.Dispose();
-            foreach (PbtNodeGroupWriter<TPath> writer in _writers) writer.Dispose();
+            foreach (PbtNodeGroupWriter writer in _writers) writer.Dispose();
             _writers.Clear();
             DisposePending();
         }

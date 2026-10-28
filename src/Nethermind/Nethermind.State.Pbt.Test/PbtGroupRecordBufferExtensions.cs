@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.NodeBuffer;
 
-namespace Nethermind.State.Pbt.NodeBuffer;
+namespace Nethermind.State.Pbt.Test;
 
 /// <summary>Operations on the shared group record representation, independent of buffer storage policy.</summary>
 /// <remarks>

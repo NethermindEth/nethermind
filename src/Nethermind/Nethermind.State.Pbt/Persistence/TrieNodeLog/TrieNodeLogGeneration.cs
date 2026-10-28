@@ -179,14 +179,6 @@ public sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         return total;
     }
 
-    /// <summary>Materializes the value of the record at <paramref name="offset"/> whose first <paramref name="bytesRead"/> bytes are in <paramref name="buffer"/>.</summary>
-    public byte[] ReadValue(long offset, in TrieNodeLogRecord header, ReadOnlySpan<byte> buffer, int bytesRead)
-    {
-        byte[] value = new byte[header.ValueLength];
-        ReadValue(offset, header, buffer, bytesRead, value);
-        return value;
-    }
-
     /// <summary>Passes the value of the record at <paramref name="offset"/> to <paramref name="action"/>, which must not keep it.</summary>
     /// <remarks>A value the first <paramref name="bytesRead"/> bytes in <paramref name="buffer"/> hold is passed in place; a longer one is read into a pooled array.</remarks>
     public void ReadValue<TArg>(long offset, in TrieNodeLogRecord header, ReadOnlySpan<byte> buffer, int bytesRead, ReadOnlySpanAction<byte, TArg> action, TArg arg)

@@ -171,8 +171,7 @@ internal static class PbtStoreTestExtensions
         return operations.AsSpan().ToArray();
     }
 
-    internal static void Write<TPath>(this PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
-        where TPath : struct, IPbtNodePath<TPath>
+    internal static void Write(this PbtNodeGroupWriter writer, scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
     {
         if (PbtNodeGroupCodec.ShouldOmit(position, encoding)) return;
         writer.ValidateEntry(path, position, encoding);
@@ -209,11 +208,10 @@ internal static class PbtStoreTestExtensions
         ReadGroup(path.ToPath<PbtStorageNodePath>(), payload);
 
     /// <summary>Finishes the writer's group into an array of its own, or returns null for an empty group.</summary>
-    internal static byte[]? Detach<TPath>(this PbtNodeGroupWriter<TPath> writer, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
-        where TPath : struct, IPbtNodePath<TPath>
+    internal static byte[]? Detach(this PbtNodeGroupWriter writer, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
-        byte[] payload = new byte[writer.GetPayloadLength(descendantBytes, candidateSlots)];
-        writer.DetachTo(payload, descendantBytes, candidateSlots);
+        byte[] payload = new byte[writer.GetPayloadLength(descendantBytes, candidateSlots, out ushort descendantMask)];
+        writer.DetachTo(payload, descendantBytes, descendantMask);
         return payload.Length == 0 ? null : payload;
     }
 
@@ -394,7 +392,7 @@ internal static class PbtStoreTestExtensions
         while (currentPath.BitDepth <= path.BitDepth)
         {
             byte[]? encoding = GetLogicalNode(store, currentPath);
-            if (encoding is null || PbtNodePathOperations.Equal(currentPath, path)) return encoding;
+            if (encoding is null || currentPath.Equals(path.ToPath<PbtStorageNodePath>())) return encoding;
             if (PbtNodeCodec.IsLeaf(encoding)) return null;
             PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
             if (currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;

@@ -68,8 +68,8 @@ internal sealed class PbtTestContext : IAsyncDisposable
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
-            NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
-        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, GroupRecordBuffer, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
+            NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, new ProcessExitSource(CancellationToken.None));
+        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, GroupRecordBuffer, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance, Config);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, GroupRecordBuffer, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }

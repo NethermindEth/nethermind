@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using NUnit.Framework;
 
@@ -101,14 +100,14 @@ public class WorldStateDbDeciderModuleTests
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, PointerSeed.BlockInfosEntry, 936ul, Description = "Import mode falls back to the trie pointer while flat is empty")]
     public void IStateBoundary_ReadsBackendPointer(Flags flags, PointerSeed seed, ulong? expected)
     {
-        ContainerBuilder builder = new ContainerBuilder()
+        using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .Intercept<IFlatDbConfig>((cfg) =>
             {
                 cfg.Enabled = flags.HasFlag(Flags.Enabled);
                 cfg.ImportFromPruningTrieState = flags.HasFlag(Flags.ImportFromPruningTrieState);
-            });
-        using IContainer container = builder.Build();
+            })
+            .Build();
 
         if (flags.HasFlag(Flags.FlatHasData))
             WriteFlatCurrentState(container, 1);

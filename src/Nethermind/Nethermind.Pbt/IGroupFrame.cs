@@ -3,11 +3,9 @@
 
 namespace Nethermind.Pbt;
 
-/// <summary>The group a fold composes one frame against: a stored <see cref="GroupFrameReader{TKey, TPath}"/> or an <see cref="AbsentGroupFrame{TKey, TPath}"/>.</summary>
+/// <summary>The group a fold composes one frame against: a stored <see cref="GroupFrameReader{TKey, TPath}"/> or an <see cref="AbsentGroupFrame"/>.</summary>
 /// <remarks>The fold is generic over the frame, so the absent case is decided once where the frame opens and costs no check per access.</remarks>
-public interface IGroupFrame<TKey, TPath>
-    where TKey : unmanaged, IPbtKey<TKey>
-    where TPath : struct, IPbtNodePath<TPath>
+public interface IGroupFrame
 {
     int BitDepth { get; }
 
@@ -21,7 +19,7 @@ public interface IGroupFrame<TKey, TPath>
     ushort DescendantMask { get; }
 
     /// <summary>The pointer of the first physical descendant group owned by the boundary slot, or 0 when it is not in the buffer.</summary>
-    ulong DescendantPointer(int slot) => 0;
+    ulong DescendantPointer(int slot);
 
     /// <summary>The positions the group stores an encoding at.</summary>
     uint StoredPositions { get; }
@@ -30,5 +28,5 @@ public interface IGroupFrame<TKey, TPath>
     ReadOnlyMemory<byte> GetEncoding(int position);
 
     /// <summary>Copies the stored encodings from <paramref name="startPosition"/> up to <paramref name="endPosition"/> into <paramref name="writer"/>.</summary>
-    void CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition);
+    void CopyRange(PbtNodeGroupWriter writer, int startPosition, int endPosition);
 }

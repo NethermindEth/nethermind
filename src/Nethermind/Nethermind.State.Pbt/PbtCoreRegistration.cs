@@ -4,7 +4,6 @@
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
-using Nethermind.Config;
 using Nethermind.Api.Monitoring;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -44,19 +43,11 @@ public static class PbtCoreRegistration
             .AddSingleton<IPbtGroupRecordBuffer, IPbtConfig>(c => new PbtGroupRecordBuffer(c.CompressedGroupRecordBufferMemoryBudget,
                 PbtGroupRecordBuffer.DefaultGenerationBytes))
             .AddPbtPersisted(config)
-            .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
-                ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
-                ctx.Resolve<PbtPersistedPublicationGate>()))
+            .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
             .AddKeyedSingleton<ICompactionSchedule>(DbNames.Pbt, ctx => CreateCompactionSchedule(ctx.ResolveKeyed<IDb>(DbNames.Metadata), config, ctx.Resolve<ILogManager>()))
-            .AddSingleton<PbtPersistenceManager>(ctx => new PbtPersistenceManager(
-                config, ctx.Resolve<IStateHeaderProvider>(), ctx.Resolve<IPbtPersistence>(), ctx.Resolve<PbtSnapshotRepository>(),
-                ctx.ResolveKeyed<ICompactionSchedule>(DbNames.Pbt), ctx.Resolve<IStatePersistenceBarrier>(), ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IPbtPersistedSnapshotLoader>(), ctx.Resolve<IPbtPersistedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
-            .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
-                ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceManager>(), ctx.Resolve<IPbtPersistence>(),
-                ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<IPbtGroupRecordBuffer>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtPersistedSnapshotLoader>()))
+            .AddSingleton<PbtPersistenceManager>()
+            .AddSingleton<IPbtDbManager, PbtDbManager>()
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()

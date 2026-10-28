@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -193,14 +194,8 @@ public sealed class PbtCodeReassembly : IDisposable
         }
         catch (AggregateException failures)
         {
-            Exception failure = failures.Flatten().InnerExceptions[0];
-            foreach (Exception cause in failures.Flatten().InnerExceptions)
-            {
-                if (cause is OperationCanceledException) continue;
-                failure = cause;
-                break;
-            }
-            ExceptionDispatchInfo.Capture(failure).Throw();
+            ReadOnlyCollection<Exception> causes = failures.Flatten().InnerExceptions;
+            ExceptionDispatchInfo.Capture(causes.FirstOrDefault(static cause => cause is not OperationCanceledException) ?? causes[0]).Throw();
         }
         finally
         {

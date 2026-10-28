@@ -29,8 +29,8 @@ public static class PbtOfflineExport
         if (Directory.Exists(output) || File.Exists(output)) throw new IOException("Export destination already exists.");
         Directory.CreateDirectory(output);
         if (logger.IsInfo) logger.Info($"Exporting the EIP-8347 anchor {anchor.Header.ToString(BlockHeader.Format.Short)} to {output}.");
-        using (FileStream snapshot = new(Path.Combine(output, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
-        using (FileStream? preimages = includePreimages ? new(Path.Combine(output, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None) : null)
+        using (FileStream snapshot = new(Path.Combine(output, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 20))
+        using (FileStream? preimages = includePreimages ? new(Path.Combine(output, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 1 << 20) : null)
         {
             if (!isAnchorCurrent()) throw new InvalidOperationException("Export anchor is no longer current.");
             PbtArtifactWriter.PbtArtifactDigests digests = PbtOfflineSource.WriteArtifacts(source, code, anchor,

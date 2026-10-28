@@ -73,11 +73,7 @@ public static partial class TrieUpdater<TKey, TPath>
         public ulong GroupPointer { get; init; }
 
         public readonly bool IsEmpty => _encoding.IsEmpty;
-        /// <summary>The encoding this node is read from: its own, or the branch that inlines it.</summary>
-        private readonly ReadOnlyMemory<byte> Encoding => _encoding;
         public readonly bool IsLeaf => _source != LeafSource.None;
-        /// <summary>Where this leaf's key is read from, or <see cref="LeafSource.None"/> for a branch.</summary>
-        private readonly LeafSource Source => _source;
         /// <summary>The number of leading key bytes this node's inline keys omit, which a cursor through it supplies.</summary>
         public readonly int KeyOffset => PbtNodeCodec.InlineKeyOffset(_anchorDepth);
         /// <summary>A leaf's key past <see cref="KeyOffset"/>, read from the branch that inlines it or from its own encoding.</summary>
@@ -169,7 +165,7 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>The boundary node <paramref name="frame"/> stores at <paramref name="position"/>.</summary>
         /// <param name="hash">The node's hash from its parent's link, or default for a branch when not known.</param>
         public static BoundaryNode StoredAt<TFrame>(scoped ref TFrame frame, int position, in ValueHash256 hash)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
+            where TFrame : struct, IGroupFrame
         {
             ReadOnlyMemory<byte> encoding = frame.GetEncoding(position);
             if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
@@ -179,11 +175,11 @@ public static partial class TrieUpdater<TKey, TPath>
 
         /// <summary>The leaf inlined in the branch <paramref name="frame"/> stores at <paramref name="position"/>, which stores no node of its own.</summary>
         public static BoundaryNode InlineLeafAt<TFrame>(scoped ref TFrame frame, int position, bool right)
-            where TFrame : struct, IGroupFrame<TKey, TPath> =>
+            where TFrame : struct, IGroupFrame =>
             new(frame.GetEncoding(position), AnchorDepthAt(ref frame, position), right);
 
         private static int AnchorDepthAt<TFrame>(scoped ref TFrame frame, int position)
-            where TFrame : struct, IGroupFrame<TKey, TPath> =>
+            where TFrame : struct, IGroupFrame =>
             frame.BitDepth + PbtThreeLevelGroupGeometry.LocalPathOf(position).Length;
 
         /// <summary>Takes a node read under a wider key type, which a fold below the root group continues under its own.</summary>
@@ -191,6 +187,6 @@ public static partial class TrieUpdater<TKey, TPath>
         public static BoundaryNode TakeFrom<TSourceKey, TSourcePath>(in TrieUpdater<TSourceKey, TSourcePath>.BoundaryNode source)
             where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath> =>
-            new(source.Encoding, source.AnchorDepth, source.Hash, source.Source) { GroupPointer = source.GroupPointer };
+            new(source._encoding, source.AnchorDepth, source.Hash, source._source) { GroupPointer = source.GroupPointer };
     }
 }

@@ -49,11 +49,12 @@ public sealed class PbtAnchorImport(
         cancellationToken.ThrowIfCancellationRequested();
         anchor.Validate();
         Stopwatch importing = Stopwatch.StartNew();
-        if (ImportedEarlier(anchor)) return;
+        byte[] provenance = Provenance(anchor);
+        if (ImportedEarlier(anchor, provenance)) return;
 
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
         if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor changed before the import.");
-        RecoverStaging(anchor, cancellationToken);
+        RecoverStaging(provenance, cancellationToken);
         using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ImportSortBufferBytes, logManager, cancellationToken);
         verifier?.SpoolPreimages(preimages!);
         (ValueHash256 root, ulong accounts, ulong slots) = await leafIngestion.Ingest(Leaves, new StateId(anchor.Header), claimedRoot, VerifyStaged, cancellationToken);
@@ -75,13 +76,9 @@ public sealed class PbtAnchorImport(
     }
 
     /// <summary>Whether this anchor was already imported.</summary>
-    private bool ImportedEarlier(PbtImageAnchor anchor)
+    private bool ImportedEarlier(PbtImageAnchor anchor, byte[] provenance)
     {
-        if (!target.IsValid || !targetDb.GetColumnDb(PbtColumns.Metadata).TryGet(_provenanceKey, static (prepared, provenance) =>
-            {
-                if (!prepared.SequenceEqual(provenance))
-                    throw new InvalidDataException("The native PBT database was imported from another migration source.");
-            }, Provenance(anchor))) return false;
+        if (!target.IsValid || !HasProvenance(provenance, "The native PBT database was imported from another migration source.")) return false;
         if (_logger.IsInfo) _logger.Info($"PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} was imported earlier; reusing it.");
         return true;
     }
@@ -98,15 +95,19 @@ public sealed class PbtAnchorImport(
                 $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");
     }
 
-    private void RecoverStaging(PbtImageAnchor anchor, CancellationToken token)
+    /// <summary>Whether a provenance is stored, refusing one other than <paramref name="provenance"/>.</summary>
+    /// <exception cref="InvalidDataException">The stored provenance differs, with <paramref name="mismatchMessage"/>.</exception>
+    private bool HasProvenance(byte[] provenance, string mismatchMessage) =>
+        targetDb.GetColumnDb(PbtColumns.Metadata).TryGet(_provenanceKey, static (prepared, expected) =>
+        {
+            if (!prepared.SequenceEqual(expected.provenance))
+                throw new InvalidDataException(expected.mismatchMessage);
+        }, (provenance, mismatchMessage));
+
+    private void RecoverStaging(byte[] provenance, CancellationToken token)
     {
-        byte[] provenance = Provenance(anchor);
         IDb metadata = targetDb.GetColumnDb(PbtColumns.Metadata);
-        if (metadata.TryGet(_provenanceKey, static (prepared, provenance) =>
-            {
-                if (!prepared.SequenceEqual(provenance))
-                    throw new InvalidDataException("Unpublished native anchor belongs to another bootstrap source.");
-            }, provenance))
+        if (HasProvenance(provenance, "Unpublished native anchor belongs to another bootstrap source."))
         {
             foreach (PbtColumns column in targetDb.ColumnKeys)
             {

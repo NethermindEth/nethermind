@@ -12,9 +12,6 @@ public readonly struct PbtGroupRecord(ReadOnlyMemory<byte> buffer, int offset)
     private readonly ReadOnlyMemory<byte> _buffer = buffer;
     private readonly int _offset = offset;
 
-    /// <summary>Whether this references no record.</summary>
-    public bool IsNull => _buffer.Equals(default);
-
     /// <summary>The whole record: header and payload.</summary>
     public ReadOnlySpan<byte> Span
     {
@@ -25,16 +22,11 @@ public readonly struct PbtGroupRecord(ReadOnlyMemory<byte> buffer, int offset)
         }
     }
 
-    public PbtGroupRecordKind Kind => (PbtGroupRecordKind)_buffer.Span[_offset];
-
     /// <summary>The canonical path of the physical group.</summary>
     public PbtStorageNodePath Path => Header.Path;
 
     /// <summary>The unchanged canonical group encoding, without buffer metadata.</summary>
     public ReadOnlyMemory<byte> Payload => _buffer.Slice(_offset + PbtGroupRecordCodec.HeaderLength, Header.PayloadLength);
-
-    /// <summary>A copy of the boundary links, for inheriting the untouched slots of a replacement group.</summary>
-    public PbtGroupLinks Links => Header.Links;
 
     private ref readonly PbtGroupRecordHeader Header => ref MemoryMarshal.AsRef<PbtGroupRecordHeader>(_buffer.Span[_offset..]);
 

@@ -12,9 +12,6 @@ public sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToken,
     private CancellationTokenSource? _cancellation;
     private Task _pending = Task.CompletedTask;
     private bool _disposed;
-    private string? _error;
-
-    public string? Error => Volatile.Read(ref _error);
 
     public void Schedule(BlockHeader target)
     {
@@ -35,22 +32,14 @@ public sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToken,
                         cancellation.Token.ThrowIfCancellationRequested();
                         try
                         {
-                            if (await follow(target, cancellation.Token))
-                            {
-                                Volatile.Write(ref _error, null);
-                                break;
-                            }
-                            Volatile.Write(ref _error, "BAL catch-up is stalled; required canonical data is unavailable.");
+                            if (await follow(target, cancellation.Token)) break;
                         }
-                        catch (Exception exception) when (exception is not OperationCanceledException)
-                        {
-                            Volatile.Write(ref _error, exception.Message);
-                        }
+                        catch (Exception exception) when (exception is not OperationCanceledException) { }
                         await Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token);
                     }
                 }
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-                catch (Exception exception) { Volatile.Write(ref _error, exception.Message); }
+                catch (Exception) { }
                 finally
                 {
                     lock (_gate)
@@ -61,11 +50,6 @@ public sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToken,
                 }
             });
         }
-    }
-
-    public void Cancel()
-    {
-        lock (_gate) _cancellation?.Cancel();
     }
 
     public async ValueTask DisposeAsync()

@@ -633,17 +633,10 @@ public class PbtAnchorImportTests
             _anchorImport = null;
         }
 
-        private IDbFactory WorkDbFactory()
-        {
-            IDbFactory dbFactory = Substitute.For<IDbFactory>();
-            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(WorkDb.Path);
-            return dbFactory;
-        }
-
         private PbtAnchorImport CreateAnchorImport()
         {
             PbtRocksDbPersistence target = new(Target, _config, NullTrieNodeLog.Instance);
-            return new PbtAnchorImport(target, Target, Pbt.PersistenceManager, BlockTree, new PbtLeafIngestion(target, new PbtRebuilder(target, _config, _config.ImportConcurrency, LimboLogs.Instance), WorkDbFactory(), _config, LimboLogs.Instance), _config, LimboLogs.Instance);
+            return new PbtAnchorImport(target, Target, Pbt.PersistenceManager, BlockTree, PbtTestLeaves.LeafIngestion(target, _config, WorkDb.Path), _config, LimboLogs.Instance);
         }
 
         public async Task Publish(CancellationToken cancellationToken = default)

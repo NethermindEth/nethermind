@@ -639,7 +639,7 @@ public class ImportPbtFromPreimageFlatTests
             .AddSingleton<PbtRocksDbPersistence>(rawPersistence)
             .AddSingleton<IPbtPersistence>(rawPersistence)
             .AddDecorator<IPbtPersistence>((_, _) => cachedWrapper)
-            .AddSingleton<IDbFactory>(ScratchFactory())
+            .AddSingleton<IDbFactory>(PbtTestLeaves.ScratchDbFactory(Path.GetTempPath()))
             .AddSingleton<IPbtConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<PbtRebuilder, PbtRocksDbPersistence, IPbtConfig, ILogManager>(
@@ -754,15 +754,10 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     private static ImportPbtFromPreimageFlat CreateStep(IPersistence source, IDb codes, IColumnsDb<PbtColumns> db, PbtRocksDbPersistence target, PbtConfig config,
-        string? scratchDirectory = null) =>
-        new(source, codes, db,
-            new PbtLeafIngestion(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), ScratchFactory(scratchDirectory), config, LimboLogs.Instance), target, ScratchFactory(scratchDirectory), config, LimboLogs.Instance);
-
-    private static IDbFactory ScratchFactory(string? directory = null)
+        string? scratchDirectory = null)
     {
-        IDbFactory dbFactory = Substitute.For<IDbFactory>();
-        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(directory ?? Path.GetTempPath());
-        return dbFactory;
+        string directory = scratchDirectory ?? Path.GetTempPath();
+        return new(source, codes, db, PbtTestLeaves.LeafIngestion(target, config, directory), target, PbtTestLeaves.ScratchDbFactory(directory), config, LimboLogs.Instance);
     }
 
     private static PreimageRocksdbPersistence CreateSource(SnapshotableMemColumnsDb<FlatDbColumns> flatDb, Action<IPersistence.IWriteBatch> write)

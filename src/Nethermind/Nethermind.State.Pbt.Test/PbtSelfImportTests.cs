@@ -84,12 +84,10 @@ public class PbtSelfImportTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         await using PbtTestContext pbt = new(pbtDb, config);
         PbtRocksDbPersistence target = new(pbtDb, config, NullTrieNodeLog.Instance);
-        IDbFactory dbFactory = Substitute.For<IDbFactory>();
-        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(scratch.Path);
         PbtSelfImport selfImport = new(flatSource, codeDb, pbtDb, target, pbt.PersistenceManager,
-            new PbtLeafIngestion(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), dbFactory, config, LimboLogs.Instance),
+            PbtTestLeaves.LeafIngestion(target, config, scratch.Path),
             blockTree, new BalFetcher(Substitute.For<ISyncPeerPool>(), blockTree, balStore, new SyncConfig(), LimboLogs.Instance),
-            balStore, dbFactory, config, LimboLogs.Instance);
+            balStore, PbtTestLeaves.ScratchDbFactory(scratch.Path), config, LimboLogs.Instance);
 
         if (scenario != "complete")
         {

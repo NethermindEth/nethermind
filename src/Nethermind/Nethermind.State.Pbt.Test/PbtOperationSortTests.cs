@@ -31,7 +31,7 @@ public class PbtOperationSortTests
             .Select(index =>
             {
                 int length = keyLength != 0 ? keyLength : random.Next(1, PbtVariableTreeKey.MaxLength + 1);
-                if (index % keysPerStem == 0) stem = RandomBytes(random, PbtVariableTreeKey.MaxLength);
+                if (index % keysPerStem == 0) stem = SortedTrieUpdaterTests.RandomBytes(random, PbtVariableTreeKey.MaxLength);
                 byte[] key = stem[..length];
                 key[^1] = (byte)(index % keysPerStem);
                 return create(key);
@@ -47,12 +47,5 @@ public class PbtOperationSortTests
         PbtWriteOperation<TKey>[] expected = [.. operations.OrderBy(static operation => operation.Key)];
         PbtOperationSort.Sort(operations.AsSpan());
         Assert.That(operations, Is.EqualTo(expected));
-    }
-
-    private static byte[] RandomBytes(Random random, int length)
-    {
-        byte[] bytes = new byte[length];
-        random.NextBytes(bytes);
-        return bytes;
     }
 }
