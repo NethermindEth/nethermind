@@ -167,8 +167,11 @@ public class KeyedNonceManagerTests
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 0);
 
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, UInt256.Zero), Is.EqualTo(1UL));
-        Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(3UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, UInt256.Zero), Is.EqualTo(1UL));
+            Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(3UL));
+        }
     }
 
     [Test]
