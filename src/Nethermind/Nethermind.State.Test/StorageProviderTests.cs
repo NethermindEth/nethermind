@@ -732,8 +732,11 @@ public partial class StorageProviderTests(bool useFlat)
         provider.Set(other, (UInt256)9);
         Assert.That(ReadSlot(provider, slot2), Is.EqualTo((UInt256)5), "a write in the same transaction is read back");
         provider.Restore(Snapshot.EmptyPosition, beforeSlot2, Snapshot.EmptyPosition);
-        Assert.That(ReadSlot(provider, slot2), Is.EqualTo(UInt256.Zero), "the reverted write is gone");
-        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "the committed slot is unaffected by the revert");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, slot2), Is.EqualTo(UInt256.Zero), "the reverted write is gone");
+            Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "the committed slot is unaffected by the revert");
+        }
         if (discardSecondTransaction) provider.Reset(resetBlockChanges: false);
         else provider.Commit(Frontier.Instance);
 
@@ -1172,9 +1175,12 @@ public partial class StorageProviderTests(bool useFlat)
         provider.SetTransientState(new StorageCell(ctx.Address1, 1), new UInt256(_values[3], isBigEndian: true));
         snapshots[3] = provider.TakeSnapshot();
 
-        Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
-        // Persistent storage is unimpacted by transient storage
-        Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Is.EqualTo(snapshots[snapshot + 1].StorageSnapshot.TransientStorageSnapshot));
+            // Persistent storage is unimpacted by transient storage
+            Assert.That(snapshots[snapshot + 1].StorageSnapshot.PersistentStorageSnapshot, Is.EqualTo(-1));
+        }
 
         provider.Restore(snapshots[snapshot + 1]);
 
@@ -1653,10 +1659,13 @@ public partial class StorageProviderTests(bool useFlat)
         {
             snapshot--;
         }
-        Assert.That(snapshots[0].StorageSnapshot, Is.EqualTo(Snapshot.Storage.Empty));
-        Assert.That(snapshots[1].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0)));
-        Assert.That(snapshots[2].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(0, 1)));
-        Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshots[0].StorageSnapshot, Is.EqualTo(Snapshot.Storage.Empty));
+            Assert.That(snapshots[1].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(Snapshot.EmptyPosition, 0)));
+            Assert.That(snapshots[2].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(0, 1)));
+            Assert.That(snapshots[3].StorageSnapshot, Is.EqualTo(new Snapshot.Storage(1, 1)));
+        }
 
         provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue25);
         Assert.That(storageValue25, Is.EqualTo(new UInt256(_values[snapshot + 1], isBigEndian: true)));
@@ -2309,9 +2318,12 @@ public partial class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        Assert.That(baseBlock.StateRoot, Is.Not.EqualTo(originalStateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseBlock.StateRoot, Is.Not.EqualTo(originalStateRoot));
 
-        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+            Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+        }
         ctx.WrittenData.Clear();
 
         using (provider.BeginScope(baseBlock))
@@ -2327,9 +2339,12 @@ public partial class StorageProviderTests(bool useFlat)
             baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
         }
 
-        Assert.That(baseBlock.StateRoot, Is.EqualTo(originalStateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseBlock.StateRoot, Is.EqualTo(originalStateRoot));
 
-        Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+            Assert.That(ctx.WrittenData.SelfDestructed[TestItem.AddressA], Is.True);
+        }
     }
 
     [Test]

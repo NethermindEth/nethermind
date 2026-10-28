@@ -150,9 +150,12 @@ public class QuorumCertificateManagerTest
 
         Assert.That(() => quorumCertificateManager.Initialize(genesisBlock), Throws.Nothing);
         Assert.That(context.HighestQC, Is.Not.Null);
-        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
-        Assert.That(context.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
-        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+            Assert.That(context.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+            Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+        }
     }
 
     [Test]
@@ -342,8 +345,11 @@ public class QuorumCertificateManagerTest
 
         blockTree.OnUpdateMainChain += Raise.EventWith(blockTree, new OnUpdateMainChainArgs([genesisHeader], true));
 
-        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
-        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+            Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+        }
     }
 
     [Test]

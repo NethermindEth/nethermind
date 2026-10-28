@@ -143,10 +143,13 @@ public class FilterTests
         Filter filter = new();
         using JsonDocument doc = JsonDocument.Parse(json);
         filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-        Assert.That(filter.Address, Is.EqualTo(expectation.Address));
-        Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
-        Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
-        Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Address, Is.EqualTo(expectation.Address));
+            Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
+            Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
+            Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
+        }
     }
 
     [TestCase("""{"address":"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5g"}""", typeof(FormatException))]

@@ -113,8 +113,11 @@ public class HistoricalTraceReExecutionTests
         {
             using IDisposable scope = worldState.BeginScope(historicalHeader);
 
-            Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
-            Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
+                Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
+            }
 
             worldState.AddToBalance(ExistingAddr, 50, spec);
             worldState.IncrementNonce(ExistingAddr);

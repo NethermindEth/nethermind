@@ -314,9 +314,12 @@ internal class NodeRecordBulkSetTests
         while (warmed.TryGet(null, currentPath, out NodeRecord record, out ulong pointer))
         {
             linked++;
-            Assert.That(record.Hash, Is.EqualTo(currentHash));
-            Assert.That(ValueKeccak.Compute(record.Rlp), Is.EqualTo(record.Hash));
-            Assert.That(NodeRecordCodec.IsTransient(pointer), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(record.Hash, Is.EqualTo(currentHash));
+                Assert.That(ValueKeccak.Compute(record.Rlp), Is.EqualTo(record.Hash));
+                Assert.That(NodeRecordCodec.IsTransient(pointer), Is.True);
+            }
             if (record.Kind == NodeRecordKind.Leaf) break;
             int slot = record.Kind == NodeRecordKind.Extension ? 0 : leafPath[currentPath.Length];
             ChildRef child = record.View.Child(slot);
@@ -326,8 +329,11 @@ internal class NodeRecordBulkSetTests
                 Assert.That(missingLeaf, Is.True, "a complete warmed path must link every hashed child");
                 break;
             }
-            Assert.That(warmed.TryLocate(child.Pointer, out NodeRecord linkedChild) && linkedChild.Hash == child.Data, Is.True);
-            Assert.That(child.Pointer, Is.EqualTo(pointer + (ulong)NodeRecordCodec.AlignedLength(record.Span.Length)), "the path is written in one batch, in descent order");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warmed.TryLocate(child.Pointer, out NodeRecord linkedChild) && linkedChild.Hash == child.Data, Is.True);
+                Assert.That(child.Pointer, Is.EqualTo(pointer + (ulong)NodeRecordCodec.AlignedLength(record.Span.Length)), "the path is written in one batch, in descent order");
+            }
             if (record.Kind == NodeRecordKind.Extension)
             {
                 record.View.CopyKey(0, extensionKey);

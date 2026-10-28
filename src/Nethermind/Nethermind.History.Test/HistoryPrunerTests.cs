@@ -1134,7 +1134,9 @@ public class HistoryPrunerTests
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         byte[] cursor = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
 
+#pragma warning disable NUnit2045 // The cursor must exist before it is decoded.
         Assert.That(cursor, Is.Not.Null, "without this write the boundary is durable and the reclaim behind it is not");
+#pragma warning restore NUnit2045
         Assert.That(new RlpReader(cursor).DecodeULong(), Is.EqualTo(36UL));
     }
 

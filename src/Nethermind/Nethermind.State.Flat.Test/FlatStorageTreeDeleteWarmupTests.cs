@@ -50,8 +50,11 @@ public class FlatStorageTreeDeleteWarmupTests
         // the warm-up dedupe: the delete hint must still be queued.
         long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: true, out Hash256 storageRoot, hintWithoutValueFirst);
 
-        Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads), "the commit read collapse siblings the warm-up should have loaded");
-        Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads), "the commit read collapse siblings the warm-up should have loaded");
+            Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
+        }
     }
 
     [Test]
@@ -64,8 +67,11 @@ public class FlatStorageTreeDeleteWarmupTests
         long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: false, out Hash256 storageRoot);
 
         // Not a requirement: it shows these deletes do collapse branches, so the test above can fail.
-        Assert.That(deleteLoads, Is.GreaterThan(updateLoads));
-        Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleteLoads, Is.GreaterThan(updateLoads));
+            Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
+        }
     }
 
     private static UInt256 Slot(int index) => new(Keccak.Compute(BitConverter.GetBytes(index)).Bytes, isBigEndian: true);

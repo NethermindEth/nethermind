@@ -36,6 +36,10 @@ namespace Nethermind.Init.Modules;
 
 public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
+    private const string VerifyTrieDirectory = "verify-trie";
+    private const string PersistedSnapshotDirectory = "persistedSnapshot";
+    private const string TrieNodeLogDirectory = "flatTrieNodeLog";
+
     protected override void Load(ContainerBuilder builder)
     {
         builder
@@ -44,7 +48,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
             .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, ILogManager, IInitConfig>((flatDbManager, persistence, logManager, initConfig) =>
-                new FlatTrieVerifier(flatDbManager, persistence, logManager, Path.Combine(initConfig.BaseDbPath, "verify-trie")))
+                new FlatTrieVerifier(flatDbManager, persistence, logManager, VerifyTrieDirectory.GetApplicationResourcePath(initConfig.BaseDbPath)))
             .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
@@ -70,12 +74,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<IArenaManager, IFlatDbConfig, IInitConfig, ILogManager>((cfg, initConfig, logManager) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                string basePath = PersistedSnapshotDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
                 return new ArenaManager(Path.Combine(basePath, "arena"), cfg, logManager);
             })
             .AddSingleton<BlobArenaManager, IFlatDbConfig, IInitConfig>((cfg, initConfig) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "persistedSnapshot");
+                string basePath = PersistedSnapshotDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
                 return new BlobArenaManager(
                     Path.Combine(basePath, "blob"),
                     cfg.ArenaFileSizeBytes);
@@ -105,12 +109,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(
                     nameof(DbNames.PersistedSnapshotCatalog),
-                    Path.Combine("persistedSnapshot", "catalog"))))
+                    Path.Combine(PersistedSnapshotDirectory, "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFileSystem, ILogManager>((cfg, initConfig, db, fileSystem, logManager) =>
             {
-                string basePath = fileSystem.Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
+                string basePath = TrieNodeLogDirectory.GetApplicationResourcePath(initConfig.BaseDbPath);
                 // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
                 // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
                 if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, fileSystem, cfg))

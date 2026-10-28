@@ -198,8 +198,11 @@ namespace Nethermind.Trie.Test
             Assert.That(memDb.Keys, Has.Count.EqualTo(2));
 
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+            }
         }
 
         [Test]
@@ -253,12 +256,15 @@ namespace Nethermind.Trie.Test
             byte[] emptyByte = [];
             byte[] emptyByteCompactEncoded = { 0 };
 
-            Assert.That(checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
-            Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.GetNodeByKey(emptyByte, patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
+                Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
 
-            Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
-            Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
-            Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
+                Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
+                Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
+                Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
+            }
         }
 
         // [Test]
@@ -293,9 +299,12 @@ namespace Nethermind.Trie.Test
             trieStore.PersistCache(CancellationToken.None);
             Assert.That(memDb.Keys, Has.Count.EqualTo(6));
             PatriciaTree checkTree = CreateCheckTree(trieStore, patriciaTree);
-            Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
-            Assert.That(checkTree.Get(_keyC).ToArray(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(checkTree.Get(_keyA).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyB).ToArray(), Is.Empty);
+                Assert.That(checkTree.Get(_keyC).ToArray(), Is.Empty);
+            }
         }
 
         public void Test_add_many(int i)

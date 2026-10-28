@@ -67,9 +67,12 @@ public class FlatDbManagerPersistedTests
 
         IFlatDbManager manager = tier.Resolve<IFlatDbManager>();
         using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(to);
-        Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Not.Null);
 
-        Assert.That(tier.Repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase), Is.True);
+            Assert.That(tier.Repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase), Is.True);
+        }
         Assert.That(bundle.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)42));
     }
 

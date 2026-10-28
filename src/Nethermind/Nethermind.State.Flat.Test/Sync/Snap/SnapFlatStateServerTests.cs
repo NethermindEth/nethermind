@@ -130,8 +130,11 @@ public class SnapFlatStateServerTests
         using (slots)
         using (proofs)
         {
-            Assert.That(slots, Is.Empty);
-            Assert.That(proofs, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(slots, Is.Empty);
+                Assert.That(proofs, Is.Empty);
+            }
         }
     }
 

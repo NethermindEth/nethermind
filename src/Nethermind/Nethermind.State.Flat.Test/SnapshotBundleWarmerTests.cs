@@ -178,8 +178,11 @@ public class SnapshotBundleWarmerTests
         using SnapshotPooledList snapshots = new(1);
         using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _buffer, snapshots, address);
 
-        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => source.TryLoad(TreePath.Empty, root.Hash, action, nodes)), Is.EqualTo(rlp));
-        Assert.That(reader.Reads, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => source.TryLoad(TreePath.Empty, root.Hash, action, nodes)), Is.EqualTo(rlp));
+            Assert.That(reader.Reads, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -517,11 +520,16 @@ public class SnapshotBundleWarmerTests
         try
         {
             ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Pointer).ToArray() : snapshot!.StateNodes.Select(node => node.Pointer).ToArray();
-            Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
-            Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
+                Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
+            }
             // A published record linking a warmed child would end the walk through the real buffer early.
             WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeBuffer);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer, 0).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer, 0).Count()), "published records cannot retain temporary children");
+#pragma warning restore NUnit2045
 
             Assert.That(retired.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out _, out ulong warmedRoot), Is.True);
             (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot, 0).ToArray();

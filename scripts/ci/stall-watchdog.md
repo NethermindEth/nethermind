@@ -3,7 +3,7 @@
 Run a Linux command with output monitoring:
 
 ```sh
-dotnet run --file scripts/ci/RunWithStallWatchdog.cs -- dotnet build path/to/project.csproj
+dotnet run --file scripts/ci/run-with-stall-watchdog.cs -- dotnet build path/to/project.csproj
 ```
 
 The command runs in its own process group. Its output is forwarded to the console and
@@ -32,7 +32,7 @@ last 5 MB. Linux `setsid`, `kill`, and standard process diagnostic tools must be
 Run the regression suite with:
 
 ```sh
-CI=true dotnet run --file scripts/ci/TestStallWatchdog.cs
+CI=true dotnet run --file scripts/ci/test-stall-watchdog.cs
 ```
 
 Linux exercises real process groups and bounded diagnostic commands using isolated

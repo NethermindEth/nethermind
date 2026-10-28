@@ -58,10 +58,13 @@ public class EciesCipherTests
         byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
-        Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
-        Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
-        Assert.That(authMessage.Version, Is.EqualTo(4));
-        Assert.That(authMessage.Signature, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
+            Assert.That(authMessage.Version, Is.EqualTo(4));
+            Assert.That(authMessage.Signature, Is.Not.Null);
+        }
     }
 
     [Test]
@@ -79,11 +82,14 @@ public class EciesCipherTests
         byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes));
 
         AuthMessage authMessage = _messageSerializationService.Deserialize<AuthMessage>(deciphered);
-        Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
-        Assert.That(Keccak.Compute(NetTestVectors.EphemeralKeyA.PublicKey.Bytes), Is.EqualTo(authMessage.EphemeralPublicHash));
-        Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
-        Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
-        Assert.That(authMessage.Signature, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(Keccak.Compute(NetTestVectors.EphemeralKeyA.PublicKey.Bytes), Is.EqualTo(authMessage.EphemeralPublicHash));
+            Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
+            Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
+            Assert.That(authMessage.Signature, Is.Not.Null);
+        }
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
 
@@ -113,10 +119,13 @@ public class EciesCipherTests
         byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
-        Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
-        Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
-        Assert.That(authMessage.Version, Is.EqualTo(4));
-        Assert.That(authMessage.Signature, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
+            Assert.That(authMessage.Version, Is.EqualTo(4));
+            Assert.That(authMessage.Signature, Is.Not.Null);
+        }
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
 
@@ -136,9 +145,12 @@ public class EciesCipherTests
         byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes));
 
         AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(deciphered);
-        Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
-        Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
-        Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
+            Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
+            Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
+        }
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
         Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
@@ -169,9 +181,12 @@ public class EciesCipherTests
         byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
-        Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
-        Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
-        Assert.That(ackMessage.Version, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
+            Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
+            Assert.That(ackMessage.Version, Is.EqualTo(4));
+        }
 
         using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
 
@@ -204,9 +219,12 @@ public class EciesCipherTests
         byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
-        Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
-        Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
-        Assert.That(ackMessage.Version, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
+            Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
+            Assert.That(ackMessage.Version, Is.EqualTo(4));
+        }
     }
 
     [Test]

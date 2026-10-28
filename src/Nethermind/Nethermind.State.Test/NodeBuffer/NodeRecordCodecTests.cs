@@ -112,23 +112,26 @@ internal class NodeRecordCodecTests
     private static void AssertChildren(NodeRecordRef view, TrieNode node)
     {
         int childCount = node.IsBranch ? 16 : node.IsExtension ? 1 : 0;
-        for (int i = 0; i < childCount; i++)
+        using (Assert.EnterMultipleScope())
         {
-            ChildRef child = view.Child(i);
-            Assert.That(child.Pointer, Is.Zero, $"child {i} pointer");
-            if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+            for (int i = 0; i < childCount; i++)
             {
-                Assert.That(child.Kind, Is.EqualTo(ChildRefKind.Hash), $"child {i} kind");
-                Assert.That(child.Data, Is.EqualTo(childHash), $"child {i} hash");
-            }
-            else if (node.GetInlineNodeRlp(i) is { } inlineRlp)
-            {
-                Assert.That(child.Kind, Is.EqualTo(ChildRefKind.Inline), $"child {i} kind");
-                Assert.That(child.InlineRlp.ToArray(), Is.EqualTo(inlineRlp), $"child {i} inline RLP");
-            }
-            else
-            {
-                Assert.That(child.Kind, Is.EqualTo(ChildRefKind.Empty), $"child {i} kind");
+                ChildRef child = view.Child(i);
+                Assert.That(child.Pointer, Is.Zero, $"child {i} pointer");
+                if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                {
+                    Assert.That(child.Kind, Is.EqualTo(ChildRefKind.Hash), $"child {i} kind");
+                    Assert.That(child.Data, Is.EqualTo(childHash), $"child {i} hash");
+                }
+                else if (node.GetInlineNodeRlp(i) is { } inlineRlp)
+                {
+                    Assert.That(child.Kind, Is.EqualTo(ChildRefKind.Inline), $"child {i} kind");
+                    Assert.That(child.InlineRlp.ToArray(), Is.EqualTo(inlineRlp), $"child {i} inline RLP");
+                }
+                else
+                {
+                    Assert.That(child.Kind, Is.EqualTo(ChildRefKind.Empty), $"child {i} kind");
+                }
             }
         }
     }

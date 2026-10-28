@@ -124,14 +124,17 @@ public class BloomFilterTests
         batched.Add(batch.AsSpan(0, 3));
         batched.Add(batch.AsSpan(3));
 
-        Assert.That(plain.Count, Is.EqualTo(keys));
-        Assert.That(batched.Count, Is.EqualTo(keys));
-        // Same bits set means the same answer for every probe, members and non-members alike.
-        for (ulong probe = 0; probe < 50_000; probe++)
+        using (Assert.EnterMultipleScope())
         {
-            ulong key = probe * 0xC2B2AE3D27D4EB4FUL;
-            Assert.That(plain.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"probe {probe}");
-            Assert.That(batched.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"batched probe {probe}");
+            Assert.That(plain.Count, Is.EqualTo(keys));
+            Assert.That(batched.Count, Is.EqualTo(keys));
+            // Same bits set means the same answer for every probe, members and non-members alike.
+            for (ulong probe = 0; probe < 50_000; probe++)
+            {
+                ulong key = probe * 0xC2B2AE3D27D4EB4FUL;
+                Assert.That(plain.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"probe {probe}");
+                Assert.That(batched.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"batched probe {probe}");
+            }
         }
     }
 

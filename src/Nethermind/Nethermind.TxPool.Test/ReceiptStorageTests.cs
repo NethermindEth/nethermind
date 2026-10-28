@@ -92,9 +92,12 @@ namespace Nethermind.TxPool.Test
             Hash256 blockHash = storage.FindBlockHash(transaction.Hash);
             Assert.That(blockHash, Is.EqualTo(block.Hash));
             TxReceipt fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
-            Assert.That(receipt.StatusCode, Is.EqualTo(fetchedReceipt.StatusCode));
-            Assert.That(receipt.PostTransactionState, Is.EqualTo(fetchedReceipt.PostTransactionState));
-            Assert.That(receipt.TxHash, Is.EqualTo(transaction.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.StatusCode, Is.EqualTo(fetchedReceipt.StatusCode));
+                Assert.That(receipt.PostTransactionState, Is.EqualTo(fetchedReceipt.PostTransactionState));
+                Assert.That(receipt.TxHash, Is.EqualTo(transaction.Hash));
+            }
             if (clearSender)
             {
                 Assert.That(receipt.Sender, Is.EqualTo(TestItem.AddressA));

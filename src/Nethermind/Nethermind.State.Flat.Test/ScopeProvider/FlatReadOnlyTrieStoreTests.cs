@@ -74,8 +74,11 @@ public class FlatReadOnlyTrieStoreTests
 
         using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
 
-        Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
-        Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+            Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        }
     }
 
     [Test]
@@ -107,15 +110,21 @@ public class FlatReadOnlyTrieStoreTests
     [Test]
     public void BeginCommit_ReturnsNullCommitter_NoOps()
     {
-        Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);
-        Assert.That(_store.BeginCommit(null, null, WriteFlags.None), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);
+            Assert.That(_store.BeginCommit(null, null, WriteFlags.None), Is.Not.Null);
+        }
     }
 
     [Test]
     public void GetTrieStore_ReturnsScopedAdapter()
     {
-        Assert.That(_store.GetTrieStore(TestItem.KeccakA), Is.Not.Null);
-        Assert.That(_store.GetTrieStore(null), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.GetTrieStore(TestItem.KeccakA), Is.Not.Null);
+            Assert.That(_store.GetTrieStore(null), Is.Not.Null);
+        }
     }
 
     [Test]

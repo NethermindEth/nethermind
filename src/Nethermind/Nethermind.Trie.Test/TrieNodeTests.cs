@@ -181,8 +181,11 @@ public class TrieNodeTests
     {
         foreach (TrieNode child in children)
         {
-            Assert.That(child.FullRlp.Length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
-            Assert.That(child.Keccak, Is.EqualTo(Keccak.Compute(child.FullRlp.AsSpan())));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(child.FullRlp.Length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+                Assert.That(child.Keccak, Is.EqualTo(Keccak.Compute(child.FullRlp.AsSpan())));
+            }
         }
     }
 
@@ -429,13 +432,19 @@ public class TrieNodeTests
             {
                 if (childIndex < nonNullChildrenCount)
                 {
-                    Assert.That(trieNode.IsChildNull(childIndex), Is.False, $"original {childIndex}");
-                    Assert.That(restoredNode.IsChildNull(childIndex), Is.False, $"restored {childIndex}");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(trieNode.IsChildNull(childIndex), Is.False, $"original {childIndex}");
+                        Assert.That(restoredNode.IsChildNull(childIndex), Is.False, $"restored {childIndex}");
+                    }
                 }
                 else
                 {
-                    Assert.That(trieNode.IsChildNull(childIndex), Is.True, $"original {childIndex}");
-                    Assert.That(restoredNode.IsChildNull(childIndex), Is.True, $"restored {childIndex}");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(trieNode.IsChildNull(childIndex), Is.True, $"original {childIndex}");
+                        Assert.That(restoredNode.IsChildNull(childIndex), Is.True, $"restored {childIndex}");
+                    }
                 }
             }
         }
@@ -490,8 +499,11 @@ public class TrieNodeTests
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
         decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
-        Assert.That(decodedTiniest.Value, Is.SequenceEqualTo(ctx.TiniestLeaf.Value), "value");
-        Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedTiniest.Value, Is.SequenceEqualTo(ctx.TiniestLeaf.Value), "value");
+            Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
+        }
     }
 
     [Test]
@@ -597,9 +609,12 @@ public class TrieNodeTests
         TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0);
         decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
 
-        Assert.That(decodedTiniest.Value, Is.SequenceEqualTo(ctx.TiniestLeaf.Value), "value");
-        Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
-            "key");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedTiniest.Value, Is.SequenceEqualTo(ctx.TiniestLeaf.Value), "value");
+            Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
+                "key");
+        }
     }
 
     [Test]
@@ -814,8 +829,11 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-        Assert.That(visitor.VisitExtensionReceived[(TreePath.Empty, node)], Is.EqualTo(1));
-        Assert.That(visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())], Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(visitor.VisitExtensionReceived[(TreePath.Empty, node)], Is.EqualTo(1));
+            Assert.That(visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())], Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -986,8 +1004,11 @@ public class TrieNodeTests
             node.SetChild(i, ctx.AccountLeaf);
         }
 
-        Assert.That(node.GetMemorySize(true), Is.EqualTo(3376));
-        Assert.That(node.GetMemorySize(false), Is.EqualTo(176));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.GetMemorySize(true), Is.EqualTo(3376));
+            Assert.That(node.GetMemorySize(false), Is.EqualTo(176));
+        }
     }
 
     [Test]
@@ -1009,8 +1030,11 @@ public class TrieNodeTests
         trieNode.Key = new byte[] { 1 };
         trieNode.SetChild(0, ctx.TiniestLeaf);
 
-        Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
-        Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(232));
+            Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(96));
+        }
     }
 
     [Test]
@@ -1238,9 +1262,12 @@ public class TrieNodeTests
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
-        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 0), Is.EqualTo(child));
-        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 1), Is.Null);
-        Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 4), Is.EqualTo(child));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 0), Is.EqualTo(child));
+            Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 1), Is.Null);
+            Assert.That(trieNode.GetChild(trieStore, ref emptyPath, 4), Is.EqualTo(child));
+        }
     }
 
     [Test]
@@ -1564,8 +1591,11 @@ public class TrieNodeTests
         TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(small));
 
         CappedArray<byte> result = node.FullRlp;
-        Assert.That(result.IsNotNull, Is.True);
-        Assert.That(result.Length, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsNotNull, Is.True);
+            Assert.That(result.Length, Is.EqualTo(10));
+        }
         Assert.That(result.UnderlyingArray, Is.SameAs(small));
     }
 

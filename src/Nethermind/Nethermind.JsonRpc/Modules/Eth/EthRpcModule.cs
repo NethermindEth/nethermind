@@ -403,7 +403,9 @@ public partial class EthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
-        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
+        // A frame transaction priced per gas buys max_gas at those prices, which only a fork can price.
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : null;
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(spec: frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
         {
             return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
@@ -446,7 +448,8 @@ public partial class EthRpcModule(
             return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
         }
 
-        Result<Transaction> txResult = rpcTx.ToSignableTransaction();
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } frameHead ? _specProvider.GetSpec(frameHead) : null;
+        Result<Transaction> txResult = rpcTx.ToSignableTransaction(frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
             return ResultWrapper<SignTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
 
@@ -1017,8 +1020,7 @@ public partial class EthRpcModule(
         if (filterId > int.MaxValue)
             return ResultWrapper<bool?>.Success(false);
 
-        _blockchainBridge.UninstallFilter((int)filterId);
-        return ResultWrapper<bool?>.Success(true);
+        return ResultWrapper<bool?>.Success(_blockchainBridge.UninstallFilter((int)filterId));
     }
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)

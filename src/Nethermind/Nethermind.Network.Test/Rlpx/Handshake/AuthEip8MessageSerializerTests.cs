@@ -33,10 +33,13 @@ public class AuthEip8MessageSerializerTests
         byte[] data = _serializer.Serialize(authMessage);
         AuthEip8Message after = _serializer.Deserialize(data);
 
-        Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
-        Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
-        Assert.That(Bytes.AreEqual(authMessage.Nonce, after.Nonce), Is.True);
-        Assert.That(after.Version, Is.EqualTo(authMessage.Version));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
+            Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(Bytes.AreEqual(authMessage.Nonce, after.Nonce), Is.True);
+            Assert.That(after.Version, Is.EqualTo(authMessage.Version));
+        }
     }
 
     [TestCase(BlockchainIds.Mainnet)]

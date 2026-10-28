@@ -192,8 +192,11 @@ public class ResourcePoolTests
     {
         TransientResource resource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         Assert.That(resource, Is.Not.Null);
-        Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
-        Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
+            Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+        }
     }
 
     [Test]
@@ -258,9 +261,12 @@ public class ResourcePoolTests
         TransientResource p2 = _resourcePool.GetCachedResource(usage);
         TransientResource p3 = _resourcePool.GetCachedResource(usage);
 
-        Assert.That(p1, Is.SameAs(r2)); // LIFO
-        Assert.That(p2, Is.SameAs(r1));
-        Assert.That(p3, Is.Not.SameAs(r3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p1, Is.SameAs(r2)); // LIFO
+            Assert.That(p2, Is.SameAs(r1));
+            Assert.That(p3, Is.Not.SameAs(r3));
+        }
     }
 
     [Test]
@@ -273,9 +279,12 @@ public class ResourcePoolTests
         SnapshotContent content;
         using (Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage))
         {
-            Assert.That(snapshot.From, Is.EqualTo(from));
-            Assert.That(snapshot.To, Is.EqualTo(to));
-            Assert.That(snapshot.Content, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot.From, Is.EqualTo(from));
+                Assert.That(snapshot.To, Is.EqualTo(to));
+                Assert.That(snapshot.Content, Is.Not.Null);
+            }
             content = snapshot.Content;
         }
 

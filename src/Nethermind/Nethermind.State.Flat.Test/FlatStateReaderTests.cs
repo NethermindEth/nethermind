@@ -133,9 +133,11 @@ public class FlatStateReaderTests
             AccountProofCollector collector = new(TestItem.AddressA, [(UInt256)1]);
             reader.RunTreeVisitor(collector, header);
             AccountProof proof = collector.BuildResult();
+#pragma warning disable NUnit2045 // The lengths are prerequisites for indexing the proofs below; keep them fail-fast.
             Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.StorageProofs, Has.Length.EqualTo(1));
             Assert.That(proof.StorageProofs[0].Proof, Has.Length.EqualTo(1));
+#pragma warning restore NUnit2045
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
