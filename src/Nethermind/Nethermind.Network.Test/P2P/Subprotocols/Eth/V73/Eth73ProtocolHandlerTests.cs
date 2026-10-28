@@ -254,12 +254,13 @@ public class Eth73ProtocolHandlerTests
         Handle(cellsResponse, Eth72MessageCode.Cells);
         await WrapperTestNode.Until(() => { lock (_node.Pending) return _node.Pending.Any(t => t.Hash == blob.Hash); });
 
+        // The registry releases the body once the pool's admission returns, just after the pool holds it.
+        await WrapperTestNode.Until(() => !_registry.IsAwaitingCells(blob.Hash!));
         Transaction admitted;
         lock (_node.Pending) admitted = _node.Pending.Single(t => t.Hash == blob.Hash);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(((ShardBlobNetworkWrapper)admitted.NetworkWrapper!).CellMask, Is.EqualTo(requested));
-            Assert.That(_registry.IsAwaitingCells(blob.Hash!), Is.False, "the pin passes to the pool on admission");
             _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
     }
