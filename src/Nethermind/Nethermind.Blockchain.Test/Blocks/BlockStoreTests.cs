@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
@@ -148,40 +150,212 @@ public class BlockStoreTests
     }
 
     [Test]
-    public void Test_getReceiptRecoveryBlock_produce_same_transaction_as_normal_get()
+    public void Test_getReceiptRecoveryBlock_produce_same_transaction_as_normal_get([Values] bool native, [Values] bool legacy)
     {
-        TestMemDb db = new();
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
 
-        store.Insert(block);
+        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        else store.Insert(block);
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
-
-        Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
-        Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
-
-        for (int i = 0; i < retrieved.TransactionCount; i++)
+        try
         {
-            block.Transactions[i].Data = Array.Empty<byte>();
-            Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
+                Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
+                for (int i = 0; i < retrieved.TransactionCount; i++)
+                {
+                    block.Transactions[i].Data = Array.Empty<byte>();
+                    Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
+                }
+            }
+        }
+        finally
+        {
+            retrieved.Dispose();
+            retrieved.Dispose();
+        }
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(legacy ? 2 : 1));
+                Assert.That(pinned.Released, Is.EqualTo(1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
         }
     }
 
     [Test]
-    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db()
+    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db([Values] bool native, [Values] bool empty)
     {
-        TestMemDb db = new();
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
+        if (empty)
+        {
+            db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
+            db[block.Hash.Bytes] = [];
+        }
         ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
 
         Assert.That(result, Is.Null);
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(2));
+                Assert.That(pinned.Released, Is.EqualTo(empty ? 2 : 0));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Recovery_empty_numbered_value_releases_its_handle_before_legacy_fallback()
+    {
+        using PinnedTestDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
+        db[block.Hash.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash)!.Value;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovery.Hash, Is.EqualTo(block.Hash));
+                Assert.That(db.Released, Is.EqualTo(1));
+                Assert.That(db.LiveHandles, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+        Assert.That(db.LiveHandles, Is.Zero);
+    }
+
+    [Test]
+    public void Recovery_transaction_is_owned_after_the_block_lease_ends([Values] bool zeroHandle)
+    {
+        using TestMemDb db = zeroHandle ? new NativeTestMemDb() : new PinnedTestDb();
+        BlockStore store = new(db);
+        Transaction tx = Build.A.Transaction.WithData([1, 2, 3]).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+        byte[] expected = TxDecoder.Instance.Encode(tx).Bytes;
+        store.Insert(block);
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        Transaction escaped;
+        try
+        {
+            // A zero-handle native store lends a movable array; recovery must own a copy, not its pointer.
+            foreach (byte[] value in db.Values) value.AsSpan().Fill(0);
+            escaped = recovery.GetTransaction(0);
+        }
+        finally
+        {
+            recovery.Dispose();
+            recovery.Dispose();
+        }
+        Assert.That(TxDecoder.Instance.Encode(escaped).Bytes, Is.EqualTo(expected));
+        if (db is PinnedTestDb pinned)
+        {
+            Assert.That(() => recovery.GetTransaction(0), Throws.InstanceOf<ObjectDisposedException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.Released, Is.EqualTo(1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Recovery_decode_failure_releases_the_native_handle([Values] bool nullBlock)
+    {
+        using PinnedTestDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = nullBlock ? [0xc0] : [0x01];
+
+        if (nullBlock) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash), Is.Null);
+        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash), Throws.InstanceOf<RlpException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Released, Is.EqualTo(1));
+            Assert.That(db.LiveHandles, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Recovery_cache_and_pending_paths_do_not_acquire_native_handles([Values] bool pending)
+    {
+        using PinnedTestDb db = new();
+        StatePersistenceBarrier barrier = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter(barrier);
+        BlockStore store = new(db, deferredWriter: writer, persistenceBarrier: barrier);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        if (pending) store.InsertDeferred(block);
+        else store.Cache(block);
+
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovery.GetTransaction(0), Is.SameAs(block.Transactions[0]));
+                Assert.That(db.NativeReads, Is.Zero);
+                Assert.That(db.LiveHandles, Is.Zero);
+            }
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    private sealed class PinnedTestDb : TestMemDb, IReadOnlyNativeKeyValueStore, IDisposable
+    {
+        private readonly Dictionary<nint, byte[]> _pins = [];
+        public int NativeReads { get; private set; }
+        public int Released { get; private set; }
+        public int LiveHandles => _pins.Count;
+
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+        {
+            NativeReads++;
+            handle = 0;
+            byte[]? value = Get(key, flags);
+            if (value is null) return null;
+            byte[] bytes = (byte[])value.Clone();
+            GCHandle pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            handle = GCHandle.ToIntPtr(pin);
+            _pins.Add(handle, bytes);
+            return bytes;
+        }
+
+        public void DangerousReleaseHandle(nint handle)
+        {
+            if (!_pins.Remove(handle, out byte[]? bytes)) throw new InvalidOperationException("Native handle released twice.");
+            bytes.AsSpan().Fill(0xff);
+            GCHandle.FromIntPtr(handle).Free();
+            Released++;
+        }
+
+        public new void Dispose()
+        {
+            foreach (nint handle in _pins.Keys) GCHandle.FromIntPtr(handle).Free();
+            _pins.Clear();
+            base.Dispose();
+        }
     }
 
     [Test]
