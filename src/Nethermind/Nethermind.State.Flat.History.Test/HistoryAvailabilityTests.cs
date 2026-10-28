@@ -84,4 +84,26 @@ public class HistoryAvailabilityTests
             Assert.That(_availability.RootMatches(MarkedBlock + 3, Keccak.Zero), Is.False, "a marker shorter than a root");
         }
     }
+
+    [Test]
+    public void RootMatches_AnswersAMatchFromMemory_UntilAMarkerWriterForgetsIt([Values] bool throughWatermark)
+    {
+        Assert.That(_availability.RootMatches(MarkedBlock, TestItem.KeccakA), Is.True, "precondition: the marker matches");
+        using (IWriteBatch batch = AvailableBlocks.StartWriteBatch())
+        {
+            HistoryAvailability.UnmarkBlock(batch, MarkedBlock);
+        }
+
+        bool remembered = _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
+        bool otherRoot = _availability.RootMatches(MarkedBlock, TestItem.KeccakB);
+        if (throughWatermark) _availability.PublishWatermark(MarkedBlock, HistoryAvailability.FormatVersion);
+        else _availability.ForgetMatchedRoots();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remembered, Is.True, "every transaction of a traced block asks again, and the database is not read again");
+            Assert.That(otherRoot, Is.False, "a remembered match answers only for the root it was read with");
+            Assert.That(_availability.RootMatches(MarkedBlock, TestItem.KeccakA), Is.False, "once the writer that removed the marker says so, the database is read again");
+        }
+    }
 }

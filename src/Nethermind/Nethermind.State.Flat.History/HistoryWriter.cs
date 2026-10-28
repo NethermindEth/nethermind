@@ -287,6 +287,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             if (_logger.IsWarn) _logger.Warn($"Could not remove the flat history marker for block {watermark}; it stays as an orphan ({e.Message}).");
         }
+        finally
+        {
+            _availability.ForgetMatchedRoots();
+        }
     }
 
     /// <summary>Capture runs before every flat persist, so a flat state persisted above the watermark means history was

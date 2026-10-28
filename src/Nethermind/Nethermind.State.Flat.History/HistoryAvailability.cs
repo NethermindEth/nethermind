@@ -65,6 +65,15 @@ public sealed class HistoryAvailability
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
 
+    // Matching markers, one per slot, so every transaction of a traced block does not read its block's marker again.
+    // A marker may be rewritten or removed only by a writer that bumps _rootsGeneration after the write lands, and an
+    // entry counts only under the generation it was read at, so a cached match never outlives its marker.
+    private const int MatchedRootSlots = 16;
+    private readonly MatchedRoot?[] _matchedRoots = new MatchedRoot?[MatchedRootSlots];
+    private long _rootsGeneration;
+
+    private sealed record MatchedRoot(ulong Block, ValueHash256 StateRoot, long Generation);
+
     internal long CaptureGeneration => Volatile.Read(ref _captureGeneration);
 
     internal void MarkCapturePublished() => Interlocked.Increment(ref _captureGeneration);
@@ -170,6 +179,11 @@ public sealed class HistoryAvailability
     /// independent of coverage.</summary>
     public bool RootMatches(ulong block, in ValueHash256 stateRoot)
     {
+        long generation = Volatile.Read(ref _rootsGeneration);
+        ref MatchedRoot? matched = ref _matchedRoots[(int)(block % MatchedRootSlots)];
+        if (Volatile.Read(ref matched) is { } known && known.Block == block && known.Generation == generation && known.StateRoot == stateRoot)
+            return true;
+
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
         Span<byte> capturedRoot = stackalloc byte[RootBytes];
@@ -184,8 +198,15 @@ public sealed class HistoryAvailability
             return false;
         }
 
-        return length == RootBytes && capturedRoot.SequenceEqual(stateRoot.Bytes);
+        if (length != RootBytes || !capturedRoot.SequenceEqual(stateRoot.Bytes)) return false;
+
+        Volatile.Write(ref matched, new MatchedRoot(block, stateRoot, generation));
+        return true;
     }
+
+    /// <summary>Drops every cached <see cref="RootMatches"/> answer. Call after any write that rewrites or removes a
+    /// block marker has landed.</summary>
+    internal void ForgetMatchedRoots() => Interlocked.Increment(ref _rootsGeneration);
 
     /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>
     internal byte? StampedFormatVersion => _availableBlocks.Get(FormatVersionKey) is { Length: 1 } value ? value[0] : null;
@@ -284,6 +305,7 @@ public sealed class HistoryAvailability
         Volatile.Write(ref _observedWatermark, -1);
         Volatile.Write(ref _observedFloor, -1);
         Volatile.Write(ref _cachedScopes, null);
+        ForgetMatchedRoots();
     }
 
     /// <summary>The block an unwindowed history recorded its snap-pivot image at; false when it started at genesis.</summary>
@@ -531,6 +553,8 @@ public sealed class HistoryAvailability
     /// </summary>
     public void PublishWatermark(ulong watermark, byte formatVersion)
     {
+        // Every writer marks its blocks before it publishes the watermark that covers them.
+        ForgetMatchedRoots();
         if (TryGetWatermark(out ulong current) && current >= watermark)
         {
             return;
