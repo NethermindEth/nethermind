@@ -157,20 +157,24 @@ public sealed partial class KeccakHash
                     return ComputeHash256(destination);
                 }
 
-                return CopyAndSponge(AlignedDown((ulong*)from), AlignedDown((ulong*)to), (int)(((nuint)from & 7) << 3), (nuint)(uint)source.Length);
+                return CopyAndSponge(AlignedDown((ulong*)from), (ulong*)to, (int)(((nuint)from & 7) << 3), (nuint)(uint)source.Length);
             }
         }
     }
 
     /// <summary>Copies the <paramref name="length"/> bytes that start <paramref name="shift"/> bits into the word at
-    /// <paramref name="from"/> to <paramref name="to"/>, and computes their Keccak-256 digest.</summary>
+    /// <paramref name="source"/> to <paramref name="destination"/>, and computes their Keccak-256 digest.</summary>
     /// <param name="shift">8 to 56.</param>
     /// <param name="length">At least one rate block.</param>
-    /// <remarks><paramref name="to"/> must not lie above <paramref name="from"/>: each word is stored only after the
-    /// source word past it is loaded. The tail past the last whole block is copied first and absorbed from the copy.</remarks>
+    /// <remarks><paramref name="destination"/> must not lie above <paramref name="source"/>: each word is stored only after
+    /// the source word past it is loaded. The tail past the last whole block is copied first and absorbed from the copy.
+    /// </remarks>
     [SkipLocalsInit]
-    private static unsafe ValueHash256 CopyAndSponge(ulong* from, ulong* to, int shift, nuint length)
+    private static unsafe ValueHash256 CopyAndSponge(ulong* source, ulong* destination, int shift, nuint length)
     {
+        // Both are aligned already. The JIT proves no access through a parameter aligned, but does through a local rounded.
+        ulong* from = AlignedDown(source);
+        ulong* to = AlignedDown(destination);
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         nuint whole = length / HASH_DATA_AREA * HASH_DATA_AREA;
