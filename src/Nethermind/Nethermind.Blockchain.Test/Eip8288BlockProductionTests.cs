@@ -750,6 +750,30 @@ public class Eip8288BlockProductionTests
         }
     }
 
+    [Test]
+    public async Task Scheduled_production_proof_is_bounded_to_a_prefix_of_a_large_backlog()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency[] backlog = [.. Enumerable.Range(0, 12).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"backlog-{i}"), default))];
+        for (int i = 0; i < backlog.Length; i++)
+        {
+            proofs.AddVerified([backlog[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, backlog[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Twelve witnesses need three leaves and two merges; the budget allows two leaves and one merge.
+        HashSet<FrameDependency> all = [.. backlog];
+        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
+        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > 8), Is.False);
+    }
+
     [TestCase(1, false)]
     [TestCase(8, true)]
     public async Task Scheduled_production_proof_extends_a_proven_subset_only_when_cheaper(int provenCount, bool extended)

@@ -329,6 +329,10 @@ public partial class BlockProcessor(
 
     private const int MaxExtensionCandidates = 4;
 
+    /// <summary>Estimated cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) above which a scheduled statement is cut to
+    /// a nonce-ordered prefix of the body: two recursive merges and a leaf, about two slots on a two-thread prover.</summary>
+    internal const long MaxScheduledStatementCost = 2 * RecursiveStarkAggregator.MergeCost + 4 * RecursiveStarkAggregator.SignatureCost;
+
     /// <summary>Offers the verified recursive proofs of the inclusion lists as reusable statements.</summary>
     /// <remarks>
     /// A rebuild under a deadline keeps only transactions whose dependencies form a proven statement. A verified list proof is one,
@@ -381,18 +385,43 @@ public partial class BlockProcessor(
         }
         HashSet<FrameDependency> pending = includable.NeededAfter(provenLimit);
         if (pending.Count == 0) return;
+        List<RecursiveProofInput> overlaps = store.ProvenOverlaps(pending, MaxExtensionCandidates);
+        (AggregationInput scheduled, long cost) = Cheapest(pending);
+        if (cost > MaxScheduledStatementCost)
+        {
+            // A statement over the whole backlog can take many slots while more arrives; prove a nonce-ordered prefix that fits
+            // the budget instead, and let later passes take the rest.
+            pending = includable.BoundedNeed(provenLimit, pending, set => Cheapest(set).Cost, MaxScheduledStatementCost);
+            if (pending.Count == 0) return;
+            (scheduled, cost) = Cheapest(pending);
+        }
         List<FrameDependency> target = pending.Count == deps.Count ? deps : Eip8288Dependencies.Canonicalize(pending);
         if (store.TryGetRecursiveProof(target, out _)) return;
         ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : Eip8288Dependencies.ComputeDepsHash(target);
-        AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, target);
-        long cost = RecursiveStarkAggregator.EstimatedCost(scheduled);
-        foreach (RecursiveProofInput parent in store.ProvenOverlaps(pending, MaxExtensionCandidates))
-        {
-            AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, target, parent);
-            long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
-            if (extendedCost < cost) (scheduled, cost) = (extended, extendedCost);
-        }
         _productionProofCache.TrySchedule(target, targetHash, scheduled, verifier, store);
+
+        // Folding every witness again, or extending a verified overlapping statement, whichever is estimated cheaper.
+        (AggregationInput Input, long Cost) Cheapest(HashSet<FrameDependency> set)
+        {
+            List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(set);
+            AggregationInput best = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, canonical);
+            long bestCost = RecursiveStarkAggregator.EstimatedCost(best);
+            foreach (RecursiveProofInput parent in overlaps)
+            {
+                if (!Overlaps(parent, set)) continue;
+                AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, canonical, parent);
+                long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
+                if (extendedCost < bestCost) (best, bestCost) = (extended, extendedCost);
+            }
+            return (best, bestCost);
+        }
+    }
+
+    private static bool Overlaps(RecursiveProofInput parent, HashSet<FrameDependency> set)
+    {
+        foreach (FrameDependency dependency in parent.InnerDeps)
+            if (set.Contains(dependency)) return true;
+        return false;
     }
 
     /// <summary>The transactions of a body with their dependencies and nonce domains, to simulate restricting it.</summary>
@@ -480,6 +509,33 @@ public partial class BlockProcessor(
             for (int i = 0; i < kept.Length; i++)
                 if (kept[i] && _obligated[i]) count++;
             return count;
+        }
+
+        /// <summary>The dependencies, within <paramref name="needed"/>, of the longest nonce-ordered run of transactions not kept
+        /// under <paramref name="limit"/> whose proving cost stays within <paramref name="budget"/>; the first such transaction is
+        /// always taken.</summary>
+        public HashSet<FrameDependency> BoundedNeed(IReadOnlySet<FrameDependency> limit, IReadOnlySet<FrameDependency> needed,
+            Func<HashSet<FrameDependency>, long> cost, long budget)
+        {
+            bool[] kept = new bool[_dependencies.Length];
+            Keep(limit, [], kept);
+            HashSet<(Address?, UInt256)> blocked = [];
+            HashSet<FrameDependency> selected = [];
+            for (int i = 0; i < _dependencies.Length; i++)
+            {
+                if (kept[i] || blocked.Contains(_domains[i])) continue;
+                HashSet<FrameDependency> candidate = [.. selected];
+                foreach (FrameDependency dependency in _dependencies[i])
+                    if (needed.Contains(dependency)) candidate.Add(dependency);
+                if (candidate.Count == selected.Count) continue;
+                if (selected.Count != 0 && cost(candidate) > budget)
+                {
+                    blocked.Add(_domains[i]);
+                    continue;
+                }
+                selected = candidate;
+            }
+            return selected;
         }
 
         /// <summary>The dependencies the body still needs once the transactions kept under <paramref name="limit"/> are included.</summary>

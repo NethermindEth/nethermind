@@ -35,8 +35,8 @@ public static class RecursiveStarkAggregator
 
     // Relative native proving costs measured on a two-core devnet node: folding one leanSPHINCS signature into a leaf
     // costs about 2.2 s and each recursive merge of two proofs about 20 s, so a merge costs about nine signatures.
-    private const int SignatureCost = 1;
-    private const int MergeCost = 9;
+    internal const int SignatureCost = 1;
+    internal const int MergeCost = 9;
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
     /// <remarks>Signatures fold four to a leaf, and every node beyond the first needs one recursive merge; a recursive child losing dependencies needs a call of its own unless the whole input
