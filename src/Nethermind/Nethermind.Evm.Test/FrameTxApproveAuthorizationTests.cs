@@ -195,7 +195,7 @@ public class FrameTxApproveAuthorizationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
     private TransactionResult Process(Transaction tx, ulong? slot = null)
