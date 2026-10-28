@@ -93,8 +93,11 @@ public class McpNodeCapabilitiesTests
 
         McpStateStorage? storage = node.Create().GetStateStorage();
 
-        Assert.That(storage?.Backend, Is.EqualTo("Hash"));
-        Assert.That(storage?.Archive, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage?.Backend, Is.EqualTo("Hash"));
+            Assert.That(storage?.Archive, Is.False);
+        }
     }
 
     [Test]

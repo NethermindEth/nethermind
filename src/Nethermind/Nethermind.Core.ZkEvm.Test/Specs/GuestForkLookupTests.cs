@@ -17,7 +17,9 @@ public class GuestForkLookupTests
     [TestCase("Bogota")]
     public void Finds_a_scheduled_fork_by_name_ignoring_case(string name)
     {
+#pragma warning disable NUnit2045 // A successful lookup is required before dereferencing the fork specification.
         Assert.That(MainnetSpecProvider.Instance.TryGetForkSpec(name, out IReleaseSpec? spec), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(spec!.Name, Is.EqualTo(name).IgnoreCase);
     }
 
@@ -28,7 +30,10 @@ public class GuestForkLookupTests
     [Test]
     public void Misses_an_unscheduled_fork()
     {
-        Assert.That(MainnetSpecProvider.Instance.TryGetForkSpec("Olympic", out IReleaseSpec? spec), Is.False);
-        Assert.That(spec, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MainnetSpecProvider.Instance.TryGetForkSpec("Olympic", out IReleaseSpec? spec), Is.False);
+            Assert.That(spec, Is.Null);
+        }
     }
 }

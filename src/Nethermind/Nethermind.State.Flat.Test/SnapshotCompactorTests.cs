@@ -66,8 +66,11 @@ public class SnapshotCompactorTests
     private static void AssertAccountSame(Account expected, Account? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Nonce, Is.EqualTo(expected.Nonce));
-        Assert.That(actual!.Balance, Is.EqualTo(expected.Balance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual!.Nonce, Is.EqualTo(expected.Nonce));
+            Assert.That(actual!.Balance, Is.EqualTo(expected.Balance));
+        }
     }
 
     [Test]
@@ -87,8 +90,11 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        Assert.That(compacted.From.BlockNumber, Is.EqualTo(0));
-        Assert.That(compacted.To.BlockNumber, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.From.BlockNumber, Is.EqualTo(0));
+            Assert.That(compacted.To.BlockNumber, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -137,19 +143,25 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Verify all data types are preserved
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.AccountsCount, Is.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetAccount(address1, out Account? account1), Is.True);
         AssertAccountSame(new Account(1, 100), account1);
         Assert.That(compacted.TryGetAccount(address2, out Account? account2), Is.True);
         AssertAccountSame(new Account(2, 200), account2);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetStorage((address1, storageIndex1), out UInt256? storedSlot1), Is.True);
         AssertSlotValueEqual(slotValue1, storedSlot1);
         Assert.That(compacted.TryGetStorage((address2, storageIndex2), out UInt256? storedSlot2), Is.True);
         AssertSlotValueEqual(slotValue2, storedSlot2);
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
         Assert.That(stateNode1!.Keccak, Is.EqualTo(storageNodeHash1));
         Assert.That(compacted.TryGetStateNode(statePath2, out TrieNode? stateNode2), Is.True);
@@ -201,10 +213,13 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Verify all items from both snapshots are merged
-        Assert.That(compacted.AccountsCount, Is.EqualTo(2));
-        Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.AccountsCount, Is.EqualTo(2));
+            Assert.That(compacted.StoragesCount, Is.EqualTo(2));
+            Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
+            Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -245,16 +260,23 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Verify latest values override earlier ones
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.AccountsCount, Is.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetAccount(address, out Account? account), Is.True);
         AssertAccountSame(new Account(2, 200), account);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.StoragesCount, Is.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetStorage((address, storageIndex), out UInt256? storedSlot), Is.True);
         AssertSlotValueEqual(slotValue2, storedSlot);
 
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
+            Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -287,8 +309,11 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Self-destructed address should be tracked, and its storage cleared
-        Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
-        Assert.That(compacted.StoragesCount, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
+            Assert.That(compacted.StoragesCount, Is.EqualTo(0));
+        }
     }
 
     [TestCase(false, TestName = "SelfDestructBoundary_KeepsWritesAtOrAfterTheClear")]
@@ -329,7 +354,9 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Written strictly before the first clear: always removed.
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.TryGetStorage((a, new UInt256(1)), out _), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out _), Is.False);
 
         // Written after the last clear: always kept.
@@ -339,7 +366,9 @@ public class SnapshotCompactorTests
 
         // Written in the first-clear block: kept unless a later clear raises the boundary past it.
         bool slotSameKept = !selfDestructAgainInLastSnapshot;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(compacted.TryGetStorage((a, new UInt256(2)), out _), Is.EqualTo(slotSameKept));
+#pragma warning restore NUnit2045
         Assert.That(compacted.TryGetStorageNode((aHash, pSame), out _), Is.EqualTo(slotSameKept));
 
         // Unrelated address is never touched by another address's self-destruct.
@@ -371,9 +400,12 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // New account marked as self-destructed should be tracked
-        Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
-        // Verify at least one entry has true value
-        Assert.That(compacted.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.SelfDestructedStorageAddresses.Count(), Is.GreaterThan(0));
+            // Verify at least one entry has true value
+            Assert.That(compacted.SelfDestructedStorageAddresses.Any(static kvp => kvp.Value), Is.True);
+        }
     }
 
     [Test]

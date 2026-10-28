@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
@@ -24,14 +27,32 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
     internal static Address? ReadAddress(ref Utf8JsonReader reader, bool strictHexFormat = false)
     {
         Span<byte> bytes = stackalloc byte[Address.Size];
-        if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
+        byte[]? addressBytes;
+        try
         {
-            return new Address(bytes);
+            if (ByteArrayConverter.TryConvertToExactLength(ref reader, bytes, strictHexFormat))
+            {
+                return new Address(bytes);
+            }
+
+            addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
+        }
+        catch (FormatException e)
+        {
+            throw new SafePublicMessageFormatException($"json: cannot unmarshal {e.Message} into Go value of type common.Address", e);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
-        return addressBytes is null ? null : new Address(addressBytes);
+        return addressBytes switch
+        {
+            null => null,
+            { Length: Address.Size } => new Address(addressBytes),
+            _ => ThrowInvalidLength(addressBytes.Length)
+        };
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Address ThrowInvalidLength(int length) =>
+        throw new SafePublicMessageFormatException($"hex string has length {length * 2}, want {Address.Size * 2} for common.Address");
 
     public override void Write(
         Utf8JsonWriter writer,

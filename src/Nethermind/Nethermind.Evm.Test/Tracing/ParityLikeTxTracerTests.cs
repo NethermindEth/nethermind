@@ -1296,8 +1296,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         JsonElement pushes = document.RootElement.GetProperty("vmTrace").GetProperty("ops")[operands.Length]
             .GetProperty("ex").GetProperty("push");
 
-        Assert.That(pushes.GetArrayLength(), Is.EqualTo(1), opcode.ToString());
-        Assert.That(pushes[0].GetString(), Is.EqualTo(expected), opcode.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pushes.GetArrayLength(), Is.EqualTo(1), opcode.ToString());
+            Assert.That(pushes[0].GetString(), Is.EqualTo(expected), opcode.ToString());
+        }
     }
 
     private static IEnumerable<TestCaseData> FailedWordOperationCases()

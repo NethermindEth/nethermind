@@ -97,7 +97,9 @@ public class LongFinalityIntegrationTests
         });
 
         tier.ConvertToPersistedBase(snap).Dispose();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
         Assert.That(stateResult, Is.EqualTo(stateRlp));
@@ -186,7 +188,9 @@ public class LongFinalityIntegrationTests
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier2.Repository;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
+#pragma warning restore NUnit2045
 
             // s0→s1 carries paths1[] + AddressA; s1→s2 carries paths2[] + AddressB. Every
             // state node round-trips intact — a stray BlobArenaManager.TryResetOrphanedFrontier
@@ -197,27 +201,40 @@ public class LongFinalityIntegrationTests
             Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snap1), Is.True);
             foreach (TreePath p in paths1)
             {
-                Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
-                Assert.That(r, Is.EqualTo(rlp1), $"snap1 state node at {p} read back corrupted");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
+                    Assert.That(r, Is.EqualTo(rlp1), $"snap1 state node at {p} read back corrupted");
+                }
             }
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(snap1!.TryGetAccount(TestItem.AddressA, out Account? a1), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(snap1.TryGetAccount(TestItem.AddressB, out Account? snap1MissB), Is.False);
             snap1.Dispose();
 
             Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? snap2), Is.True);
             foreach (TreePath p in paths2)
             {
-                Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
-                Assert.That(r, Is.EqualTo(rlp2), $"snap2 state node at {p} read back corrupted");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
+                    Assert.That(r, Is.EqualTo(rlp2), $"snap2 state node at {p} read back corrupted");
+                }
             }
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(snap2!.TryGetAccount(TestItem.AddressB, out Account? a2), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(snap2.TryGetAccount(TestItem.AddressA, out Account? snap2MissA), Is.False);
             snap2.Dispose();
 
-            Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
-            Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
-            Assert.That(snap1MissB, Is.Null);
-            Assert.That(snap2MissA, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
+                Assert.That(snap1MissB, Is.Null);
+                Assert.That(snap2MissA, Is.Null);
+            }
         }
     }
 
@@ -256,15 +273,18 @@ public class LongFinalityIntegrationTests
         using PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
 
         // State node should have newer value
-        Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
-        Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x80 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
+            Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x80 }));
 
-        // Storage node from older should be preserved
-        Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlpResult), Is.True);
-        Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+            // Storage node from older should be preserved
+            Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlpResult), Is.True);
+            Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
 
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
+            Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
+            Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
+        }
     }
 
     [Test]
@@ -407,7 +427,9 @@ public class LongFinalityIntegrationTests
             AssembledSnapshotResult assembled = restarted.Repository.AssembleSnapshots(BlockState(block), BlockState(128), estimatedSize: 16);
             assembled.InMemory.Dispose();
             using PersistedSnapshotStack stack = new(assembled.Persisted, recordDetailedMetrics: false);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? account), Is.True, $"block {block}");
+#pragma warning restore NUnit2045
             Assert.That(account!.Nonce, Is.EqualTo(block), $"block {block}");
         }
     }
@@ -448,7 +470,9 @@ public class LongFinalityIntegrationTests
         Snapshot empty = CreateSnapshot(s0, s1, _ => { });
         tier.ConvertToPersistedBase(empty).Dispose();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
         Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
         persisted.Dispose();
@@ -610,10 +634,13 @@ public class LongFinalityIntegrationTests
     public void Configuration_DefaultValues()
     {
         FlatDbConfig config = new();
-        Assert.That(config.EnableLongFinality, Is.True);
-        Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
-        Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
-        Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.EnableLongFinality, Is.True);
+            Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
+            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
+            Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
+        }
     }
 
     [Test]
@@ -626,9 +653,12 @@ public class LongFinalityIntegrationTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
-        Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+        }
 
         // The Null loader/catalog keep the tier inert: loading is a no-op and nothing is ever recorded.
         container.Resolve<IPersistedSnapshotLoader>().Load();
