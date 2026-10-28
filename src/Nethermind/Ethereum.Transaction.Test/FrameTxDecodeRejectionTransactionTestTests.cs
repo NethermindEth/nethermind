@@ -80,9 +80,8 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
             Rlp.Encode(Array.Empty<Rlp>()),                 // frames
             Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
             Rlp.Encode(                                     // fees
-                maxPriorityFeePerGas ?? Rlp.Encode(0L),
-                Rlp.Encode(0L),                             // max_fee_per_gas
-                Rlp.Encode(0L)),                            // max_fee_per_blob_gas
+                Rlp.Encode(0L),                             // max_fee
+                maxPriorityFeePerGas ?? Rlp.Encode(0L)),
             Rlp.Encode(Array.Empty<Rlp>()));                // blob_versioned_hashes
 
         return Bytes.Concat((byte)TxType.FrameTx, payload.Bytes).ToHexString(true);

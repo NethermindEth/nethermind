@@ -13,7 +13,7 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
-/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
+/// blob_versioned_hashes]</c>, where <c>fees = [max_fee, max_priority_fee_per_gas]</c>,
 /// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c>.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
@@ -55,6 +55,10 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
 
         DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowShortFeeList() =>
+        throw new RlpException($"{nameof(TxType.FrameTx)} fees must hold two items");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingSidecar() =>
@@ -126,9 +130,11 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
             limit: SignaturesCountLimit(Math.Max(0, payloadEnd - decoderContext.Position)));
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
+        transaction.MaxFee = decoderContext.DecodeUInt256();
+        if (decoderContext.Position >= feesCheck) ThrowShortFeeList();
         transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
-        transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
-        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        transaction.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(transaction.MaxFee, FrameTxValidation.TotalGasLimit(transaction.Frames));
+        transaction.MaxFeePerBlobGas = null;
         decoderContext.Check(feesCheck);
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
 
@@ -205,9 +211,8 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
         writer.StartSequence(GetFeesContentLength(transaction));
+        writer.Encode(transaction.MaxFee);
         writer.Encode(transaction.GasPrice);
-        writer.Encode(transaction.DecodedMaxFeePerGas);
-        writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
         EncodeVersionedHashes(ref writer, transaction.BlobVersionedHashes);
     }
 
@@ -250,9 +255,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     }
 
     private static int GetFeesContentLength(Transaction transaction) =>
-        Rlp.LengthOf(transaction.GasPrice)
-        + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+        Rlp.LengthOf(transaction.MaxFee) + Rlp.LengthOf(transaction.GasPrice);
 
     private static int GetContentLength(Transaction transaction, bool forSigning) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)

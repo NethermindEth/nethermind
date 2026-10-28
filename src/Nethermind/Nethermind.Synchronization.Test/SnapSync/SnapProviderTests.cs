@@ -105,11 +105,13 @@ public class SnapProviderTests
             new(new ValueHash256("0000000000000000000000000000000000000000000000000000000000000001"), []),
         ];
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storage,
             0,
             slots,
             null), Is.EqualTo(AddRangeResult.InvalidOrder));
+#pragma warning restore NUnit2045
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
@@ -130,11 +132,13 @@ public class SnapProviderTests
         // Test with empty slots list
         List<PathWithStorageSlot> emptySlots = [];
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storage,
             0,
             emptySlots,
             null), Is.EqualTo(AddRangeResult.EmptyRange));
+#pragma warning restore NUnit2045
 
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
@@ -208,7 +212,9 @@ public class SnapProviderTests
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
         {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(refresh.AccountsToRefreshRequest!.Paths[0].StorageStartingHash, Is.EqualTo(origin), "the account is re-proven from its origin, not restarted");
         }
     }
@@ -233,7 +239,9 @@ public class SnapProviderTests
             Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList()),
         };
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(AddRangeResult.OutOfBounds));
+#pragma warning restore NUnit2045
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "an empty batch queues nothing again");
     }
 
@@ -344,7 +352,9 @@ public class SnapProviderTests
             progressTracker.IsFinished(out SnapSyncBatch? batch);
             using (batch)
             {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(batch!.StorageRangeRequest, Is.Not.Null, $"attempt {attempt}: below the streak limit the range is simply offered again");
+#pragma warning restore NUnit2045
                 Assert.That(batch.StorageRangeRequest!.Accounts.Count, Is.EqualTo(accountCount));
 
                 batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
@@ -358,8 +368,10 @@ public class SnapProviderTests
             progressTracker.IsFinished(out SnapSyncBatch? next);
             using (next)
             {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(next!.AccountsToRefreshRequest, Is.Not.Null,
                     "after the streak the account must be re-proven at the current pivot, not requested as a storage range again");
+#pragma warning restore NUnit2045
                 Assert.That(accounts.Select(static a => a.Path), Does.Contain(next.AccountsToRefreshRequest!.Paths[0].PathAndAccount!.Path));
                 progressTracker.ReportAccountRefreshFinished();
             }
@@ -449,11 +461,14 @@ public class SnapProviderTests
             .Where(static line => line.Contains("came back empty"))
             .ToArray();
 
-        Assert.That(promotions, Has.Length.EqualTo(1), "the streak must promote the account exactly once");
-        Assert.That(logManager.Warns.Any(static line => line.Contains("came back empty")), Is.EqualTo(isContinuation),
-            isContinuation
-                ? "a stalled continuation is unreachable by any other request and is worth an operator warning"
-                : "a one-account batch is an ordinary account and must not warn");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(promotions, Has.Length.EqualTo(1), "the streak must promote the account exactly once");
+            Assert.That(logManager.Warns.Any(static line => line.Contains("came back empty")), Is.EqualTo(isContinuation),
+                isContinuation
+                    ? "a stalled continuation is unreachable by any other request and is worth an operator warning"
+                    : "a one-account batch is an ordinary account and must not warn");
+        }
     }
 
     private sealed class LaneRecordingLogManager : ILogManager, InterfaceLogger
@@ -548,7 +563,9 @@ public class SnapProviderTests
             progressTracker.IsFinished(out SnapSyncBatch? batch);
             using (batch)
             {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
                 Assert.That(batch!.StorageRangeRequest, Is.Not.Null, $"attempt {attempt}: the whole batch is offered again");
+#pragma warning restore NUnit2045
                 Assert.That(batch.StorageRangeRequest!.Accounts.Count, Is.EqualTo(accountCount));
 
                 batch.StorageRangeResponse = CreateEmptySlotsResponse(0);
@@ -623,7 +640,9 @@ public class SnapProviderTests
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
         {
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
             Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(refresh.AccountsToRefreshRequest!.RootHash, Is.EqualTo(root));
 
             (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
@@ -634,9 +653,12 @@ public class SnapProviderTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
-        Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
-        Assert.That(next, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
+            Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
+            Assert.That(next, Is.Null);
+        }
     }
 
     /// <summary>
@@ -686,8 +708,11 @@ public class SnapProviderTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(gone.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
-        Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gone.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
+            Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
+        }
     }
 
     /// <summary>
@@ -736,9 +761,12 @@ public class SnapProviderTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(account.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
-        Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero,
-            "an account restarted at origin 0 must not keep its stale large-storage entry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
+            Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero,
+                "an account restarted at origin 0 must not keep its stale large-storage entry");
+        }
 
         progressTracker.IsFinished(out SnapSyncBatch? requeued);
         using (requeued)
@@ -930,8 +958,11 @@ public class SnapProviderTests
         snapProvider.ReleaseRequest(batch!, responseHandled: true);
         Assert.That(progressTracker.IsFinished(out batch), Is.EqualTo(false));
         ValueHash256 startingHash = batch!.AccountRangeRequest!.StartingHash;
-        Assert.That(startingHash.CompareTo(entries[3].Item1), Is.GreaterThan(0));
-        Assert.That(startingHash.CompareTo(entries[4].Item1), Is.LessThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(startingHash.CompareTo(entries[3].Item1), Is.GreaterThan(0));
+            Assert.That(startingHash.CompareTo(entries[4].Item1), Is.LessThan(0));
+        }
     }
 
     [Test]
@@ -972,7 +1003,9 @@ public class SnapProviderTests
         accountsAndProofs.PathAndAccounts = accounts;
         accountsAndProofs.Proofs = proofs;
 
+#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
         Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
+#pragma warning restore NUnit2045
 
         Assert.That(container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
     }

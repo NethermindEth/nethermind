@@ -278,9 +278,16 @@ public static partial class Merkle
         LoadSp1Sha256Words(right.u2, schedule + 12);
         LoadSp1Sha256Words(right.u3, schedule + 14);
 
-        ReadOnlySpan<ulong> initialState = Sp1Sha256InitialState;
-        for (int i = 0; i < Sp1Sha256StateLength; i++)
-            state[i] = initialState[i];
+        // The SHA-256 initial hash value (FIPS 180-4 5.3.3) as immediates: a copy from a table costs a loop and an
+        // alignment test per word on SP1.
+        state[0] = 0x6a09e667UL;
+        state[1] = 0xbb67ae85UL;
+        state[2] = 0x3c6ef372UL;
+        state[3] = 0xa54ff53aUL;
+        state[4] = 0x510e527fUL;
+        state[5] = 0x9b05688cUL;
+        state[6] = 0x1f83d9abUL;
+        state[7] = 0x5be0cd19UL;
     }
 
     /// <summary>Reads the digest out of SP1's SHA-256 state slots.</summary>
@@ -306,12 +313,6 @@ public static partial class Merkle
         x = ((x & 0x00FF00FF00FF00FFUL) << 8) | ((x >> 8) & 0x00FF00FF00FF00FFUL);
         return ((x & 0x0000FFFF0000FFFFUL) << 16) | ((x >> 16) & 0x0000FFFF0000FFFFUL);
     }
-
-    /// <summary>The SHA-256 initial hash value (FIPS 180-4 5.3.3), one word per slot.</summary>
-    private static ReadOnlySpan<ulong> Sp1Sha256InitialState =>
-    [
-        0x6a09e667UL, 0xbb67ae85UL, 0x3c6ef372UL, 0xa54ff53aUL, 0x510e527fUL, 0x9b05688cUL, 0x1f83d9abUL, 0x5be0cd19UL
-    ];
 
     /// <summary>The extended message schedule of the block that pads a 64-byte message, one word per slot.</summary>
     internal static ReadOnlySpan<ulong> Sp1Sha256PaddingSchedule =>

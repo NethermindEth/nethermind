@@ -36,13 +36,19 @@ public class HelloMessageSerializerTests
 
         using HelloMessage deserialized = _serializer.Deserialize(serialized);
 
-        Assert.That(deserialized.P2PVersion, Is.EqualTo(helloMessage.P2PVersion));
-        Assert.That(deserialized.ClientId, Is.EqualTo(helloMessage.ClientId));
-        Assert.That(deserialized.NodeId, Is.EqualTo(helloMessage.NodeId));
-        Assert.That(deserialized.ListenPort, Is.EqualTo(helloMessage.ListenPort));
-        Assert.That(deserialized.Capabilities.Count, Is.EqualTo(helloMessage.Capabilities.Count));
-        Assert.That(deserialized.Capabilities[0].ProtocolCode, Is.EqualTo(helloMessage.Capabilities[0].ProtocolCode));
-        Assert.That(deserialized.Capabilities[0].Version, Is.EqualTo(helloMessage.Capabilities[0].Version));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.P2PVersion, Is.EqualTo(helloMessage.P2PVersion));
+            Assert.That(deserialized.ClientId, Is.EqualTo(helloMessage.ClientId));
+            Assert.That(deserialized.NodeId, Is.EqualTo(helloMessage.NodeId));
+            Assert.That(deserialized.ListenPort, Is.EqualTo(helloMessage.ListenPort));
+            Assert.That(deserialized.Capabilities.Count, Is.EqualTo(helloMessage.Capabilities.Count));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Capabilities[0].ProtocolCode, Is.EqualTo(helloMessage.Capabilities[0].ProtocolCode));
+            Assert.That(deserialized.Capabilities[0].Version, Is.EqualTo(helloMessage.Capabilities[0].Version));
+        }
     }
 
     [Test]

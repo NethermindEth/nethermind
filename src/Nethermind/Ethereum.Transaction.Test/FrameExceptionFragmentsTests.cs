@@ -36,7 +36,7 @@ public class FrameExceptionFragmentsTests
     }
 
     /// <summary>Encodes a frame transaction payload, varying only the fields the caller supplies.</summary>
-    private static byte[] EncodePayload(Rlp frames, Rlp maxPriorityFeePerGas, Rlp[] nonceKeys = null)
+    private static byte[] EncodePayload(Rlp frames, Rlp maxFee, Rlp[] nonceKeys = null)
     {
         Rlp payloadSequence = Rlp.Encode([
             Rlp.Encode(1L),                      // chain_id
@@ -45,7 +45,7 @@ public class FrameExceptionFragmentsTests
             Rlp.Encode(TestItem.AddressA.Bytes), // sender
             frames,
             Rlp.Encode(Array.Empty<Rlp>()),      // signatures
-            Rlp.Encode(maxPriorityFeePerGas, Rlp.Encode(0L), Rlp.Encode(0L)),
+            Rlp.Encode(maxFee, Rlp.Encode(0L)),  // fees: max_fee, max_priority_fee_per_gas
             Rlp.Encode(Array.Empty<Rlp>())]);    // blob_versioned_hashes
 
         byte[] payload = new byte[1 + payloadSequence.Length];
@@ -54,8 +54,8 @@ public class FrameExceptionFragmentsTests
         return payload;
     }
 
-    private static string DecodeFailureMessage(Rlp frames, Rlp maxPriorityFeePerGas) =>
-        DecodeFailureMessage(EncodePayload(frames, maxPriorityFeePerGas));
+    private static string DecodeFailureMessage(Rlp frames, Rlp maxFee) =>
+        DecodeFailureMessage(EncodePayload(frames, maxFee));
 
     private static string DecodeFailureMessage(byte[] payload)
     {
@@ -75,10 +75,13 @@ public class FrameExceptionFragmentsTests
     {
         string message = DecodeFailureMessage(
             frames: Rlp.Encode(new byte[19]),               // a string where a list belongs
-            maxPriorityFeePerGas: Rlp.Encode(0L));
+            maxFee: Rlp.Encode(0L));
 
-        Assert.That(message, Does.Contain("Expected a sequence prefix"));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("Expected a sequence prefix"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]
@@ -88,15 +91,18 @@ public class FrameExceptionFragmentsTests
         // checkpoint past the last field; every overrun then fails at the same peek, so one case says it all.
         byte[] payload = EncodePayload(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
-            maxPriorityFeePerGas: Rlp.Encode(0L));
+            maxFee: Rlp.Encode(0L));
         Assert.That(payload[1] + 1, Is.LessThanOrEqualTo(ShortSequencePrefixMax),
             "the overrun must keep the short-form prefix, or it declares a length of length instead");
         payload[1]++;
 
         string message = DecodeFailureMessage(payload);
 
-        Assert.That(message, Does.Contain("RLP data is truncated"));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("RLP data is truncated"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]
@@ -104,7 +110,7 @@ public class FrameExceptionFragmentsTests
     {
         string message = DecodeFailureMessage(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
-            maxPriorityFeePerGas: Rlp.Encode(new byte[33])); // one byte over the 32-byte field
+            maxFee: Rlp.Encode(new byte[33])); // one byte over the 32-byte field
 
         Assert.That(Covers(FrameExceptionFragments.FeeOverflow, message), Is.True, message);
     }
@@ -136,7 +142,7 @@ public class FrameExceptionFragmentsTests
 
         string message = DecodeFailureMessage(EncodePayload(
             frames: Rlp.Encode(Array.Empty<Rlp>()),
-            maxPriorityFeePerGas: Rlp.Encode(0L),
+            maxFee: Rlp.Encode(0L),
             nonceKeys));
 
         Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
@@ -188,8 +194,11 @@ public class FrameExceptionFragmentsTests
     {
         string message = DecodeFailureMessage(EncodePayload(frames, Rlp.Encode(0L)));
 
-        Assert.That(message, Does.Contain(wording));
-        Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain(wording));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     private static IEnumerable<TestCaseData> DisjointnessCases()
