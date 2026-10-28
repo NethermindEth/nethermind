@@ -16,7 +16,7 @@ namespace Nethermind.State.Pbt.NodeBuffer;
 /// <para>
 /// A pointer is <c>(generationId &lt;&lt; 32) | byteOffset</c> and 0 means none. Generation ids start at 1 and are never reused,
 /// and a lookup checks the id held by the generation's ring slot, so a stale pointer misses rather than resolving to another record.
-/// The newest live generations are readable in place; older ones are dropped, except that a generation held by a
+/// The newest <see cref="LiveGenerations"/> generations are readable in place; older ones are dropped, except that a generation held by a
 /// <see cref="PbtGroupRecordBufferPin"/>, and every later generation, is never dropped.
 /// Appends are lock-free bump reservations into the active generation; rotation, pins and drops run under a lock.
 /// A generation's storage is compacted, evicted or freed only while no pin covers it, so a reader borrows native records for as
@@ -48,8 +48,8 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     /// <summary>The default size of a generation in bytes.</summary>
     public const int DefaultGenerationBytes = 64 * 1024 * 1024;
 
-    /// <summary>The live generations of the buffers that do not take them from configuration.</summary>
-    public const int DefaultLiveGenerations = 8;
+    /// <summary>How many of the newest generations stay readable in place.</summary>
+    public const int LiveGenerations = 1;
 
     private const int MaxGenerations = 4096;
     private const ulong GenerationSlotMask = MaxGenerations - 1;
@@ -58,7 +58,6 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     private readonly Lock _lock = new();
     private readonly Generation?[] _generations = new Generation?[MaxGenerations];
     private readonly int _generationBytes;
-    private readonly int _liveGenerations;
     private Generation _active;
     private ulong _oldestLive = 1;
     private long _inPlaceBytes;
@@ -85,13 +84,9 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     /// <summary>Creates an empty buffer with generation 1 active.</summary>
     /// <param name="compressedMaxMemory">The memory budget in bytes for compacted generations.</param>
     /// <param name="generationBytes">The size of a generation in bytes; a larger record gets a generation of its own size.</param>
-    /// <param name="liveGenerations">How many of the newest generations stay readable in place.</param>
-    public PbtGroupRecordBuffer(ulong compressedMaxMemory, int generationBytes, int liveGenerations)
+    public PbtGroupRecordBuffer(ulong compressedMaxMemory, int generationBytes)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(liveGenerations, 1);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(liveGenerations, MaxGenerations);
         _generationBytes = generationBytes;
-        _liveGenerations = liveGenerations;
         _compressedMaxMemory = compressedMaxMemory;
         _active = StartGeneration(1, generationBytes);
         UpdateMetrics();
@@ -309,7 +304,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
 
     private void DropOldGenerations()
     {
-        for (ulong id = _oldestLive; id + (ulong)_liveGenerations <= _active.Id; id++)
+        for (ulong id = _oldestLive; id + LiveGenerations <= _active.Id; id++)
         {
             Generation generation = _generations[id & GenerationSlotMask]!;
             if (generation.HeadPinCount != 0) break;

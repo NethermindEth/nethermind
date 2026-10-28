@@ -213,7 +213,7 @@ public class PbtSnapshotBundleTests
     public async Task Persisted_only_base_starts_from_its_indexed_root_or_copies_the_root_group_back([Values] bool indexed)
     {
         // Production retains the newest unpinned generation, which keeps the persisted root record resident.
-        using PbtGroupRecordBuffer buffer = new(0, 64 * 1024, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 64 * 1024);
         await using PbtTestContext context = new(groupRecordBuffer: buffer);
         Hash256 rootHash;
         using (PbtWorldStateScope initial = context.BeginScope(null))
@@ -253,7 +253,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Changed_roots_without_a_published_root_are_rejected()
     {
-        using PbtGroupRecordBuffer sourceBuffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
+        using PbtGroupRecordBuffer sourceBuffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         content.BeginNodeGroupWrites(sourceBuffer);
@@ -270,7 +270,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Log_backed_snapshot_readers_survive_pruning_and_payloads_survive_pool_return()
     {
-        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 256);
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtStorageNodePath path = default;
@@ -364,7 +364,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void SnapshotContent_ReplacedTreesStayReadableUntilReset([Values(1, 8)] int groupCount, [Values] bool removed)
     {
-        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 256);
         using PbtSnapshotContent content = new();
         for (int round = 0; round < 2; round++)
         {
@@ -926,7 +926,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Failed_partition_fold_keeps_mutations_pending_without_completing_snapshot([Values(0x00, 0x01, 0xFF)] int failedZone)
     {
-        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), new Reader(default, null), buffer);
         byte[] bytes = new byte[(256 + 2) * 31];
         bytes.AsSpan().Fill(0x5b);

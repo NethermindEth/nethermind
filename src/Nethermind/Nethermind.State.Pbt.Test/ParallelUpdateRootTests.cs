@@ -502,7 +502,7 @@ public class ParallelUpdateRootTests
     [TestCase(false, true)]
     public void Log_reference_fold_failure_does_not_publish_partial_records(bool splitEveryFrame, bool failAfterWrite)
     {
-        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 256);
         using LoggedGroupStore store = new(buffer);
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: false);
@@ -533,7 +533,7 @@ public class ParallelUpdateRootTests
     [Test]
     public async Task Log_reference_forks_resolve_unknown_or_retired_children_against_their_own_view([Values] bool unknownChildren)
     {
-        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 256);
         using LoggedGroupStore first = new(buffer);
         using LoggedGroupStore second = new(buffer);
         using PbtTreeHarness firstExpected = new();
@@ -606,7 +606,7 @@ public class ParallelUpdateRootTests
         public LoggedGroupStore(PbtGroupRecordBuffer? buffer = null)
         {
             _ownsBuffer = buffer is null;
-            Buffer = buffer ?? new PbtGroupRecordBuffer(0, 4096, 1);
+            Buffer = buffer ?? new PbtGroupRecordBuffer(0, 4096);
             _content = NewContent();
         }
 

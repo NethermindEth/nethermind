@@ -82,7 +82,7 @@ internal static class PbtSnapshotTestExtensions
         ((Nethermind.Core.Collections.BloomFilter)typeof(PbtGroupRecordBuffer).GetMethod("FindBloom", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(buffer, [pointer])!).Count;
 
     /// <summary>The group record buffer of test layers and bundles that bring none of their own.</summary>
-    internal static PbtGroupRecordBuffer DefaultGroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
+    internal static PbtGroupRecordBuffer DefaultGroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
 
     /// <summary>Publishes a tree holding <paramref name="groups"/> as the layer's own groups.</summary>
     /// <remarks>

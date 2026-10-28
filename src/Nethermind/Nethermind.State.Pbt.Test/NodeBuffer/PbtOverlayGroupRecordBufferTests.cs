@@ -20,7 +20,7 @@ public class PbtOverlayGroupRecordBufferTests
     [Test]
     public void Reads_global_records_below_the_pin_and_keeps_its_own_writes_private()
     {
-        ForwardingGroupRecordBuffer global = new(new PbtGroupRecordBuffer(0, 64 * 1024, PbtGroupRecordBuffer.DefaultLiveGenerations));
+        ForwardingGroupRecordBuffer global = new(new PbtGroupRecordBuffer(0, 64 * 1024));
         using IDisposable globalReadPin = global.PinAll();
         ulong beforePin = Append(global, BeforePinPayload);
 

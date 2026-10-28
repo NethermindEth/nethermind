@@ -893,7 +893,7 @@ public class PbtNodeGroupTests
     [Test]
     public void Group_buffer_write_batches_preserve_canonical_payloads_and_immutable_links([Values(0, 3, 267)] int depth)
     {
-        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, PbtGroupRecordBuffer.DefaultLiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         using PbtGroupRecordBufferPin pin = buffer.PinHead();
         byte[] key = new byte[PbtVariableTreeKey.MaxLength];
         PbtStorageNodePath path = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth);
@@ -922,7 +922,7 @@ public class PbtNodeGroupTests
     [Test]
     public void Group_buffer_concurrent_appends_and_reads_do_not_allocate_per_read()
     {
-        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, PbtGroupRecordBuffer.DefaultLiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         using PbtGroupRecordBufferPin pin = buffer.PinHead();
         ConcurrentBag<(ulong Pointer, byte[] Payload)> written = [];
         Parallel.For(0, 128, index =>

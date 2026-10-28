@@ -22,18 +22,18 @@ public class PbtGroupRecordBufferTests
 {
     private const int GenerationBytes = 64 * 1024;
     private const int RecordAlignment = PbtGroupRecordCodec.RecordAlignment;
-    public const int LiveGenerations = PbtGroupRecordBuffer.DefaultLiveGenerations;
+    public const int LiveGenerations = PbtGroupRecordBuffer.LiveGenerations;
     public const int CompactionTimeoutMilliseconds = 10_000;
     public const int PollingMilliseconds = 10;
 
     [Test]
     public void Contract_write_batch_holds_every_record_written_to_it()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         using IDisposable pin = buffer.PinAll();
         Append(buffer, Payload(0, 8));
         byte[][] payloads = [Payload(1, 8), Payload(2, 8)];
-        using PbtGroupRecordBuffer scratch = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer scratch = new(0, GenerationBytes);
         byte[][] records = [.. payloads.Select(payload => scratch.TryLocate(Append(scratch, payload), out PbtGroupRecord record) ? record.Span.ToArray() : [])];
         int recordLength = PbtGroupRecordCodec.AlignedLength(records[0].Length);
         ulong pointer;
@@ -80,7 +80,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Generations_smaller_than_a_bloom_key_still_take_and_compact_records([Values(0, 1, 127, 128, GenerationBytes)] int generationBytes)
     {
-        using PbtGroupRecordBuffer buffer = new(1UL << 20, generationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(1UL << 20, generationBytes);
         byte[] payload = Payload(1, 8);
         ulong pointer = AppendAt(buffer, PathOf(1), payload);
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record) && record.Payload.Span.SequenceEqual(payload), Is.True);
@@ -119,7 +119,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Retains_capture_exact_allocation_boundaries_and_copies_preserve_them()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         using PbtGroupRecordBufferPin first = buffer.PinHead();
         ulong firstPointer = Reserve(buffer, RecordAlignment);
         using PbtGroupRecordBufferPin second = buffer.PinHead();
@@ -144,7 +144,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Retain_boundary_clamps_failed_reservation_overshoot([Values(GenerationBytes + 8L, (1L << 32) + 8)] long used)
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         object active = typeof(PbtGroupRecordBuffer).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
         active.GetType().GetField("Used")!.SetValue(active, used);
         using PbtGroupRecordBufferPin retain = buffer.PinHead();
@@ -160,7 +160,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Concurrent_reservations_never_precede_their_retain_boundary()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         Parallel.For(0, 16, thread =>
         {
             for (int i = 0; i < 1024; i++)
@@ -185,7 +185,7 @@ public class PbtGroupRecordBufferTests
     public void Pin_all_keeps_generations_in_place_until_every_pin_is_released([Values] bool compressed, [Values] bool overlapping)
     {
         const int generationBytes = 4096;
-        using PbtGroupRecordBuffer buffer = new(2048, generationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(2048, generationBytes);
         byte[] payload = Payload(1, 1000);
         ulong pointer = AppendAt(buffer, PathOf(-1), payload);
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord original), Is.True);
@@ -226,7 +226,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Overlapping_pin_alls_do_not_keep_old_generations_from_being_freed([Values] bool compressed)
     {
-        using PbtGroupRecordBuffer buffer = new(compressed ? 1UL << 20 : 0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(compressed ? 1UL << 20 : 0, GenerationBytes);
         ulong pointer = Append(buffer, Payload(1, 8));
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord original), Is.True);
         IDisposable reader = buffer.PinAll();
@@ -254,7 +254,7 @@ public class PbtGroupRecordBufferTests
     public void Lookup_uses_full_generation_ids_when_the_ring_slot_is_reused()
     {
         const int generationBytes = 256;
-        using PbtGroupRecordBuffer buffer = new(0, generationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, generationBytes);
         byte[] previous = Payload(1, 8);
         byte[] current = Payload(2, 8);
         ulong pointer = Append(buffer, previous);
@@ -281,7 +281,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Shutdown_defers_free_until_every_pin_is_released([Values] bool readerFinishesFirst)
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         using PbtGroupRecordBufferPin retain = buffer.PinHead();
         ulong pointer = Append(buffer, Payload(1, 8));
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
@@ -308,7 +308,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Shutdown_releases_storage_when_queued_compaction_finishes()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         Assert.That(buffer.TryLocate(Reserve(buffer, GenerationBytes), out PbtGroupRecord first), Is.True);
         while (GenerationOf(Reserve(buffer, GenerationBytes)) < LiveGenerations + 1) { }
         buffer.Dispose();
@@ -318,7 +318,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Compaction_failure_is_reported_and_does_not_prevent_shutdown_cleanup()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         ulong pointer;
         using (IPbtGroupRecordWriteBatch batch = buffer.StartWriteBatch(GenerationBytes))
         {
@@ -348,9 +348,9 @@ public class PbtGroupRecordBufferTests
     }
 
     [Test]
-    public void Records_resolve_in_place_until_their_generation_drops([Values(1, LiveGenerations)] int liveGenerations)
+    public void Records_resolve_in_place_until_their_generation_drops()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, liveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         using PbtGroupRecordBufferPin first = buffer.PinHead();
         PbtGroupRecordBufferPin? middle = null;
         PbtGroupRecordBufferPin? middleCopy = null;
@@ -376,7 +376,7 @@ public class PbtGroupRecordBufferTests
         AssertResolvesFrom(buffer, records, middleCopy!.Generation, "a copy keeps its generation and every later one after the original is disposed");
 
         middleCopy.Dispose();
-        AssertResolvesFrom(buffer, records, activeGeneration - (ulong)liveGenerations + 1, "only the live generations resolve after the last release");
+        AssertResolvesFrom(buffer, records, activeGeneration - LiveGenerations + 1, "only the live generations resolve after the last release");
 
         using PbtGroupRecordBufferPin oversizeRetain = buffer.PinHead();
         byte[] oversize = Payload(-1, GenerationBytes + 1);
@@ -395,7 +395,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Retain_copy_cannot_resurrect_a_generation_dropped_by_a_concurrent_release()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         using PbtGroupRecordBufferPin retain = buffer.PinHead();
         while (GenerationOf(Reserve(buffer, GenerationBytes)) < LiveGenerations + 1) { }
         retain.Dispose();
@@ -407,7 +407,7 @@ public class PbtGroupRecordBufferTests
     [Test]
     public void Root_index_returns_the_newest_matching_root()
     {
-        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(0, GenerationBytes);
         PbtGroupRecordBufferPin retain = buffer.PinHead();
         ulong droppedPointer = Append(buffer, Payload(-1, 8));
 
@@ -444,7 +444,7 @@ public class PbtGroupRecordBufferTests
     public void Dropped_generation_keeps_last_record_per_path_not_rewritten_later([Values(0UL, 1UL << 20)] ulong compressedBudget)
     {
         const ulong scenarioGeneration = 32;
-        using PbtGroupRecordBuffer buffer = new(compressedBudget, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(compressedBudget, GenerationBytes);
         List<(ulong Pointer, byte[] Payload)> unique = [];
         AppendUniqueUntil(scenarioGeneration);
         (ulong Pointer, byte[] Payload) superseded = AppendRecord(PathOf(-1), Payload(-1, 8));
@@ -488,7 +488,7 @@ public class PbtGroupRecordBufferTests
         const int threadCount = 16;
         const int recordsPerThread = 10_000;
         const int recordsPerRetain = 1_000;
-        using PbtGroupRecordBuffer buffer = new(1 << 20, GenerationBytes, LiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(1 << 20, GenerationBytes);
         using PbtGroupRecordBufferPin? retain = compacting ? null : buffer.PinHead();
         ulong[][] pointers = new ulong[threadCount][];
         PbtGroupRecordBufferPin?[] threadRetains = new PbtGroupRecordBufferPin?[threadCount];

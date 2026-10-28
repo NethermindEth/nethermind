@@ -170,7 +170,7 @@ public class PbtResourcePoolTests
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
         byte[] encoding = PbtNodeGroupEncoder.Encode(default(PbtNodePath), [new PbtNodeRecord(default, PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey([0])))], default);
-        using PbtGroupRecordBuffer buffer = new(0, 4096, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 4096);
         content.BeginNodeGroupWrites(buffer);
         content.SetTree((default, encoding));
         ulong pointer = content.RootGroupPointer;

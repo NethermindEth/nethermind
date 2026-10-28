@@ -77,7 +77,7 @@ public class PbtSnapshotCompactorTests
     public void Compactor_adds_a_base_snapshot_groups_to_the_blooms_once_and_sizes_it_by_its_pinned_range()
     {
         const int generationBytes = 4096;
-        using PbtGroupRecordBuffer buffer = new(1UL << 20, generationBytes, PbtGroupRecordBuffer.DefaultLiveGenerations);
+        using PbtGroupRecordBuffer buffer = new(1UL << 20, generationBytes);
         byte[] inheritedBytes = [0x00];
         byte[] writtenBytes = [0xe0];
         PbtStorageNodePath inheritedPath = new(inheritedBytes, PbtThreeLevelGroupGeometry.LevelsPerGroup);
@@ -116,7 +116,7 @@ public class PbtSnapshotCompactorTests
     [Test]
     public void Compact_keeps_original_records_and_descendant_references_pinned()
     {
-        using PbtGroupRecordBuffer buffer = new(0, 256, 1);
+        using PbtGroupRecordBuffer buffer = new(0, 256);
         PbtResourcePool pool = new(new PbtConfig());
         using PbtTreeHarness tree = new();
         tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>

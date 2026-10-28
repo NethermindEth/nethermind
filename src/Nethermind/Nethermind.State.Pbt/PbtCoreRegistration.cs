@@ -42,7 +42,7 @@ public static class PbtCoreRegistration
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<IPbtGroupRecordBuffer, IPbtConfig>(c => new PbtGroupRecordBuffer(c.CompressedGroupRecordBufferMemoryBudget,
-                PbtGroupRecordBuffer.DefaultGenerationBytes, c.GroupRecordBufferLiveGenerations))
+                PbtGroupRecordBuffer.DefaultGenerationBytes))
             .AddPbtPersisted(config)
             .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
                 ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),

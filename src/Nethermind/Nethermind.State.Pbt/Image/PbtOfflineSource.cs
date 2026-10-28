@@ -218,7 +218,7 @@ public static class PbtOfflineSource
         CodeInfo? code = null;
         if (account.HasCode)
         {
-            byte[] bytes = codeSource.ReadArray(account.CodeHash.Bytes) ?? throw new InvalidDataException("Missing source code.");
+            byte[] bytes = codeSource.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException("Missing source code.");
             if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Source code hash mismatch.");
             code = new CodeInfo(bytes);
         }

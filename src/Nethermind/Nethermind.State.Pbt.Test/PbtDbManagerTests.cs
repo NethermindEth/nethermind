@@ -1555,7 +1555,7 @@ public class PbtDbManagerTests
 
         public PbtConfig Config { get; }
         public PbtResourcePool Pool { get; }
-        public PbtGroupRecordBuffer GroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
+        public PbtGroupRecordBuffer GroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         public MemDb Metadata { get; } = new();
         public ICompactionSchedule Schedule { get; }

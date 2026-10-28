@@ -63,7 +63,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         ProcessExitSource processExitSource = new(_cts.Token);
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
-        GroupRecordBuffer = groupRecordBuffer ?? new PbtGroupRecordBuffer(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
+        GroupRecordBuffer = groupRecordBuffer ?? new PbtGroupRecordBuffer(0, PbtGroupRecordBuffer.DefaultGenerationBytes);
         ResourcePool = new PbtResourcePool(Config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);

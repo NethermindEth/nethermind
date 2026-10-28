@@ -186,9 +186,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Byte budget of compacted in-memory group record buffer generations: groups of retired generations that later generations did not rewrite stay readable within it, so persisted subtrees need not be read back.", DefaultValue = "524288000", HiddenFromDocs = true)]
     ulong CompressedGroupRecordBufferMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "Number of the newest group record buffer generations kept readable in place; older unpinned ones are compacted into the compressed budget.", DefaultValue = "1", HiddenFromDocs = true)]
-    int GroupRecordBufferLiveGenerations { get; set; }
-
     [ConfigItem(Description = "Write node groups (TopNodeGroups, AccountNodeGroups, CodeNodeGroups and StorageNodeGroups; the root group stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so groups rewritten within a generation are written to RocksDB once. Experimental: ScanTree and node-group key enumeration read RocksDB only, so they miss groups still in the log unless it was drained (TrieNodeLogDrainOnShutdown).", DefaultValue = "false")]
     bool TrieNodeLogEnabled { get; set; }
 
