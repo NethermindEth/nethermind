@@ -123,6 +123,20 @@ try
     Environment.SetEnvironmentVariable("SWEEP_CAPTURE", Path.Combine(tests.DirectoryPath, "capture")); Environment.SetEnvironmentVariable("GITHUB_STEP_SUMMARY", Path.Combine(tests.DirectoryPath, "summary"));
     foreach (var client in new[] { "nethermind-flat", "reth", "geth" }) Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "snapshots", client + "-1"));
     int Run(Dictionary<string, string> values) => new SweepRunner(new SweepConfiguration(name => values.GetValueOrDefault(name))).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+    tests.Case("latest-start cutoff rejects queued run before scratch or node work", () =>
+    {
+        var values = EnvironmentValues();
+        values["RECEIPT_HASHES_MIGRATION_TIMEOUT"] = "14400";
+        values["MIGRATION_LATEST_START_UTC"] = "2000-01-01T00:00:00Z";
+        values["MIGRATION_FINISH_BY_UTC"] = "2000-01-02T00:00:00Z";
+        try { Run(values); }
+        catch (IOException exception) when (exception.Message.Contains("latest-start cutoff", StringComparison.Ordinal))
+        {
+            RpcScriptTests.Assert(!Directory.Exists(values["SCRATCH_ROOT"]) && !File.Exists(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!), "expired queue entry touched scratch/node");
+            return;
+        }
+        throw new InvalidOperationException("expired queue entry accepted");
+    });
     tests.Case("ABBA schedule keeps arm flags and environments isolated", () =>
     {
         var values = EnvironmentValues(); values["CLIENTS"] = "nethermind#X=1+--Cache.Path={ARM_SCRATCH} reth+--Flag=two"; values["ROUNDS"] = "2";

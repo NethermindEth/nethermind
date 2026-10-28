@@ -126,6 +126,16 @@ saved as `migration-disk-preflight.txt`. Raw readiness logs are kept under the a
 state directory as `receipt-migration.log`. A completed/resumed dataset that
 emits no fresh-pass marker deliberately does not qualify through this gate.
 
+Optional paired UTC timestamps `migration_latest_start_utc` and
+`migration_finish_by_utc` (`yyyy-MM-ddTHH:mm:ssZ`) bound queued qualifications.
+The sweep checks the latest-start cutoff before scratch/node work and each arm,
+and requires enough remaining time for the full gate, startup health timeout,
+and a conservative one-hour measurement/cleanup reserve. It rechecks remaining
+budget after startup and before timing. This can reject earlier than latest-start
+when the full reserved budget no longer fits. With finish-by set, the workflow
+also sends TERM 30 minutes before that boundary (KILL after another 15 minutes),
+leaving artifact/verification grace. Omitted timestamps retain existing behavior.
+
 The boundary follows `ReceiptTxHashesMigration.Migrate`: its success message
 comes after persisting the completion marker. RPC availability and progress at
 shutdown do not establish completion. This gate does not change receipt flags,

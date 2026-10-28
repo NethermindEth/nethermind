@@ -6,6 +6,20 @@ using System.Text.RegularExpressions;
 
 internal static partial class ReceiptMigrationGate
 {
+    internal static void CheckBudget(string latestStartUtc, string finishByUtc, TimeSpan required, bool starting, DateTimeOffset? observed = null)
+    {
+        if (latestStartUtc.Length == 0 && finishByUtc.Length == 0) return;
+        var latest = Parse(latestStartUtc);
+        var finish = Parse(finishByUtc);
+        var now = observed ?? DateTimeOffset.UtcNow;
+        if (starting && now > latest) throw new IOException("migration qualification latest-start cutoff passed; refusing node work");
+        if (finish <= latest || now + required > finish) throw new IOException("insufficient remaining migration qualification budget; refusing node work/timing");
+
+        static DateTimeOffset Parse(string value) => DateTimeOffset.TryParseExact(value, "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var parsed)
+            ? parsed : throw new ArgumentException("migration latest-start and finish-by must both be UTC timestamps yyyy-MM-ddTHH:mm:ssZ");
+    }
+
     internal static async Task WaitAsync(
         Func<CancellationToken, Task<(bool Running, string Logs)>> snapshot,
         string logPath,

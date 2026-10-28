@@ -1395,6 +1395,7 @@ jobs:
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS \
                       receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT \
+                      migration_latest_start_utc:MIGRATION_LATEST_START_UTC migration_finish_by_utc:MIGRATION_FINISH_BY_UTC \
                       max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
@@ -1412,7 +1413,14 @@ jobs:
           export SNAPSHOT_BLOCK="${SNAPSHOT_BLOCK:-25490000}"
           export JB_BENCHMARK_CONFIG="${JB_BENCHMARK_CONFIG:-config/benchmark/ethcallchaos-percategory-validated.yaml}"
           export STATE_ROOT="${STATE_DIR}/sweep"
-          dotnet run --file scripts/rpc-bench/run-rpc-sweep.cs --
+          if [[ "${RECEIPT_HASHES_MIGRATION_TIMEOUT:-0}" != "0" && -n "${MIGRATION_FINISH_BY_UTC:-}" ]]; then
+            # Leave 30 minutes for graceful termination, verification, and artifact upload.
+            remaining=$(( $(date -u -d "${MIGRATION_FINISH_BY_UTC}" +%s) - $(date -u +%s) - 1800 ))
+            (( remaining > 0 )) || { echo '::error::migration qualification finish budget expired'; exit 1; }
+            timeout --signal=TERM --kill-after=15m "${remaining}s" dotnet run --file scripts/rpc-bench/run-rpc-sweep.cs --
+          else
+            dotnet run --file scripts/rpc-bench/run-rpc-sweep.cs --
+          fi
 
       - name: Stop node and verify DB integrity
         if: always() && steps.scripts.outcome == 'success' && steps.start-node.outcome != 'skipped'

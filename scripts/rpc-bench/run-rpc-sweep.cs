@@ -108,6 +108,7 @@ internal sealed partial class SweepConfiguration
         Set("NETWORK", "mainnet"); Set("JSONRPC_MODULES", "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"); Set("HEALTH_TIMEOUT", "1800");
         Set("DIAG_DIR", Path.Combine(this["SCRATCH_ROOT"], "diag")); Set("JB_ETH_CALL_CORPUS", "false");
         Set("RECEIPT_HASHES_MIGRATION_TIMEOUT", "0"); Set("NODE_IO_DIAGNOSTICS", "false");
+        Set("MIGRATION_LATEST_START_UTC"); Set("MIGRATION_FINISH_BY_UTC");
         if (Integer("RECEIPT_HASHES_MIGRATION_TIMEOUT", this["RECEIPT_HASHES_MIGRATION_TIMEOUT"], false) > 14400)
             throw new ArgumentException("RECEIPT_HASHES_MIGRATION_TIMEOUT must not exceed 14400 seconds");
         if (this["NODE_IO_DIAGNOSTICS"] is not ("true" or "false")) throw new ArgumentException("NODE_IO_DIAGNOSTICS must be true or false");
@@ -173,8 +174,16 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
     private string ParityState => Path.Combine(Get("SCRATCH_ROOT"), "parity");
     private const string Rpc = "http://localhost:8545";
 
+    private void CheckMigrationBudget(bool starting, bool includeGate)
+    {
+        if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") == 0) return;
+        var seconds = 3600 + (includeGate ? configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") : 0) + (starting ? configuration.Number("HEALTH_TIMEOUT") : 0);
+        ReceiptMigrationGate.CheckBudget(Get("MIGRATION_LATEST_START_UTC"), Get("MIGRATION_FINISH_BY_UTC"), TimeSpan.FromSeconds(seconds), starting);
+    }
+
     internal async Task<int> RunAsync(CancellationToken cancellationToken)
     {
+        CheckMigrationBudget(true, true);
         var scratch = await BenchmarkPaths.CanonicalAsync(Get("SCRATCH_ROOT"), false, cancellationToken);
         BenchmarkPaths.AssertSane(scratch, "SCRATCH_ROOT");
         foreach (var client in configuration.Arms.Select(arm => arm.Client).Distinct())
@@ -220,6 +229,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
 
     private async Task RunArm(SweepArm arm, string label, CancellationToken cancellationToken)
     {
+        CheckMigrationBudget(true, true);
         var flags = arm.Flags;
         var armScratch = "";
         if (flags.Contains("{ARM_SCRATCH}", StringComparison.Ordinal))
@@ -238,8 +248,6 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             if (!Directory.Exists(armScratch) || new DirectoryInfo(armScratch).LinkTarget is not null) throw new IOException("invalid per-arm scratch directory");
             flags = flags.Replace("{ARM_SCRATCH}", armScratch, StringComparison.Ordinal);
         }
-        var pull = await BenchmarkProcess.RunAsync("docker", ["pull", arm.Image], cancellationToken);
-        if (pull.Code != 0) Console.WriteLine($"pull failed — assuming {arm.Image} is local");
         var state = Path.Combine(Get("STATE_ROOT"), label);
         Directory.CreateDirectory(state);
         if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
@@ -250,6 +258,8 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             await File.WriteAllTextAsync(Path.Combine(state, "migration-disk-preflight.txt"), disk.Output + disk.Error, cancellationToken);
             await ReceiptMigrationGate.CheckSpaceAsync(Get("SCRATCH_ROOT"), cancellationToken);
         }
+        var pull = await BenchmarkProcess.RunAsync("docker", ["pull", arm.Image], cancellationToken);
+        if (pull.Code != 0) Console.WriteLine($"pull failed — assuming {arm.Image} is local");
         var container = $"rpcbench-sweep-{label}-{BenchmarkProcess.EnvironmentValue("GITHUB_RUN_ID", "local")}";
         Console.WriteLine($"::group::sweep {label} (type={arm.Client}, image={arm.Image}, isolation={configuration.Isolation(arm.Client)})");
         var environment = new Dictionary<string, string>
@@ -271,11 +281,13 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         _labels.Add(label);
         try
         {
+            CheckMigrationBudget(false, true);
             if (Get("NODE_IO_DIAGNOSTICS") == "true")
                 await NodeIoDiagnostics.CaptureAsync(container, Path.Combine(state, "io-security.txt"), cancellationToken);
             if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
                 await ReceiptMigrationGate.WaitAsync(token => ReceiptMigrationGate.SnapshotAsync(container, Get("SCRATCH_ROOT"), token),
                     Path.Combine(state, "receipt-migration.log"), TimeSpan.FromSeconds(configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT")), cancellationToken);
+            CheckMigrationBudget(false, false);
             if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0 || Get("NODE_IO_DIAGNOSTICS") == "true")
                 await NodeIoDiagnostics.CaptureIdentityAsync(Rpc, arm.Image, flags, Path.Combine(state, "runtime-identity.json"), cancellationToken);
             if (configuration.Corpus)

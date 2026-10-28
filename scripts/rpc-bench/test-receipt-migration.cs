@@ -58,6 +58,26 @@ tests.Case("probe errors fail closed", () =>
     catch (IOException exception) when (exception.Message == "probe unavailable") { return; }
     throw new InvalidOperationException("probe error swallowed");
 });
+foreach (var (name, now, hours, starting, expected) in new[]
+{
+    ("fits full budget", "2026-10-28T16:00:00Z", 5.5, true, ""),
+    ("queued past cutoff", "2026-10-29T00:46:00Z", 1.0, true, "latest-start cutoff"),
+    ("budget expires before latest-start", "2026-10-29T00:30:00Z", 5.5, true, "insufficient remaining"),
+    ("setup consumed remaining budget", "2026-10-29T01:00:00Z", 5.0, false, "insufficient remaining")
+})
+    tests.Case(name, () =>
+    {
+        try { ReceiptMigrationGate.CheckBudget("2026-10-29T00:45:00Z", "2026-10-29T05:47:34Z", TimeSpan.FromHours(hours), starting, DateTimeOffset.Parse(now)); }
+        catch (IOException exception) when (expected.Length > 0 && exception.Message.Contains(expected, StringComparison.Ordinal)) { return; }
+        RpcScriptTests.Assert(expected.Length == 0, "expired budget accepted");
+    });
+foreach (var (latest, finish) in new[] { ("bad", "2026-10-29T05:47:34Z"), ("2026-10-29T00:45:00Z", ""), ("", "2026-10-29T05:47:34Z") })
+    tests.Case("reject incomplete or malformed UTC budget " + latest + " " + finish, () =>
+    {
+        try { ReceiptMigrationGate.CheckBudget(latest, finish, TimeSpan.Zero, true); }
+        catch (ArgumentException) { return; }
+        throw new InvalidOperationException("bad UTC budget accepted");
+    });
 if (OperatingSystem.IsLinux())
 {
     var originalPath = Environment.GetEnvironmentVariable("PATH");
@@ -69,7 +89,7 @@ if (OperatingSystem.IsLinux())
             tests.Case("disk reserve probe " + value + " " + exit, () =>
             {
                 File.WriteAllText(disk, $"#!/bin/sh\nprintf 'Avail\\n{value}\\n'\nexit {exit}\n");
-                File.SetUnixFileMode(disk, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                if (OperatingSystem.IsLinux()) File.SetUnixFileMode(disk, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 try { ReceiptMigrationGate.CheckSpaceAsync(tests.DirectoryPath, 1024, CancellationToken.None).GetAwaiter().GetResult(); }
                 catch (IOException exception) when (expected.Length > 0 && exception.Message.Contains(expected, StringComparison.Ordinal)) { return; }
                 RpcScriptTests.Assert(expected.Length == 0, "unsafe or unobservable disk accepted");
