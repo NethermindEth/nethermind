@@ -346,8 +346,9 @@ public class StatelessInputGeneratorTests
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.PrivateKeyA.Address, 1.Ether);
-            byte[] depositLog = AbiEncoder.Instance.Encode(AbiEncodingStyle.None,
-                ExecutionRequestsProcessor.DepositEventAbi, TestItem.ExecutionRequestA.RequestDataParts!);
+            byte[][] parts = TestItem.ExecutionRequestA.RequestDataParts!;
+            byte[] depositLog = AbiCodec.Encode(new AbiSignature().With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
+                (parts[0], parts[1], parts[2], parts[3], parts[4]));
             AddCode(spec.DepositContractAddress!, Prepare.EvmCode.StoreDataInMemory(0, depositLog)
                 .Log(depositLog.Length, 0, [ExecutionRequestsProcessor.DepositEventAbi.Hash])
                 .Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE).Done);

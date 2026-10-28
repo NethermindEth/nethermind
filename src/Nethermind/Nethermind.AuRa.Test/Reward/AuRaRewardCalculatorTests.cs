@@ -11,7 +11,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -24,10 +23,10 @@ namespace Nethermind.AuRa.Test.Reward
     public class AuRaRewardCalculatorTests
     {
         private AuRaChainSpecEngineParameters _auraParameters;
-        private IAbiEncoder _abiEncoder;
         private ITransactionProcessor _transactionProcessor;
         private Block _block;
-        private readonly byte[] _rewardData = { 3, 4, 5 };
+        private static readonly AbiSignature<(Address[], ushort[])> RewardSignature = new AbiSignature("reward").With(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt16));
+        private static readonly AbiSignature<(Address[], UInt256[])> RewardReturns = new AbiSignature().With(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt256));
         private Address _address10;
         private Address _address50;
         private Address _address150;
@@ -45,34 +44,22 @@ namespace Nethermind.AuRa.Test.Reward
                 BlockReward = new SortedDictionary<ulong, UInt256>() { { 0, 200 } },
             };
 
-            _abiEncoder = Substitute.For<IAbiEncoder>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
-
-            _abiEncoder
-                .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(static s => s.Name == "reward"), Arg.Any<object[]>())
-                .Returns(_rewardData);
         }
 
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_auraParameters()
         {
-            Action action = () => new AuRaRewardCalculator(null, _abiEncoder, _transactionProcessor);
-            Assert.That(action, Throws.TypeOf<ArgumentNullException>());
-        }
-
-        [Test]
-        public void constructor_throws_ArgumentNullException_on_null_encoder()
-        {
-            Action action = () => new AuRaRewardCalculator(_auraParameters, null, _transactionProcessor);
+            Action action = () => new AuRaRewardCalculator(null, _transactionProcessor);
             Assert.That(action, Throws.TypeOf<ArgumentNullException>());
         }
 
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_transactionProcessor()
         {
-            Action action = () => new AuRaRewardCalculator(_auraParameters, _abiEncoder, null);
+            Action action = () => new AuRaRewardCalculator(_auraParameters, null);
             Assert.That(action, Throws.TypeOf<ArgumentNullException>());
         }
 
@@ -84,7 +71,7 @@ namespace Nethermind.AuRa.Test.Reward
                 {2, Address.FromNumber(2)}
             };
 
-            Action action = () => new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
+            Action action = () => new AuRaRewardCalculator(_auraParameters, _transactionProcessor);
             Assert.That(action, Throws.TypeOf<ArgumentException>());
         }
 
@@ -94,7 +81,7 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_before_contract_transition(ulong blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.EquivalentTo(new[] { new BlockReward(_block.Beneficiary, expectedReward) }).UsingPropertiesComparer());
         }
@@ -103,7 +90,7 @@ namespace Nethermind.AuRa.Test.Reward
         public void calculates_rewards_correctly_for_genesis()
         {
             _block.Header.Number = 0;
-            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.Empty);
         }
@@ -115,7 +102,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, new[] { expected } } });
-            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
         }
@@ -141,7 +128,7 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { address, new[] { expected } } });
-            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.EquivalentTo(new[] { expected }).UsingPropertiesComparer());
         }
@@ -164,7 +151,7 @@ namespace Nethermind.AuRa.Test.Reward
             };
 
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, expected } });
-            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.EquivalentTo(expected).UsingPropertiesComparer());
         }
@@ -187,14 +174,14 @@ namespace Nethermind.AuRa.Test.Reward
             };
 
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, expected } });
-            AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.EquivalentTo(expected).UsingPropertiesComparer());
         }
 
         private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards) =>
             _transactionProcessor.When(x => x.Execute(
-                    Arg.Is<Transaction>(t => CheckTransaction(t, rewards.Keys, _rewardData)),
+                    Arg.Is<Transaction>(t => CheckTransaction(t, rewards.Keys)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                 {
@@ -202,28 +189,21 @@ namespace Nethermind.AuRa.Test.Reward
                     args.Arg<ITxTracer>().MarkAsSuccess(
                         recipient,
                         0,
-                        SetupAbiAddresses(rewards[recipient]),
+                        EncodeRewards(rewards[recipient]),
                         []);
                 });
 
-        private bool CheckTransaction(Transaction t, ICollection<Address> addresses, byte[] transactionData) =>
+        private bool CheckTransaction(Transaction t, ICollection<Address> addresses) =>
             t.SenderAddress == Address.SystemUser
             && (t.To == _auraParameters.BlockRewardContractAddress || addresses.Contains(t.To))
-            && t.Data.AsArray() == transactionData;
+            && t.Data.Span.SequenceEqual(AbiCodec.Encode(RewardSignature, ExpectedRewardArgs()));
 
-        private byte[] SetupAbiAddresses(params BlockReward[] rewards)
-        {
-            byte[] data = rewards.Select(static r => r.Address).SelectMany(static a => a.Bytes.ToArray()).ToArray();
+        // reward(benefactors, kind): the author has kind 0 and an uncle 100 + its distance.
+        private (Address[], ushort[]) ExpectedRewardArgs() => (
+            [_block.Beneficiary, .. _block.Uncles.Select(static u => u.Beneficiary)],
+            [0, .. _block.Uncles.Select(u => (ushort)(100 + _block.Number - u.Number))]);
 
-            _abiEncoder.Decode(
-                AbiEncodingStyle.None,
-                Arg.Is<AbiSignature>(static s =>
-                    s.Types.Length == 2
-                    && s.Types[0] is AbiArray && ((AbiArray)s.Types[0]).ElementType is AbiAddress
-                    && s.Types[1] is AbiArray && ((AbiArray)s.Types[1]).ElementType is AbiUInt),
-                data).Returns(new object[] { rewards.Select(static r => r.Address).ToArray(), rewards.Select(static r => r.Value).ToArray() });
-
-            return data;
-        }
+        private static byte[] EncodeRewards(params BlockReward[] rewards) =>
+            AbiCodec.Encode(RewardReturns, (rewards.Select(static r => r.Address).ToArray(), rewards.Select(static r => r.Value).ToArray()));
     }
 }

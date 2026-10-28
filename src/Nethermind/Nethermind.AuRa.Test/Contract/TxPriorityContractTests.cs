@@ -56,6 +56,20 @@ public class TxPriorityContractTests
     }
 
     [Test]
+    public async Task getters_return_empty_when_contract_does_not_exist()
+    {
+        using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+        TxPriorityContract contract = new(Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
+        BlockHeader head = chain.BlockTree.Head.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contract.GetSendersWhitelist(head), Is.Empty);
+            Assert.That(contract.GetMinGasPrices(head), Is.Empty);
+            Assert.That(contract.GetPriorities(head), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task whitelist_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
@@ -211,7 +225,7 @@ public class TxPriorityContractTests
         protected override Task AddBlocksOnStart()
         {
 
-            TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
+            TxPriorityContract = new TxPriorityContract(TestItem.AddressA,
                 ReadOnlyTxProcessingEnvFactory.Create());
 
             Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
@@ -242,6 +256,15 @@ public class TxPriorityContractTests
 
     public class TxPermissionContractBlockchainWithBlocks : TxPermissionContractBlockchain
     {
+        private static readonly AbiSignature<(Address, byte[], UInt256)> SetPrioritySignature =
+            new AbiSignature("setPriority").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+
+        private static readonly AbiSignature<Address[]> SetSendersWhitelistSignature =
+            new AbiSignature("setSendersWhitelist").With(AbiType.Array(AbiType.Address));
+
+        private static readonly AbiSignature<(Address, byte[], UInt256)> SetMinGasPriceSignature =
+            new AbiSignature("setMinGasPrice").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+
         protected override async Task AddBlocksOnStart()
         {
             await base.AddBlocksOnStart();
@@ -250,24 +273,47 @@ public class TxPriorityContractTests
 
             await AddBlock(
                 SignTransactions(ecdsa, TestItem.PrivateKeyA, 1,
-                    TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
-                    TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 10),
-                    TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature2, 4),
+                    SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
+                    SetPriority(TestItem.AddressB, FnSignature, 10),
+                    SetPriority(TestItem.AddressB, FnSignature2, 4),
 
-                    TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 10),
-                    TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature2, 4),
-                    TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB))
+                    SetMinGasPrice(TestItem.AddressB, FnSignature, 10),
+                    SetMinGasPrice(TestItem.AddressB, FnSignature2, 4),
+                    SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB))
             );
 
             await AddBlock(
                 SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address),
                     // overrides for some of previous block values:
-                    TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
+                    SetPriority(TestItem.AddressB, FnSignature, 3),
 
-                    TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 2),
+                    SetMinGasPrice(TestItem.AddressB, FnSignature, 2),
 
-                    TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
+                    SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
             );
+        }
+
+        private Transaction SetPriority(Address target, byte[] fnSignature, UInt256 weight) =>
+            GenerateTransaction(AbiCodec.Encode(SetPrioritySignature, (target, fnSignature, weight)));
+
+        private Transaction SetSendersWhitelist(params Address[] addresses) =>
+            GenerateTransaction(AbiCodec.Encode(SetSendersWhitelistSignature, addresses));
+
+        private Transaction SetMinGasPrice(Address target, byte[] fnSignature, UInt256 weight) =>
+            GenerateTransaction(AbiCodec.Encode(SetMinGasPriceSignature, (target, fnSignature, weight)));
+
+        private Transaction GenerateTransaction(byte[] data)
+        {
+            GeneratedTransaction transaction = new()
+            {
+                Data = data,
+                To = TxPriorityContract.ContractAddress,
+                SenderAddress = TxPriorityContract.ContractAddress,
+                GasLimit = Blockchain.Contracts.Contract.DefaultContractGasLimit,
+            };
+
+            transaction.Hash = transaction.CalculateHash();
+            return transaction;
         }
 
         public override async Task<Block> AddBlock(params Transaction[] transactions)
