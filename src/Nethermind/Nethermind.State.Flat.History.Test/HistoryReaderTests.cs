@@ -87,6 +87,23 @@ public class HistoryReaderTests
     }
 
     [Test]
+    public void Slots_are_cached_only_for_covered_blocks_and_dropped_when_the_records_restart()
+    {
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out _), Is.False);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 uncovered) && uncovered == 0x11, Is.True, "an uncovered answer is not kept");
+
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out _), Is.True);
+        HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 8, [0x22]);
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 covered) && covered == 0x11, Is.True, "a covered answer is kept");
+
+        _availability.ForgetObservedRecords();
+
+        Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 restarted) && restarted == 0x22, Is.True, "a restart drops kept answers");
+    }
+
+    [Test]
     public void Cached_reads_return_the_same_account_and_do_not_allocate()
     {
         HistoryColumnsWriter.SetWatermark(_historyColumns, 20);

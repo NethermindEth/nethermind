@@ -208,6 +208,21 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     [Test]
+    public void GetAccount_ReadAgainAtTheSameBlock_ReturnsTheCachedAccountWithoutAllocating()
+    {
+        HistoryBackedPersistenceReader reader = Reader(10);
+        Account? first = reader.GetAccount(Address);
+
+        long allocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetAccount(Address), Is.SameAs(first));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
     public void StorageClearsScopeCache_BeforeAnyStorageRead_AllocatesNoMemo()
     {
         long allocated = MeasureAllocatedBytes(static () => _ = new StorageClearsScopeCache());
