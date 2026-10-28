@@ -223,16 +223,84 @@ public class MidBlockOverlayCacheTests
         }
     }
 
+    [Test]
+    public void AnEvictedOverlayNobodyHolds_IsFoldedAgainForTheNewBlock()
+    {
+        MidBlockOverlayCache cache = new(_store, blocks: 2);
+        IDb column = _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets);
+        for (ushort transaction = 0; transaction < 4; transaction++)
+        {
+            WriteBalance(_store, column, Block + 1, transaction, (UInt256)(transaction + 101));
+            WriteBalance(_store, column, Block + 2, transaction, (UInt256)(transaction + 201));
+        }
+
+        MidBlockOverlay evicted;
+        Assert.That(cache.TryRent(Block, in HashA, 6, out MidBlockOverlayCache.Lease first, version: 0), Is.True);
+        using (first)
+        {
+            evicted = first.Overlay;
+        }
+
+        Assert.That(cache.TryRent(Block + 1, in HashA, 3, out MidBlockOverlayCache.Lease second, version: 0), Is.True);
+        second.Dispose();
+        Assert.That(cache.TryRent(Block + 2, in HashB, 2, out MidBlockOverlayCache.Lease third, version: 0), Is.True);
+        using (third)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(third.Overlay, Is.SameAs(evicted), "the least recently rented block made room, and nobody held its overlay");
+                Assert.That(third.Overlay.Block, Is.EqualTo(Block + 2));
+                Assert.That(third.Overlay.Hash, Is.EqualTo(HashB));
+                Assert.That(third.Overlay.Folded, Is.EqualTo(2));
+                Assert.That(BalanceOf(third.Overlay), Is.EqualTo((UInt256)202), "nothing of the six transactions folded for the evicted block remains");
+            }
+        }
+
+        Assert.That(cache.TryRent(Block + 1, in HashA, 3, out MidBlockOverlayCache.Lease kept, version: 0), Is.True);
+        using (kept)
+        {
+            Assert.That(BalanceOf(kept.Overlay), Is.EqualTo((UInt256)103), "the block rented more recently stayed cached");
+        }
+    }
+
+    [Test]
+    public void AnEvictedOverlayARequestStillHolds_IsLeftToIt()
+    {
+        MidBlockOverlayCache cache = new(_store, blocks: 1);
+        IDb column = _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets);
+        for (ushort transaction = 0; transaction < 4; transaction++) WriteBalance(_store, column, Block + 1, transaction, (UInt256)(transaction + 101));
+
+        Assert.That(cache.TryRent(Block, in HashA, 5, out MidBlockOverlayCache.Lease held, version: 0), Is.True);
+        using (held)
+        {
+            Assert.That(cache.TryRent(Block + 1, in HashA, 3, out MidBlockOverlayCache.Lease other, version: 0), Is.True);
+            using (other)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(other.Overlay, Is.Not.SameAs(held.Overlay));
+                    Assert.That(held.Overlay.Block, Is.EqualTo(Block));
+                    Assert.That(held.Overlay.Folded, Is.EqualTo(5));
+                    Assert.That(BalanceOf(held.Overlay), Is.EqualTo((UInt256)5), "the holder is still reading the evicted block");
+                    Assert.That(BalanceOf(other.Overlay), Is.EqualTo((UInt256)103));
+                }
+            }
+        }
+    }
+
     private void WriteBalance(ushort transactionIndex, UInt256 balance) =>
         WriteBalance(_store, _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets), transactionIndex, balance);
 
-    private static void WriteBalance(TransactionChangesetStore store, IDb column, ushort transactionIndex, UInt256 balance)
+    private static void WriteBalance(TransactionChangesetStore store, IDb column, ushort transactionIndex, UInt256 balance) =>
+        WriteBalance(store, column, Block, transactionIndex, balance);
+
+    private static void WriteBalance(TransactionChangesetStore store, IDb column, ulong block, ushort transactionIndex, UInt256 balance)
     {
         ChangesetCollector collector = new();
         collector.Balance(TestItem.AddressA, balance);
         using (IWriteBatch batch = column.StartWriteBatch())
         {
-            store.Write(Block, transactionIndex, collector.Pack(), batch);
+            store.Write(block, transactionIndex, collector.Pack(), batch);
         }
 
         collector.Release();

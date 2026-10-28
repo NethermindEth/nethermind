@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -12,9 +14,18 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// the state as of the previous block, which the existing history answers.</summary>
 internal sealed class MidBlockOverlay
 {
+    // An overlay that grew past this many writes is let go of rather than kept, so the spares hold a bounded amount.
+    private const int MaxSpareWrites = 1 << 14;
+    private const int MaxSpares = 32;
+
+    private static readonly Stack<MidBlockOverlay> Spares = new(MaxSpares);
+    private static readonly Lock SparesLock = new();
+
     private readonly Dictionary<AddressAsKey, AccountOverlay> _accounts = [];
     private readonly Dictionary<StorageCell, StorageWrite> _storage = [];
     private readonly HashSet<AddressAsKey> _storageAccounts = [];
+    private readonly Dictionary<ulong, Address> _addresses = [];
+    private readonly Stack<AccountOverlay> _spareAccounts = [];
 
     public ulong Block { get; private set; }
 
@@ -34,13 +45,44 @@ internal sealed class MidBlockOverlay
 
     internal Dictionary<StorageCell, StorageWrite>.Enumerator Writes => _storage.GetEnumerator();
 
+    internal int WriteCount => _storage.Count;
+
+    internal int StorageAccountCount => _storageAccounts.Count;
+
+    /// <summary>An overlay emptied for <paramref name="block"/>, one a previous fold left warm when there is one.</summary>
+    public static MidBlockOverlay Rent(ulong block)
+    {
+        MidBlockOverlay overlay = TakeSpare() ?? new MidBlockOverlay();
+        overlay.Reset(block);
+        return overlay;
+    }
+
+    private static MidBlockOverlay? TakeSpare()
+    {
+        using Lock.Scope scope = SparesLock.EnterScope();
+        return Spares.TryPop(out MidBlockOverlay? overlay) ? overlay : null;
+    }
+
+    /// <summary>The caller gives up the overlay: nothing may read or fold it afterwards.</summary>
+    public static void Return(MidBlockOverlay overlay)
+    {
+        overlay.Reset(0);
+        if (overlay._storage.EnsureCapacity(0) > MaxSpareWrites || overlay._accounts.EnsureCapacity(0) > MaxSpareWrites) return;
+
+        using Lock.Scope scope = SparesLock.EnterScope();
+        if (Spares.Count < MaxSpares) Spares.Push(overlay);
+    }
+
     public void Reset(ulong block) => Reset(block, default);
 
+    /// <summary>Keeps the capacity the previous fold grew, so folding a block of a similar size again grows nothing.</summary>
     public void Reset(ulong block, in ValueHash256 hash)
     {
+        foreach (AccountOverlay account in _accounts.Values) _spareAccounts.Push(account);
         _accounts.Clear();
         _storage.Clear();
         _storageAccounts.Clear();
+        _addresses.Clear();
         Block = block;
         Hash = hash;
         Folded = 0;
@@ -88,17 +130,18 @@ internal sealed class MidBlockOverlay
 
     private void FoldStorage(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
     {
-        StorageCell cell = new(new Address(entries.Address), new UInt256(entries.Index, isBigEndian: true));
+        StorageCell cell = new(AddressOf(entries.Address), new UInt256(entries.Index, isBigEndian: true));
         _storage[cell] = new StorageWrite(transactionIndex, new UInt256(entries.Value, isBigEndian: true));
         _storageAccounts.Add(cell.Address);
     }
 
     private void FoldAccount(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
     {
-        Address address = new(entries.Address);
+        Address address = AddressOf(entries.Address);
         if (!_accounts.TryGetValue(address, out AccountOverlay? overlay))
         {
-            overlay = new AccountOverlay();
+            if (_spareAccounts.TryPop(out overlay)) overlay.Clear();
+            else overlay = new AccountOverlay();
             _accounts[address] = overlay;
         }
 
@@ -131,6 +174,19 @@ internal sealed class MidBlockOverlay
         overlay.Exists = true;
     }
 
+    /// <summary>One instance per distinct address of the fold, however many entries name it. The key only spreads
+    /// the addresses; a different address under the same key is compared, refused and allocated on its own.</summary>
+    private Address AddressOf(ReadOnlySpan<byte> bytes)
+    {
+        ulong key = BinaryPrimitives.ReadUInt64LittleEndian(bytes) ^ BinaryPrimitives.ReadUInt64LittleEndian(bytes[(Address.Size - sizeof(ulong))..]);
+        ref Address? known = ref CollectionsMarshal.GetValueRefOrAddDefault(_addresses, key, out bool exists);
+        if (exists && known!.Equals(bytes)) return known;
+
+        Address address = new(bytes);
+        if (!exists) known = address;
+        return address;
+    }
+
     internal readonly struct StorageWrite(ushort transaction, in UInt256 value)
     {
         public int Transaction { get; } = transaction;
@@ -153,5 +209,15 @@ internal sealed class MidBlockOverlay
         public bool Exists { get; set; } = true;
 
         public int StorageClearedAt { get; set; } = NeverCleared;
+
+        public void Clear()
+        {
+            Balance = null;
+            Nonce = null;
+            CodeHash = null;
+            Emptied = false;
+            Exists = true;
+            StorageClearedAt = NeverCleared;
+        }
     }
 }

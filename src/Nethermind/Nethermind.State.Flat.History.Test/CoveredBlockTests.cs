@@ -254,6 +254,81 @@ public class CoveredBlockTests
     }
 
     [Test]
+    public void AnOverlayStillArmed_IsNotGivenToAnotherBlock_AfterItsBlockIsDisposed()
+    {
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? seven), Is.True);
+        StateReadOverlaySlot armed = new();
+        Assert.That(seven!.CreateWorkerSeeds().TrySeed(_seven, 3, armed), Is.True);
+        seven.Dispose();
+
+        for (int i = 0; i < 4; i++)
+        {
+            Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
+            StateReadOverlaySlot slot = new();
+            Assert.That(eight!.CreateWorkerSeeds().TrySeed(_eight, 2, slot), Is.True);
+            slot.Disarm();
+            eight.Dispose();
+        }
+
+        bool aKnown = armed.Current!.TryGetAccount(TestItem.AddressA, Parent, out Account? a);
+        bool bKnown = armed.Current.TryGetAccount(TestItem.AddressB, Parent, out Account? b);
+        bool slotKnown = armed.Current.TryGetStorage(TestItem.AddressC, 1, out _);
+        armed.Disarm();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(aKnown && a!.Balance == 30, Is.True, "the lease keeps block 7's overlay out of the spares until the slot lets go of it");
+            Assert.That(bKnown && b!.Nonce == 6, Is.True);
+            Assert.That(slotKnown, Is.False, "block 8's write never reached the overlay block 7 is still read through");
+        }
+    }
+
+    [Test]
+    public void ABlockOpenedAfterAnotherWasDisposed_SeesOnlyItsOwnPrefix()
+    {
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? seven), Is.True);
+        StateReadOverlaySlot first = new();
+        Assert.That(seven!.CreateWorkerSeeds().TrySeed(_seven, 3, first), Is.True);
+        first.Disarm();
+        seven.Dispose();
+
+        Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
+        using ICoveredBlock block = eight!;
+        StateReadOverlaySlot slot = new();
+        Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 2, slot), Is.True);
+        IStateReadOverlay prefix = slot.Current!;
+
+        bool aKnown = prefix.TryGetAccount(TestItem.AddressA, Parent, out Account? a);
+        bool cKnown = prefix.TryGetStorage(TestItem.AddressC, 1, out UInt256 c);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(aKnown && a!.Balance == 40, Is.True);
+            Assert.That(cKnown && c == 9, Is.True);
+            Assert.That(prefix.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "only block 7 wrote the account");
+            Assert.That(prefix.TryGetStorage(TestItem.AddressA, 1, out _), Is.False, "only block 7 wrote the slot");
+            Assert.That(prefix.HasStorage(TestItem.AddressB), Is.False);
+        }
+
+        slot.Disarm();
+    }
+
+    [Test]
+    public void AWorkerOfADisposedBlock_IsRefused()
+    {
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? seven), Is.True);
+        IPrefixStateSeedSource seeds = seven!.CreateWorkerSeeds();
+        seven.Dispose();
+
+        StateReadOverlaySlot slot = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.TrySeed(_seven, 2, slot), Is.False, "its overlay may already be folding another block");
+            Assert.That(slot.Current, Is.Null);
+        }
+    }
+
+    [Test]
     public void ABlockWhoseParentWasNotTraced_StartsFresh()
     {
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
