@@ -57,6 +57,12 @@ tests.Case("all shaping sweep options belong to the cell fingerprint", () =>
     var shape = CellShapeRegex().Match(resolve).Value;
     Contains(shape, "cpu_max_freq_khz", "cpuset", "memory", "corpus_method", "trace_call_tracer", "trace_call_types");
 });
+tests.Case("migration qualification exports UTC budgets and leaves termination grace", () =>
+{
+    Contains(StepText("Run RPC sweep"), "migration_latest_start_utc:MIGRATION_LATEST_START_UTC", "migration_finish_by_utc:MIGRATION_FINISH_BY_UTC",
+        "receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT", "node_io_diagnostics:NODE_IO_DIAGNOSTICS",
+        "- 1800", "timeout --signal=TERM --kill-after=15m");
+});
 tests.Case("cached baselines are checked before use and retain metadata", () =>
 {
     Contains(StepText("Validate the cached master baseline"), ".schema // empty", ".cell_key // empty", "usable=${usable}", "rm -rf");
@@ -125,6 +131,14 @@ tests.Case("all migrated workflow commands have preceding SDK setup", () =>
 });
 if (!OperatingSystem.IsLinux()) { Console.WriteLine("SKIP Linux workflow execution harness"); tests.Complete(); return; }
 
+tests.Case("expired workflow finish budget cannot start a sweep", () =>
+{
+    var step = StepText("Run RPC sweep");
+    var guarded = step[step.IndexOf("if [[ \"${RECEIPT_HASHES_MIGRATION_TIMEOUT", StringComparison.Ordinal)..];
+    var result = workflow.Run("date() { echo 0; }\ndotnet() { echo UNSAFE_SWEEP; }\n" + guarded,
+        new() { ["RECEIPT_HASHES_MIGRATION_TIMEOUT"] = "14400", ["MIGRATION_FINISH_BY_UTC"] = "2026-10-29T05:47:34Z" }, tests.DirectoryPath);
+    RpcScriptTests.Assert(result.Code == 1 && !result.Output.Contains("UNSAFE_SWEEP", StringComparison.Ordinal), "expired workflow ran node work");
+});
 tests.Case("failed sweep image resolution aborts reclamation without errexit", () =>
 {
     var step = StepText("Reclaim root disk before pulling");

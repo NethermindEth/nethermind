@@ -677,7 +677,7 @@ jobs:
           # and so is `rounds`, which repeats the cell rather than reshaping it.
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","max_response_bytes",
-                      "node_env_vars","node_io_diagnostics","receipt_hashes_migration_timeout","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
+                      "node_env_vars","node_io_diagnostics","receipt_hashes_migration_timeout","migration_latest_start_utc","migration_finish_by_utc","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
                       "timings_rps","vus"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
             --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
