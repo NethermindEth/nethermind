@@ -4,10 +4,10 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;

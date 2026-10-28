@@ -8,7 +8,6 @@
     <StartupObject Condition="'$(EnableZkEvm)' != 'true'">Nethermind.Core.Test.Threading.ParallelUnbalancedWorkTests</StartupObject>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MathNet.Numerics" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
