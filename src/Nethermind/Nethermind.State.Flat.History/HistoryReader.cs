@@ -25,7 +25,7 @@ public sealed class HistoryReader
     // Slim-format account RLP is at most nonce + balance + two 32-byte hashes; 256 bytes is ample headroom.
     private const int AccountValueBufferSize = 256;
 
-    // 262,144 entries per domain, the distinct reads of about a hundred blocks.
+    // 262,144 entries per domain; a whole-block trace reads about 2,800 distinct keys.
     private const int ReadCacheSetsBits = 17;
 
     private readonly HistoryStore? _accountHistory;
@@ -39,11 +39,10 @@ public sealed class HistoryReader
     private readonly bool _rlpWrapSlots;
     private readonly bool _isV3;
 
-    // The state as of a covered block never changes, so one result serves every scope and request at that block.
-    // A whole-block trace opens a scope per transaction, each starting with empty state caches.
-    // Accounts are immutable, so a hit hands out the cached instance without allocating.
-    private readonly SeqlockCache<AccountAtBlock, Account?> _accounts = new(ReadCacheSetsBits);
-    private readonly SeqlockCache<SlotAtBlock, CachedSlot> _slots = new(ReadCacheSetsBits);
+    // The state as of a covered block never changes, so one result serves every scope and request at that block:
+    // repeated traces of a block, single-transaction traces and calls at past blocks. Created on the first store, so
+    // a node that serves no historical reads does not hold it.
+    private ReadCache? _reads;
     private long _cachedRecords;
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
@@ -109,14 +108,15 @@ public sealed class HistoryReader
     /// <summary>Resolves the account as of <paramref name="block"/>; null when it did not exist there.</summary>
     internal Account? GetAccount(ulong block, Address address, ReadScope? scope)
     {
-        long records = CurrentRecords();
+        long records = SyncRecordsGeneration();
         AccountAtBlock key = new(block, address);
-        if (_accounts.TryGetValue(in key, out Account? cached)) return cached;
+        ReadCache? reads = Volatile.Read(ref _reads);
+        if (reads is not null && reads.Accounts.TryGetValue(in key, out Account? cached)) return cached;
 
         Account? account = ReadAccount(block, address, out AccountStruct value, scope) ? value.ToAccount() : null;
         if (IsSettled(block, records))
         {
-            _accounts.Set(in key, account);
+            (reads ?? CreateReads()).Accounts.Set(in key, account);
             DropIfRestartedDuring(records);
         }
 
@@ -174,9 +174,10 @@ public sealed class HistoryReader
     /// <param name="clearsCache">Skips the per-slot destruct probes for an account with no clear markers.</param>
     internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache, ReadScope? scope = null)
     {
-        long records = CurrentRecords();
+        long records = SyncRecordsGeneration();
         SlotAtBlock key = new(block, address, index);
-        if (_slots.TryGetValue(in key, out CachedSlot cached))
+        ReadCache? reads = Volatile.Read(ref _reads);
+        if (reads is not null && reads.Slots.TryGetValue(in key, out CachedSlot cached))
         {
             value = cached.Value;
             return cached.Exists;
@@ -185,7 +186,7 @@ public sealed class HistoryReader
         bool exists = ReadStorage(block, address, index, out value, clearsCache, scope);
         if (IsSettled(block, records))
         {
-            _slots.Set(in key, new CachedSlot(exists, value));
+            (reads ?? CreateReads()).Slots.Set(in key, new CachedSlot(exists, value));
             DropIfRestartedDuring(records);
         }
 
@@ -321,18 +322,24 @@ public sealed class HistoryReader
         return BaseFlatPersistence.DecodeSlotValue(stored);
     }
 
-    /// <summary>The records generation, after dropping every cached answer resolved against removed records.</summary>
-    private long CurrentRecords()
+    /// <summary>Returns the records generation, first dropping every cached answer if the records restarted since
+    /// the last read.</summary>
+    private long SyncRecordsGeneration()
     {
         long records = _availability.RecordsGeneration;
         if (records != Volatile.Read(ref _cachedRecords))
         {
-            _accounts.Clear();
-            _slots.Clear();
+            Volatile.Read(ref _reads)?.Clear();
             Volatile.Write(ref _cachedRecords, records);
         }
 
         return records;
+    }
+
+    private ReadCache CreateReads()
+    {
+        ReadCache created = new();
+        return Interlocked.CompareExchange(ref _reads, created, null) ?? created;
     }
 
     /// <summary>Only a covered block's answer is final, and only if no restart removed the records it was read from.</summary>
@@ -345,8 +352,20 @@ public sealed class HistoryReader
     {
         if (_availability.RecordsGeneration == records) return;
 
-        _accounts.Clear();
-        _slots.Clear();
+        Volatile.Read(ref _reads)?.Clear();
+    }
+
+    // Accounts are immutable, so a hit hands out the cached instance without allocating.
+    private sealed class ReadCache
+    {
+        public readonly SeqlockCache<AccountAtBlock, Account?> Accounts = new(ReadCacheSetsBits);
+        public readonly SeqlockCache<SlotAtBlock, CachedSlot> Slots = new(ReadCacheSetsBits);
+
+        public void Clear()
+        {
+            Accounts.Clear();
+            Slots.Clear();
+        }
     }
 
     // The cache indexes sets with low and high hash bits, so the block is spread over all of them.
