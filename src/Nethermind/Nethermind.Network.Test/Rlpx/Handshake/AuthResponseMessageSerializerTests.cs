@@ -30,9 +30,12 @@ public class AuthResponseMessageSerializerTests
         byte[] data = _serializer.Serialize(before);
         AckMessage after = _serializer.Deserialize(data);
 
-        Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
-        Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
-        Assert.That(after.IsTokenUsed, Is.EqualTo(before.IsTokenUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
+            Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
+            Assert.That(after.IsTokenUsed, Is.EqualTo(before.IsTokenUsed));
+        }
     }
 
     [Test]

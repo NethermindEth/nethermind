@@ -451,10 +451,13 @@ public class FrameTxPrefixSimulatorTests
 
         Task<FrameTxSimulationResult> local = Task.Run(() => simulator.Simulate(FrameTx(), local: true));
         // Reading the head is the last step before contending for the env, so the env is still held here.
-        Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
-        // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
-        // fails deterministically on a zero wait is the reason check below.
-        Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondCallerReachedTheLock.Wait(TimeSpan.FromSeconds(10)), Is.True, "the local submission never ran");
+            // Necessary but not sufficient: a shed caller may simply not have returned yet. The guard that
+            // fails deterministically on a zero wait is the reason check below.
+            Assert.That(local.IsCompleted, Is.False, "the local submission resolved before the env was released");
+        }
 
         release.Set();
         Assert.That(local.Wait(TimeSpan.FromSeconds(10)), Is.True);

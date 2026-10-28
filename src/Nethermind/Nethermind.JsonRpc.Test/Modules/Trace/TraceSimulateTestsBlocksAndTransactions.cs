@@ -86,10 +86,10 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
         string serialized = await RpcTest.TestSerializedRequest(
             chain.TraceRpcModule, "trace_simulateV1", payload!, "latest", new[] { nameof(ParityTraceTypes.StateDiff) });
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(serialized, Does.Contain("\"stateDiff\":"));
             Assert.That(serialized, Does.Not.Contain("stateChanges"));
-        });
+        }
     }
 }

@@ -37,8 +37,11 @@ public class BlobGasCalculatorTests
 
         bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, Eip4844Constants.DefaultBlobGasPriceUpdateFraction, out UInt256 blobBaseFee);
 
-        Assert.That(success, Is.True);
-        Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.True);
+            Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
+        }
     }
 
     [Test]
@@ -49,8 +52,11 @@ public class BlobGasCalculatorTests
 
         bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, Eip4844Constants.DefaultBlobGasPriceUpdateFraction, out UInt256 blobBaseFee);
 
-        Assert.That(success, Is.False);
-        Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
+        }
     }
 
     [Test]
@@ -230,8 +236,11 @@ public class BlobGasCalculatorTests
     {
         UInt256 left = testCase.available;
         bool result = BlobGasCalculator.TrySubtractBlobFee(testCase.spec, testCase.tx, ref left);
-        Assert.That(result, Is.EqualTo(testCase.expectedResult));
-        Assert.That(left, Is.EqualTo(testCase.expectedAvailable));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(testCase.expectedResult));
+            Assert.That(left, Is.EqualTo(testCase.expectedAvailable));
+        }
     }
 
     private static IEnumerable<(IReleaseSpec, Transaction, UInt256, bool, UInt256)> TrySubtractBlobFeeCases()
