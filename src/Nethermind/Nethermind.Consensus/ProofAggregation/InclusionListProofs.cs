@@ -86,6 +86,15 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
                 : null;
     }
 
+    /// <summary>Resolves the lists <see cref="ResolveObligations"/> has not, such as those of a block cached or inserted before its
+    /// newPayload request resolved them.</summary>
+    public void ResolveUnresolved(IReadOnlyList<CommitteeInclusionList>? lists, IReleaseSpec targetSpec)
+    {
+        if (lists is null) return;
+        foreach (CommitteeInclusionList list in lists)
+            if (!list.ObligationsResolved) ResolveObligations([list], targetSpec);
+    }
+
     /// <summary>The verified proofs of the lists <see cref="ResolveObligations"/> resolved, each once, for the builder to fold into
     /// its block aggregate.</summary>
     /// <remarks>Each covers its whole <c>proof_deps</c>, possibly a superset of what the block includes; block aggregation discards

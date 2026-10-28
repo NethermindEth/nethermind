@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -14,13 +15,16 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IInclusionListSatisfactionChecker"/>
+/// <remarks>Lists whose proofs were never resolved, as for a block cached or inserted before its newPayload request reached them,
+/// are resolved here, so an unresolved list is never read as one without a verified proof.</remarks>
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator,
-    ITransactionProcessor? transactionProcessor = null)
+    ITransactionProcessor? transactionProcessor = null, InclusionListProofService? inclusionListProofs = null)
     : IInclusionListSatisfactionChecker
 {
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IReadOnlyStateProvider worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
+        inclusionListProofs?.ResolveUnresolved(suggestedBlock.InclusionLists, spec);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
             worldState, spec, txValidator, suggestedBlock.InclusionLists, CouldAppendFrame);
 
