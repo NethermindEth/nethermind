@@ -140,8 +140,9 @@ public partial class DebugRpcModuleTests
         object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
         JToken baseline = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { streamMode }));
         Assert.That(baseline["error"], Is.Null, baseline.ToString());
-        Assert.That((JArray)baseline["result"]!, Has.Count.EqualTo(block.Transactions.Length));
-        foreach (JToken entry in baseline["result"]!) Assert.That((JArray)entry["result"]!["structLogs"]!, Is.Not.Empty);
+        JArray traces = (JArray)baseline["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
+        foreach (JToken entry in traces) Assert.That((JArray)entry["result"]!["structLogs"]!, Is.Not.Empty);
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector, new { tracer = "", streamMode });
         Assert.That(JToken.DeepEquals(JToken.Parse(response), baseline), Is.True, response);
     }
