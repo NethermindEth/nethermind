@@ -81,15 +81,22 @@ public class FilterStoreTests
         FilterStore store = new(new TimerFactory());
         BlockFilter filter = store.CreateBlockFilter();
         store.SaveFilter(filter);
-        bool hasNotified = false;
-        store.FilterRemoved += (s, e) => hasNotified = true;
-        store.RemoveFilter(0);
+        int notifications = 0;
+        store.FilterRemoved += (s, e) => notifications++;
 
+#pragma warning disable NUnit2045 // Filter removal must succeed before checking its notifications and stored state.
+        Assert.That(store.RemoveFilter(0), Is.True, "removed");
+#pragma warning restore NUnit2045
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(hasNotified, Is.True, "notified");
+            Assert.That(notifications, Is.EqualTo(1), "notified");
             Assert.That(store.FilterExists(0), Is.False, "exists");
         }
+
+#pragma warning disable NUnit2045 // Check the repeated removal before inspecting its notification count.
+        Assert.That(store.RemoveFilter(0), Is.False, "removed again");
+#pragma warning restore NUnit2045
+        Assert.That(notifications, Is.EqualTo(1), "notified again");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

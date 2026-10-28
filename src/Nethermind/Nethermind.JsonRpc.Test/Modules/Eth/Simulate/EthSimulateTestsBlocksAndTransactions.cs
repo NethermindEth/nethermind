@@ -1134,6 +1134,22 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    [Test]
+    public async Task eth_simulateV1_accepts_null_account_override([Values("null", "{}")] string accountOverride)
+    {
+        string payloadJson = $$"""{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000010":{{accountOverride}}},"calls":[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000010"}]}]}""";
+        SimulatePayload<TransactionForRpc> payload = new EthereumJsonSerializer().Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson)!;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+#pragma warning restore NUnit2045
+        Assert.That(result.Data, Has.Count.EqualTo(1));
+    }
+
     // PUSH1 0, PUSH1 0, PUSH1 0, CREATE, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN: returns the created address, or zero on a collision.
     private static readonly byte[] CreateAndReturnAddress = [0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0xf0, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
 

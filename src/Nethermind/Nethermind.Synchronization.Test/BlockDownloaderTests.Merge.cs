@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -107,7 +109,12 @@ public partial class BlockDownloaderTests
         }
 
         await ctx.FullSyncUntilNoRequest(peerInfo);
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(insertedBeaconBlocks));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(insertedBeaconBlocks));
+            Assert.That(syncPeer.RequestedBodyNumbers, Has.Member(notSyncedTreeStartingBlockNumber + 1), "Bodies of header-only beacon blocks come from the peer");
+            Assert.That(syncPeer.RequestedBodyNumbers, Has.None.InRange(beaconPivot, insertedBeaconBlocks), "Bodies already stored by NewPayload are not requested again");
+        }
 
         SuggestedStateRoots suggestedStateRoots = container.Resolve<SuggestedStateRoots>();
         ulong expectedFastSyncEnd = ulong.Max(notSyncedTreeStartingBlockNumber, insertedBeaconBlocks.SaturatingSub(fastSyncLag));
@@ -126,6 +133,60 @@ public partial class BlockDownloaderTests
                 !options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess) &&
                 !options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
                 "merge fast-sync suggestions must not opt into asynchronous processing");
+        }
+    }
+
+    [TestCase(null)]
+    [TestCase(20UL)]
+    public async Task Merge_downloads_only_bodies_not_stored_by_new_payload(ulong? corruptedBlockNumber)
+    {
+        const ulong beaconPivot = 16;
+        const ulong lastBeaconBlock = 24;
+        const ulong headNumber = 32;
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(4, headNumber + 1)
+            .InsertBeaconPivot(beaconPivot)
+            .InsertBeaconHeaders(4, beaconPivot - 1)
+            .InsertBeaconBlocks(beaconPivot + 1, lastBeaconBlock, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null)
+            .InsertBeaconHeaders(lastBeaconBlock + 1, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+
+        if (corruptedBlockNumber is { } number)
+        {
+            Block stored = blockTrees.SyncedTree.FindBlock(number, BlockTreeLookupOptions.None)!;
+            blockTrees.NotSyncedTree.Insert(new Block(stored.Header, new BlockBody([Build.A.Transaction.SignedAndResolved().TestObject], [], stored.Withdrawals)));
+        }
+
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(default!, default!, out _).ReturnsForAnyArgs(true);
+        blockValidator.ValidateProcessedBlock(default!, default!, default!, out _).ReturnsForAnyArgs(true);
+        blockValidator.ValidateBodyAgainstHeader(default!, default!, out _)
+            .ReturnsForAnyArgs(static call => BlockValidator.ValidateTxRootMatchesTxs(call.ArgAt<BlockHeader>(0), call.ArgAt<BlockBody>(1), out _));
+
+        await using IContainer container = CreateMergeNode(builder => builder
+                .AddSingleton<IBlockTree>(blockTrees.NotSyncedTree)
+                .AddKeyedSingleton<IDb>(DbNames.Metadata, blockTrees.NotSyncedTreeBuilder.MetadataDb)
+                .AddSingleton(blockValidator)
+                .AddDecorator<IBlockTree, BlockLookupRecordingBlockTree>(),
+            new MergeConfig { TerminalTotalDifficulty = "0" });
+        PostMergeContext ctx = container.Resolve<PostMergeContext>();
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(beaconPivot, BlockTreeLookupOptions.None);
+
+        SyncPeerMock syncPeer = new(blockTrees.SyncedTree, false, Response.AllCorrect, 16000000);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+
+        IEnumerable<ulong> headerOnlyNumbers = Enumerable.Range(4, (int)(beaconPivot - 4))
+            .Concat(Enumerable.Range((int)lastBeaconBlock + 1, (int)(headNumber - lastBeaconBlock)))
+            .Select(static n => (ulong)n);
+        Hash256[] headerOnlyHashes = headerOnlyNumbers.Select(n => blockTrees.SyncedTree.FindHeader(n, BlockTreeLookupOptions.None)!.Hash!).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(headNumber));
+            Assert.That(syncPeer.RequestedBodyNumbers, Is.EquivalentTo(corruptedBlockNumber is { } corrupted ? headerOnlyNumbers.Append(corrupted) : headerOnlyNumbers));
+            Assert.That(((BlockLookupRecordingBlockTree)ctx.BlockTree).LookedUpBlocks.Intersect(headerOnlyHashes), Is.Empty, "Blocks without a stored body are not looked up");
         }
     }
 
@@ -375,6 +436,19 @@ public partial class BlockDownloaderTests
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb)
                 .AddDecorator<IBlockTree, StateTrackingBlockTree>();
         }, configs);
+
+    private sealed class BlockLookupRecordingBlockTree(IBlockTree blockTree) : BlockTreeTestDouble(blockTree)
+    {
+        private readonly ConcurrentQueue<Hash256> _lookedUpBlocks = new();
+
+        public IReadOnlyCollection<Hash256> LookedUpBlocks => _lookedUpBlocks;
+
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+        {
+            _lookedUpBlocks.Enqueue(blockHash);
+            return base.FindBlock(blockHash, options, blockNumber);
+        }
+    }
 
     private record PostMergeContext(
         IBeaconPivot BeaconPivot,

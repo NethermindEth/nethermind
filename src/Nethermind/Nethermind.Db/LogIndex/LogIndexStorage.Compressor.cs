@@ -7,7 +7,9 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.LogIndex;
@@ -64,7 +66,8 @@ partial class LogIndexStorage
 
             _minLengthToCompress = compressionDistance * BlockNumberSize;
 
-            if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
+            if (parallelism < 1)
+                throw new InvalidConfigurationException($"LogIndex.{nameof(ILogIndexConfig.MaxCompressionParallelism)} must be at least 1 but is {parallelism}.", ExitCodes.ForbiddenOptionValue);
             _processing = new(x =>
             {
                 if (!_started.Task.IsCompletedSuccessfully) return CompressAfterStartAsync(x.Item1, x.Item2);

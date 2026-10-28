@@ -48,24 +48,26 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
-    // Pricing the bound on the gas leg alone would let a frame tx name blob hashes at an arbitrary
-    // max_fee_per_blob_gas and hold exposure the bound never counted.
-    [TestCase(1, 3, TestName = "one blob")]
-    [TestCase(2, 5, TestName = "two blobs")]
-    [TestCase(6, 1_000_000, TestName = "six blobs at a realistic blob fee")]
-    public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo(int blobCount, int maxFeePerBlobGas)
+    // max_cost depends on the including block's base fees, so the reservation is max_fee, its bound at any of them.
+    [Test]
+    public void Accept_ReservesTheMaxFee([Values] bool blobs)
     {
-        // long: the product exceeds int at six blobs and a realistic blob fee.
-        long blobTerm = (long)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
-        PayerExposureCache cache = new();
+        const int maxFee = 3 * TestCost;
+        Transaction MaxFeeTx()
+        {
+            Transaction tx = blobs ? BlobFrameTx(blobCount: 1) : FrameTxCostingExactly(TestCost);
+            tx.MaxFee = maxFee;
+            return tx;
+        }
 
-        AcceptTxResult atBound = Accept(StateWithPayerBalance(TestCost + blobTerm), cache, BlobFrameTx(blobCount, maxFeePerBlobGas));
-        AcceptTxResult oneWeiShort = Accept(StateWithPayerBalance(TestCost + blobTerm - 1), new PayerExposureCache(), BlobFrameTx(blobCount, maxFeePerBlobGas));
+        PayerExposureCache cache = new();
+        AcceptTxResult atBound = Accept(StateWithPayerBalance(maxFee), cache, MaxFeeTx());
+        AcceptTxResult oneWeiShort = Accept(StateWithPayerBalance(maxFee - 1), new PayerExposureCache(), MaxFeeTx());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(atBound, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(TestCost + blobTerm)), "the gas leg and the whole blob term are reserved");
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)maxFee));
             Assert.That(oneWeiShort, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
         }
     }
@@ -347,8 +349,7 @@ public class FrameTxPayerExposureFilterTests
         {
             Assert.That(restored.PersistedPaymaster, Is.Not.Null, "the paymaster is what makes the record carry the slot");
             Assert.That(restored.PayerExposure, Is.Null, "an unpriced record must not read back as a free one");
-            Assert.That((UInt256)restored.GasLimit * restored.MaxFeePerGas, Is.GreaterThan(UInt256.Zero),
-                "the fallback must charge something, or this pins nothing");
+            Assert.That(restored.MaxFee, Is.GreaterThan(UInt256.Zero), "the fallback, max_fee, must charge something, or this pins nothing");
             Assert.That(result, Is.EqualTo(AcceptTxResult.InsufficientFunds));
         }
     }
@@ -388,8 +389,7 @@ public class FrameTxPayerExposureFilterTests
     {
         // AcceptTxResult.Invalid is the one result TxFloodController maps to an immediate disconnect, and
         // an unpriceable max_cost is unincludable rather than malformed.
-        Transaction tx = FrameTx(0);
-        tx.DecodedMaxFeePerGas = UInt256.MaxValue;
+        Transaction tx = FrameTx(ulong.MaxValue);
 
         AcceptTxResult result = Accept(StateWithPayerBalance(TestCost), new PayerExposureCache(), tx);
 
@@ -436,7 +436,6 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_ZeroBalanceSender_IsRefusedEvenAtZeroCost(int senderBalance, bool rejected, bool payerless)
     {
         Transaction tx = FrameTx(frameGasLimit: 21_000, payer: TestItem.AddressA);
-        tx.DecodedMaxFeePerGas = UInt256.Zero;
         tx.Hash = TestItem.KeccakA;
         if (payerless) tx.PayerAddress = null;
 
@@ -470,7 +469,7 @@ public class FrameTxPayerExposureFilterTests
         BehindAPostPrefixDefaultFrame,
     }
 
-    // TXPARAM(0x06) prices gas alone, so the wei a SENDER frame moves sits outside it. One in the leading prologue
+    // max_fee bounds fees alone, so the wei a SENDER frame moves sits outside it. One in the leading prologue
     // needs the balance to already hold it; one behind a DEFAULT frame the prefix does not cover may be funded by
     // what that frame does. Payer-less and self-paid alike: neither leg reserves the sender's value anywhere else.
     [TestCase(0, false, SenderFramePosition.BehindTheApprovingFrame, false, TestName = "the sender covers the fee and the leading frame's value")]
@@ -486,7 +485,7 @@ public class FrameTxPayerExposureFilterTests
         const int frameValue = 4_000;
         TxFrame senderFrame = new(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
         Transaction tx = FrameTxTestFrames.FrameTx(FramesFor(position, senderFrame));
-        tx.DecodedMaxFeePerGas = UInt256.One;
+        tx.MaxFee = TestCost;
         tx.Hash = TestItem.KeccakA;
         tx.PayerAddress = payerless ? null : TestItem.AddressA;
 
@@ -526,7 +525,7 @@ public class FrameTxPayerExposureFilterTests
         const int frameValue = 4_000;
         TxFrame senderFrame = new(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
         Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.OnlyVerify(), FrameTxTestFrames.Pay(Payer), senderFrame);
-        tx.DecodedMaxFeePerGas = UInt256.One;
+        tx.MaxFee = TestCost;
         tx.Hash = TestItem.KeccakA;
         tx.PayerAddress = Payer;
 
@@ -640,21 +639,6 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
-    public void MaxCost_CountsTheBlobTerm()
-    {
-        // A large max_fee_per_blob_gas must not smuggle unbounded exposure past a gas-only reservation.
-        Transaction tx = FrameTxCostingExactly(TestCost);
-        tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
-            Assert.That(maxCost, Is.EqualTo((UInt256)TestCost + Eip4844Constants.GasPerBlob));
-        }
-    }
-
-    [Test]
     public void ExposureCache_ClearReleasesEveryReservation()
     {
         // Pins the drain only: its paired gauge decrement is a shared static, so asserting that would race
@@ -738,15 +722,9 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
-    /// <summary>A blob-carrying frame tx whose max cost is exactly <paramref name="cost"/>: the blob leg is
-    /// priced at zero, so the gas leg alone decides it.</summary>
-    private static Transaction BlobFrameTxCosting(int cost)
-    {
-        Transaction tx = FrameTxCostingExactly(cost);
-        tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = UInt256.Zero;
-        return tx;
-    }
+    /// <summary>A blob-carrying frame tx whose <c>max_fee</c> is exactly <paramref name="cost"/> wei: the budget covers
+    /// the blob gas, so there is no separate blob term.</summary>
+    private static Transaction BlobFrameTxCosting(int cost) => BlobFrameTx(blobCount: 1, cost);
 
     /// <summary>A blob-carrying frame tx sponsored through a <c>pay</c> frame, with no payer resolved.</summary>
     private static Transaction SponsoredFrameTx()
@@ -758,9 +736,9 @@ public class FrameTxPayerExposureFilterTests
     }
 
     /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
-    private static Transaction BlobFrameTx(int blobCount, int maxFeePerBlobGas)
+    private static Transaction BlobFrameTx(int blobCount, int cost = TestCost)
     {
-        Transaction tx = FrameTxCostingExactly(TestCost);
+        Transaction tx = FrameTxCostingExactly(cost);
         byte[][] hashes = new byte[blobCount][];
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -768,20 +746,15 @@ public class FrameTxPayerExposureFilterTests
         }
 
         tx.BlobVersionedHashes = hashes;
-        tx.MaxFeePerBlobGas = (UInt256)maxFeePerBlobGas;
         return tx;
     }
 
-    /// <summary>A frame tx whose EIP-8141 <c>TXPARAM(0x06)</c> max cost is exactly <paramref name="cost"/> wei.</summary>
+    /// <summary>A frame tx whose <c>max_fee</c>, the bound of its <c>max_cost</c>, is exactly <paramref name="cost"/> wei.</summary>
     private static Transaction FrameTxCostingExactly(int cost, Address? payer = null)
     {
-        // At max_fee_per_gas == 1 the cost is the gas budget, so the frame's gas limit is the
-        // requested cost less the spec-priced intrinsic component.
-#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _), Is.True);
-#pragma warning restore NUnit2045
-        Assert.That(intrinsicGas, Is.LessThan((ulong)cost), "the requested cost must leave room for the intrinsic term");
-        return FrameTx((ulong)cost - intrinsicGas, payer);
+        Transaction tx = FrameTx(FrameTxTestFrames.PrefixFrameGas, payer);
+        tx.MaxFee = (UInt256)cost;
+        return tx;
     }
 
     private static Transaction FrameTx(ulong frameGasLimit, Address? payer = null) => new()
@@ -790,7 +763,6 @@ public class FrameTxPayerExposureFilterTests
         SenderAddress = TestItem.AddressA,
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
         FrameSignatures = [],
-        DecodedMaxFeePerGas = UInt256.One,
         PayerAddress = payer ?? Payer,
     };
 

@@ -247,7 +247,7 @@ public abstract partial class BaseEngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public InclusionListTxSource? InclusionListTxSource { get; set; }
+        public IInclusionListTxSource? InclusionListTxSource { get; set; }
 
         protected override ChainSpec CreateChainSpec() =>
             new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
@@ -315,7 +315,7 @@ public abstract partial class BaseEngineModuleTests
             IBlockProducer preMergeBlockProducer = base.CreateTestBlockProducer();
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
-            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
+            InclusionListTxSource = Container.Resolve<IInclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,

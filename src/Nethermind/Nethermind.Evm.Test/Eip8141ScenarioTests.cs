@@ -1079,6 +1079,6 @@ public class Eip8141ScenarioTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 }

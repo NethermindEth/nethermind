@@ -202,13 +202,8 @@ public class FrameTxValidationTests
             static tx => tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, NonZeroDigest(), new byte[65])],
             null);
 
-        // Spec-backed by the max_fee_per_blob_gas field description ("must be 0 when blob_versioned_hashes is
-        // empty"), though the rule is not in the Constraints block.
-        yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
-            static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
-
-        yield return Case("BlobHashesWithBlobFee_Valid",
-            static tx => { tx.BlobVersionedHashes = [new byte[32]]; tx.MaxFeePerBlobGas = UInt256.One; }, null);
+        yield return Case("BlobHashes_Valid",
+            static tx => tx.BlobVersionedHashes = [new byte[32]], null);
 
         // Expiry verifier frame: flags == 0, value == 0, len(data) == EXPIRY_DATA_LENGTH, at most one.
         yield return Case("ExpiryFrameWellFormed_Valid",

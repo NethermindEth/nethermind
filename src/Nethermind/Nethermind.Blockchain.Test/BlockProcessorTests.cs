@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Blockchain;
@@ -72,6 +73,7 @@ using System.Linq;
 using Nethermind.Trie;
 using Nethermind.State.Proofs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Facade.Filters;
 
@@ -2195,7 +2197,8 @@ public partial class BlockProcessorTests
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null,
         BlockHeader? parentHeader = null,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        IBlockValidator? blockValidator = null)
     {
         specProvider ??= HoodiSpecProvider.Instance;
         TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
@@ -2207,7 +2210,7 @@ public partial class BlockProcessorTests
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
             stateProvider, specProvider, balManager, LimboLogs.Instance);
         BlockProcessor processor = new(specProvider,
-            TestBlockValidator.AlwaysValid,
+            blockValidator ?? TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
             transactionsExecutor,
             stateProvider,
@@ -2412,6 +2415,32 @@ public partial class BlockProcessorTests
         processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
+    }
+
+    [Test]
+    public void ProcessOne_keeps_the_generated_bal_that_the_validator_sets_on_a_rejected_block()
+    {
+        BlockAccessListAtIndex slice = new();
+        slice.AddAccountRead(TestItem.AddressA);
+        GeneratedBlockAccessList generated = new();
+        generated.Merge(slice);
+
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), Arg.Any<Block>(), out Arg.Any<string?>())
+            .Returns(ci =>
+            {
+                ci.ArgAt<Block>(2).GeneratedBlockAccessList = generated;
+                ci[3] = "invalid block";
+                return false;
+            });
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(blockValidator: validator);
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
+
+        Assert.Throws<InvalidBlockException>(() =>
+            processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
+        Assert.That(block.EncodedGeneratedBlockAccessList, Is.EqualTo(BlockAccessListDecoder.EncodeToBytes(generated)));
     }
 
     [Test]

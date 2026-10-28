@@ -3901,6 +3901,7 @@ namespace Nethermind.TxPool.Test
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
+                MaxFee = (UInt256)1_000_000 * 1.GWei,
             };
             frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
             frameTx.Hash = frameTx.CalculateHash();
@@ -4013,6 +4014,7 @@ namespace Nethermind.TxPool.Test
                 GasLimit = executionGasLimit + stateGasLimit,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
+                MaxFee = (UInt256)(executionGasLimit + stateGasLimit) * 1.GWei,
             };
             frameTx.Hash = frameTx.CalculateHash();
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
@@ -4074,9 +4076,7 @@ namespace Nethermind.TxPool.Test
             int Pending() => first.CarriesBlobs ? _txPool.GetPendingBlobTransactionsCount() : _txPool.GetPendingTransactionsCount();
 
             // Balance for exactly one such transaction, so a reservation outliving the first rejects the second.
-            UInt256 blobCost = (UInt256)(Eip4844Constants.GasPerBlob * (ulong)(first.BlobVersionedHashes?.Length ?? 0))
-                * (first.MaxFeePerBlobGas ?? UInt256.Zero);
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)first.GasLimit * first.MaxFeePerGas + blobCost);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, first.MaxFee);
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(_txPool.SubmitTx(first, options), Is.EqualTo(AcceptTxResult.Accepted));
@@ -6603,35 +6603,32 @@ namespace Nethermind.TxPool.Test
                 GasLimit = TxGasLimit,
                 GasPrice = maxPriorityFeePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
+                MaxFee = (UInt256)TxGasLimit * (maxFeePerGas ?? 1.GWei),
             };
             tx.Hash = tx.CalculateHash();
             return tx;
         }
 
         [Test]
-        public void Frame_transaction_payer_exposure_prices_the_calldata_its_nonce_keys_occupy()
+        public void Frame_transaction_payer_exposure_is_the_max_fee_of_a_keyed_transaction()
         {
             // eth_sendTransaction builds the transaction field by field, so it never reaches the decoder that
-            // measures the EIP-8250 nonce-key calldata the bound is priced on. Left unmeasured the reservation
-            // is systematically below what the transaction costs, which is the bound this gate exists to hold.
+            // measures the EIP-8250 nonce-key calldata. The bound is max_fee whatever max_gas the calldata makes,
+            // but the pool still measures it for the checks that price max_gas.
             IReleaseSpec spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true };
             _txPool = CreatePool(null, new TestSpecProvider(spec));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             Transaction tx = SelfPayingFrameTx(nonce: 0, feePerGas: 3, nonceKeys: [(UInt256)0xbeef]);
-#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
             Assert.That(tx.FrameCalldataStats, Is.EqualTo(default((int ZeroBytes, int NonZeroBytes))), "nothing on this path measured it");
-#pragma warning restore NUnit2045
-            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 unmeasuredCost), Is.True);
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
 
-            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 measuredCost), Is.True);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(measuredCost, Is.GreaterThan(unmeasuredCost), "the nonce-key calldata is not free");
-                Assert.That(tx.PayerExposure, Is.EqualTo(measuredCost), "the payer is held to the measured cost, not the unmeasured one");
+                Assert.That(tx.FrameCalldataStats, Is.Not.EqualTo(default((int ZeroBytes, int NonZeroBytes))), "the pool measured it");
+                Assert.That(tx.PayerExposure, Is.EqualTo(tx.MaxFee));
             }
         }
 
@@ -6716,6 +6713,7 @@ namespace Nethermind.TxPool.Test
                 GasLimit = 1_000_000,
                 GasPrice = feePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = feePerGas ?? 1.GWei,
+                MaxFee = (UInt256)1_000_000 * (feePerGas ?? 1.GWei),
             };
             // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
             // signatures are taken with the entries already installed, then their bytes are filled in.
@@ -6755,6 +6753,7 @@ namespace Nethermind.TxPool.Test
                 Value = value,
                 GasPrice = maxFee,
                 DecodedMaxFeePerGas = maxFee,
+                MaxFee = (UInt256)KeyedFrameTxGasLimit * maxFee,
             };
             tx.Hash = tx.CalculateHash();
             return tx;

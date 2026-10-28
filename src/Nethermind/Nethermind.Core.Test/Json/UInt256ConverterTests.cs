@@ -3,11 +3,14 @@
 
 using System;
 using System.Globalization;
+using System.IO;
 using Nethermind.Int256;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Numerics;
@@ -94,6 +97,55 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         yield return int.MaxValue;
         yield return UInt256.One;
         yield return UInt256.Zero;
+    }
+
+    private static IEnumerable<UInt256> DecimalWriteValues()
+    {
+        yield return UInt256.Zero;
+        yield return new UInt256(ulong.MaxValue);
+        yield return new UInt256(0, 1);
+        yield return UInt256.MaxValue;
+    }
+
+    [Test]
+    public void Write_DecimalAndRaw_PreservesJsonTypeAndEncoder(
+        [ValueSource(nameof(DecimalWriteValues))] UInt256 value,
+        [Values(NumberConversion.Decimal, NumberConversion.Raw)] NumberConversion conversion,
+        [Values] bool propertyName,
+        [Values] bool restrictEncoder)
+    {
+        JavaScriptEncoder encoder = restrictEncoder ? JavaScriptEncoder.Create(UnicodeRanges.None) : JavaScriptEncoder.Default;
+        string decimalText = ((BigInteger)value).ToString(CultureInfo.InvariantCulture);
+        string quotedText = JsonSerializer.Serialize(decimalText, new JsonSerializerOptions { Encoder = encoder });
+        if (restrictEncoder)
+            Assert.That(quotedText, Does.Contain("\\u"), "the restrictive encoder must exercise escaped decimal digits");
+        string expected = propertyName ? $"{{{quotedText}:1}}" : conversion == NumberConversion.Raw ? quotedText : decimalText;
+        NumberConversion previous = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = conversion;
+        try
+        {
+            using MemoryStream stream = new();
+            using Utf8JsonWriter writer = new(stream, new JsonWriterOptions { Encoder = encoder });
+            if (propertyName)
+            {
+                writer.WriteStartObject();
+                converter.WriteAsPropertyName(writer, value, options);
+                writer.WriteNumberValue(1);
+                writer.WriteEndObject();
+            }
+            else
+            {
+                converter.Write(writer, value, options);
+            }
+            writer.Flush();
+
+            Assert.That(System.Text.Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected),
+                "decimal numbers, raw strings and property names must retain their exact JSON and encoder behavior");
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previous;
+        }
     }
 
     public static IEnumerable<string> FormatsCaseSource()

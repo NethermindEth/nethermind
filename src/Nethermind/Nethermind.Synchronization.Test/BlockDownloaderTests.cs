@@ -1590,13 +1590,17 @@ public partial class BlockDownloaderTests
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
+        public System.Collections.Concurrent.ConcurrentQueue<ulong> RequestedBodyNumbers { get; } = new();
+
         public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             BlockBody[] headers = new BlockBody[blockHashes.Count];
             int i = 0;
             foreach (Hash256 blockHash in blockHashes)
             {
-                headers[i++] = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Body;
+                Block block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!;
+                RequestedBodyNumbers.Enqueue(block.Number);
+                headers[i++] = block.Body;
             }
 
             using BlockBodiesMessage message = new(headers);

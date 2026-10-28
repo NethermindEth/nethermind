@@ -180,8 +180,16 @@ public partial class PatriciaTree
 
                 return workerTraverseStack;
             },
-            ReturnTraverseStack
+            ReturnJobTraverseStack
         );
+    }
+
+    /// <summary>Returns a job's stack to its thread empty, also when the job threw part way through a walk.</summary>
+    /// <remarks>The loop runs this after an exception too, and the next write on the thread takes the stack as it finds it.</remarks>
+    private static void ReturnJobTraverseStack(TraverseStack stack)
+    {
+        stack.Clear();
+        ReturnTraverseStack(stack);
     }
 
     /// <param name="ctx">Just to reduce the param count</param>

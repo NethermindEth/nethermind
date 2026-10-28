@@ -432,6 +432,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_uninstall_filter_returns_false_for_unknown_id([Values] bool uninstalledBefore)
+    {
+        using Context ctx = await Context.Create();
+        if (uninstalledBefore)
+        {
+            _ = await ctx.Test.TestEthRpc("eth_newBlockFilter");
+            _ = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        }
+
+        string serialized = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter_overflow_int()
     {
         using Context ctx = await Context.Create();
@@ -2530,6 +2544,44 @@ public partial class EthRpcModuleTests
 
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
+    }
+
+    // A frame transaction sent priced per gas buys max_gas at those prices, which includes intrinsic gas.
+    [Test]
+    public async Task Send_frame_transaction_priced_per_gas_buys_its_max_gas()
+    {
+        using Context ctx = await Context.Create();
+        ITxSender txSender = Substitute.For<ITxSender>();
+        Transaction? sent = null;
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithTxSender(txSender).Build(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = new()
+        {
+            From = TestItem.AddressC,
+            Gas = 100_000,
+            Nonce = 0,
+            MaxFeePerGas = 3,
+            MaxPriorityFeePerGas = 1,
+            Frames =
+            [
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000, StateGas = 0 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 },
+            ],
+            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", request);
+
+#pragma warning disable NUnit2045 // The sent transaction must exist before calculating its gas budget.
+        Assert.That(sent, Is.Not.Null, serialized);
+#pragma warning restore NUnit2045
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(sent!, Eip8141Prototype.Instance, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(maxGas, Is.GreaterThan(sent!.GasLimit), "the frame gas sum leaves out intrinsic gas");
+            Assert.That(sent.MaxFee, Is.EqualTo((UInt256)maxGas * 3));
+        }
     }
 
     [Test]

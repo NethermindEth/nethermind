@@ -70,6 +70,7 @@ public class OpcodeTracingPluginTests
     {
         if (_container is not null)
         {
+            await _container.WriteDiagnosticLogsAsync("Nethermind");
             await _container.DisposeAsync();
             _container = null;
         }

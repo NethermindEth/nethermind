@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -29,85 +30,78 @@ public static class ScopeBalApplier
         LazyLogger logger = new(logManager);
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
         // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
-        ArrayPoolList<ValueHash256>? writtenCodeHashes = null;
+        HashSet<ValueHash256>? writtenCodeHashes = null;
         bool failed = false;
         try
         {
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
             try
             {
-                IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
-                try
+                // Disposed at the end of this block, so unclaimed storage batches are disposed before the parent.
+                using StorageBatches storageBatches = new(logManager);
+                foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                 {
-                    // Disposed at the end of this block, so unclaimed storage batches are disposed before the parent.
-                    using StorageBatches storageBatches = new(logManager);
-                    foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+                    if (cancellationToken.IsCancellationRequested) break;
+                    if (!accountChanges.HasStateChanges) continue;
+
+                    Address address = accountChanges.Address;
+                    Account? existing = scope.Get(address);
+                    BalAccountDelta delta = BalAccountDelta.Compute(existing, accountChanges);
+
+                    if (delta.Account is not { } account)
                     {
-                        if (cancellationToken.IsCancellationRequested) break;
-                        if (!accountChanges.HasStateChanges) continue;
-
-                        Address address = accountChanges.Address;
-                        Account? existing = scope.Get(address);
-                        BalAccountDelta delta = BalAccountDelta.Compute(existing, accountChanges);
-
-                        if (delta.Account is not { } account)
-                        {
-                            if (existing is not null) writeBatch.Set(address, null);
-                            continue;
-                        }
-
-                        if (delta.Code is { } codeChange
-                            && writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash))
-                        {
-                            if (BalAccountDelta.TryGetCode(bal, codeChange, out byte[]? code))
-                            {
-                                codeSetter ??= scope.CodeDb.BeginCodeWrite();
-                                codeSetter.Set(codeChange.CodeHash, code);
-                                (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
-                            }
-                            else
-                            {
-                                ReportMissingCode(ref logger, address, codeChange.CodeHash);
-                            }
-                        }
-
-                        // Storage creation reads the account; keep flat state and the trie aligned until that read completes.
-                        storageBatches.Add(writeBatch, delta, existing is not null);
-                        // A slot-only change leaves the account as it was.
-                        if (delta.ChangesAccount) writeBatch.Set(address, account);
+                        if (existing is not null) writeBatch.Set(address, null);
+                        continue;
                     }
-                    if (!cancellationToken.IsCancellationRequested) storageBatches.Apply();
+
+                    if (delta.Code is { } codeChange
+                        && writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash))
+                    {
+                        if (BalAccountDelta.TryGetCode(bal, codeChange, out byte[]? code))
+                        {
+                            codeSetter ??= scope.CodeDb.BeginCodeWrite();
+                            codeSetter.Set(codeChange.CodeHash, code);
+                            (writtenCodeHashes ??= []).Add(codeChange.CodeHash);
+                        }
+                        else
+                        {
+                            ReportMissingCode(ref logger, address, codeChange.CodeHash);
+                        }
+                    }
+
+                    // Storage creation reads the account; keep flat state and the trie aligned until that read completes.
+                    storageBatches.Add(writeBatch, delta, existing is not null);
+                    // A slot-only change leaves the account as it was.
+                    if (delta.ChangesAccount) writeBatch.Set(address, account);
                 }
-                catch
-                {
-                    failed = true;
-                    throw;
-                }
-                finally
-                {
-                    Dispose(writeBatch, failed, ref logger);
-                }
+                if (!cancellationToken.IsCancellationRequested) storageBatches.Apply();
             }
             catch
             {
-                // Also covers the parent batch's own disposal failing, which the code setter's disposal must not replace.
                 failed = true;
                 throw;
             }
             finally
             {
-                Dispose(codeSetter, failed, ref logger);
+                Dispose(writeBatch, failed, ref logger);
             }
-
-            if (writtenCodeHashes is null) return;
-
-            foreach (ValueHash256 codeHash in writtenCodeHashes.AsSpan())
-            {
-                scope.CodeDb.MarkCodePersisted(in codeHash);
-            }
+        }
+        catch
+        {
+            // Also covers the parent batch's own disposal failing, which the code setter's disposal must not replace.
+            failed = true;
+            throw;
         }
         finally
         {
-            writtenCodeHashes?.Dispose();
+            Dispose(codeSetter, failed, ref logger);
+        }
+
+        if (writtenCodeHashes is null) return;
+
+        foreach (ValueHash256 codeHash in writtenCodeHashes)
+        {
+            scope.CodeDb.MarkCodePersisted(in codeHash);
         }
     }
 
