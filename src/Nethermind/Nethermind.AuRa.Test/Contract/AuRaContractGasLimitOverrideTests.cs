@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -171,7 +170,7 @@ public class AuRaContractGasLimitOverrideTests
             KeyValuePair<ulong, Address> blockGasLimitContractTransition = chainSpec.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
                 .First();
-            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
+            BlockGasLimitContract gasLimitContract = new(blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
                 txProcessingEnvFactory.Create());
 
