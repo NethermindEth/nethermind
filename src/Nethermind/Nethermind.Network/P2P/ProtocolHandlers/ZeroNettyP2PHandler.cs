@@ -117,7 +117,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             {
                 outputPacket.Protocol = null;
                 outputPacket.PacketType = input.PacketType;
-                _session.ReceiveMessage(outputPacket);
+                ReceiveMessage(outputPacket);
             }
             finally
             {
@@ -132,7 +132,26 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else
         {
-            _session.ReceiveMessage(input);
+            ReceiveMessage(input);
+        }
+    }
+
+    private void ReceiveMessage(ZeroPacket packet)
+    {
+        try
+        {
+            _session.ReceiveMessage(packet);
+        }
+        catch (RlpException exception) when (exception is not IInternalNethermindException)
+        {
+            if (_logger.IsTrace) TraceCommunicationError(exception);
+            if (!_session.IsClosing)
+            {
+                DisconnectReason reason = exception is RlpLimitException
+                    ? DisconnectReason.MessageLimitsBreached
+                    : DisconnectReason.BreachOfProtocol;
+                _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
+            }
         }
     }
 
@@ -200,11 +219,11 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             base.ExceptionCaught(context, exception);
         }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceCommunicationError(Exception communicationException) =>
-            _logger.Trace($"Error in communication with {GetClientId(_session)} ({communicationException.GetType().Name}): {communicationException}");
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceCommunicationError(Exception communicationException) =>
+        _logger.Trace($"Error in communication with {GetClientId(_session)} ({communicationException.GetType().Name}): {communicationException}");
 
     private static string GetClientId(ISession? session) =>
         session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";

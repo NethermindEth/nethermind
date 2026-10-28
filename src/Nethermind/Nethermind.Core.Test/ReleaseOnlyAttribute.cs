@@ -4,7 +4,6 @@
 using System;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
 using NUnitTest = NUnit.Framework.Internal.Test;
 
 namespace Nethermind.Core.Test;
@@ -27,7 +26,7 @@ public sealed class ReleaseOnlyAttribute(string reason) : NUnitAttribute, IApply
 #if DEBUG
         if (test.RunState is RunState.NotRunnable) return;
         test.RunState = RunState.Ignored;
-        test.Properties.Set(PropertyNames.SkipReason, Reason);
+        test.Properties.Set(NUnit.Framework.Internal.PropertyNames.SkipReason, Reason);
 #endif
     }
 }

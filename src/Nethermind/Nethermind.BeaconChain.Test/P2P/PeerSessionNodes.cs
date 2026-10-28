@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
@@ -41,9 +43,9 @@ internal static class PeerSessionNodes
         EarliestAvailableSlot = AnchorSlot,
     };
 
-    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null)
+    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null, int quicPort = 0)
     {
-        BeaconChainConfig config = new() { P2PPort = 0 };
+        BeaconChainConfig config = new() { P2PPort = 0, QuicPort = quicPort };
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default) { CurrentStatus = Status };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         if (privateKey is not null)
@@ -57,9 +59,9 @@ internal static class PeerSessionNodes
     }
 
     // Both sides open identify streams as the session starts, exercising multiplexer stream retention.
-    public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token)
+    public static async Task<ISession> DialAsync(BeaconP2P from, BeaconP2P to, CancellationToken token, bool quic = false)
     {
-        ISession session = await from.DialPeerAsync(LoopbackAddress(to), token);
+        ISession session = await from.DialPeerAsync(LoopbackAddress(to, quic), token);
         if (!await HasIdentifiedSessionAsync(from, to.LocalPeerId!, token) || !await HasIdentifiedSessionAsync(to, from.LocalPeerId!, token))
         {
             Assert.Fail("a node closed the session before its identify completed");
@@ -123,11 +125,12 @@ internal static class PeerSessionNodes
         }
     }
 
-    public static Multiaddress LoopbackAddress(BeaconP2P node) => Multiaddress.Decode(LoopbackAddressText(node));
+    public static Multiaddress LoopbackAddress(BeaconP2P node, bool quic = false) => Multiaddress.Decode(LoopbackAddressText(node, quic: quic));
 
-    public static string LoopbackAddressText(BeaconP2P node, bool withPeerId = true)
+    public static string LoopbackAddressText(BeaconP2P node, bool withPeerId = true, bool quic = false)
     {
-        string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
+        string address = node.ListenAddresses.First(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal))
+            .ToString().Replace("0.0.0.0", "127.0.0.1");
         int peerIdAt = address.IndexOf("/p2p/", StringComparison.Ordinal);
         if (peerIdAt >= 0)
         {
@@ -135,6 +138,13 @@ internal static class PeerSessionNodes
         }
 
         return withPeerId ? $"{address}/p2p/{node.LocalPeerId}" : address;
+    }
+
+    public static int FreeUdpPort()
+    {
+        using Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        return ((IPEndPoint)socket.LocalEndPoint!).Port;
     }
 
     public static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token, TimeSpan? within = null, int pollDelayMilliseconds = 20)
@@ -169,7 +179,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
     public Multiaddress Address => peer.ListenAddresses.First();
 
     public static async Task<PlainPeer> StartAsync(Func<IProtocolStackSettings, IdentifyProtocol> identify, CancellationToken token, IBeaconChainStatusSource? statusSource = null,
-        bool pingOnDial = false, Identity? identity = null)
+        bool pingOnDial = false, Identity? identity = null, IProtocol? additionalProtocol = null)
     {
         ServiceCollection collection = new();
         collection.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(new Logging.Microsoft.NethermindLoggerFactory(LimboLogs.Instance));
@@ -180,7 +190,11 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         }
 
         ServiceProvider services = collection
-            .AddLibp2p(builder => statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>())
+            .AddLibp2p(builder =>
+            {
+                IPeerFactoryBuilder configured = statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>();
+                return additionalProtocol is null ? configured : configured.AddProtocol(additionalProtocol);
+            })
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.
         services.GetRequiredService<IPeerFactory>();
@@ -201,5 +215,18 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         protected override Task ConnectedTo(ISession session, bool isDialer) => pingOnDial && isDialer
             ? session.DialAsync<PingProtocol>()
             : Task.CompletedTask;
+    }
+}
+
+internal sealed class StallingMetadataProtocol : ISessionProtocol
+{
+    public string Id => "/eth2/beacon_chain/req/metadata/3/ssz_snappy";
+    public TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task DialAsync(IChannel downChannel, ISessionContext context) => throw new InvalidOperationException("The fixture only receives requests.");
+
+    public async Task ListenAsync(IChannel downChannel, ISessionContext context)
+    {
+        Requested.TrySetResult();
+        await downChannel;
     }
 }

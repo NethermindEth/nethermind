@@ -6,10 +6,12 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Quic;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Multiformats.Address.Net;
+using Multiformats.Address.Protocols;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -35,7 +37,7 @@ using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 
 namespace Nethermind.BeaconChain.P2P;
 
-/// <summary>Hosts beacon libp2p TCP/noise/yamux, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
+/// <summary>Hosts beacon libp2p TCP/Noise/yamux, optional QUIC, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
 /// <remarks>Persisted secp256k1 identity survives restarts and supplies the discv5 ENR key. Uses eth2 StrictNoSign, Eth2MessageId,
 /// D=8/D_low=6/D_high=12/D_lazy=6, 700 ms heartbeat and two-epoch seen TTL (p2p-interface.md).</remarks>
 public sealed class BeaconP2P : IAsyncDisposable
@@ -50,6 +52,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ServiceProvider _serviceProvider;
     private readonly GossipMessageValidator? _messageValidator;
+    private readonly Action<PubsubRouter, PubsubSettings>? _configureGossip;
     // Lazy because the pool's implementation is built from this host.
     private readonly Lazy<IBeaconSyncPeerPool>? _peerPool;
 
@@ -92,13 +95,15 @@ public sealed class BeaconP2P : IAsyncDisposable
         ILogManager logManager,
         GossipMessageValidator? messageValidator = null,
         SlotClock? clock = null,
-        Lazy<IBeaconSyncPeerPool>? peerPool = null)
+        Lazy<IBeaconSyncPeerPool>? peerPool = null,
+        Action<PubsubRouter, PubsubSettings>? configureGossip = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidations, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidations));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidationBytes, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidationBytes));
         _config = config;
         _peerPool = peerPool;
         _messageValidator = messageValidator;
+        _configureGossip = configureGossip;
         _store = store;
         _statusSource = statusSource;
         _metadataSource = metadataSource;
@@ -111,6 +116,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new GoodbyeProtocol { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientBootstrapProtocol(spec) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientUpdatesByRangeProtocol(spec) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientFinalityUpdateProtocol(spec) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientOptimisticUpdateProtocol(spec) { RequestViolationSink = ReportRequestViolation })
             // The global request budget covers one peer above the ceiling, which admission allows a static peer.
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
             .AddSingleton(new BeaconBlocksByHeadProtocolV1(spec, store, clock) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
@@ -119,20 +128,27 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
             .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation, MaxPeerCount = config.MaxPeerCount + 1, IsAdmitted = IsAdmittedPeer })
-            .AddLibp2p(builder => builder
-                .WithPubsub()
+            .AddLibp2p(builder =>
+            {
+                if (config.QuicPort > 0) builder.WithQuic();
+                return builder.WithPubsub()
                 .AddProtocol<StatusProtocolV1>()
                 .AddProtocol<StatusProtocolV2>()
                 .AddProtocol<GoodbyeProtocol>()
                 .AddProtocol<Eth2PingProtocol>()
                 .AddProtocol<MetaDataProtocolV3>()
+                .AddProtocol<LightClientBootstrapProtocol>(isExposed: false)
+                .AddProtocol<LightClientUpdatesByRangeProtocol>(isExposed: false)
+                .AddProtocol<LightClientFinalityUpdateProtocol>(isExposed: false)
+                .AddProtocol<LightClientOptimisticUpdateProtocol>(isExposed: false)
                 .AddProtocol<BeaconBlocksByRangeProtocolV2>()
                 .AddProtocol<BeaconBlocksByRootProtocolV2>()
                 .AddProtocol<BeaconBlocksByHeadProtocolV1>()
                 .AddProtocol<DataColumnSidecarsByRangeProtocol>()
                 .AddProtocol<DataColumnSidecarsByRootProtocol>()
                 .AddProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
-                .AddProtocol<ExecutionPayloadEnvelopesByRootProtocol>())
+                .AddProtocol<ExecutionPayloadEnvelopesByRootProtocol>();
+            })
             .AddSingleton(sp => new IdentifyProtocol(sp.GetRequiredService<IProtocolStackSettings>(), sp.GetRequiredService<IdentifyProtocolSettings>(), loggerFactory: sp.GetService<ILoggerFactory>()))
             .AddSingleton<IdentifyPushProtocol>(sp => new AdmittedIdentifyPushProtocol(sp.GetRequiredService<IProtocolStackSettings>(),
                 sp.GetRequiredService<IdentifyProtocolSettings>(), sp.GetRequiredService<PeerStore>(), IsAdmittedPeer))
@@ -226,6 +242,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         [
             .. GossipTopics.SubscribedTopicNames,
             .. GossipTopics.GloasTopicNames,
+            GossipTopics.LightClientFinalityUpdate,
+            GossipTopics.LightClientOptimisticUpdate,
             .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),
         ];
         foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
@@ -280,20 +298,33 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <param name="token">Must stay uncancelled for the host lifetime: the pubsub heartbeat and reconnect loops are bound to it.</param>
     public async Task StartAsync(CancellationToken token)
     {
+        if (_config.QuicPort > 0 && !(QuicListener.IsSupported && QuicConnection.IsSupported))
+            throw new PlatformNotSupportedException("Beacon QUIC requires an available MsQuic runtime; install it or set QuicPort to 0 for TCP-only operation.");
         _startCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         try
         {
             _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
             _localPeer.OnConnected += OnSessionConnected;
             _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
-            await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], _startCts.Token);
+            Multiaddress[] addresses = _config.QuicPort > 0
+                ? [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}", $"/ip4/0.0.0.0/udp/{_config.QuicPort}/quic-v1"]
+                : [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"];
+            await _localPeer.StartListenAsync(addresses, _startCts.Token);
             token.ThrowIfCancellationRequested();
-            IPEndPoint? listenEndpoint = _localPeer.ListenAddresses.Count == 1 ? _localPeer.ListenAddresses[0].ToEndPoint() : null;
+            IPEndPoint? listenEndpoint = null;
+            IPEndPoint? quicEndpoint = null;
+            foreach (Multiaddress address in _localPeer.ListenAddresses)
+            {
+                if (address.Has<TCP>()) listenEndpoint = address.ToEndPoint();
+                else if (address.Has<QUICv1>()) quicEndpoint = address.ToEndPoint();
+            }
             // The library swallows a failed bind and reports no listen address instead.
             if (listenEndpoint is null || listenEndpoint.Port == 0)
             {
                 throw new InvalidOperationException($"Beacon chain P2P failed to bind TCP port {_config.P2PPort}; check whether the port is already in use");
             }
+            if (_config.QuicPort > 0 && quicEndpoint?.Port != _config.QuicPort)
+                throw new InvalidOperationException($"Beacon chain P2P failed to bind QUIC UDP port {_config.QuicPort}; check whether the port is already in use");
 
             _router = _serviceProvider.GetRequiredService<PubsubRouter>();
             if (_messageValidator is not null)
@@ -312,8 +343,10 @@ public sealed class BeaconP2P : IAsyncDisposable
                 _router.OnDeferredMessage = _deferredValidation.ValidateAsync;
             }
 
+            _configureGossip?.Invoke(_router, _serviceProvider.GetRequiredService<PubsubSettings>());
             await _router.StartAsync(_localPeer, _startCts.Token);
             if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {listenEndpoint.Port} as {LocalPeerId}");
+            if (quicEndpoint is not null && _logger.IsInfo) _logger.Info($"Beacon chain QUIC listening on UDP port {quicEndpoint.Port}");
         }
         catch
         {
@@ -525,8 +558,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     }
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
-    /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered, which is how an unsupported
-    /// protocol surfaces once the peer answers <c>na</c>; any other failure propagates.</remarks>
+    /// <remarks>Falls back when v2 is rejected on a live session, fails as an exchange (<see cref="Eth2ReqRespException"/>) or goes unanswered.
+    /// Caller cancellation, a closed session and unrelated local failures propagate.</remarks>
     public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
     {
         try
@@ -534,7 +567,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             using CancellationTokenSource cts = Timeout(session, token);
             return await ExchangeAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(session, () => Tracked(timing, CopyOf(_statusSource.CurrentStatus)), cts, token, timing);
         }
-        catch (Exception e) when (IsExchangeFailure(e) || e is TimeoutException || e is OperationCanceledException && !token.IsCancellationRequested)
+        catch (Exception e) when (!token.IsCancellationRequested && (IsExchangeFailure(e) || e is TimeoutException or OperationCanceledException
+            || e is ChannelClosedException && !session.Closed.IsCancellationRequested))
         {
             if (_logger.IsTrace) _logger.Trace($"Status v2 with {session.RemoteAddress} failed ({e.Message}), falling back to v1");
             timing?.Restart();
@@ -563,6 +597,30 @@ public sealed class BeaconP2P : IAsyncDisposable
     {
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
         return await ExchangeAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(session, () => TrackedCopy(timing, roots), cts, token, timing);
+    }
+
+    public async Task<LightClientBootstrap> RequestLightClientBootstrapAsync(ISession session, Hash256 root, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(session, () => Tracked(timing, root), cts, token, timing);
+    }
+
+    public async Task<LightClientUpdate> RequestLightClientUpdateAsync(ISession session, ulong period, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientUpdatesByRangeProtocol, ulong, LightClientUpdate>(session, () => period, cts, token, timing);
+    }
+
+    public async Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientFinalityUpdateProtocol, ulong, LightClientFinalityUpdate>(session, () => 0UL, cts, token, timing);
+    }
+
+    public async Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientOptimisticUpdateProtocol, ulong, LightClientOptimisticUpdate>(session, () => 0UL, cts, token, timing);
     }
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token, RequestTiming? timing = null)

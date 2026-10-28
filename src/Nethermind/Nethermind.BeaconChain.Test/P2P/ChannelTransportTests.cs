@@ -6,12 +6,138 @@ using System.IO;
 using System.Runtime.InteropServices;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
+using Nethermind.Libp2p.Protocols;
+using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
 [CancelAfter(10_000)]
 public class ChannelTransportTests
 {
+    public enum NegotiationFailure
+    {
+        UnsupportedProtocol,
+        WrongHello,
+        ResetBeforeHello,
+        ResetAfterHello,
+    }
+
+    [Test]
+    public async Task Rejected_selection_completes_the_pending_request([Values] NegotiationFailure failure,
+        [Values] bool alreadyCompleted, CancellationToken token)
+    {
+        Channel channel = new();
+        IChannel remote = channel.Reverse;
+        IConnectionContext context = Substitute.For<IConnectionContext>();
+        ISessionProtocol<int, int> selected = Substitute.For<ISessionProtocol<int, int>>();
+        selected.Id.Returns("/test/multistream/rejected/1");
+        TaskCompletionSource<object?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (alreadyCompleted) completion.SetResult(42);
+        context.UpgradeOptions.Returns(new UpgradeOptions { SelectedProtocol = selected, Argument = 1, CompletionSource = completion });
+        MultistreamProtocol protocol = new();
+        Task negotiation = protocol.DialAsync(channel, context);
+        try
+        {
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(protocol.Id));
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(selected.Id));
+            if (failure != NegotiationFailure.ResetBeforeHello)
+                await remote.WriteLineAsync(failure == NegotiationFailure.WrongHello ? "/wrong/multistream" : protocol.Id);
+            if (failure == NegotiationFailure.UnsupportedProtocol) await remote.WriteLineAsync("na");
+            if (failure is NegotiationFailure.ResetBeforeHello or NegotiationFailure.ResetAfterHello) await remote.AbortAsync();
+            await negotiation.WaitAsync(token);
+
+            if (alreadyCompleted)
+            {
+                Assert.That(await completion.Task, Is.EqualTo(42), "rejection cannot overwrite an existing outcome");
+            }
+            else
+            {
+                Assert.That(completion.Task.IsFaulted, Is.True, "negotiation rejection must fail the pending request before its caller times out");
+                Assert.That(completion.Task.Exception!.InnerException, Is.TypeOf<ChannelClosedException>());
+            }
+            await context.DidNotReceiveWithAnyArgs().Upgrade(default!, default(IProtocol)!);
+        }
+        finally
+        {
+            await remote.AbortAsync();
+            await negotiation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    public async Task Successful_selection_does_not_fault_a_queued_completion([Values] bool typed,
+        [Values] bool asynchronous, CancellationToken token)
+    {
+        Channel channel = new();
+        IChannel remote = channel.Reverse;
+        IConnectionContext context = Substitute.For<IConnectionContext>();
+        IProtocol selected = typed ? Substitute.For<ISessionProtocol<int, int>>() : Substitute.For<ISessionProtocol>();
+        selected.Id.Returns("/test/multistream/accepted/1");
+        TaskCompletionSource<object?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource dispatched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource handler = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.UpgradeOptions.Returns(new UpgradeOptions { SelectedProtocol = selected, Argument = typed ? 1 : null, CompletionSource = completion });
+        context.Upgrade(channel, selected).Returns(_ =>
+        {
+            dispatched.TrySetResult();
+            return asynchronous ? handler.Task : Task.CompletedTask;
+        });
+        MultistreamProtocol protocol = new();
+        Task negotiation = protocol.DialAsync(channel, context);
+        try
+        {
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(protocol.Id));
+            Assert.That(await remote.ReadLineAsync().WaitAsync(token), Is.EqualTo(selected.Id));
+            await remote.WriteLineAsync(protocol.Id);
+            await remote.WriteLineAsync(selected.Id);
+            await dispatched.Task.WaitAsync(token);
+            handler.TrySetResult();
+            await negotiation.WaitAsync(token);
+
+            Assert.That(completion.Task.IsCompleted, Is.False, "the Core success-mapping continuation may still be queued after its handler completes");
+            object? expected = typed ? 42 : null;
+            completion.SetResult(expected);
+            Assert.That(await completion.Task, Is.EqualTo(expected));
+        }
+        finally
+        {
+            handler.TrySetResult();
+            await remote.AbortAsync();
+            await negotiation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    public async Task Rejection_does_not_overwrite_caller_cancellation(CancellationToken token)
+    {
+        Channel channel = new();
+        IChannel remote = channel.Reverse;
+        IConnectionContext context = Substitute.For<IConnectionContext>();
+        IProtocol selected = Substitute.For<IProtocol>();
+        selected.Id.Returns("/test/multistream/canceled/1");
+        TaskCompletionSource<object?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.UpgradeOptions.Returns(new UpgradeOptions { SelectedProtocol = selected, CompletionSource = completion });
+        MultistreamProtocol protocol = new();
+        Task negotiation = protocol.DialAsync(channel, context);
+        try
+        {
+            await remote.ReadLineAsync().WaitAsync(token);
+            await remote.ReadLineAsync().WaitAsync(token);
+            completion.SetCanceled();
+            await remote.AbortAsync();
+            await negotiation.WaitAsync(token);
+
+            Assert.That(completion.Task.IsCanceled, Is.True);
+            await context.DidNotReceiveWithAnyArgs().Upgrade(default!, default(IProtocol)!);
+        }
+        finally
+        {
+            await remote.AbortAsync();
+            await negotiation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     // Each chunk is one yamux frame as it is handed up, given by its segment lengths: Noise frames of up to 65,535 bytes, and small frames.
     private static readonly int[][][] Chunkings =
     [

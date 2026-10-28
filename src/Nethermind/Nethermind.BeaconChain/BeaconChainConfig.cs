@@ -12,6 +12,7 @@ public class BeaconChainConfig : IBeaconChainConfig
     public string? WeakSubjectivityCheckpoint { get; set; }
     public int P2PPort { get; set; } = 9060;
     public int Discv5Port { get; set; } = 9060;
+    public int QuicPort { get; set; }
     public ulong CustodyGroupCount
     {
         get => field;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -10,6 +11,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -60,15 +62,18 @@ public class BeaconDiscoveryTests
     }
 
     [Test]
-    public async Task Configured_custody_is_used_for_discovery_metadata_and_sampling([Values(4UL, 64UL, 128UL)] ulong groups)
+    public async Task Configured_custody_is_used_for_discovery_metadata_and_sampling(
+        [Values(4UL, 64UL, 128UL)] ulong groups, [Values(0, 9051)] int quicPort)
     {
-        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { CustodyGroupCount = groups }).Build();
+        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { CustodyGroupCount = groups, QuicPort = quicPort }).Build();
         BeaconDiscovery discovery = container.Resolve<BeaconDiscovery>();
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         NodeColumnCustody custody = container.Resolve<INodeColumnCustodySource>().Current!;
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(discovery.LocalCustody!.CustodyGroupCount, Is.EqualTo(groups));
+        Assert.That(discovery.LocalNodeRecord.GetValue<ulong>("cgc"), Is.EqualTo(groups));
+        Assert.That(discovery.LocalNodeRecord.GetValue<int>(EnrContentKey.Quic), Is.EqualTo(quicPort == 0 ? (int?)null : quicPort));
         Assert.That(container.Resolve<LocalMetadataSource>().Current.CustodyGroupCount, Is.EqualTo(groups));
         Assert.That(custody.CustodyColumns, Has.Count.EqualTo(groups));
         Assert.That(custody.SampledColumns, Has.Count.EqualTo(Math.Max(8UL, groups)));
@@ -172,6 +177,75 @@ public class BeaconDiscoveryTests
     private static readonly EnrForkId TestForkId = new(CurrentDigest, FuluVersion, Presets.FarFutureEpoch);
 
     [Test]
+    [CancelAfter(10_000)]
+    public async Task Saved_signed_peers_do_not_bypass_live_discovery_or_delay_configured_bootnodes(CancellationToken token)
+    {
+        const ulong epoch = 412_671;
+        ulong seconds = BeaconChainSpec.Mainnet.GenesisTime + epoch * BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot + 1;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(seconds));
+        EnrForkId fork = EnrForkId.Compute(BeaconChainSpec.Mainnet, epoch);
+        NetworkNode valid = Saved(TestItem.PrivateKeyA, PublicIp, fork);
+        NetworkNode bootnode = Saved(TestItem.PrivateKeyE, PublicIp, fork);
+        NetworkNode wrongFork = Saved(TestItem.PrivateKeyB, PublicIp, new EnrForkId(ForeignDigest, FuluVersion, Presets.FarFutureEpoch));
+        NetworkNode invalidEndpoint = Saved(TestItem.PrivateKeyC, IPAddress.Any, fork);
+        NetworkNode forged = Saved(TestItem.PrivateKeyD, PublicIp, fork);
+        forged.Enr!.EnrSequence++;
+        NodeRecord dualStackRecord = new BeaconNodeRecordProvider(TestItem.PrivateKeyF, PublicIp, tcpPort: 9000, udpPort: 9001,
+            fork, custodyGroupCount: 4, quicPort: 9051).Current;
+        dualStackRecord.SetEntry(new Ip6Entry(IPAddress.IPv6Any));
+        dualStackRecord.SetEntry(new Quic6Entry(9052));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyF).Sign(dualStackRecord);
+        NetworkNode dualStack = new(dualStackRecord.ToString());
+        INetworkStorage peerStorage = Substitute.For<INetworkStorage>();
+        peerStorage.GetPersistedNodes().Returns([wrongFork, invalidEndpoint, forged, valid, valid, dualStack]);
+        using MemColumnsDb<BeaconChainDbColumns> columns = new();
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0, QuicPort = 9051, Bootnodes = bootnode.ToString() }, BeaconChainSpec.Mainnet,
+            new BeaconChainStore(columns), new RangeSyncTests.FixedIPResolver(PublicIp), clock, LimboLogs.Instance, peerStorage);
+        discovery.CreateDiscv5Services(PublicIp);
+
+        Assert.That(discovery.CachedPeerCount, Is.EqualTo(2));
+        Assert.That(BeaconDiscovery.TryCreateCandidate(dualStack.Enr!, fork.ForkDigest, null, out BeaconPeerCandidate? dualCandidate, quicEnabled: true), Is.True);
+        Assert.That(dualCandidate!.Addresses, Has.All.StartWith("/ip4/"), "the unusable IPv6 endpoint must not hide a valid IPv4 QUIC address");
+        Assert.That(discovery.CreateBootNodes().Select(static node => node.Id), Is.EqualTo(new[] { bootnode.NodeId }),
+            "saved peers must not enter the ordinary bootnode bootstrap");
+        using CancellationTokenSource stopCandidates = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using IAsyncEnumerator<BeaconPeerCandidate> candidates = discovery.DiscoverPeers(stopCandidates.Token).GetAsyncEnumerator(stopCandidates.Token);
+        Task<bool> nextCandidate = candidates.MoveNextAsync().AsTask();
+        bool offeredWithoutLiveAdmission = nextCandidate.IsCompleted;
+        await stopCandidates.CancelAsync();
+        try { await nextCandidate; }
+        catch (OperationCanceledException) when (stopCandidates.IsCancellationRequested) { }
+        Assert.That(offeredWithoutLiveAdmission, Is.False,
+            "unresponsive cached hints must not enter the dialing queue before live discovery admission");
+
+        discovery.PersistPeers();
+        peerStorage.Received(1).StartBatch();
+        peerStorage.Received(1).Commit();
+        peerStorage.Received(1).UpdateNodes(Arg.Is<IEnumerable<NetworkNode>>(records =>
+            records.Count() == 3 && records.Any(record => record.NodeId == TestItem.PrivateKeyA.PublicKey) &&
+            records.Any(record => record.NodeId == TestItem.PrivateKeyE.PublicKey) &&
+            records.Any(record => record.NodeId == TestItem.PrivateKeyF.PublicKey)));
+
+        static NetworkNode Saved(PrivateKey key, IPAddress ip, EnrForkId fork) =>
+            new(new BeaconNodeRecordProvider(key, ip, tcpPort: 9000, udpPort: 9001, fork, custodyGroupCount: 4).Current.ToString());
+    }
+
+    [Test]
+    public async Task Invalid_saved_enr_sequence_does_not_publish_a_new_record([Values] bool overflow)
+    {
+        using MemColumnsDb<BeaconChainDbColumns> columns = new();
+        BeaconChainStore store = new(columns);
+        store.PutMetadata(BeaconDiscovery.EnrSequenceMetadataKey, overflow ? Enumerable.Repeat((byte)0xff, sizeof(ulong)).ToArray() : new byte[sizeof(ulong) - 1]);
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store,
+            new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
+
+        if (overflow)
+            Assert.Throws<OverflowException>(() => discovery.CreateDiscv5Services(PublicIp));
+        else
+            Assert.Throws<InvalidDataException>(() => discovery.CreateDiscv5Services(PublicIp));
+    }
+
+    [Test]
     [CancelAfter(15_000)]
     public async Task Concurrent_enr_updates_wait_for_the_earlier_sequence_to_be_persisted(CancellationToken token)
     {
@@ -261,24 +335,162 @@ public class BeaconDiscoveryTests
         Assert.That(candidate.Addresses[^1], Does.StartWith("/ip6/2001:4860:4860::8888/tcp/9002/"));
     }
 
+    [TestCase("8.8.8.8", EnrContentKey.Quic)]
+    [TestCase("2001:4860:4860::8888", EnrContentKey.Quic6)]
+    public void The_local_enr_advertises_quic_on_a_distinct_port_when_enabled(string address, string key)
+    {
+        IPAddress ip = IPAddress.Parse(address);
+        NodeRecord record = NodeRecord.FromEnrString(new BeaconNodeRecordProvider(
+            TestItem.PrivateKeyA, ip, 9000, 9001, TestForkId, 4, quicPort: 9002).Current.ToString());
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(record.GetValue<int>(key), Is.EqualTo(9002));
+        Assert.That(record.TryGetQuicEndpoint(ip.AddressFamily, out IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint, Is.EqualTo(new IPEndPoint(ip, 9002)));
+        Assert.That(record.DiscoveryPort, Is.EqualTo(9001));
+        Assert.That(record.TcpPort, Is.EqualTo(9000));
+    }
+
+    [Test]
+    public void The_default_local_enr_does_not_advertise_quic()
+    {
+        NodeRecord record = new BeaconNodeRecordProvider(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4).Current;
+        Assert.That(record.HasEntry(EnrContentKey.Quic), Is.False);
+    }
+
+    [Test]
+    public void The_local_enr_rejects_an_invalid_quic_port([Values(-1, 65536)] int port)
+        => Assert.That(() => new BeaconNodeRecordProvider(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, quicPort: port),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void A_dual_stack_candidate_prefers_quic_and_keeps_tcp_fallbacks()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new QuicEntry(9002));
+        record.SetEntry(new Quic6Entry(9003));
+        record.SetEntry(new TcpEntry(9000));
+        record.SetEntry(new Tcp6Entry(9004));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: true), Is.True);
+        string peerId = candidate!.PeerId;
+        Assert.That(candidate.Addresses, Is.EqualTo(new[]
+        {
+            $"/ip4/8.8.8.8/udp/9002/quic-v1/p2p/{peerId}",
+            $"/ip6/2001:4860:4860::8888/udp/9003/quic-v1/p2p/{peerId}",
+            $"/ip4/8.8.8.8/tcp/9000/p2p/{peerId}",
+            $"/ip6/2001:4860:4860::8888/tcp/9004/p2p/{peerId}",
+        }));
+    }
+
+    [Test]
+    public void A_quic_only_candidate_requires_local_quic_support([Values] bool quicEnabled, [Values] bool tcp)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new QuicEntry(9002));
+        if (tcp) record.SetEntry(new TcpEntry(9000));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        bool result = BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: quicEnabled);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(quicEnabled || tcp));
+        if (result) Assert.That(candidate!.Multiaddress, Does.Contain(quicEnabled ? "/quic-v1/" : "/tcp/"));
+    }
+
+    [Test]
+    public async Task A_failed_quic_dial_falls_back_to_the_advertised_tcp_address()
+    {
+        NodeRecord record = NodeRecord.FromEnrString(new BeaconNodeRecordProvider(
+            TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, quicPort: 9002).Current.ToString());
+        Assert.That(BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: true), Is.True);
+
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { QuicPort = 9002 }, BeaconChainSpec.Mainnet,
+            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(PublicIp),
+            Timestamper.Default, LimboLogs.Instance);
+        discovery.DialHistory.Record(candidate!.Addresses[0], connected: false);
+
+        Assert.That(discovery.SelectDialableAddress(candidate)?.Multiaddress, Is.EqualTo(candidate.Addresses[1]));
+    }
+
+    [Test]
+    public void A_quic_port_must_be_in_range([Values(0, 65536)] int port)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new QuicEntry(port));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out _, quicEnabled: true), Is.False);
+    }
+
+    [Test]
+    public void An_ipv4_quic_port_is_not_used_with_an_ipv6_only_address()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new QuicEntry(9002));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out _, quicEnabled: true), Is.False);
+    }
+
+    [Test]
+    public void An_invalid_ipv6_quic_port_does_not_fall_back_to_the_ipv4_quic_port([Values(0, 65536)] int port)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new QuicEntry(9002));
+        record.SetEntry(new Quic6Entry(port));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: true), Is.True);
+        Assert.That(candidate!.Addresses, Is.EqualTo(new[] { $"/ip4/8.8.8.8/udp/9002/quic-v1/p2p/{candidate.PeerId}" }));
+    }
+
     [Test]
     public void Discovery_does_not_dial_private_ipv6_addresses([Values("::1", "fd00::1", "fe80::1", "::", "ff02::1")] string address,
-        [Values] bool primaryIsPublic)
+        [Values] bool primaryIsPublic, [Values] bool quicEnabled)
     {
         NodeRecord record = new();
         if (primaryIsPublic)
         {
             record.SetEntry(new IpEntry(PublicIp));
             record.SetEntry(new TcpEntry(9000));
+            if (quicEnabled) record.SetEntry(new QuicEntry(9002));
         }
         record.SetEntry(new Ip6Entry(IPAddress.Parse(address)));
         record.SetEntry(new Tcp6Entry(8551));
+        if (quicEnabled) record.SetEntry(new Quic6Entry(8552));
         record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
         record.SetEntry(new Eth2Entry(TestForkId.Encode()));
         new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
-        bool accepted = BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null, out BeaconPeerCandidate? candidate);
+        bool accepted = BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null, out BeaconPeerCandidate? candidate, quicEnabled: quicEnabled);
         Assert.That(accepted, Is.EqualTo(primaryIsPublic));
-        if (accepted) Assert.That(candidate!.Addresses, Has.Count.EqualTo(1));
+        if (accepted) Assert.That(candidate!.Addresses, Is.EqualTo(quicEnabled
+            ? new[] { $"/ip4/8.8.8.8/udp/9002/quic-v1/p2p/{candidate.PeerId}", $"/ip4/8.8.8.8/tcp/9000/p2p/{candidate.PeerId}" }
+            : new[] { $"/ip4/8.8.8.8/tcp/9000/p2p/{candidate.PeerId}" }));
     }
 
     [Test]
@@ -358,6 +570,30 @@ public class BeaconDiscoveryTests
     }
 
     [Test]
+    public async Task Live_enr_update_at_max_sequence_preserves_metadata_and_record()
+    {
+        ulong beforeBpo1 = BeaconChainSpec.Mainnet.GenesisTime + 412_671UL * BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot + 1;
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(beforeBpo1));
+        using MemColumnsDb<BeaconChainDbColumns> columns = new();
+        BeaconChainStore store = new(columns);
+        byte[] previousSequence = Enumerable.Repeat((byte)0xff, sizeof(ulong)).ToArray();
+        previousSequence[^1]--;
+        store.PutMetadata(BeaconDiscovery.EnrSequenceMetadataKey, previousSequence);
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, BeaconChainSpec.Mainnet, store,
+            new RangeSyncTests.FixedIPResolver(PublicIp), clock, LimboLogs.Instance);
+        discovery.CreateDiscv5Services(PublicIp);
+        NodeRecord record = discovery.LocalNodeRecord;
+        byte[] persistedSequence = store.GetMetadata(BeaconDiscovery.EnrSequenceMetadataKey)!.ToArray();
+        Assert.That(record.EnrSequence, Is.EqualTo(ulong.MaxValue));
+
+        clock.Add(TimeSpan.FromSeconds(BeaconChainSpec.Mainnet.SlotsPerEpoch * BeaconChainSpec.Mainnet.SecondsPerSlot));
+        Assert.Throws<OverflowException>(() => discovery.UpdateLocalEnr());
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(discovery.LocalNodeRecord, Is.SameAs(record));
+        Assert.That(store.GetMetadata(BeaconDiscovery.EnrSequenceMetadataKey), Is.EqualTo(persistedSequence));
+    }
+
+    [Test]
     public void Local_enr_round_trips_and_update_bumps_sequence()
     {
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId, custodyGroupCount: 4);
@@ -383,6 +619,21 @@ public class BeaconDiscoveryTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(updated.EnrSequence, Is.EqualTo(2ul));
         Assert.That(updatedForkId, Is.EqualTo(rotated));
+    }
+
+    [Test]
+    public void Failed_enr_update_preserves_provider_state([Values] bool rotateFork)
+    {
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, NextDigest, ulong.MaxValue);
+        NodeRecord record = provider.Current;
+        EnrForkId nextFork = rotateFork ? new EnrForkId(ForeignDigest, FuluVersion, 419072) : TestForkId;
+        byte[] nextDigest = rotateFork ? NextDigest : ForeignDigest;
+
+        Assert.Throws<OverflowException>(() => provider.Update(nextFork, nextDigest));
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(provider.Current, Is.SameAs(record));
+        Assert.That(provider.ForkId, Is.EqualTo(TestForkId));
+        Assert.That(provider.NextForkDigest, Is.EqualTo(NextDigest));
     }
 
     [Test]
