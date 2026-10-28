@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,7 +17,17 @@ public partial class EthRpcModule
             return ResultWrapper<Hash256[]>.Fail("EIP-8288 proof wrappers are unavailable.", ErrorCodes.MethodNotFound);
         if (wrapper.Length > Eip8288Constants.MaxWrapperBytes)
             return ResultWrapper<Hash256[]>.Fail("Proof wrapper exceeds MAX_WRAPPER_BYTES.", ErrorCodes.InvalidInput);
-        Result<Hash256[]> result = (await proofWrapperService.AcceptDetailedAsync(wrapper)).Result;
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        Result<Hash256[]> result;
+        try
+        {
+            result = (await proofWrapperService.AcceptDetailedAsync(wrapper, timeout.Token)).Result;
+        }
+        catch (OperationCanceledException)
+        {
+            return ResultWrapper<Hash256[]>.Fail("Proof wrapper admission timed out.", ErrorCodes.Timeout);
+        }
+        finally { JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout); }
         return result.IsSuccess ? ResultWrapper<Hash256[]>.Success(result.Data!)
             : ResultWrapper<Hash256[]>.Fail(result.Error!, ErrorCodes.TransactionRejected);
     }

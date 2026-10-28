@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -36,14 +37,29 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes
         - Eip8288Constants.MaxDepsPerWrapper * (2 + Eip8288Constants.DependencyTripleLength) - 64;
 
+    /// <summary>Transactions submitted to the pool per turn of admission.</summary>
+    /// <remarks>EIP-8288 bounds a wrapper only by <c>MAX_WRAPPER_BYTES</c>, so one wrapper may carry thousands of small transactions
+    /// sharing a dependency. Between chunks admission is handed to the next waiting caller, so such a wrapper cannot hold it
+    /// for its whole length.</remarks>
+    internal const int AdmissionChunk = 64;
+
     private const int MaxRememberedVerifications = 128;
     private readonly object _aggregationLock = new();
     private int _rotation;
-    // Admission runs one wrapper at a time; a bounded number of callers wait for it before being told to retry.
     private readonly SemaphoreSlim _admission = new(1, 1);
-    private int _admissionCallers;
 
-    /// <summary>Callers that may wait for admission while another wrapper is admitted.</summary>
+    /// <summary>Callers of one source waiting for admission. Each source enters admission one caller at a time, so RPC callers
+    /// cannot crowd peers out of it, nor peers RPC callers.</summary>
+    private sealed class AdmissionQueue
+    {
+        public readonly SemaphoreSlim Turn = new(1, 1);
+        public int Callers;
+    }
+
+    private readonly AdmissionQueue _rpcAdmission = new();
+    private readonly AdmissionQueue _peerAdmission = new();
+
+    /// <summary>Callers of one source that may wait for admission while another wrapper is admitted.</summary>
     internal int MaxAdmissionWaiters { get; set; } = 16;
 
     /// <summary>How long a waiting caller waits for admission before it is told to retry.</summary>
@@ -168,6 +184,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>Separates malformed wrappers and invalid proofs from ordinary pool admission failures.</summary>
+    /// <remarks>For local submissions, such as RPC; they wait for admission apart from peers.</remarks>
     public Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => AcceptDetailedCoreAsync(wrapper, true, cancellationToken);
 
@@ -187,14 +204,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > Eip8288Constants.MaxWrapperBytes)
             return ProofWrapperAcceptance.Malformed("Proof wrapper exceeds MAX_WRAPPER_BYTES.");
-        if (Interlocked.Increment(ref _admissionCallers) > MaxAdmissionWaiters + 1)
+        AdmissionQueue queue = copyInput ? _rpcAdmission : _peerAdmission;
+        if (Interlocked.Increment(ref queue.Callers) > MaxAdmissionWaiters + 1)
         {
-            Interlocked.Decrement(ref _admissionCallers);
+            Interlocked.Decrement(ref queue.Callers);
             return AdmissionBusy();
         }
         bool entered = false;
-        try { entered = await _admission.WaitAsync(AdmissionWaitTimeout, cancellationToken); }
-        finally { if (!entered) Interlocked.Decrement(ref _admissionCallers); }
+        try { entered = await EnterAdmissionAsync(queue, cancellationToken); }
+        finally { if (!entered) Interlocked.Decrement(ref queue.Callers); }
         if (!entered) return AdmissionBusy();
         try
         {
@@ -257,14 +275,37 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             using (scope)
             {
+                IReadOnlyList<Transaction> transactions = decoded.Transactions;
+                Hash256[] hashes = new Hash256[transactions.Count];
+                string? firstError = null;
                 try
                 {
-                    admission = SubmitProofTransactions(decoded.Transactions, cancellationToken, admittedDependencies, source);
+                    for (int start = 0; start < transactions.Count; start += AdmissionChunk)
+                    {
+                        if (start != 0)
+                        {
+                            // Coverage of the chunks already in the pool is published before admission is handed on.
+                            leanProofStore.CommitAdmission(admittedDependencies);
+                            admittedDependencies.Clear();
+                            entered = false;
+                            ExitAdmission(queue);
+                            if (!(entered = await EnterAdmissionAsync(queue, cancellationToken))) return AdmissionBusy();
+                            Eip8288Verifier? refreshed = RefreshVerifier();
+                            if (refreshed != verifier)
+                            {
+                                if (refreshed is { } changed) Purge(changed);
+                                return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
+                            }
+                        }
+                        SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
+                            ref firstError, cancellationToken, admittedDependencies, source);
+                    }
                 }
                 finally
                 {
                     leanProofStore.CommitAdmission(admittedDependencies);
                 }
+                admission = firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError);
             }
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
@@ -287,9 +328,30 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         }
         finally
         {
-            _admission.Release();
-            Interlocked.Decrement(ref _admissionCallers);
+            if (entered) ExitAdmission(queue);
+            Interlocked.Decrement(ref queue.Callers);
         }
+    }
+
+    /// <summary>Takes the source's turn and then admission, within <see cref="AdmissionWaitTimeout"/>.</summary>
+    private async Task<bool> EnterAdmissionAsync(AdmissionQueue queue, CancellationToken cancellationToken)
+    {
+        bool hasTurn = false, entered = false;
+        try
+        {
+            long started = Stopwatch.GetTimestamp();
+            hasTurn = await queue.Turn.WaitAsync(AdmissionWaitTimeout, cancellationToken);
+            TimeSpan remaining = AdmissionWaitTimeout - Stopwatch.GetElapsedTime(started);
+            entered = hasTurn && await _admission.WaitAsync(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero, cancellationToken);
+            return entered;
+        }
+        finally { if (hasTurn && !entered) queue.Turn.Release(); }
+    }
+
+    private void ExitAdmission(AdmissionQueue queue)
+    {
+        _admission.Release();
+        queue.Turn.Release();
     }
 
     private static ProofWrapperAcceptance AdmissionBusy() =>
@@ -332,12 +394,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         _verifiedWrappers[hash] = error;
     }
 
-    private Result<Hash256[]> SubmitProofTransactions(IReadOnlyList<Transaction> transactions, CancellationToken cancellationToken,
-        List<FrameDependency> admittedDependencies, object? source)
+    /// <summary>Submits <paramref name="transactions"/> from <paramref name="start"/> up to <paramref name="end"/>.</summary>
+    private void SubmitProofTransactions(IReadOnlyList<Transaction> transactions, int start, int end, Hash256[] hashes, ref string? firstError,
+        CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
     {
-        Hash256[] hashes = new Hash256[transactions.Count];
-        string? firstError = null;
-        for (int i = 0; i < hashes.Length; i++)
+        for (int i = start; i < end; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Transaction transaction = transactions[i];
@@ -356,7 +417,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
             else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
         }
-        return firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError);
     }
 
     /// <summary>Whether a wrapped transaction carries blobs without their data, as EIP-8437 transports it, so its availability
@@ -391,7 +451,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>One <c>AGGREGATION_INTERVAL</c> cycle of background aggregation: builds bounded wrappers, continuing the
     /// rotation, until every pending dependency-bearing transaction has been offered to one, calling
-    /// <paramref name="produced"/> after each, so each can be read through <see cref="GetLatestWrapper()"/> and published.</summary>
+    /// <paramref name="produced"/> after each new one, so it can be read through <see cref="GetLatestWrapper()"/> and published.</summary>
     /// <remarks>Stops at the first build failure, or before starting another build once <paramref name="budget"/> has elapsed,
     /// so prover work per cycle stays bounded; the next cycle resumes the rotation where this one stopped.</remarks>
     /// <returns>Success when at least one wrapper is current; otherwise the first failure.</returns>
@@ -408,10 +468,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             for (int scanned = 0; ;)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Result<byte[]> result = BuildWrapperCore(false, cancellationToken, out int buildScanned, out int candidates);
+                Result<byte[]> result = BuildWrapperCore(false, cancellationToken, out int buildScanned, out int candidates, out bool unchanged);
                 scanned += buildScanned;
                 // A stretch of the rotation without proof-backed transactions ends no cycle that has more candidates.
-                if (result.IsSuccess) { any = true; produced?.Invoke(); }
+                if (result.IsSuccess)
+                {
+                    any = true;
+                    if (!unchanged) produced?.Invoke();
+                }
                 else if (result.Error != NoProofBackedTransactions) return any ? Result.Success : Result.Fail(result.Error!);
                 if (buildScanned == 0 || scanned >= candidates || budget is { } limit && clock.GetElapsedTime(started) >= limit)
                     return any ? Result.Success : Result.Fail(result.Error ?? NoProofBackedTransactions);
@@ -431,7 +495,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             cancellationToken.ThrowIfCancellationRequested();
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
-            return BuildWrapperCore(returnEncoded, cancellationToken, out _, out _);
+            return BuildWrapperCore(returnEncoded, cancellationToken, out _, out _, out _);
         }
         catch (InvalidOperationException exception)
         {
@@ -463,10 +527,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <param name="scanned">Candidates this build passed over, from the rotation point to where the wrapper filled.</param>
     /// <param name="candidateCount">Pending transactions considered.</param>
-    private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken, out int scanned, out int candidateCount)
+    /// <param name="unchanged">Whether the build selected the latest wrapper's transactions again, which it returns as is.</param>
+    private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken, out int scanned, out int candidateCount,
+        out bool unchanged)
     {
         scanned = 0;
         candidateCount = 0;
+        unchanged = false;
         if (RefreshVerifier() is not { } verifier)
             return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         List<Transaction> transactions = [];
@@ -531,7 +598,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         for (int i = 0; i < hashes.Length; i++) hashes[i] = transactions[i].Hash!;
         WrapperSnapshot? cached = Volatile.Read(ref _cachedWrapper);
         if (cached?.Selection == selectionHash && cached.Verifier == verifier && ArePending(hashes))
+        {
+            unchanged = true;
             return Result<byte[]>.Success(returnEncoded ? (byte[])cached.Encoded.Clone() : []);
+        }
         try
         {
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);

@@ -826,6 +826,38 @@ public class ProofWrapperServiceTests
         if (!busy) Assert.That((await waiting.WaitAsync(TimeSpan.FromSeconds(5))).Status, Is.Not.EqualTo(ProofWrapperAcceptanceStatus.Busy));
     }
 
+    // EIP-8288 bounds a wrapper only by bytes; a wrapper of many transactions hands admission on between chunks, so a caller
+    // waiting behind it is admitted before its remaining chunks.
+    [Test]
+    public async Task Large_wrapper_admission_yields_between_chunks()
+    {
+        (ProofWrapperService largeProducer, _) = Create(ProofWrapperService.AdmissionChunk + 1, 0);
+        (ProofWrapperService smallProducer, _) = Create(1, 10, out Transaction[] small);
+        byte[] large = largeProducer.BuildWrapper().Data!;
+        byte[] waiting = smallProducer.BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        List<Hash256> submitted = [];
+        Task<ProofWrapperAcceptance>? second = null;
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+        {
+            lock (submitted)
+            {
+                submitted.Add(call.Arg<Transaction>().Hash!);
+                if (submitted.Count == 1) second = service.AcceptDetailedAsync(waiting);
+            }
+            return AcceptTxResult.Accepted;
+        });
+
+        Assert.That((await service.AcceptDetailedAsync(large)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        Assert.That((await second!).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submitted, Has.Count.EqualTo(ProofWrapperService.AdmissionChunk + 2));
+            Assert.That(submitted.IndexOf(small[0].Hash!), Is.EqualTo(ProofWrapperService.AdmissionChunk));
+        }
+    }
+
     [Test]
     public void Aggregation_reuses_proofs_and_cooperatively_cancels()
     {

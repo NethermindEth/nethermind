@@ -53,13 +53,11 @@ public static class MempoolWrapperValidator
                 error = NotFrameTransaction;
                 return false;
             }
-            // Each dependency verification frame needs at least one triple with an enabled scheme.
             if (!HasWellFormedDependencyFrames(transaction))
             {
                 error = MalformedDependencyFrame;
                 return false;
             }
-            // Per-transaction limits apply in both modes.
             List<FrameDependency> transactionDeps = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
             if (transactionDeps.Count == 0)
             {
