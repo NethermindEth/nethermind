@@ -263,8 +263,10 @@ namespace Nethermind.Trie
         /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
         private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
         {
-            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
-            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            // Read by value: a reference to an element of an array of references costs a covariance check call.
+            byte[]?[] byDepth = BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][];
+            byte[]? scratch = byDepth[path.Length];
+            if (scratch is null || scratch.Length < length) byDepth[path.Length] = scratch = new byte[Math.Max(length, FullBranchRlpLength)];
             return new CappedArray<byte>(scratch, length);
         }
 
