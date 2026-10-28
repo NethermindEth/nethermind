@@ -342,15 +342,65 @@ public class GethStyleTracerTests
         }
     }
 
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Execution_deadline_excludes_paused_time_without_resetting_remaining_budget(int pauses)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        for (int i = 0; i < pauses; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(200));
+            Assert.That(deadline.Expired, Is.False);
+            deadline.Pause();
+            clock.Advance(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deadline.Expired, Is.False);
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+            }
+            deadline.Resume();
+        }
+        clock.Advance(TimeSpan.FromMilliseconds(1_000 - 200 * pauses - 1));
+        Assert.That(deadline.Expired, Is.False);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.That(deadline.Expired, Is.True);
+        deadline.Dispose();
+        Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+    }
+
     [Test]
-    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal([Values(0, -1, 1)] int seconds)
+    public void Paused_deadline_keeps_external_cancellation_provenance()
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        using GethTraceDeadline deadline = new(external.Token, clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        deadline.Pause();
+        external.Cancel();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+            Assert.That(deadline.Expired, Is.False);
+            Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+        }
+        deadline.Resume();
+        Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+    }
+
+    [Test]
+    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal(
+        [Values(0, -1, 1)] int seconds, [Values] bool paused)
     {
         DeadlineClock clock = new();
         GethTraceDeadline deadline = new(clock: clock);
         deadline.Start(TimeSpan.FromSeconds(seconds));
         CancellationToken token = deadline.Token;
+        if (paused) deadline.Pause();
         deadline.Dispose();
         deadline.Dispose();
+        Assert.That(deadline.Resume, Throws.Nothing);
         Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
         using (Assert.EnterMultipleScope())
         {

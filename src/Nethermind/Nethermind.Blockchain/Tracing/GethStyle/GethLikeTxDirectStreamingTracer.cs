@@ -414,7 +414,16 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     {
         if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < _flushThresholdBytes) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_deadlineScope?.Current?.Token ?? _cancellationToken).SafeWait();
+        GethTraceDeadline? deadline = _deadlineScope?.Current;
+        deadline?.Pause();
+        try
+        {
+            _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
+        }
+        finally
+        {
+            deadline?.Resume();
+        }
         _flushedBytes = _writer.BytesCommitted;
     }
 

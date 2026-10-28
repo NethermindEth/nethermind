@@ -244,41 +244,29 @@ public partial class DebugRpcModuleTests
             else
             {
                 clock.Advance(block.Transactions[0].Nonce);
-                if (tracer.Length == 0)
+                Assert.That(writing.IsCompleted, Is.False, "output waiting must not become an execution timeout");
+                ArrayBufferWriter<byte> received = new();
+                reading = Task.Run(async () =>
                 {
-                    await Assert.ThrowsAsync<GethTraceDeadlineException>(() => writing.WaitAsync(TimeSpan.FromSeconds(10)));
-                    using (Assert.EnterMultipleScope())
+                    while (true)
                     {
-                        Assert.That(clock.Timers[0].Disposed, Is.True);
-                        Assert.That(observer.Succeeded, Is.False);
+                        ReadResult read = await pipe.Reader.ReadAsync();
+                        foreach (ReadOnlyMemory<byte> segment in read.Buffer) received.Write(segment.Span);
+                        pipe.Reader.AdvanceTo(read.Buffer.End);
+                        if (read.IsCompleted) break;
                     }
-                }
-                else
+                });
+                await writing.WaitAsync(TimeSpan.FromSeconds(10));
+                await writer.CompleteAsync();
+                await reading.WaitAsync(TimeSpan.FromSeconds(10));
+                JToken json = JToken.Parse(Encoding.UTF8.GetString(received.WrittenSpan));
+                using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(writing.IsCompleted, Is.False, "output waiting must not become an execution timeout");
-                    ArrayBufferWriter<byte> received = new();
-                    reading = Task.Run(async () =>
-                    {
-                        while (true)
-                        {
-                            ReadResult read = await pipe.Reader.ReadAsync();
-                            foreach (ReadOnlyMemory<byte> segment in read.Buffer) received.Write(segment.Span);
-                            pipe.Reader.AdvanceTo(read.Buffer.End);
-                            if (read.IsCompleted) break;
-                        }
-                    });
-                    await writing.WaitAsync(TimeSpan.FromSeconds(10));
-                    await writer.CompleteAsync();
-                    await reading.WaitAsync(TimeSpan.FromSeconds(10));
-                    JToken json = JToken.Parse(Encoding.UTF8.GetString(received.WrittenSpan));
-                    using (Assert.EnterMultipleScope())
-                    {
-                        Assert.That(json["error"], Is.Null);
-                        Assert.That((JArray)json["result"]!, Has.Count.EqualTo(2));
-                        Assert.That(clock.Timers, Has.Count.EqualTo(2));
-                        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
-                        Assert.That(observer.Succeeded, Is.True);
-                    }
+                    Assert.That(json["error"], Is.Null);
+                    Assert.That((JArray)json["result"]!, Has.Count.EqualTo(2));
+                    Assert.That(clock.Timers, Has.Count.EqualTo(2));
+                    Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                    Assert.That(observer.Succeeded, Is.True);
                 }
             }
         }
