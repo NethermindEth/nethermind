@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -81,10 +82,13 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
-    public async Task Validation_failure_replaces_only_uncommitted_response([Values(0, 1, 2)] int commitMode)
+    public async Task Validation_failure_replaces_only_uncommitted_response(
+        [Values(0, 1, 2)] int commitMode, [Values] bool rpcError)
     {
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
-        using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode);
+        Exception failure = rpcError ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")
+            : new InsufficientBalanceException(TestItem.AddressA);
+        using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode, failure);
 
         if (commitMode != 2)
         {
@@ -92,8 +96,9 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
         else
         {
-            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            Exception? thrown = await Assert.CatchAsync(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+            Assert.That(thrown, Is.SameAs(failure));
         }
         await pipe.Writer.CompleteAsync();
         ReadResult read = await pipe.Reader.ReadAsync();
@@ -106,7 +111,9 @@ public class JsonRpcResponseWriterStreamingIdTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(document.RootElement.GetProperty("id").GetInt32(), Is.EqualTo(42));
-                Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(),
+                    Is.EqualTo(rpcError ? ErrorCodes.ResourceNotFound : ErrorCodes.InvalidInput));
+                if (rpcError) Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("transaction not found"));
                 Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
             }
         }
@@ -117,6 +124,100 @@ public class JsonRpcResponseWriterStreamingIdTests
                 Assert.That(envelope, Does.StartWith("{\"jsonrpc\":\"2.0\",\"result\":"));
                 Assert.That(envelope, Does.Not.Contain("\"error\""));
             }
+        }
+    }
+
+    [Test]
+    public void Module_selected_error_keeps_its_code_without_method_identity([Values] bool reflectionWrapped)
+    {
+        RpcErrorException failure = new(ErrorCodes.InvalidParams, "explicit failure");
+        Exception exception = reflectionWrapped ? new System.Reflection.TargetInvocationException(failure) : failure;
+        using JsonRpcErrorResponse response = CreateStreamingContext().MapException(exception);
+        Assert.That(response.Error, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Error!.Message, Is.EqualTo("explicit failure"));
+            Assert.That(response.Error!.Data, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Deferred_single_trace_error_preserves_previous_batch_response(
+        [Values] bool isBatch, [Values] bool rpcError)
+    {
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        RewindableStreamPipeWriter transport = new(stream, initialWrittenCount: 1234);
+        using JsonRpcSuccessResponse previous = new() { Id = new JsonRpcId("previous"), Result = new StubStreamable() };
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = new JsonRpcId(42L),
+            Result = new GethLikeTxTraceStreamingSingleResult((writer, _, _) =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("pc", 0);
+                writer.WriteEndObject();
+                writer.Flush();
+                throw rpcError ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")
+                    : new InvalidOperationException("host failure");
+            }, new CancellationTokenSource(), NullLogger.Instance),
+            Streaming = CreateStreamingContext()
+        };
+        try
+        {
+            if (isBatch)
+            {
+                JsonRpcResponseWriter.WriteBatchStart(transport);
+                await JsonRpcResponseWriter.WriteAsync(transport, previous, EthereumJsonSerializer.JsonOptions,
+                    isBatch: true, CancellationToken.None);
+                JsonRpcResponseWriter.WriteBatchSeparator(transport);
+            }
+            byte[] prefix = stream.ToArray();
+            await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions,
+                isBatch, CancellationToken.None);
+            if (isBatch) JsonRpcResponseWriter.WriteBatchEnd(transport);
+            await transport.CompleteAsync();
+            byte[] json = stream.ToArray();
+            using JsonDocument document = JsonDocument.Parse(json);
+            JsonElement item = document.RootElement;
+            if (isBatch)
+            {
+                Assert.That(item.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(item.GetArrayLength(), Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(json.AsSpan().StartsWith(prefix), Is.True);
+                    Assert.That(item[0].GetProperty("id").GetString(), Is.EqualTo("previous"));
+                    Assert.That(item[0].GetProperty("result").GetString(), Is.EqualTo("ok"));
+                }
+                item = item[1];
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(item.GetProperty("jsonrpc").GetString(), Is.EqualTo("2.0"));
+                Assert.That(item.GetProperty("id").GetInt32(), Is.EqualTo(42));
+                Assert.That(item.TryGetProperty("_streamStatus", out _), Is.False);
+                Assert.That(transport.WrittenCount, Is.EqualTo(1234 + stream.Length));
+                if (rpcError)
+                {
+                    Assert.That(item.TryGetProperty("result", out _), Is.False);
+                    Assert.That(item.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceNotFound));
+                    Assert.That(item.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("transaction not found"));
+                    Assert.That(item.GetProperty("error").TryGetProperty("data", out _), Is.False);
+                }
+                else
+                {
+                    Assert.That(item.TryGetProperty("error", out _), Is.False);
+                    Assert.That(item.GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
+                    Assert.That(item.GetProperty("result").GetProperty("errorCode").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                    Assert.That(item.GetProperty("result").GetProperty("error").GetString(), Is.EqualTo("tracing failed: host failure"));
+                    Assert.That(item.GetProperty("result").GetProperty("structLogs")[0].GetProperty("pc").GetInt32(), Is.Zero);
+                }
+            }
+        }
+        finally
+        {
+            await transport.CompleteAsync();
         }
     }
 
@@ -161,19 +262,23 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
-    public async Task Stream_failure_propagates_without_handler_or_after_transport_cancellation([Values] bool cancelTransport)
+    public async Task Stream_failure_propagates_without_handler_or_after_transport_cancellation(
+        [Values] bool cancelTransport, [Values] bool rpcError)
     {
         using CancellationTokenSource cancellation = new();
+        Exception failure = rpcError ? new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")
+            : new InsufficientBalanceException(TestItem.AddressA);
         using JsonRpcSuccessResponse response = new()
         {
-            Result = new InvalidTransactionResult(0, cancelTransport ? cancellation.Cancel : null),
+            Result = new InvalidTransactionResult(0, cancelTransport ? cancellation.Cancel : null, failure),
             Streaming = cancelTransport ? CreateStreamingContext() : null
         };
         Pipe pipe = new();
         try
         {
-            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            Exception? thrown = await Assert.CatchAsync(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, cancellation.Token));
+            Assert.That(thrown, Is.SameAs(failure));
             await pipe.Writer.CompleteAsync();
             ReadResult read = await pipe.Reader.ReadAsync();
             Assert.That(read.Buffer.IsEmpty, Is.EqualTo(cancelTransport));
@@ -395,14 +500,14 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
     }
 
-    private JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode) => new()
+    private JsonRpcSuccessResponse CreateInvalidTransactionResponse(int commitMode, Exception? failure = null) => new()
     {
         Id = new JsonRpcId(42L),
-        Result = new InvalidTransactionResult(commitMode),
+        Result = new InvalidTransactionResult(commitMode, failure: failure),
         Streaming = CreateStreamingContext()
     };
 
-    private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null) : IStreamableResult
+    private sealed class InvalidTransactionResult(int commitMode, Action? beforeThrow = null, Exception? failure = null) : IStreamableResult
     {
         public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         {
@@ -410,7 +515,7 @@ public class JsonRpcResponseWriterStreamingIdTests
             if (commitMode == 1) await writer.FlushAsync(cancellationToken);
             if (commitMode == 2) writer.Write(new byte[20_000]);
             beforeThrow?.Invoke();
-            throw new InsufficientBalanceException(TestItem.AddressA);
+            throw failure ?? new InsufficientBalanceException(TestItem.AddressA);
         }
     }
 

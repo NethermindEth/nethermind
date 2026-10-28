@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Int256;
@@ -52,8 +53,6 @@ public class DebugRpcModule(
     ICodeInfoRepository codeInfoRepository)
     : IDebugRpcModule
 {
-    internal sealed class TransactionTraceNotFoundException() : Exception("transaction not found");
-
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
@@ -101,7 +100,7 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(blockHash, transactionHash, token, options, writer, pipeWriter)
-                    ?? throw new TransactionTraceNotFoundException()));
+                    ?? throw new RpcErrorException(ErrorCodes.ResourceNotFound, "transaction not found")));
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
