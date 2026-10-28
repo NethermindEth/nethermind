@@ -237,6 +237,35 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Scheduled_statement_finishes_after_a_later_slot_starts()
+    {
+        // Five witnesses fold over several native calls; a statement longer than a slot must still finish and be stored.
+        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 5)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"slow-{i}"), default)));
+        AggregationInput input = new() { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Assert.That(cache.ObserveProduction(100, 10), Is.True);
+        Assert.That(cache.TrySchedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store), Is.True);
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(cache.ObserveProduction(112, 11), Is.True);
+        }
+        finally { release.Set(); }
+        for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.IsScheduled, Is.False);
+            Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
+            Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Queued_requests_snapshot_the_statement_and_do_not_start_after_cancellation([Values] bool cancel)
     {
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("queued-first"), default);
