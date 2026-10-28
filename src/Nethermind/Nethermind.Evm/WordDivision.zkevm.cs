@@ -24,28 +24,22 @@ internal static unsafe class WordDivision
     public static void DivRem(in UInt256 dividend, in UInt256 divisor, out UInt256 quotient, out UInt256 remainder)
     {
         Debug.Assert(!divisor.IsZero);
-        Unsafe.SkipInit(out quotient);
-        Unsafe.SkipInit(out remainder);
+        quotient = default;
+        remainder = default;
         fixed (UInt256* u = &dividend, v = &divisor, q = &quotient, r = &remainder)
-            DivRem((uint*)u, Digits, (uint*)v, (uint*)q, (uint*)r);
+            DivRem((uint*)u, (uint*)v, (uint*)q, (uint*)r);
     }
 
     /// <summary>
-    /// Divides the <paramref name="dividendDigits"/> digits at <paramref name="u"/>, at most eight, by the eight at
-    /// <paramref name="v"/>, which are not all zero, into the eight digits at <paramref name="q"/> and the eight at
-    /// <paramref name="r"/>.
+    /// Divides the eight digits at <paramref name="u"/> by the eight at <paramref name="v"/>, which are not all zero,
+    /// into the eight digits at <paramref name="q"/> and the eight at <paramref name="r"/>, which are all zero.
     /// </summary>
     [SkipLocalsInit]
-    private static void DivRem(uint* u, int dividendDigits, uint* v, uint* q, uint* r)
+    private static void DivRem(uint* u, uint* v, uint* q, uint* r)
     {
-        int m = SignificantDigits(u, dividendDigits);
-        int n = SignificantDigits(v, Digits);
+        int m = SignificantDigits(u);
+        int n = SignificantDigits(v);
         Debug.Assert(n > 0);
-        for (int i = 0; i < Digits; i++)
-        {
-            q[i] = 0;
-            r[i] = 0;
-        }
 
         if (m < n || (m == n && IsBelow(u, v, n)))
         {
@@ -56,7 +50,7 @@ internal static unsafe class WordDivision
         if (n == 1)
         {
             uint divisor = v[0];
-            int shift = BitOperations.LeadingZeroCount(divisor);
+            int shift = LeadingZeroCount(divisor);
             uint normalized = divisor << shift;
             uint carry = shift == 0 ? 0 : u[m - 1] >> (32 - shift);
             for (int j = m - 1; j >= 0; j--)
@@ -72,7 +66,7 @@ internal static unsafe class WordDivision
         // Normalized so the divisor's top digit has its top bit set; the dividend takes one more digit.
         uint* vn = stackalloc uint[Digits];
         uint* un = stackalloc uint[2 * Digits + 1];
-        int s = BitOperations.LeadingZeroCount(v[n - 1]);
+        int s = LeadingZeroCount(v[n - 1]);
         if (s == 0)
         {
             for (int i = 0; i < n; i++) vn[i] = v[i];
@@ -195,9 +189,24 @@ internal static unsafe class WordDivision
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int SignificantDigits(uint* digits, int count)
+    private static int SignificantDigits(uint* digits)
     {
-        while (count > 0 && digits[count - 1] == 0) count--;
+        ulong* limbs = (ulong*)digits;
+        int limb = limbs[3] != 0 ? 3 : limbs[2] != 0 ? 2 : limbs[1] != 0 ? 1 : 0;
+        return 2 * limb + (digits[2 * limb + 1] != 0 ? 2 : digits[2 * limb] != 0 ? 1 : 0);
+    }
+
+    /// <remarks>Inline: without Zbb, <see cref="BitOperations.LeadingZeroCount(uint)"/> is a call to a table lookup.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int LeadingZeroCount(uint value)
+    {
+        Debug.Assert(value != 0);
+        int count = 0;
+        if (value <= 0xFFFF) { count = 16; value <<= 16; }
+        if (value <= 0xFF_FFFF) { count += 8; value <<= 8; }
+        if (value <= 0xFFF_FFFF) { count += 4; value <<= 4; }
+        if (value <= 0x3FFF_FFFF) { count += 2; value <<= 2; }
+        if (value <= 0x7FFF_FFFF) count++;
         return count;
     }
 
