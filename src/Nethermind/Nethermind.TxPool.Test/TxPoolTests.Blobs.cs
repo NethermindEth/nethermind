@@ -420,6 +420,32 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_know_persisted_blob_tx_after_restart()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.Storage, Size = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction blobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            Assert.That(_txPool.TryGetPendingTransaction(blobTx.Hash!, out _), Is.True, "precondition: restored from storage");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.IsKnown(blobTx.Hash), Is.True, "a pooled tx announced by a peer must not be fetched again");
+                Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            }
+        }
+
+        [Test]
         public async Task should_skip_full_blob_revalidation_on_unchanged_restart()
         {
             BlockHeader head = _blockTree.Head.Header;
