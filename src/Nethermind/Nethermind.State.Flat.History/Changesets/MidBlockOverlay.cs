@@ -14,12 +14,17 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// the state as of the previous block, which the existing history answers.</summary>
 internal sealed class MidBlockOverlay
 {
-    // An overlay that grew past this many writes is let go of rather than kept, so the spares hold a bounded amount.
+    // An overlay that grew past this many writes is let go of rather than kept.
     private const int MaxSpareWrites = 1 << 14;
     private const int MaxSpares = 32;
 
+    /// <summary>The entries all spares together may hold, about 6 MB: four overlays at the size limit, or many smaller
+    /// ones. A return that would exceed it lets the overlay go.</summary>
+    internal const int MaxSpareEntries = 1 << 16;
+
     private static readonly Stack<MidBlockOverlay> Spares = new(MaxSpares);
     private static readonly Lock SparesLock = new();
+    private static int _spareEntries;
 
     private readonly Dictionary<AddressAsKey, AccountOverlay> _accounts = [];
     private readonly Dictionary<StorageCell, StorageWrite> _storage = [];
@@ -57,10 +62,21 @@ internal sealed class MidBlockOverlay
         return overlay;
     }
 
+    internal static int SpareEntries
+    {
+        get
+        {
+            using Lock.Scope scope = SparesLock.EnterScope();
+            return _spareEntries;
+        }
+    }
+
     private static MidBlockOverlay? TakeSpare()
     {
         using Lock.Scope scope = SparesLock.EnterScope();
-        return Spares.TryPop(out MidBlockOverlay? overlay) ? overlay : null;
+        if (!Spares.TryPop(out MidBlockOverlay? overlay)) return null;
+        _spareEntries -= overlay.Capacity;
+        return overlay;
     }
 
     /// <summary>The caller gives up the overlay: nothing may read or fold it afterwards.</summary>
@@ -69,9 +85,16 @@ internal sealed class MidBlockOverlay
         overlay.Reset(0);
         if (overlay._storage.EnsureCapacity(0) > MaxSpareWrites || overlay._accounts.EnsureCapacity(0) > MaxSpareWrites) return;
 
+        int capacity = overlay.Capacity;
         using Lock.Scope scope = SparesLock.EnterScope();
-        if (Spares.Count < MaxSpares) Spares.Push(overlay);
+        if (Spares.Count >= MaxSpares || _spareEntries + capacity > MaxSpareEntries) return;
+        Spares.Push(overlay);
+        _spareEntries += capacity;
     }
+
+    /// <summary>Does not change while the overlay is a spare, so the same amount is added on return and taken on rent.</summary>
+    private int Capacity =>
+        _storage.EnsureCapacity(0) + _accounts.EnsureCapacity(0) + _storageAccounts.EnsureCapacity(0) + _addresses.EnsureCapacity(0);
 
     public void Reset(ulong block) => Reset(block, default);
 

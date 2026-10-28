@@ -297,6 +297,23 @@ public class MidBlockOverlayTests
         }
     }
 
+    [Test]
+    public void TheSpares_HoldNoMoreThanTheTotalBound()
+    {
+        // Each overlay holds about 11k entries, under the per-overlay limit, so only the total bound can refuse them.
+        byte[][] rows = Block(transactions: 64, addresses: 64, slots: 160);
+        MidBlockOverlay[] overlays = new MidBlockOverlay[8];
+        for (int i = 0; i < overlays.Length; i++)
+        {
+            overlays[i] = MidBlockOverlay.Rent(100);
+            foreach (byte[] row in rows) overlays[i].Fold(overlays[i].Folded, row);
+        }
+
+        foreach (MidBlockOverlay overlay in overlays) MidBlockOverlay.Return(overlay);
+
+        Assert.That(MidBlockOverlay.SpareEntries, Is.InRange(0, MidBlockOverlay.MaxSpareEntries));
+    }
+
     /// <summary>Transaction i writes slots of addresses i and i + 1 (mod <paramref name="addresses"/>), so most keys are
     /// written by several transactions, and every eighth transaction deletes the account it writes.</summary>
     private static byte[][] Block(int transactions, int addresses, int slots)
