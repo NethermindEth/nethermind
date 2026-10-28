@@ -149,10 +149,11 @@ public class GuestJumpDestinationTests
     /// even a PUSH32 immediate stays inside the code, so the bytes an opcode masks are visible rather
     /// than truncated. The look-back classifies each of the 32 bytes before a destination against its own
     /// distance, so the byte also sits far enough in that the JUMPDESTs after it see it at every distance
-    /// from a fresh cursor, where the look-back rather than the scan decides.
+    /// from a fresh cursor, where the look-back rather than the scan decides, and at every offset in its aligned
+    /// word, which meets each row of the look-back's biases.
     /// </remarks>
     [Test]
-    public void Scan_matches_the_reference_for_every_opcode_value([Range(0, 255)] int op, [Values(1, 40)] int position)
+    public void Scan_matches_the_reference_for_every_opcode_value([Range(0, 255)] int op, [Values(1, 40, 41, 42, 43, 44, 45, 46, 47)] int position)
     {
         byte[] code = Filled(position + 40, JUMPDEST);
         code[position] = (byte)op;

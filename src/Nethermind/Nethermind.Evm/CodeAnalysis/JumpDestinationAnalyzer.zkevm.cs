@@ -207,7 +207,7 @@ public sealed partial class JumpDestinationAnalyzer
     }
 
     /// <summary>Reports whether the 32 bytes before <paramref name="destination"/> prove that it starts an instruction.</summary>
-    /// <param name="destination">A position in the code.</param>
+    /// <param name="destination">The position of a JUMPDEST byte in the code.</param>
     /// <param name="code">The first byte of the code.</param>
     /// <param name="analyzedUntil">Where the contiguous scan from the start of the code stopped.</param>
     /// <remarks>
@@ -222,8 +222,10 @@ public sealed partial class JumpDestinationAnalyzer
     /// <summary>Reports whether a byte of the 32 bytes before <paramref name="end"/> may be a PUSH long enough to reach it.</summary>
     /// <remarks>
     /// The test of <see cref="TryFindReachingPush"/> without the offset, folded a word at a time, so that a handler taking
-    /// it keeps two words live rather than eight and needs no callee-saved register. It reads up to 6 bytes before the
-    /// window and 7 past its end, whose lanes the row zeroes or masks.
+    /// it keeps two words live rather than eight and needs no callee-saved register. It reads up to 7 bytes before the
+    /// window and up to 7 past <paramref name="end"/>, whose lanes the row zeroes. <paramref name="end"/> must be a
+    /// JUMPDEST byte: 0x5b plus its bias 0 and a carry neither sets bit 7 nor carries on, so no lane at or past it can
+    /// fire and the last word needs no tail mask.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool MayHoldReachingPush(ref byte end)
@@ -233,8 +235,7 @@ public sealed partial class JumpDestinationAnalyzer
         ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
         ulong reach = ReachingBytes(ref word, ref row, 0) | ReachingBytes(ref word, ref row, 1) |
             ReachingBytes(ref word, ref row, 2) | ReachingBytes(ref word, ref row, 3);
-        return ((reach & Unsafe.Add(ref row, ReachHighBits)) |
-            (ReachingBytes(ref word, ref row, 4) & Unsafe.Add(ref row, ReachTailMask))) != 0;
+        return ((reach | ReachingBytes(ref word, ref row, 4)) & Unsafe.Add(ref row, ReachHighBits)) != 0;
     }
 
     /// <summary>The offset of <paramref name="end"/> in its aligned word, which picks the look-back's row of biases.</summary>
