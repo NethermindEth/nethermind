@@ -63,9 +63,11 @@ namespace Nethermind.Blockchain.Contracts
 
             private bool TryCall<TArgs, TResult>(IReadOnlyTxProcessingScope scope, BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments, out TResult result)
             {
-                Transaction transaction = _contract.GenerateTransaction<SystemTransaction>(_contract.EncodeCallData(function, arguments), sender, DefaultConstantContractGasLimit, parentHeader);
-                if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
+                byte[] callData = _contract.EncodeCallData(function, arguments);
+                Address? contractAddress = _contract.GetContractAddress(parentHeader);
+                if (contractAddress is not null && scope.WorldState.IsContract(contractAddress))
                 {
+                    Transaction transaction = _contract.GenerateTransaction<SystemTransaction>(contractAddress, callData, sender, DefaultConstantContractGasLimit);
                     byte[] output = _contract.CallCore(scope.TransactionProcessor, parentHeader, function.Signature.Name, transaction, true);
                     result = _contract.DecodeReturnData(function, output);
                     return true;

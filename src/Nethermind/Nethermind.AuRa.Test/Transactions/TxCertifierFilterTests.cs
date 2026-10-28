@@ -104,6 +104,26 @@ public class TxCertifierFilterTests
     }
 
     [Test]
+    public async Task should_not_certify_after_registry_stops_resolving_the_contract()
+    {
+        using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+        Address certified = new("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78");
+        BlockHeader resolved = chain.BlockTree.Head.Header;
+        IRegisterContract registry = Substitute.For<IRegisterContract>();
+        registry.TryGetAddress(resolved, CertifierContract.ServiceTransactionContractRegistryName, out Arg.Any<Address>())
+            .Returns(call =>
+            {
+                call[2] = new Address("0x5000000000000000000000000000000000000001");
+                return true;
+            });
+        CertifierContract contract = new(registry, chain.ReadOnlyTxProcessingEnvFactory.Create());
+        Assert.That(contract.Certified(resolved, certified), Is.True);
+
+        BlockHeader unresolved = (await chain.AddBlock()).Header;
+        Assert.That(contract.Certified(unresolved, certified), Is.False);
+    }
+
+    [Test]
     public async Task registry_contract_returns_correct_address()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();

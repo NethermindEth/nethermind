@@ -33,9 +33,8 @@ namespace Nethermind.Blockchain.Contracts
 
         public Address? ContractAddress { get; protected set; } = contractAddress;
 
-        protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader header = null)
-            where T : Transaction, new() =>
-            GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
+        /// <summary>Returns the address the contract is deployed at as of <paramref name="header"/>, or <see langword="null"/> when it is not deployed.</summary>
+        protected virtual Address? GetContractAddress(BlockHeader? header) => ContractAddress;
 
         protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, ulong gasLimit = DefaultContractGasLimit) where T : Transaction, new()
         {
@@ -55,7 +54,7 @@ namespace Nethermind.Blockchain.Contracts
         }
 
         /// <summary>
-        /// Generates transaction to <see cref="ContractAddress"/>.
+        /// Generates transaction to the address <see cref="GetContractAddress"/> resolves for <paramref name="header"/>.
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
         /// That transaction can be called if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
         /// </summary>
@@ -66,7 +65,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
         protected Transaction GenerateTransaction<T>(byte[] transactionData, Address sender, ulong gasLimit = DefaultContractGasLimit, BlockHeader header = null) where T : Transaction, new()
-            => GenerateTransaction<T>(ContractAddress, transactionData, sender, gasLimit, header);
+            => GenerateTransaction<T>(GetContractAddress(header), transactionData, sender, gasLimit);
 
         /// <summary>
         /// Helper method that actually does the actual call to <see cref="ITransactionProcessor"/>.
