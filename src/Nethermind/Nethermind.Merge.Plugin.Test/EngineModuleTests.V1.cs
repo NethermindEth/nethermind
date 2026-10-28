@@ -282,12 +282,18 @@ public partial class EngineModuleTests
         Hash256 newHead = getPayloadResult.BlockHash!;
 
         await rpc.engine_newPayloadV1(getPayloadResult);
-        Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical), Is.Null);
-        Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
 
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newHead, Keccak.Zero, Keccak.Zero));
-        Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null);
-        Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -531,7 +537,9 @@ public partial class EngineModuleTests
         processing.Pause();
         try
         {
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await chain.BlockTree.SuggestBlockAsync(parent), Is.EqualTo(AddBlockResult.Added));
+#pragma warning restore NUnit2045
             Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
             Assert.That(chain.Container.Resolve<IBlockValidator>().ValidateSuggestedBlock(invalid, parent.Header, out _), Is.False);
 
@@ -670,8 +678,11 @@ public partial class EngineModuleTests
         getPayloadResult.BlockHash = block!.Header.CalculateHash();
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-        Assert.That(chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError, Is.True);
+        }
     }
 
     [Test]
@@ -730,7 +741,9 @@ public partial class EngineModuleTests
 
         Assert.That(() => chain.BlockTree.WasProcessed(executionPayload.BlockNumber, executionPayload.BlockHash), Is.True.After(10_000, 50));
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+#pragma warning restore NUnit2045
         Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(executionPayload.BlockHash));
     }
 
@@ -744,7 +757,9 @@ public partial class EngineModuleTests
         chain.Container.Resolve<IBlockStore>().Insert(head);
 
         ForkchoiceStateV1 forkchoiceState = new(head.Hash!, parent.Hash!, parent.Hash!);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+#pragma warning restore NUnit2045
         Assert.That(chain.BlockTree.GetInfo(head.Number, head.Hash!).Info, Is.Null);
     }
 
@@ -850,14 +865,19 @@ public partial class EngineModuleTests
             .TestObject;
         Hash256 terminalBlockHash = terminalBlock.Hash!;
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(poSSwitcher.TryUpdateTerminalBlock(terminalBlock.Header), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(replacementTerminalBlock.IsTerminalBlock(chain.SpecProvider), Is.True);
 
         ExecutionPayload postMergeBlock = await SendNewBlockV1(rpc, chain);
         ResultWrapper<ForkchoiceUpdatedV1Result> firstHeadUpdate = await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(postMergeBlock.BlockHash, Keccak.Zero, terminalBlockHash));
-        Assert.That(firstHeadUpdate.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(poSSwitcher.TransitionFinished, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstHeadUpdate.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(poSSwitcher.TransitionFinished, Is.False);
+        }
 
         bool? transitionFinishedWhenBlockTreeFinalized = null;
         chain.BlockTree.BlocksFinalized += (_, _) => transitionFinishedWhenBlockTreeFinalized = poSSwitcher.TransitionFinished;
@@ -908,9 +928,11 @@ public partial class EngineModuleTests
             .WithGasLimit(terminalBlock.GasLimit + 1)
             .TestObject;
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(
             restartedChain.BlockTree.SuggestBlock(replacementTerminalBlock, BlockTreeSuggestOptions.ForceDontSetAsMain),
             Is.EqualTo(AddBlockResult.Added));
+#pragma warning restore NUnit2045
         Assert.That(restartedChain.BlockTree.TryUpdateMainChain(
             replacementTerminalBlock.Header,
             wereProcessed: true,
@@ -1011,14 +1033,14 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatus.Syncing).ToUpper())); // ToDo wait for final PostMerge sync
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // The head must not move for an unresolvable forkchoice state, but the finalized/safe hashes
             // are recorded so a node restarted before its first pivot update can recover without a new FCU.
             Assert.That(chain.BlockFinder.HeadHash, Is.Not.EqualTo(TestItem.KeccakF));
             Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(TestItem.KeccakF));
             Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(TestItem.KeccakF));
-        });
+        }
     }
 
     [Test]
@@ -1220,7 +1242,9 @@ public partial class EngineModuleTests
         parentCommit.Release();
         await siblingCommit.VerdictGiven.WaitAsync(GateTimeout);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Task.WhenAny(childQueued.Task, Task.Delay(GateTimeout)), Is.SameAs(childQueued.Task), "the child is queued once its parent's committing copy is done");
+#pragma warning restore NUnit2045
         Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False, "precondition: the second copy of the parent is still queued behind the sibling");
 
         siblingCommit.Release();
@@ -1264,7 +1288,9 @@ public partial class EngineModuleTests
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoice =
             rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(block.Hash!, head.Hash!, head.Hash!));
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Task.WhenAny(forkchoice, Task.Delay(500)), Is.SameAs(forkchoice), "answered before the block ahead of the head is done");
+#pragma warning restore NUnit2045
         Assert.That((await forkchoice).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
     }
 
@@ -1357,7 +1383,9 @@ public partial class EngineModuleTests
 
             // A suggested header can be visible before its chain level; removal follows the commit.
             BlockRemovedEventArgs removed = await blockRemoved.Task.WaitAsync(GateTimeout);
+#pragma warning disable NUnit2045 // Processing must succeed before checking the committed chain level.
             Assert.That(removed.ProcessingResult, Is.EqualTo(ProcessingResult.Success), $"{removed.Message} {removed.Exception}");
+#pragma warning restore NUnit2045
             Assert.That(blockTree.WasProcessed(block.Number, block.Hash!), Is.True);
         }
         finally
@@ -1405,7 +1433,9 @@ public partial class EngineModuleTests
         headCommit.Release();
         await siblingCommit.VerdictGiven.WaitAsync(GateTimeout);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await Task.WhenAny(forkchoice, Task.Delay(GateTimeout)), Is.SameAs(forkchoice), "answered once the committing copy is done, with the second copy still queued");
+#pragma warning restore NUnit2045
         Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(block.Hash!).IsCompleted, Is.False, "precondition: the second copy of the head is still queued behind the sibling");
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await forkchoice;
         using (Assert.EnterMultipleScope())
@@ -1512,8 +1542,11 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, newHeadHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadId, Is.EqualTo(null));
+        }
         AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash, newHeadHash, newHeadHash);
     }
 
@@ -1545,8 +1578,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
-        Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-        Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+        }
     }
 
     [Test]
@@ -1559,8 +1595,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockHash = chain.BlockTree.HeadHash!;
         ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
-        Assert.That(resultWrapper.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
-        Assert.That(resultWrapper.Data.PayloadStatus.LatestValidHash, Is.EqualTo(Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultWrapper.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resultWrapper.Data.PayloadStatus.LatestValidHash, Is.EqualTo(Keccak.Zero));
+        }
     }
 
     [CancelAfter(30000)]
@@ -1596,7 +1635,9 @@ public partial class EngineModuleTests
         firstPoSBlock.CalculateHash();
         ExecutionPayload executionPayload = ExecutionPayload.Create(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
+#pragma warning disable NUnit2045 // Valid payload acceptance is required before constructing the expected payload from the best suggested body.
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+#pragma warning restore NUnit2045
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!))), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(executionPayload))).Using(JToken.EqualityComparer));
     }
 
@@ -1633,8 +1674,11 @@ public partial class EngineModuleTests
         firstPoSBlock.CalculateHash();
         ExecutionPayload executionPayload = ExecutionPayload.Create(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
-        Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
-        Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(resultWrapper.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+        }
     }
 
     [Test]
@@ -1644,7 +1688,9 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
+#pragma warning disable NUnit2045 // Valid payload acceptance is required before constructing the expected payload from the best suggested body.
         Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+#pragma warning restore NUnit2045
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!))), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(executionPayload))).Using(JToken.EqualityComparer));
     }
 
@@ -1803,8 +1849,11 @@ public partial class EngineModuleTests
             await chain.WaitForCommitted(executePayloadRequest.BlockHash);
 
             BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(executePayloadRequest.BlockHash);
-            Assert.That(chain.StateReader.HasStateForBlock(payloadBlock), Is.True);
-            Assert.That(chain.StateReader.GetBalance(payloadBlock, to), Is.EqualTo(toBalanceAfter));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chain.StateReader.HasStateForBlock(payloadBlock), Is.True);
+                Assert.That(chain.StateReader.GetBalance(payloadBlock, to), Is.EqualTo(toBalanceAfter));
+            }
             if (moveHead)
             {
                 ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash, executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
@@ -1998,8 +2047,11 @@ public partial class EngineModuleTests
         Assert.That(forkchoiceUpdatedResult1.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(executionPayloadV11);
-        Assert.That(newPayloadResult2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        Assert.That(newPayloadResult2.Data.LatestValidHash, Is.EqualTo(executionPayloadV11.BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPayloadResult2.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(newPayloadResult2.Data.LatestValidHash, Is.EqualTo(executionPayloadV11.BlockHash));
+        }
     }
 
     [Test]
@@ -2689,8 +2741,11 @@ public partial class EngineModuleTests
             : new(headBlockHash: block3B.BlockHash, finalizedBlockHash: block2A.BlockHash, safeBlockHash: block3B.BlockHash);
         await AssertFcuRejectedAndStateUnchanged(chain, rpc, fcu);
 
-        Assert.That(chain.BlockTree.IsMainChain(block1.BlockHash), Is.True);
-        Assert.That(chain.BlockTree.IsMainChain(block3B.BlockHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.IsMainChain(block1.BlockHash), Is.True);
+            Assert.That(chain.BlockTree.IsMainChain(block3B.BlockHash), Is.False);
+        }
     }
 
     [Test]
@@ -2708,8 +2763,11 @@ public partial class EngineModuleTests
 
         ExecutionPayload block1 = blocks[0];
         ExecutionPayload block3 = blocks[2];
-        Assert.That(chain.BlockFinder.HeadHash, Is.EqualTo(block3.BlockHash));
-        Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(block3.BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockFinder.HeadHash, Is.EqualTo(block3.BlockHash));
+            Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(block3.BlockHash));
+        }
 
         // Old-head skip is optional, but InvalidForkchoiceState for an out-of-chain safe block is mandatory.
         ForkchoiceStateV1 fcu = new(headBlockHash: block1.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block3.BlockHash);
@@ -2727,9 +2785,12 @@ public partial class EngineModuleTests
 
         (ExecutionPayload block1, _, ExecutionPayload block2B, ExecutionPayload block3B) = await BuildYShapedChainV1(chain, rpc);
 
-        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block1.BlockHash));
-        Assert.That(chain.BlockTree.IsMainChain(block2B.BlockHash), Is.False);
-        Assert.That(chain.BlockTree.IsMainChain(block3B.BlockHash), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block1.BlockHash));
+            Assert.That(chain.BlockTree.IsMainChain(block2B.BlockHash), Is.False);
+            Assert.That(chain.BlockTree.IsMainChain(block3B.BlockHash), Is.False);
+        }
 
         ForkchoiceStateV1 fcu = new(headBlockHash: block3B.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2B.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcu);
@@ -2757,13 +2818,17 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayload blockX = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressA);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await rpc.engine_newPayloadV1(blockX)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+#pragma warning restore NUnit2045
         Assert.That(
             (await rpc.engine_forkchoiceUpdatedV1(new(blockX.BlockHash, blockX.BlockHash, blockX.BlockHash))).Data.PayloadStatus.Status,
             Is.EqualTo(PayloadStatus.Valid));
 
         ExecutionPayload blockA = await CreateBlockRequest(chain, blockX, TestItem.AddressA);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await rpc.engine_newPayloadV1(blockA)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+#pragma warning restore NUnit2045
         Assert.That(
             (await rpc.engine_forkchoiceUpdatedV1(new(blockA.BlockHash, blockX.BlockHash, blockX.BlockHash))).Data.PayloadStatus.Status,
             Is.EqualTo(PayloadStatus.Valid));
@@ -2797,8 +2862,11 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeated);
 
         // Must accept by ancestry (B -> C), even if B is temporarily off-main in level markers.
-        Assert.That(result.ErrorCode, Is.EqualTo(0));
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(0));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
     }
 
     [Test]
@@ -2908,8 +2976,11 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 repeatedHeadFcu = new(headBlockHash: a2.BlockHash, finalizedBlockHash: Keccak.Zero, safeBlockHash: a1.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeatedHeadFcu);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(0));
-        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(0));
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> BuildChainWithLoweredFinalized(
@@ -2920,7 +2991,9 @@ public partial class EngineModuleTests
         // Lower the finalized marker to blocks[lastFinalized] while keeping the head at blocks[oldHead].
         Hash256 finalized = blocks[lastFinalized].BlockHash!;
         ForkchoiceStateV1 setFinalized = new(headBlockHash: blocks[oldHead].BlockHash, finalizedBlockHash: finalized, safeBlockHash: finalized);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(setFinalized)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+#pragma warning restore NUnit2045
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[oldHead].BlockHash));
         return blocks;
     }
@@ -3162,8 +3235,11 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 higherFinalized = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[2].BlockHash, safeBlockHash: blocks[2].BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpc.engine_forkchoiceUpdatedV1(higherFinalized);
-        Assert.That(higherFinalizedResult.ErrorCode, Is.EqualTo(0));
-        Assert.That(higherFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(higherFinalizedResult.ErrorCode, Is.EqualTo(0));
+            Assert.That(higherFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
 
         ForkchoiceStateV1 repeatedHead = new(headBlockHash: blocks[3].BlockHash, finalizedBlockHash: blocks[1].BlockHash, safeBlockHash: blocks[2].BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(repeatedHead, payloadAttributes);

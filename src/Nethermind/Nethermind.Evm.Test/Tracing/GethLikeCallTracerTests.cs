@@ -1463,13 +1463,19 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
         if (outcome == CreateOutcome.Success)
         {
-            Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
-            Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
+                Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+            }
         }
         else
         {
-            Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
-            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
+                Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
+            }
         }
     }
 
@@ -1505,8 +1511,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level call frame (ReportAction populated _callStack)");
-        Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null when _error is null");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
+            Assert.That(frame.Error, Is.Null, "no EVM exception fired; Error must stay null when _error is null");
+        }
     }
 
     [Test]
@@ -1719,8 +1728,11 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         string json = JsonSerializer.Serialize(frame, EthereumJsonSerializer.JsonOptions);
 
-        Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","gas":"0x186a0","gasUsed":"0xc350","input":"0x"}"""));
-        Assert.That(frame.HasCalls, Is.EqualTo(callsTouched), "serializing a leaf frame must not allocate its calls list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","gas":"0x186a0","gasUsed":"0xc350","input":"0x"}"""));
+            Assert.That(frame.HasCalls, Is.EqualTo(callsTouched), "serializing a leaf frame must not allocate its calls list");
+        }
     }
 
     [Test]

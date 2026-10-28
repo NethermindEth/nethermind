@@ -32,8 +32,11 @@ public class PeerValidationSharesTests
         shares.HasShare(_attacker, headGeneration: 1);
         shares.Charge(_attacker, headGeneration: 1, ticks: HeadBudget / 2);
 
-        Assert.That(shares.HasShare(_honest, headGeneration: 1), Is.True, "a newly active peer starts with its share");
-        Assert.That(shares.HasShare(_attacker, headGeneration: 1), Is.False, "two active peers split the head budget");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shares.HasShare(_honest, headGeneration: 1), Is.True, "a newly active peer starts with its share");
+            Assert.That(shares.HasShare(_attacker, headGeneration: 1), Is.False, "two active peers split the head budget");
+        }
     }
 
     [Test]
@@ -59,8 +62,11 @@ public class PeerValidationSharesTests
         Assert.That(shares.HasShare(_attacker, nextHead), Is.True);
 
         shares.Charge(_attacker, nextHead, 1);
-        Assert.That(shares.HasShare(_attacker, nextHead), Is.False);
-        Assert.That(shares.HasShare(_honest, nextHead), Is.True, "a late peer retains its allowance");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shares.HasShare(_attacker, nextHead), Is.False);
+            Assert.That(shares.HasShare(_honest, nextHead), Is.True, "a late peer retains its allowance");
+        }
     }
 
     [Test]

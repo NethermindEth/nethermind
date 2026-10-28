@@ -239,7 +239,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         foreach (NetworkNode bootnode in chainSpec.Bootnodes)
         {
+#pragma warning disable NUnit2045 // The bootnode must be an ENR before decoding its ENR payload.
             Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+#pragma warning restore NUnit2045
             Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
     }
@@ -259,8 +261,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .Build();
 
-        Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
-        Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
+            Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+        }
     }
 
     [TestCase("sepolia.json", 5)]
@@ -453,6 +458,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    [TestCase("chiado_archive.json")]
+    public void Config_file_contains_only_known_settings(string configFile)
+    {
+        (string errorMsg, IList<(IConfigSource Source, string Category, string Name)> errors) = GetConfigProvider(configFile).FindIncorrectSettings();
+        Assert.That(errors, Is.Empty, errorMsg);
+    }
+
     [Test]
     public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
     {
@@ -508,11 +520,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         ISyncConfig syncConfig = GetConfigFromFile<ISyncConfig>("xdc_archive.json");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(syncConfig.FastSync, Is.True);
             Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
-        });
+        }
     }
 
     // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
@@ -555,11 +567,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
         AcceptTxResult result = new MinGasPriceTxFilter(GetConfigFromFile<IBlocksConfig>(configFile))
             .IsAllowed(tx, parent, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "EIP-1559 must be active for this to be meaningful");
             Assert.That((bool)result, Is.True, result.ToString());
-        });
+        }
     }
 
     [TestCase("*")]
