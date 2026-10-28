@@ -196,8 +196,11 @@ public class HistoryAvailabilityTests
         Assert.That(availability.IsCovered(MarkedBlock), Is.True, "precondition: the watermark is observed");
         for (int i = 0; i < 3; i++)
         {
-            Assert.That(availability.RootMatches(MarkedBlock, TestItem.KeccakB), Is.False);
-            Assert.That(availability.RootMatches(MarkedBlock + 1, TestItem.KeccakA), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(availability.RootMatches(MarkedBlock, TestItem.KeccakB), Is.False);
+                Assert.That(availability.RootMatches(MarkedBlock + 1, TestItem.KeccakA), Is.True);
+            }
         }
 
         db.KeyWasRead(BlockKey(MarkedBlock), 3);
