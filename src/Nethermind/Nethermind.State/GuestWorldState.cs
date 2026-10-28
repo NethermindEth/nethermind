@@ -922,7 +922,6 @@ public sealed partial class GuestWorldState : IWorldState
     public void ResetTransient()
     {
         _transientIndex.Clear();
-        Array.Clear(_transients, 0, _transientCount);
         _transientCount = 0;
         // Journal entries of the dropped storage no longer have entries to restore.
         _transientGeneration++;
@@ -938,9 +937,9 @@ public sealed partial class GuestWorldState : IWorldState
         int position = _journalCount;
         if (position == _journal.Length) Array.Resize(ref _journal, position * 2);
         _journalCount = position + 1;
+        // Written whole: the journal is not cleared, and a restored snapshot leaves the entries above it.
         ref Undo undo = ref _journal[position];
-        undo.Kind = kind;
-        undo.Index = index;
+        undo = new Undo { Kind = kind, Index = index };
         return ref undo;
     }
 
@@ -1025,7 +1024,6 @@ public sealed partial class GuestWorldState : IWorldState
 
     private void ClearJournal()
     {
-        Array.Clear(_journal, 0, _journalCount);
         _journalCount = 0;
         _transactionStarts.Clear();
         _txId = ++_lastTxId;
