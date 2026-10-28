@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -25,6 +26,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             catch (ArgumentException e)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+            }
+            catch (Exception e) when (e is IExceptionWithSafePublicMessage safe)
+            {
+                return ResultWrapper<string>.Fail(safe.OmitArgumentPosition ? e.Message : $"invalid argument 1: {e.Message}", ErrorCodes.InvalidParams);
             }
             catch (Exception e) when (e is JsonException or FormatException or OverflowException)
             {

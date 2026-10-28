@@ -66,4 +66,29 @@ public class EnsureDiskSpaceTests
 
         timer.Received(startExpected ? 1 : 0).Start();
     }
+
+    [Test]
+    public async Task Execute_stops_waiting_for_free_disk_space_when_shutdown_is_requested()
+    {
+        HealthChecksConfig hcConfig = new()
+        {
+            LowStorageCheckAwaitOnStartup = true,
+            LowStorageSpaceShutdownThreshold = 1,
+            LowStorageSpaceWarningThreshold = 5
+        };
+        await using FreeDiskSpaceChecker freeDiskSpaceChecker = new(
+            hcConfig,
+            DiskSpaceTestHelper.GetDriveInfos(1.5f), // stays below the required threshold
+            TimerFactory.Default,
+            Substitute.For<IProcessExitSource>(),
+            LimboLogs.Instance,
+            TimeSpan.FromMilliseconds(10).TotalMinutes);
+        EnsureDiskSpace step = new(hcConfig, freeDiskSpaceChecker, TimerFactory.Default);
+        using CancellationTokenSource shutdown = new();
+
+        Task execution = Task.Run(() => step.Execute(shutdown.Token));
+        shutdown.CancelAfter(TimeSpan.FromMilliseconds(100));
+
+        Assert.That(() => execution.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>());
+    }
 }

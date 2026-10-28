@@ -199,7 +199,8 @@ public static class PersistedSnapshotBuilder
     public static long EstimateSize(Snapshot snapshot) =>
         // The arena writer throws if the write overruns the extent sized from this estimate, so a mutable
         // snapshot must be measured live at persist time: Snapshot.EstimateMemory serves counts sealed at
-        // first observation (for repository-ledger consistency), which may predate late content writes.
+        // first observation (for repository-ledger consistency), and the arena must not overrun even if
+        // the content changes after that.
         (snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory()) + 1.KiB;
 
     private static void WritePerAddress<TWriter>(
