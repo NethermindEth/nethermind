@@ -260,7 +260,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
     private OptimizedHashSet<AddressAsKey>? _tempToUpdateRoots;
-    private Dictionary<StorageCell, StorageChangeTrace>? _commitTrace;
+    private OptimizedDictionary<StorageCell, StorageChangeTrace>? _commitTrace;
     /// <summary>
     /// Called by Commit
     /// Used for persistent storage specific logic
@@ -285,7 +285,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         OptimizedHashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
-        Dictionary<StorageCell, StorageChangeTrace>? trace;
+        OptimizedDictionary<StorageCell, StorageChangeTrace>? trace;
         if (tracer.IsTracingStorage)
         {
             trace = _commitTrace ??= [];
@@ -360,7 +360,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceOriginalValues(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
+    private void TraceOriginalValues(IStorageTracer tracer, OptimizedDictionary<StorageCell, StorageChangeTrace> trace)
     {
         EnsureOriginalsIndexed();
         foreach ((StorageCell cell, UInt256 originalValue) in _originalValues)
@@ -379,7 +379,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void CommitChanges<TStorageTracing, HasDestroyedAccounts>(
         ReadOnlySpan<Change> changes,
         OptimizedHashSet<AddressAsKey> toUpdateRoots,
-        Dictionary<StorageCell, StorageChangeTrace>? trace)
+        OptimizedDictionary<StorageCell, StorageChangeTrace>? trace)
         where TStorageTracing : struct, IFlag
         where HasDestroyedAccounts : struct, IFlag
     {
@@ -438,7 +438,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Dictionary<StorageCell, StorageChangeTrace> RequireTrace(Dictionary<StorageCell, StorageChangeTrace>? trace)
+    private static OptimizedDictionary<StorageCell, StorageChangeTrace> RequireTrace(OptimizedDictionary<StorageCell, StorageChangeTrace>? trace)
         => trace ?? throw new InvalidOperationException("Storage tracing is active without a trace accumulator.");
 
     internal void FlushToTree(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
@@ -757,7 +757,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     [SkipLocalsInit]
-    private void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
+    private void ReportChanges(IStorageTracer tracer, OptimizedDictionary<StorageCell, StorageChangeTrace> trace)
     {
         Unsafe.SkipInit(out EvmWord beforeBuffer);
         Unsafe.SkipInit(out EvmWord afterBuffer);
