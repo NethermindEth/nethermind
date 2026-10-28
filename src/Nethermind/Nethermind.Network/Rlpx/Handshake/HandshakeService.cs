@@ -24,8 +24,8 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         private const int EciesOverhead = 65 + 16 + 32; // ephemeral public key + IV + MAC
 
-        // EIP-8 allows arbitrary padding after the auth body; 100-300 random bytes, as Geth adds,
-        // also keep an EIP-8 auth from looking like a pre-EIP-8 one.
+        // EIP-8 allows arbitrary padding after the auth body. Like Geth, add 100-300 random bytes,
+        // which also keeps the packet length distinct from a pre-EIP-8 auth.
         private const int Eip8MinPadding = 100;
         private const int Eip8MaxPadding = 300;
 
