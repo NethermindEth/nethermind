@@ -330,6 +330,50 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // EIP-8437: clients may deprioritize or rate-limit fetching from peers whose wrappers repeatedly fail verification. Such a
+    // peer is asked after other sources and gets one outstanding request, is never penalized, and recovers as its score decays.
+    [Test]
+    public async Task Repeated_verification_failures_deprioritize_and_rate_limit_fetching_without_penalty()
+    {
+        using WrapperTestNode node = new();
+        node.Verifier.Valid = false;
+        FakeWrapperLink bad = new("bad"), good = new("good");
+        WrapperPeer badPeer = node.Connect(bad), goodPeer = node.Connect(good);
+        // One more failure than the threshold, as the score decays between them.
+        for (int i = 0; i <= WrapperTransportLimits.DeprioritizedFailureScore; i++)
+        {
+            node.Tick(TimeSpan.FromSeconds(1));
+            byte[] invalid = Wrapper(64, FrameTransaction(100 + i));
+            node.Transport.OnAnnounce(badPeer, new([Describe(invalid)]));
+            Answer(node, badPeer, bad, invalid);
+            await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        }
+        node.Verifier.Valid = true;
+        Assert.That(badPeer.IsDeprioritized, Is.True);
+
+        // Many wanted wrappers from the failing peer alone: one outstanding request instead of four.
+        node.Tick(TimeSpan.FromSeconds(1));
+        bad.Clear();
+        WrapperAnnouncement[] many = [.. Enumerable.Range(0, 10)
+            .Select(i => Describe(Wrapper(Eth73Protocol.SoftResponseLimit / 3, FrameTransaction(200 + i)))).OrderBy(d => d.Hash)];
+        node.Transport.OnAnnounce(badPeer, new(many));
+        // A wrapper the failing peer announced first is requested from the other source, although that source announced it later.
+        WrapperAnnouncement shared = Describe(Wrapper(64, FrameTransaction(1)));
+        node.Transport.OnAnnounce(badPeer, new([shared]));
+        node.Transport.OnAnnounce(goodPeer, new([shared]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bad.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(WrapperTransportLimits.MaxRequestsPerFailingPeer));
+            Assert.That(good.Sent<GetProofWrappersMessage>().Single().Hashes, Is.EqualTo(new[] { shared.Hash }));
+            Assert.That(bad.Penalties, Is.Empty);
+            Assert.That(node.Transport.PeerCount, Is.EqualTo(2));
+        }
+
+        node.Tick(4 * WrapperTransportLimits.FailureHalfLife);
+        Assert.That(badPeer.IsDeprioritized, Is.False, "the score decays");
+    }
+
     // EIP-8437: malformed transport encodings remain penalizable, unlike proof failures.
     [TestCase("duplicate transaction")]
     [TestCase("transaction without frames")]

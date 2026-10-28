@@ -79,6 +79,18 @@ public static class WrapperTransportLimits
     /// <summary>Outstanding GetProofWrappers requests per peer.</summary>
     public const int MaxRequestsPerPeer = 4;
 
+    /// <summary>Outstanding GetProofWrappers requests to a peer whose wrappers repeatedly failed verification.</summary>
+    public const int MaxRequestsPerFailingPeer = 1;
+
+    /// <summary>The verification-failure score from which fetching from a peer is deprioritized and rate-limited.</summary>
+    public const double DeprioritizedFailureScore = 3;
+
+    /// <summary>The cap on a peer's verification-failure score, so it recovers within a few half-lives.</summary>
+    public const double MaxFailureScore = 16;
+
+    /// <summary>The half-life of a peer's verification-failure score.</summary>
+    public static readonly TimeSpan FailureHalfLife = TimeSpan.FromMinutes(5);
+
     /// <summary>ProofWrappers data served per peer per second, which is also the burst.</summary>
     public const long ServeBytesPerSecond = 8 * 1024 * 1024;
 

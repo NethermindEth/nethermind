@@ -209,7 +209,33 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock, Wrapper
     /// <summary>1 while one thread sends <see cref="Outgoing"/>.</summary>
     public int Sending;
 
-    public bool CanRequest => !Closed && Requests.Count < WrapperTransportLimits.MaxRequestsPerPeer;
+    public bool CanRequest => !Closed && Requests.Count < (IsDeprioritized
+        ? WrapperTransportLimits.MaxRequestsPerFailingPeer : WrapperTransportLimits.MaxRequestsPerPeer);
+
+    private double _failures;
+    private long _failuresUpdated = clock.GetTimestamp();
+
+    /// <summary>Wrappers from this peer that recently failed verification, decaying with a half-life of
+    /// <see cref="WrapperTransportLimits.FailureHalfLife"/> and capped at <see cref="WrapperTransportLimits.MaxFailureScore"/>.</summary>
+    /// <remarks>Never a ground for penalties or disconnection (EIP-8437): it only orders and rate-limits fetching.</remarks>
+    public double FailureScore
+    {
+        get
+        {
+            long now = clock.GetTimestamp();
+            if (_failures != 0)
+                _failures *= Math.Pow(0.5, clock.GetElapsedTime(_failuresUpdated, now) / WrapperTransportLimits.FailureHalfLife);
+            _failuresUpdated = now;
+            return _failures;
+        }
+    }
+
+    /// <summary>Whether fetching from this peer is deprioritized and limited to
+    /// <see cref="WrapperTransportLimits.MaxRequestsPerFailingPeer"/> outstanding requests.</summary>
+    public bool IsDeprioritized => FailureScore >= WrapperTransportLimits.DeprioritizedFailureScore;
+
+    /// <summary>Records a wrapper served by this peer that failed proof or dependency validation.</summary>
+    public void RecordVerificationFailure() => _failures = Math.Min(FailureScore + 1, WrapperTransportLimits.MaxFailureScore);
 
     public override string ToString() => Link.Description;
 }
@@ -276,11 +302,18 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     public int ModeFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length) metadata) ? metadata.Mode : Announcement.Mode;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
+    /// <remarks>Sources are asked in announcement order, except that one whose wrappers repeatedly failed verification is asked
+    /// only after the others.</remarks>
     public WrapperPeer? NextSource()
     {
         if (Tried.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return null;
+        WrapperPeer? deprioritized = null;
         foreach (WrapperPeer peer in Sources)
-            if (!peer.Closed && !Tried.Contains(peer)) return peer;
-        return null;
+        {
+            if (peer.Closed || Tried.Contains(peer)) continue;
+            if (!peer.IsDeprioritized) return peer;
+            deprioritized ??= peer;
+        }
+        return deprioritized;
     }
 }

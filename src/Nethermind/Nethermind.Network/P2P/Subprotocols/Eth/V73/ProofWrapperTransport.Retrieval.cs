@@ -424,10 +424,14 @@ public sealed partial class ProofWrapperTransport
                 Reject(fetch, error ?? "malformed wrapper");
                 break;
             // EIP-8437: a proof or dependency-rule failure discards the wrapper without penalizing the peer that served it.
+            // A peer whose wrappers repeatedly fail is fetched from last and at a lower rate, never penalized for it.
             case Verdict.Invalid:
                 WrapperMetrics.Record(WrapperEvent.Invalid);
-                if (verifier is { } judgedUnder)
-                    lock (_gate) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
+                lock (_gate)
+                {
+                    if (verifier is { } judgedUnder) _invalid.Add(InvalidKey(fetch.Announcement.Hash, judgedUnder));
+                    fetch.Server?.RecordVerificationFailure();
+                }
                 if (_logger.IsDebug) _logger.Debug($"eth/73 discarded {fetch.Announcement}: {error}");
                 break;
             default:
