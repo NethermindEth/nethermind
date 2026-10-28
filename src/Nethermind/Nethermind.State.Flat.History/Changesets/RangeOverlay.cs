@@ -59,6 +59,8 @@ internal sealed class RangeOverlay : IStorageReadOverlay
     public static RangeOverlay Extend(RangeOverlay? older, MidBlockOverlay block, Hash256 blockHash, IReadOnlySet<AddressAsKey> excluded)
     {
         RangeOverlay node = new(older, block.Block, blockHash, excluded);
+        node._slots.EnsureCapacity(block.WriteCount);
+        node._storageAccounts.EnsureCapacity(block.StorageAccountCount);
         Dictionary<AddressAsKey, MidBlockOverlay.AccountOverlay>.Enumerator accounts = block.Accounts;
         while (accounts.MoveNext())
         {
