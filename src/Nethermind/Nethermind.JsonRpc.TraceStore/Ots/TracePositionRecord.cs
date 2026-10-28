@@ -5,7 +5,6 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.TraceStore.Ots;
 

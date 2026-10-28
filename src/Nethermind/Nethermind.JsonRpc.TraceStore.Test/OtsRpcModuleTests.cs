@@ -35,7 +35,6 @@ using Nethermind.State;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks;
@@ -1083,7 +1082,7 @@ public class OtsRpcModuleTests
         Block block = f.Blocks[3];
         switch (mutation)
         {
-            case "missing": f.Store.Set(block.Hash!, null); break;
+            case "missing": f.Store.Delete(block.Hash!); break;
             case "corrupt": f.Store.Set(block.Hash!, new byte[] { 1, 2, 3 }); break;
             case "changed": f.Traces[3][0].Action!.Result!.GasUsed++; f.Save(3); break;
             case "transaction": block.Transactions[0].Hash = TestItem.KeccakH; break;
