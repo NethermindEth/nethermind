@@ -22,13 +22,29 @@ foreach (var entry in new[] { "nethermind+--a;;--b", "nethermind+", "nethermind+
         catch (ArgumentException) { return; }
         throw new InvalidOperationException("malformed entry accepted");
     });
-foreach (var (name, value) in new[] { ("ROUNDS", "0"), ("JB_SEED", "-1"), ("CORPUS_TIMINGS_RPS", "-1"), ("CORPUS_WARMUP_DURATION", "1.5s"), ("CORPUS_WARMUP_RPS_MAX", "x"), ("RPS_LIST", "10 0"), ("CORPUS_BASELINE", "other"), ("STATE_LAYOUT", "full"), ("JB_ETH_CALL_CORPUS", "yes"), ("CORPUS_METHOD", "other"), ("DB_ISOLATION_ALL", "direct") })
+foreach (var (name, value) in new[] { ("ROUNDS", "0"), ("JB_SEED", "-1"), ("CORPUS_TIMINGS_RPS", "-1"), ("CORPUS_WARMUP_DURATION", "1.5s"), ("CORPUS_WARMUP_RPS_MAX", "x"), ("RPS_LIST", "10 0"), ("CORPUS_BASELINE", "other"), ("STATE_LAYOUT", "full"), ("JB_ETH_CALL_CORPUS", "yes"), ("CORPUS_METHOD", "other"), ("DB_ISOLATION_ALL", "direct"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "-1"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "14401"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "x"), ("NODE_IO_DIAGNOSTICS", "yes") })
     tests.Case("reject invalid " + name, () =>
     {
         var values = EnvironmentValues(); values[name] = value;
         try { _ = new SweepConfiguration(key => values.GetValueOrDefault(key)); }
         catch (ArgumentException) { return; }
         throw new InvalidOperationException("invalid setting accepted");
+    });
+tests.Case("migration gating and I/O diagnostics default off", () =>
+{
+    var values = EnvironmentValues();
+    var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
+    RpcScriptTests.Assert(configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") == 0 && configuration["NODE_IO_DIAGNOSTICS"] == "false", "readiness defaults changed");
+});
+foreach (var (client, isolation) in new[] { ("nethermind", "readonly-bind"), ("nethermind", "direct"), ("reth", "overlay") })
+    tests.Case("migration gating refuses unsupported isolation/client " + client + " " + isolation, () =>
+    {
+        var values = EnvironmentValues();
+        values["CLIENTS"] = client; values["DB_ISOLATION_ALL"] = isolation; values["DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION"] = "true";
+        values["RECEIPT_HASHES_MIGRATION_TIMEOUT"] = "10";
+        try { _ = new SweepConfiguration(key => values.GetValueOrDefault(key)); }
+        catch (ArgumentException) { return; }
+        throw new InvalidOperationException("unsafe migration gate accepted");
     });
 tests.Case("request and pass counts cannot both size a cell", () =>
 {
@@ -96,7 +112,7 @@ switch (args[0])
 }
 """);
 var bin = Path.Combine(tests.DirectoryPath, "bin"); Directory.CreateDirectory(bin);
-var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nif [ \"$1\" = inspect ]; then echo true; fi\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var identity = Path.Combine(bin, "id"); File.WriteAllText(identity, "#!/bin/sh\necho 0\n"); File.SetUnixFileMode(identity, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
 var original = changedNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
@@ -118,6 +134,21 @@ try
         File.WriteAllText(Path.Combine(armScratch, "stale"), "old");
         values["ROUNDS"] = "1"; values["CLIENTS"] = "nethermind#X=1+--Cache.Path={ARM_SCRATCH}";
         RpcScriptTests.Assert(Run(values) == 0 && !File.Exists(Path.Combine(armScratch, "stale")), "scratch retained old run");
+    });
+    tests.Case("missing migration completion aborts timing and still tears down", () =>
+    {
+        var values = EnvironmentValues();
+        values["RECEIPT_HASHES_MIGRATION_TIMEOUT"] = "1"; values["RPS_LIST"] = "1";
+        values["STATE_ROOT"] = Path.Combine(tests.DirectoryPath, "gated-state");
+        values["OUT_DIR"] = Path.Combine(tests.DirectoryPath, "gated-out");
+        try { Run(values); }
+        catch (IOException exception) when (exception.Message.Contains("did not positively complete", StringComparison.Ordinal))
+        {
+            RpcScriptTests.Assert(Directory.GetFiles(values["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Length == 1, "gate failure skipped teardown");
+            RpcScriptTests.Assert(!Directory.Exists(Path.Combine(values["OUT_DIR"], "mix")), "requests were timed before migration completion");
+            return;
+        }
+        throw new InvalidOperationException("unqualified migration reached timing");
     });
     foreach (var target in new[] { Path.Combine(tests.DirectoryPath, "snapshots"), Path.Combine(tests.DirectoryPath, "snapshots", "reth-1"), Path.Combine(tests.DirectoryPath, "snapshots", "reth-1", "scratch") })
         tests.Case("reject scratch overlap " + target, () =>

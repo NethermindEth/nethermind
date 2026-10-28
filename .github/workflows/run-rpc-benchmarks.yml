@@ -677,7 +677,7 @@ jobs:
           # and so is `rounds`, which repeats the cell rather than reshaping it.
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","max_response_bytes",
-                      "node_env_vars","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
+                      "node_env_vars","node_io_diagnostics","receipt_hashes_migration_timeout","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
                       "timings_rps","vus"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
             --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
@@ -1394,11 +1394,12 @@ jobs:
                       corpus_baseline:CORPUS_BASELINE \
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS \
+                      receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT \
                       max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \
-                      vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT; do
+                      vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT node_io_diagnostics:NODE_IO_DIAGNOSTICS; do
             v="$(getb ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           # An absent rps_list means the default; an explicitly empty one means no k6 cells.

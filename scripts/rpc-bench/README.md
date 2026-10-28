@@ -110,6 +110,34 @@ absolute path inside the node container, so a flag can direct client-owned
 scratch state there without sharing a predecessor's files. It is expanded in
 flags only, not in the env suffix.
 
+### Optional receipt tx-hash migration gate (sweep only)
+
+`tool_config.receipt_hashes_migration_timeout` is an integer number of seconds,
+**0 by default** (unchanged RPC readiness); values 1–14400 opt in. It requires
+Nethermind with `db_isolation_all: "overlay"` or `"copy"`. Each fresh arm must
+log both `Adding transaction hashes to stored receipts, blocks ...` and the
+subsequent positive `Transaction hashes added to stored receipts of ... blocks,
+... bytes added.` before any warmup or timed requests. Migration failure, node
+exit, an unreadable probe, cancellation, or timeout aborts timing; teardown and
+snapshot verification still run. Raw readiness logs are kept under the arm's
+state directory as `receipt-migration.log`. A completed/resumed dataset that
+emits no fresh-pass marker deliberately does not qualify through this gate.
+
+The boundary follows `ReceiptTxHashesMigration.Migrate`: its success message
+comes after persisting the completion marker. RPC availability and progress at
+shutdown do not establish completion. This gate does not change receipt flags,
+mutate the protected source, promote a derived snapshot, or prove historical
+receipt coverage. Every disposable overlay must complete its own pass.
+
+`tool_config.node_io_diagnostics: true` (default false) writes bounded read-only
+Docker security/capability, kernel policy, process seccomp, native-library hash,
+and selected native DB-option observations to each arm's `io-security.txt`.
+Unavailable commands are recorded, not interpreted as a backend match; no
+security policy or I/O backend is changed. Either opt-in also captures actual
+chain ID, head/hash, client version, image reference and arm flags in
+`runtime-identity.json` before measurement. These diagnostic artifacts are for
+public workloads; private-corpus staging retains its existing allowlist.
+
 ## Goals
 
 1. **A CI to check current node RPC performance** with any of three tools.

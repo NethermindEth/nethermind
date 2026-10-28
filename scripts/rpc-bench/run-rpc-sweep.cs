@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:include benchmark-process.helpers.cs
 #:include benchmark-paths.helpers.cs
+#:include receipt-migration.helpers.cs
 
 using System.Diagnostics;
 using System.Globalization;
@@ -106,6 +107,10 @@ internal sealed partial class SweepConfiguration
         Set("STATE_LAYOUT", "flat"); Set("JB_DURATION", "60s"); Set("ISO_DURATION", "20s"); Set("JB_REF"); Set("JB_SEED", "1");
         Set("NETWORK", "mainnet"); Set("JSONRPC_MODULES", "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"); Set("HEALTH_TIMEOUT", "1800");
         Set("DIAG_DIR", Path.Combine(this["SCRATCH_ROOT"], "diag")); Set("JB_ETH_CALL_CORPUS", "false");
+        Set("RECEIPT_HASHES_MIGRATION_TIMEOUT", "0"); Set("NODE_IO_DIAGNOSTICS", "false");
+        if (Integer("RECEIPT_HASHES_MIGRATION_TIMEOUT", this["RECEIPT_HASHES_MIGRATION_TIMEOUT"], false) > 14400)
+            throw new ArgumentException("RECEIPT_HASHES_MIGRATION_TIMEOUT must not exceed 14400 seconds");
+        if (this["NODE_IO_DIAGNOSTICS"] is not ("true" or "false")) throw new ArgumentException("NODE_IO_DIAGNOSTICS must be true or false");
         Set("CORPUS_DIR", "/data/expb-data/rpc-bench"); Set("CORPUS_GLOB", "eth-call-corpus*.jsonl.gz"); Set("CORPUS_METHOD", "eth_call");
         Set("CORPUS_TRACER", "callTracer", true); Set("CORPUS_TRACE_TYPES", "trace", true); Set("CORPUS_REQUESTS"); Set("CORPUS_PASSES"); Set("CORPUS_TIMINGS_PASSES");
         Set("CORPUS_TIMINGS_RPS", "0"); Set("CORPUS_TIMINGS_CONCURRENCY", "16"); Set("CORPUS_WARMUP_RPS_MAX", "0"); Set("CORPUS_PARITY_DIFFS", "false");
@@ -128,6 +133,8 @@ internal sealed partial class SweepConfiguration
         if (this["CLIENTS"].Contains('\n') || this["CLIENTS"].Contains('\r')) throw new ArgumentException("clients must be a single line");
         Arms = Words(this["CLIENTS"]).Select(entry => SweepArm.Parse(entry, this["NM_IMAGE"])).ToArray();
         if (Arms.Length == 0) throw new ArgumentException("clients must contain at least one entry");
+        if (Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0 && Arms.Any(arm => arm.Client != "nethermind" || Isolation(arm.Client) is not ("overlay" or "copy")))
+            throw new ArgumentException("receipt tx-hash migration gating requires Nethermind with overlay or copy isolation");
         Rates = Words(this["RPS_LIST"]).Select(rate => Integer("rps_list entry", rate, true)).ToArray();
     }
 
@@ -256,6 +263,13 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         _labels.Add(label);
         try
         {
+            if (Get("NODE_IO_DIAGNOSTICS") == "true")
+                await NodeIoDiagnostics.CaptureAsync(container, Path.Combine(state, "io-security.txt"), cancellationToken);
+            if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
+                await ReceiptMigrationGate.WaitAsync(token => ReceiptMigrationGate.SnapshotAsync(container, token),
+                    Path.Combine(state, "receipt-migration.log"), TimeSpan.FromSeconds(configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT")), cancellationToken);
+            if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0 || Get("NODE_IO_DIAGNOSTICS") == "true")
+                await NodeIoDiagnostics.CaptureIdentityAsync(Rpc, arm.Image, flags, Path.Combine(state, "runtime-identity.json"), cancellationToken);
             if (configuration.Corpus)
             {
                 foreach (var corpus in _corpora) await RunCorpus(arm, label, container, corpus, cancellationToken);

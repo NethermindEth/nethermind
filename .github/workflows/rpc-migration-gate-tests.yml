@@ -1,0 +1,28 @@
+name: RPC migration gate script tests
+
+on:
+  push:
+    branches: [perf/getlogs-migration-gate-20261028]
+    paths:
+      - scripts/rpc-bench/**
+      - .github/workflows/rpc-migration-gate-tests.yml
+      - .github/workflows/run-rpc-benchmarks.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Migration gate regression tests
+        run: dotnet run --file scripts/rpc-bench/test-receipt-migration.cs
+      - name: Sweep regression tests
+        run: dotnet run --file scripts/rpc-bench/test-rpc-sweep.cs
+      - name: Workflow contracts
+        run: dotnet run --file scripts/rpc-bench/test-workflow-contracts.cs
