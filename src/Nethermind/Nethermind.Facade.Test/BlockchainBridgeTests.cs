@@ -753,10 +753,9 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys([Values] bool optimize)
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys()
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
-            optimize,
             [PrecompiledAddresses.ECRecover, TestItem.AddressC],
             [new StorageCell(TestItem.AddressC, UInt256.One)]);
 
@@ -769,7 +768,6 @@ public class BlockchainBridgeTests
     public void CreateAccessList_keeps_precompile_address_when_storage_key_is_present()
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
-            optimize: false,
             [PrecompiledAddresses.ECRecover],
             [new StorageCell(PrecompiledAddresses.ECRecover, UInt256.One)]);
 
@@ -808,7 +806,6 @@ public class BlockchainBridgeTests
     }
 
     private CallOutput InvokeCreateAccessListWithMockedAccess(
-        bool optimize,
         Address[] accessedAddresses,
         StorageCell[] accessedCells)
     {
@@ -827,7 +824,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, cancellationToken: default);
+        return _blockchainBridge.CreateAccessList(header, tx, null, false, null, cancellationToken: default);
     }
 
     [Test]
