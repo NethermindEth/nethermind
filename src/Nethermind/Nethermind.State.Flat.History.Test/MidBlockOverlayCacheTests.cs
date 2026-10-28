@@ -102,6 +102,7 @@ public class MidBlockOverlayCacheTests
     public void AnEarlierTransactionOfTheSameBlock_FoldsTheBlockAgain()
     {
         _cache.TryRent(Block, in HashA, 6, out MidBlockOverlayCache.Lease later, version: 0);
+        MidBlockOverlay folded = later.Overlay;
         later.Dispose();
 
         _cache.TryRent(Block, in HashA, 1, out MidBlockOverlayCache.Lease earlier, version: 0);
@@ -110,8 +111,29 @@ public class MidBlockOverlayCacheTests
 
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(earlier.Overlay, Is.SameAs(folded), "no request holds the later prefix, so its overlay is folded again");
                 Assert.That(earlier.Overlay.Folded, Is.EqualTo(1));
                 Assert.That(BalanceOf(earlier.Overlay), Is.EqualTo((UInt256)1));
+            }
+        }
+    }
+
+    [Test]
+    public void AnEarlierTransactionOfTheSameBlock_LeavesALaterPrefixARequestHolds()
+    {
+        _cache.TryRent(Block, in HashA, 6, out MidBlockOverlayCache.Lease later, version: 0);
+        using (later)
+        {
+            _cache.TryRent(Block, in HashA, 1, out MidBlockOverlayCache.Lease earlier, version: 0);
+            using (earlier)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(earlier.Overlay, Is.Not.SameAs(later.Overlay));
+                    Assert.That(later.Overlay.Folded, Is.EqualTo(6), "the holder is reading the state before transaction 6");
+                    Assert.That(earlier.Overlay.Folded, Is.EqualTo(1));
+                    Assert.That(BalanceOf(earlier.Overlay), Is.EqualTo((UInt256)1));
+                }
             }
         }
     }
@@ -205,20 +227,38 @@ public class MidBlockOverlayCacheTests
     [Test]
     public void ASiblingIndexedAtTheSameHeight_IsNotLentTheOtherBlocksPrefix()
     {
-        MidBlockOverlay folded;
         Assert.That(_cache.TryRent(Block, in HashA, 5, out MidBlockOverlayCache.Lease first, version: 0), Is.True);
         using (first)
         {
-            folded = first.Overlay;
+            Assert.That(_cache.TryRent(Block, in HashB, 5, out MidBlockOverlayCache.Lease second, version: 0), Is.True);
+            using (second)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(second.Overlay, Is.Not.SameAs(first.Overlay), "a height is not an identity: the sibling gets its own fold, not the one already in the cache");
+                    Assert.That(first.Overlay.Hash, Is.EqualTo(HashA));
+                    Assert.That(second.Overlay.Hash, Is.EqualTo(HashB));
+                }
+            }
         }
+    }
 
-        Assert.That(_cache.TryRent(Block, in HashB, 5, out MidBlockOverlayCache.Lease second, version: 0), Is.True);
+    [Test]
+    public void ASiblingIndexedAtTheSameHeight_RefoldsAnOverlayNobodyHolds()
+    {
+        Assert.That(_cache.TryRent(Block, in HashA, 5, out MidBlockOverlayCache.Lease first, version: 0), Is.True);
+        MidBlockOverlay folded = first.Overlay;
+        first.Dispose();
+
+        Assert.That(_cache.TryRent(Block, in HashB, 3, out MidBlockOverlayCache.Lease second, version: 0), Is.True);
         using (second)
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(second.Overlay, Is.Not.SameAs(folded), "a height is not an identity: the sibling gets its own fold, not the one already in the cache");
-                Assert.That(second.Overlay.Hash, Is.EqualTo(HashB));
+                Assert.That(second.Overlay, Is.SameAs(folded));
+                Assert.That(second.Overlay.Hash, Is.EqualTo(HashB), "the overlay was reset for the sibling, not lent with the prefix of the other block");
+                Assert.That(second.Overlay.Folded, Is.EqualTo(3));
+                Assert.That(BalanceOf(second.Overlay), Is.EqualTo((UInt256)3));
             }
         }
     }

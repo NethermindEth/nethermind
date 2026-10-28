@@ -18,8 +18,9 @@ internal sealed class MidBlockOverlay
     private const int MaxSpareWrites = 1 << 14;
     private const int MaxSpares = 32;
 
-    /// <summary>The entries all spares together may hold, about 6 MB: four overlays at the size limit, or many smaller
-    /// ones. A return that would exceed it lets the overlay go.</summary>
+    /// <summary>The entries all spares together may hold: four overlays at the size limit, or many smaller ones. A
+    /// storage entry is about 100 B and an account entry with its pooled <see cref="AccountOverlay"/> about 150 B, so
+    /// the spares hold about 10 MB at most. A return that would exceed it lets the overlay go.</summary>
     internal const int MaxSpareEntries = 1 << 16;
 
     private static readonly Stack<MidBlockOverlay> Spares = new(MaxSpares);
@@ -82,8 +83,8 @@ internal sealed class MidBlockOverlay
     /// <summary>The caller gives up the overlay: nothing may read or fold it afterwards.</summary>
     public static void Return(MidBlockOverlay overlay)
     {
-        overlay.Reset(0);
         if (overlay._storage.EnsureCapacity(0) > MaxSpareWrites || overlay._accounts.EnsureCapacity(0) > MaxSpareWrites) return;
+        overlay.Reset(0);
 
         int capacity = overlay.Capacity;
         using Lock.Scope scope = SparesLock.EnterScope();
@@ -221,6 +222,8 @@ internal sealed class MidBlockOverlay
     /// block, unless <see cref="Emptied"/> says the account was deleted, when it takes the empty account's value.</summary>
     internal sealed class AccountOverlay
     {
+        public AccountOverlay() => Clear();
+
         public UInt256? Balance { get; set; }
 
         public UInt256? Nonce { get; set; }
@@ -229,10 +232,11 @@ internal sealed class MidBlockOverlay
 
         public bool Emptied { get; set; }
 
-        public bool Exists { get; set; } = true;
+        public bool Exists { get; set; }
 
-        public int StorageClearedAt { get; set; } = NeverCleared;
+        public int StorageClearedAt { get; set; }
 
+        /// <summary>The only place the defaults are set: a new entry and a reused one both start from here.</summary>
         public void Clear()
         {
             Balance = null;

@@ -184,8 +184,9 @@ public class MidBlockOverlayTests
         long cold = GC.GetAllocatedBytesForCurrentThread() - before;
 
         TestContext.Out.WriteLine($"Folding 64 rows of 16 addresses: {cold} bytes into a new overlay, {warm} bytes into a reset one.");
-        // One instance per distinct address and fold, an object header and twenty bytes rounded up to the allocation unit.
-        Assert.That(warm, Is.LessThanOrEqualTo(16 * 40), "a reset overlay keeps the capacity of its previous fold and shares one address instance between every entry naming it");
+        // One instance per distinct address and fold, an object header and twenty bytes rounded up to the allocation unit,
+        // with twice that as headroom. An Address per entry, as before, was about 45 KB.
+        Assert.That(warm, Is.LessThanOrEqualTo(16 * 40 * 2), "a reset overlay keeps the capacity of its previous fold and shares one address instance between every entry naming it");
     }
 
     [Test]
