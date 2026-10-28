@@ -226,38 +226,55 @@ public class ProofWrapperServiceTests
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
     }
 
-    // EIP-8437: proof and dependency-rule failures are discarded without penalty, so they are reported apart from malformed
-    // encodings, which remain penalizable.
+    // EIP-8437: proof and dependency-rule failures, including exceeding MAX_SIGS_PER_TX or another EIP-8288 dependency limit, are
+    // discarded without penalty, so they are reported apart from malformed encodings, which remain penalizable. A mode-1 wrapper
+    // wider than the pinned guest's bound is a local refusal.
     [TestCase("valid", ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase("proof", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("union", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("unsorted", ProofWrapperAcceptanceStatus.Invalid)]
     [TestCase("limit", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("transaction limit", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("wide", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("wider than the local bound", ProofWrapperAcceptanceStatus.LocalFailure)]
     [TestCase("reference", ProofWrapperAcceptanceStatus.Malformed)]
     [TestCase("order", ProofWrapperAcceptanceStatus.Malformed)]
     public async Task Proof_and_dependency_failures_are_invalid_and_encoding_failures_malformed(string scenario, ProofWrapperAcceptanceStatus expected)
     {
-        // Seventeen signature dependencies across two transactions exceed MAX_LEANSIG_DEPS_PER_WRAPPER.
-        Transaction[] transactions = [.. Enumerable.Range(0, 2).Select(i =>
+        // EIP-8288 Test Case 12: seventeen distinct signature dependencies across two transactions exceed
+        // MAX_LEANSIG_DEPS_PER_WRAPPER in mode 0 ("limit") but not in mode 1 ("wide").
+        (int count, Func<int, int> perTransaction) = scenario switch
         {
-            int perTransaction = scenario == "limit" ? 9 - i : 1;
+            "limit" or "wide" => (2, static i => 9 - i),
+            "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
+            "wider than the local bound" => (Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1,
+                static _ => Eip8288Constants.MaxSigsPerTx),
+            "unsorted" => (1, static _ => 2),
+            _ => (1, (Func<int, int>)(static _ => 1))
+        };
+        Transaction[] transactions = [.. Enumerable.Range(0, count).Select(i =>
+        {
+            int own = perTransaction(i);
             Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"sig{i}"), default), Keccak.Compute($"tx{i}"));
-            FrameDependency[] own = [.. Enumerable.Range(0, perTransaction)
+            FrameDependency[] dependencies = [.. Enumerable.Range(0, own)
                 .Select(j => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"sig{i}:{j}"), default))];
-            transaction.Frames![0] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)perTransaction * Eip8288Constants.LeanSphincsVerificationGas,
-                UInt256.Zero, Eip8288Dependencies.Serialize(own));
+            transaction.Frames![0] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)own * Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies));
             transaction.Hash = transaction.CalculateHash();
             return transaction;
         }).OrderBy(static tx => tx.Hash!.ToString())];
-        if (scenario != "limit") transactions = [transactions[0]];
         List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(
             transactions.SelectMany(static tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
         if (scenario == "union") deps = [new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default)];
+        if (scenario == "unsorted") deps.Reverse();
+        byte mode = scenario == "limit" ? MempoolWrapper.ModeDirect : MempoolWrapper.ModeRecursive;
         byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = transactions,
             Deps = deps,
-            Mode = MempoolWrapper.ModeRecursive,
-            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
+            Mode = mode,
+            Proofs = mode == MempoolWrapper.ModeDirect ? [.. deps.Select(static _ => new byte[] { 1 })] : null,
+            RecursiveStark = mode == MempoolWrapper.ModeRecursive ? new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))) : null
         }).Bytes;
         byte[] transaction = MempoolWrapperDecoder.EncodeTransaction(transactions[0]);
         Rlp proofContent = Rlp.Encode(Rlp.Encode([Rlp.Encode(Eip8288Dependencies.Serialize(deps))]), Rlp.Encode(new byte[] { 1 }));
@@ -558,6 +575,47 @@ public class ProofWrapperServiceTests
             Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash),
                 Is.EquivalentTo(transactions.Select(static tx => tx.Hash)), "each transaction is in exactly one wrapper of the cycle");
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "subsets sharing a dependency reuse the proof");
+        }
+    }
+
+    // EIP-8288 (bec62841): mode 1 has no wrapper-level dependency-count limit. A produced wrapper merges proven aggregates whole,
+    // well beyond MAX_LEANSIG_DEPS_PER_WRAPPER, while fresh mode-0 witnesses, folded directly into the aggregate, stay within the
+    // proving-cost budget of that many signatures.
+    [Test]
+    public void Produced_wrappers_are_bounded_by_proving_cost_rather_than_dependency_count([Values] bool proven)
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            FrameDependency[] dependencies = [.. Eip8288Dependencies.Canonicalize(Enumerable.Range(0, Eip8288Constants.MaxSigsPerTx)
+                .Select(j => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide:{i}:{j}"), default)))];
+            if (proven) store.AddVerified(dependencies, null, [(byte)(i + 1)]);
+            else store.AddVerified(dependencies, [.. dependencies.Select(static _ => new byte[] { 1 })], null);
+            transactions[i] = new Transaction
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
+                ChainId = 1,
+                SenderAddress = Address.Zero,
+                Nonce = (ulong)i,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)dependencies.Length * Eip8288Constants.LeanSphincsVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+            };
+            transactions[i].Hash = transactions[i].CalculateHash();
+        }
+        ProofWrapperService service = CreateService(transactions, store, new FakeLeanProofVerifier(true));
+
+        Result<byte[]> result = service.BuildWrapper();
+
+        Assert.That(result.IsSuccess, Is.True, result.Error);
+        MempoolWrapper wrapper = Decode(result.Data!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper.Mode, Is.EqualTo(MempoolWrapper.ModeRecursive));
+            Assert.That(wrapper.Transactions, Has.Count.EqualTo(proven ? transactions.Length : 1));
+            Assert.That(wrapper.Deps, Has.Count.EqualTo((proven ? transactions.Length : 1) * Eip8288Constants.MaxSigsPerTx));
+            Assert.That(MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(true), Eip8288Verifier.Pinned, out string? error), Is.True, error);
         }
     }
 

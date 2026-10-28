@@ -33,9 +33,17 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     IWrappedBlobTransactionAdmission? blobAdmission = null)
 {
     /// <summary>Encoded transaction bytes a produced mode-1 wrapper may carry: <c>MAX_WRAPPER_BYTES</c> less the largest
-    /// aggregate proof, a full dependency list and the list framing.</summary>
+    /// aggregate proof, the widest dependency list the pinned guest proves and the list framing.</summary>
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes
-        - Eip8288Constants.MaxDepsPerWrapper * (2 + Eip8288Constants.DependencyTripleLength) - 64;
+        - Eip8288Constants.MaxProofDependencies * (2 + Eip8288Constants.DependencyTripleLength) - 64;
+
+    /// <summary>Estimated proving cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) one produced wrapper may take: that of
+    /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures.</summary>
+    /// <remarks>EIP-8288 sets no mode-1 dependency-count limit, so a produced wrapper is bounded by <c>MAX_WRAPPER_BYTES</c>, the
+    /// pinned guest's <see cref="Eip8288Constants.MaxProofDependencies"/> and this budget: it may cover many more dependencies
+    /// when they come from already proven aggregates, whose merge costs far less than fresh signatures.</remarks>
+    internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * RecursiveStarkAggregator.SignatureCost
+        + (Eip8288Constants.MaxLeanSigDepsPerWrapper / RecursiveStarkAggregator.DirectBatchSize - 1) * RecursiveStarkAggregator.MergeCost;
 
     /// <summary>Transactions submitted to the pool per turn of admission.</summary>
     /// <remarks>EIP-8288 bounds a wrapper only by <c>MAX_WRAPPER_BYTES</c>, so one wrapper may carry thousands of small transactions
@@ -72,6 +80,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private WrapperSnapshot? _cachedWrapper;
     private readonly Lock _verifierLock = new();
     private readonly Lock _commitLock = new();
+    internal const string WiderThanLocalProofBound = "Mode 1 proof wrapper covers more dependencies than the local prover's bound.";
     private const string VerifierChangedDuringAdmission = "The target fork's verifier changed during validation; retry.";
     private Eip8288Verifier? _verifier;
     private TargetForks? _targetForks;
@@ -229,6 +238,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Malformed($"Invalid proof wrapper RLP: {exception.Message}");
             }
+            // EIP-8288 sets no mode-1 dependency-count limit, but the pinned guest commits to at most MaxProofDependencies, so a
+            // wider recursive proof cannot be verified, stored or reaggregated here: a local refusal, without penalty.
+            if (decoded.Mode == MempoolWrapper.ModeRecursive && decoded.Deps.Count > Eip8288Constants.MaxProofDependencies)
+                return ProofWrapperAcceptance.LocalFailure(WiderThanLocalProofBound);
             // EIP-8437 carries blob-carrying transactions with their blob data elided, so a wrapper submitted with full blobs is
             // relayed in that form; its blobs reach peers as EIP-8070 cells once the pool holds them.
             byte[]? relay = ElidedForRelay(decoded, wrapper);
@@ -563,6 +576,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         AddBlobCandidates(candidates);
         candidates.Sort(static (a, b) => a.Hash!.Bytes.SequenceCompareTo(b.Hash!.Bytes));
         candidateCount = candidates.Count;
+        WrapperSnapshot? previous = Volatile.Read(ref _cachedWrapper);
+        RecursiveProofInput? previousProof = previous is not null && previous.Verifier == verifier ? previous.Parent : null;
         int start = candidates.Count == 0 ? 0 : (int)((uint)_rotation % (uint)candidates.Count);
         int next = 0;
         int end = candidates.Count;
@@ -587,14 +602,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 List<FrameDependency> combined = [.. deps, .. transactionDeps];
                 combined = Eip8288Dependencies.Canonicalize(combined);
-                (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(combined);
-                if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper || stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper)
+                if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
+                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies) continue;
+                // Mode-0 witnesses fold directly into the aggregate and proven aggregates merge whole; the wrapper ends once the
+                // proving work would exceed the budget, whichever way the previous wrapper's proof is reused.
+                if (ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost)
                 {
                     if (transactions.Count != 0) { next = end = candidateIndex; break; }
                     continue;
                 }
-                if (!leanProofStore.TryGetInput(combined, out AggregationInput candidateInput)
-                    || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies) continue;
                 deps = combined;
                 selectedInput = candidateInput;
                 covered.UnionWith(transactionDeps);
@@ -678,6 +694,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 if (light.SupportsFrames && light.GetProofVersion() == ProofVersion.V1 && Eip8288Dependencies.IsDependencyBearing(light)
                     && txPool.TryGetPendingTransactionWithoutBlobs(light.Hash!.ValueHash256, out Transaction? elided))
                     candidates.Add(elided);
+    }
+
+    /// <summary>The estimated proving cost of <paramref name="input"/>, or of extending <paramref name="parent"/> with it when
+    /// that is cheaper, as the build does when the previous wrapper's statement overlaps.</summary>
+    private static long ProvingCost(AggregationInput input, IReadOnlyList<FrameDependency> required, RecursiveProofInput? parent)
+    {
+        long cost = RecursiveStarkAggregator.EstimatedCost(input);
+        if (parent is not { } proven || cost == 0) return cost;
+        AggregationInput extended = RecursiveStarkAggregator.Combine([new() { RecursiveProofs = [proven] }, input], required);
+        return Math.Min(cost, RecursiveStarkAggregator.EstimatedCost(extended));
     }
 
     private static bool HasOverlap(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> selected)

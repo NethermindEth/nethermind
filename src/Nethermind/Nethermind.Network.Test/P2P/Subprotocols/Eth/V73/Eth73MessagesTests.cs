@@ -23,7 +23,7 @@ public class Eth73MessagesTests
         public override string ToString() => $"mode {Mode}, {Size} bytes";
     }
 
-    // ethereum/EIPs#12423 at fc571b38, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
+    // ethereum/EIPs#12423 at 19389608, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
     private static IEnumerable<AnnouncementVector> AnnouncementVectors() =>
     [
         new(0, 1, "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a",
@@ -63,7 +63,7 @@ public class Eth73MessagesTests
         "a9627cc76ad0b92ebe067018f96cf3acc2d3411fea2c23441c019c780a88e39a"
     ];
 
-    // ethereum/EIPs#12423 at fc571b38, assets/eip-8437/wrapper-vectors.json: full-envelope mode-0 and mode-1 wrappers.
+    // ethereum/EIPs#12423 at 19389608, assets/eip-8437/wrapper-vectors.json: full-envelope mode-0 and mode-1 wrappers.
     [TestCase(Mode0Body, 0, "12d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455",
         "e58082016ba012d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455",
         "f9019307f9018ff9018ca012d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455")]
@@ -324,8 +324,9 @@ public class Eth73MessagesTests
         Assert.That(decode, Throws.InstanceOf<RlpException>());
     }
 
-    // EIP-8288 Test Case 12: empty transaction lists, unresolved references, duplicate or reordered transactions, and more
-    // dependencies than the wrapper limits allow are rejected before validation.
+    // EIP-8288 Test Case 12: empty transaction lists, unresolved references and duplicate or reordered transactions are rejected
+    // before validation. A dependency list wider than the mode-0 limits or out of order parses: EIP-8437 leaves dependency-rule
+    // failures to validation, which discards them without penalty.
     [TestCase("valid")]
     [TestCase("trailing")]
     [TestCase("empty")]
@@ -334,7 +335,8 @@ public class Eth73MessagesTests
     [TestCase("reordered")]
     [TestCase("not a frame transaction")]
     [TestCase("aggregate proof")]
-    [TestCase("too many dependencies")]
+    [TestCase("wide dependency list")]
+    [TestCase("unsorted dependencies")]
     public void Canonical_wrapper_parser_rejects_noncanonical_bodies(string scenario)
     {
         Transaction[] transactions = [.. Enumerable.Range(0, 2).Select(WrapperTestObjects.FrameTransaction).OrderBy(static t => t.Hash!.ToString())];
@@ -348,6 +350,9 @@ public class Eth73MessagesTests
             return Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. items]), Eth73Rlp.EncodeUInt(1), content ?? fields.ReadItem().ToArray());
         }
         byte[][] encoded = [.. transactions.Select(static t => Eth73Rlp.EncodeBytes(WrapperTestObjects.Envelope(t)))];
+        byte[][] wide = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+            .Select(static i => Eth73Rlp.EncodeBytes(Eip8288Dependencies.Serialize([new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute([(byte)i, (byte)(i >> 8)]), default)])))
+            .OrderBy(static d => d.ToHexString())];
         byte[] wrapper = scenario switch
         {
             "valid" => valid,
@@ -360,11 +365,10 @@ public class Eth73MessagesTests
             "aggregate proof" => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. Eip8288Dependencies.Canonicalize(
                     transactions.SelectMany(static t => Eip8288Dependencies.ForTransaction(t, FrameTxSigHash.ComputeValue)))
                 .Select(static d => Eth73Rlp.EncodeBytes(Eip8288Dependencies.Serialize([d])))]), Eth73Rlp.EncodeBytes(new byte[Eip8288Constants.MaxAggregateProofBytes + 1]))),
-            _ => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. Enumerable.Range(0, Eip8288Constants.MaxDepsPerWrapper + 1)
-                .Select(i => Eth73Rlp.EncodeBytes(Eip8288Dependencies.Serialize([new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute([(byte)i]), default)])))
-                .OrderBy(static d => d.ToHexString())]), Eth73Rlp.EncodeBytes([1])))
+            "wide dependency list" => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. wide]), Eth73Rlp.EncodeBytes([1]))),
+            _ => Rebuilt(encoded, Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. wide.AsEnumerable().Reverse()]), Eth73Rlp.EncodeBytes([1])))
         };
-        if (scenario == "valid")
+        if (scenario is "valid" or "wide dependency list" or "unsorted dependencies")
             Assert.That(WrapperBodies.ParseWrapper(wrapper, out _), Is.EqualTo(transactions.Select(static t => t.Hash!.ValueHash256)));
         else
             Assert.That(() => WrapperBodies.ParseWrapper(wrapper, out _), Throws.InstanceOf<RlpException>());

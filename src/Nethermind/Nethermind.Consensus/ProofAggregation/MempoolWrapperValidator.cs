@@ -12,8 +12,9 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <summary>
 /// Validates an EIP-8288 mempool wrapper per the spec "Mempool Wrapper Object" rules: every transaction is a frame
 /// transaction within the per-transaction limits and declares at least one dependency, the dependency list is their union,
-/// both modes stay within <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>, mode 0 carries one
-/// verifying proof per dependency, and mode 1 carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>.
+/// mode 0 stays within <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> and carries one verifying
+/// proof per dependency, and mode 1 carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. Mode 1 has no
+/// wrapper-level dependency-count limit; <c>MAX_WRAPPER_BYTES</c>, checked on decoding, bounds it.
 /// </summary>
 /// <remarks>Proof checks go through <see cref="ProofVerdictCache"/>, so a known proof arriving with another transaction list
 /// is not verified again. Every failure here is a proof or dependency-rule failure, which EIP-8437 discards without
@@ -25,8 +26,8 @@ public static class MempoolWrapperValidator
     public const string NotFrameTransaction = "wrapper transactions must be EIP-8141 frame transactions";
     public const string TransactionLimits = "transaction exceeds EIP-8288 dependency limits";
     public const string MalformedDependencyFrame = "wrapper transaction has a malformed dependency verification frame";
-    public const string TooManySigDeps = "wrapper exceeds MAX_LEANSIG_DEPS_PER_WRAPPER";
-    public const string TooManyStarkDeps = "wrapper exceeds MAX_LEANSTARK_DEPS_PER_WRAPPER";
+    public const string TooManySigDeps = "mode 0 wrapper exceeds MAX_LEANSIG_DEPS_PER_WRAPPER";
+    public const string TooManyStarkDeps = "mode 0 wrapper exceeds MAX_LEANSTARK_DEPS_PER_WRAPPER";
     public const string EmptyAggregate = "proof wrapper dependencies must not be empty";
     public const string ProofCountMismatch = "mode 0 wrapper must carry exactly one proof per dependency";
     public const string InvalidProof = "a wrapper dependency proof failed verification";
@@ -92,8 +93,8 @@ public static class MempoolWrapperValidator
             : ValidateRecursive(wrapper, verifier, in forkVerifier, ref error);
     }
 
-    /// <summary>Applies <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> to a nonempty, canonical
-    /// dependency list, in either mode.</summary>
+    /// <summary>Checks the dependency list is nonempty, canonical and of enabled schemes, and applies
+    /// <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> and <c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c> to mode 0 only.</summary>
     private static bool CheckLimits(MempoolWrapper wrapper, out string? error)
     {
         error = null;
@@ -102,6 +103,7 @@ public static class MempoolWrapperValidator
         if (!DepsEqual(Eip8288Dependencies.Canonicalize(wrapper.Deps), wrapper.Deps)) { error = DepsMismatch; return false; }
         foreach (FrameDependency dependency in wrapper.Deps)
             if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) { error = InvalidProof; return false; }
+        if (wrapper.Mode != MempoolWrapper.ModeDirect) return true;
         (int sphincs, int stark) = Eip8288Dependencies.CountByScheme(wrapper.Deps);
         if (sphincs > Eip8288Constants.MaxLeanSigDepsPerWrapper) error = TooManySigDeps;
         else if (stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) error = TooManyStarkDeps;

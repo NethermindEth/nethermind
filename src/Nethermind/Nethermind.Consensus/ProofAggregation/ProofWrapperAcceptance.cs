@@ -10,7 +10,8 @@ public enum ProofWrapperAcceptanceStatus
 {
     /// <summary>A proof or dependency-rule failure: EIP-8437 discards the wrapper without penalizing its sender.</summary>
     Invalid,
-    /// <summary>A malformed or noncanonical encoding, including fork-independent count, length and ordering violations.</summary>
+    /// <summary>A malformed or noncanonical transport encoding, such as a length over <c>MAX_WRAPPER_BYTES</c> or out-of-order
+    /// transactions; never a proof or dependency-rule failure.</summary>
     Malformed,
     Accepted,
     PoolRejected,

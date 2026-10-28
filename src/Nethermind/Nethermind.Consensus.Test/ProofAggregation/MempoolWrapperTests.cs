@@ -109,20 +109,32 @@ public class MempoolWrapperTests
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.DepsHashMismatch));
     }
 
-    // EIP-8288 Test Case 12: both modes accept 16 signature dependencies and reject 17.
+    // EIP-8288 Test Case 12: mode 0 accepts 16 signature dependencies. With 17 distinct dependencies across two individually
+    // valid transactions, mode 0 is rejected and an otherwise valid mode 1 wrapper within MAX_WRAPPER_BYTES is accepted.
     [Test]
-    public void Both_modes_apply_the_wrapper_dependency_limits(
+    public void Wrapper_dependency_limits_apply_to_mode_0_only(
         [Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode, [Values] bool exceeded)
     {
-        MempoolWrapper wrapper = Batch(mode, [Sphincses("a", 8), Sphincses("b", exceeded ? 9 : 8)]);
+        MempoolWrapper wrapper = RoundTrip(Batch(mode, [Sphincses("a", 8), Sphincses("b", exceeded ? 9 : 8)]));
         FakeLeanProofVerifier verifier = new(true);
         bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? error);
+        bool rejected = exceeded && mode == MempoolWrapper.ModeDirect;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(valid, Is.EqualTo(!exceeded), error);
-            Assert.That(error, Is.EqualTo(exceeded ? MempoolWrapperValidator.TooManySigDeps : null));
-            if (exceeded) Assert.That(verifier.VerificationCalls, Is.Zero, "limits are checked before verification");
+            Assert.That(valid, Is.EqualTo(!rejected), error);
+            Assert.That(error, Is.EqualTo(rejected ? MempoolWrapperValidator.TooManySigDeps : null));
+            if (rejected) Assert.That(verifier.VerificationCalls, Is.Zero, "limits are checked before verification");
         }
+    }
+
+    // Mode 1 has no wrapper-level dependency-count limit: MAX_WRAPPER_BYTES bounds it, and per-transaction limits still apply.
+    [Test]
+    public void Recursive_wrapper_may_exceed_the_mode_0_limits()
+    {
+        MempoolWrapper wrapper = RoundTrip(Batch(MempoolWrapper.ModeRecursive,
+            [.. Enumerable.Range(0, 5).Select(i => Sphincses($"t{i}", Eip8288Constants.MaxSigsPerTx))]));
+        Assert.That(wrapper.Deps, Has.Count.EqualTo(5 * Eip8288Constants.MaxSigsPerTx));
+        Assert.That(MempoolWrapperValidator.Validate(wrapper, Accepting, Eip8288Verifier.Pinned, out string? error), Is.True, error);
     }
 
     // LEANSTARK_SCHEME is reserved: a transaction whose dependency frame uses it is rejected before verification.
@@ -147,14 +159,31 @@ public class MempoolWrapperTests
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.TransactionLimits));
     }
 
+    // EIP-8437: exceeding a dependency limit is a dependency-rule failure, discarded without penalty, so decoding accepts it
+    // and validation rejects it.
     [Test]
-    public void Decoder_bounds_dependencies_in_both_modes([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
+    public void Decoder_leaves_dependency_limits_to_validation([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)
     {
-        FrameDependency[] deps = Sphincses("d", Eip8288Constants.MaxDepsPerWrapper + 1);
+        FrameDependency[] deps = Sphincses("d", Eip8288Constants.MaxLeanSigDepsPerWrapper + 1);
         List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
         Rlp encoded = Raw([Encoded(Sphincses("t", 1))], mode, canonical,
             mode == MempoolWrapper.ModeDirect ? Rlp.Encode([.. canonical.Select(static _ => Rlp.Encode(new byte[] { 1 }))]) : Rlp.Encode(new byte[] { 1 }));
-        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>().With.Message.Contains("dependency count"));
+        MempoolWrapper decoded = Decode(encoded);
+        Assert.That(decoded.Deps, Has.Count.EqualTo(deps.Length));
+        Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out _), Is.False);
+    }
+
+    [Test]
+    public void Decoder_leaves_dependency_order_and_witness_count_to_validation([Values] bool unsorted)
+    {
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize([Sphincs("a"), Sphincs("b")]);
+        Rlp encoded = unsorted
+            ? Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, [canonical[1], canonical[0]],
+                Rlp.Encode([Rlp.Encode(new byte[] { 1 }), Rlp.Encode(new byte[] { 1 })]))
+            : Raw([Encoded(canonical)], MempoolWrapper.ModeDirect, canonical, Rlp.Encode([Rlp.Encode(new byte[] { 1 })]));
+        MempoolWrapper decoded = Decode(encoded);
+        Assert.That(MempoolWrapperValidator.Validate(decoded, Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(unsorted ? MempoolWrapperValidator.DepsMismatch : MempoolWrapperValidator.ProofCountMismatch));
     }
 
     [Test]
@@ -244,11 +273,12 @@ public class MempoolWrapperTests
     }
 
     [Test]
-    public void Decode_rejects_excessive_witness_entries()
+    public void Excessive_witness_entries_are_a_proof_rule_failure()
     {
         Rlp encoded = Raw([Encoded([Sphincs("a")])], MempoolWrapper.ModeDirect, [Sphincs("a")],
-            Rlp.Encode([.. Enumerable.Range(0, Eip8288Constants.MaxDepsPerWrapper + 1).Select(static _ => Rlp.Encode(new byte[] { 1 }))]));
-        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
+            Rlp.Encode([.. Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + 2).Select(static _ => Rlp.Encode(new byte[] { 1 }))]));
+        Assert.That(MempoolWrapperValidator.Validate(Decode(encoded), Accepting, Eip8288Verifier.Pinned, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(MempoolWrapperValidator.ProofCountMismatch));
     }
 
     // EIP-8288 Test Case 12: MAX_WRAPPER_BYTES bounds the complete encoding, full transactions included: a wrapper exactly at

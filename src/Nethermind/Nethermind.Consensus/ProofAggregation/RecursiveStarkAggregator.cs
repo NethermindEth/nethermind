@@ -19,7 +19,7 @@ public static class RecursiveStarkAggregator
     // with every inclusion-list proof, fold over bounded steps of a binary tree, pruning each child separately; only the slot
     // deadline bounds the rounds.
     private const int MaxRecursiveChildren = 2;
-    private const int DirectBatchSize = 4;
+    internal const int DirectBatchSize = 4;
 
     /// <summary>Runs the STARK check of a block proof against its dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs

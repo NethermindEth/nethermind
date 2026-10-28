@@ -80,9 +80,10 @@ public static class WrapperBodies
     private const int CellProofsPerBlob = 128;
 
     /// <summary>Checks the canonical wrapper encoding and returns its consensus transaction hashes, in order.</summary>
-    /// <remarks>Checks the fork-independent rules: <c>MAX_WRAPPER_BYTES</c>, full transaction encodings in strictly ascending
-    /// transaction-hash order, the dependency count shared by both modes, dependency ordering and the mode-0 witness count.
-    /// Hash references are resolved before a returned wrapper is parsed, so an unresolved one is rejected.</remarks>
+    /// <remarks>Checks the encoding rules: <c>MAX_WRAPPER_BYTES</c>, full transaction encodings in strictly ascending
+    /// transaction-hash order and well-formed dependency triples. Dependency and proof rules, such as the dependency list's order,
+    /// the mode-0 dependency limits and witness count, are left to validation, which discards a wrapper breaking them without
+    /// penalty (EIP-8437). Hash references are resolved before a returned wrapper is parsed, so an unresolved one is rejected.</remarks>
     public static ValueHash256[] ParseWrapper(ReadOnlySpan<byte> wrapper, out WrapperShape shape)
     {
         int verificationBytes = 0;
@@ -106,24 +107,20 @@ public static class WrapperBodies
         Eth73RlpReader content = fields.ReadList();
         fields.End();
         Eth73RlpReader dependencies = content.ReadList();
-        int dependencyCount = dependencies.CountRemaining(Eip8288Constants.MaxDepsPerWrapper);
-        if (dependencyCount == 0) throw new RlpException("Wrapper dependencies are empty");
-        ReadOnlySpan<byte> previous = default;
+        // Mode 1 has no dependency-count limit; MAX_WRAPPER_BYTES bounds either mode's list.
+        int dependencyCount = dependencies.CountRemaining(Eip8288Constants.MaxWrapperDependencies);
         for (int i = 0; i < dependencyCount; i++)
         {
             ReadOnlySpan<byte> dependency = dependencies.ReadBytes();
             // A reserved scheme is well-formed here; validation rejects it as a dependency-rule failure, without penalty.
             if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()
                 || !Eip8288Dependencies.IsKnownScheme(dependency[31])) throw new RlpException("Invalid dependency");
-            if (i > 0 && previous.SequenceCompareTo(dependency) >= 0) throw new RlpException("Dependencies are not canonical");
-            previous = dependency;
             work += (long)(dependency[31] == Eip8288Constants.LeanStarkScheme
                 ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas);
         }
         if (mode == 0)
         {
             Eth73RlpReader proofs = content.ReadList();
-            if (proofs.CountRemaining(Eip8288Constants.MaxDepsPerWrapper) != dependencyCount) throw new RlpException("Witness count mismatch");
             while (proofs.HasMore) verificationBytes += proofs.ReadBytes().Length;
         }
         else

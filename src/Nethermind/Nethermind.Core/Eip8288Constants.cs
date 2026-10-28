@@ -66,14 +66,16 @@ public static class Eip8288Constants
     /// <summary>Mempool aggregation cadence in milliseconds.</summary>
     public const int AggregationInterval = 1_000;
 
-    /// <summary>leanSPHINCS dependencies per mempool wrapper, in either mode (<c>MAX_LEANSIG_DEPS_PER_WRAPPER</c>).</summary>
+    /// <summary>leanSPHINCS dependencies per mode-0 wrapper (<c>MAX_LEANSIG_DEPS_PER_WRAPPER</c>). Mode 1 has no wrapper-level
+    /// dependency-count limit; <see cref="MaxWrapperBytes"/> bounds it.</summary>
     public const int MaxLeanSigDepsPerWrapper = 16;
 
-    /// <summary>leanSTARK dependencies per mempool wrapper, in either mode (<c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>).</summary>
+    /// <summary>leanSTARK dependencies per mode-0 wrapper (<c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>).</summary>
     public const int MaxLeanStarkDepsPerWrapper = 1;
 
-    /// <summary>Dependencies per mempool wrapper, in either mode: both per-scheme limits together.</summary>
-    public const int MaxDepsPerWrapper = MaxLeanSigDepsPerWrapper + MaxLeanStarkDepsPerWrapper;
+    /// <summary>The most dependency triples a wrapper within <see cref="MaxWrapperBytes"/> can encode, each at least a 98-byte RLP
+    /// string: an allocation bound for decoding either mode, not a dependency rule.</summary>
+    public const int MaxWrapperDependencies = MaxWrapperBytes / (2 + DependencyTripleLength);
 
     /// <summary>EIP-8288 <c>MAX_WRAPPER_BYTES</c>: the complete canonical wrapper encoding, full transactions included, in either
     /// mode. Equal to the <c>eth</c> soft response limit, so EIP-8437 retrieves each wrapper whole.</summary>
