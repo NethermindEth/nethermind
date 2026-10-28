@@ -3025,6 +3025,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
+          STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
           # An explicit `docker_images` dispatch is an A/B: one bad arm invalidates the comparison, so
           # the campaign stops. A retrospective sweep bisects across many master builds and its other
