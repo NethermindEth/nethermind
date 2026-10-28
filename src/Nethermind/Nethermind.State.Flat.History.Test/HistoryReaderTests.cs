@@ -276,8 +276,11 @@ public class HistoryReaderTests
             if (storage)
             {
                 UInt256 value = default;
-                Assert.That(reader.TryGetSlot(Address, Slot, ref value), Is.True);
-                Assert.That(value, Is.EqualTo((UInt256)0x55));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.TryGetSlot(Address, Slot, ref value), Is.True);
+                    Assert.That(value, Is.EqualTo((UInt256)0x55));
+                }
             }
             else
             {

@@ -178,8 +178,11 @@ public class BlockDecoderTests
         // comparisons below can. A fully self-canceling encode/decode pair passes both; only a test
         // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
         Assert.That(decoded, Is.Not.Null);
-        Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
-        Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+            Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));

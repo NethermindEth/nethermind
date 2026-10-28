@@ -62,12 +62,16 @@ public class WorldStateManagerTests
         (_, _, IReadOnlyTrieStore readOnlyTrieStore, WorldStateManager manager, _) = CreateWorldStateManager(stateHeaderProvider, existingRoot: TestItem.KeccakA);
 
         IWorldStateScopeProvider resettable = manager.CreateResettableWorldState();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(resettable.HasStateForTargetBlock(target), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(resettable.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope resettableScope), Is.True);
         resettableScope!.Dispose();
 
         using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(overridable.WorldState.HasStateForTargetBlock(target), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope overridableScope), Is.True);
         overridableScope!.Dispose();
 
@@ -91,13 +95,17 @@ public class WorldStateManagerTests
         overriddenBase.StateRoot = CommitAccount(worldState.BeginScope(overriddenBase, new LocalMetrics()), overriddenBase.Number, TestItem.AddressA);
         BlockHeader child = Build.A.BlockHeader.WithParent(overriddenBase).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(worldState.HasStateForTargetBlock(child), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(worldState.TryBeginScopeAtTarget(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope childScope), Is.True);
         Assert.That(childScope!.Get(TestItem.AddressA), Is.Not.Null);
         child.StateRoot = CommitAccount(childScope, child.Number, TestItem.AddressB);
         BlockHeader grandchild = Build.A.BlockHeader.WithParent(child).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(worldState.TryBeginScopeAtTarget(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope grandchildScope), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -138,9 +146,12 @@ public class WorldStateManagerTests
 
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
-        Assert.That(boundary.BestPersistedState, Is.EqualTo(1UL));
-        // A fresh store over the same BlockInfos DB proves the value is durable, not just cached.
-        Assert.That(new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null).BestPersistedState, Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(boundary.BestPersistedState, Is.EqualTo(1UL));
+            // A fresh store over the same BlockInfos DB proves the value is durable, not just cached.
+            Assert.That(new StateBoundaryStore(dbProvider.StateDb, dbProvider.BlockInfosDb, retentionWindowBlocks: null).BestPersistedState, Is.EqualTo(1UL));
+        }
     }
 
     [TestCase(INodeStorage.KeyScheme.Hash, true)]
