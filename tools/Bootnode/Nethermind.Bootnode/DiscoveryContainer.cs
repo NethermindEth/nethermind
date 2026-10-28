@@ -180,5 +180,7 @@ internal static class DiscoveryContainer
         public bool IsForkIdCompatible(ForkId peerId) => true;
 
         public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head) => default;
+
+        public ReadOnlySpan<Fork> GetAllForks() => [];
     }
 }
