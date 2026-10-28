@@ -46,7 +46,9 @@ public class PersistenceManagerPersistedTests
 
         tier.ConvertToPersistedBase(snap).Dispose();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snapshot), Is.True);
         snapshot!.Dispose();
     }
@@ -112,11 +114,14 @@ public class PersistenceManagerPersistedTests
 
         repo.RemoveSiblingAndDescendents(c3);
 
-        Assert.That(LeasePresent(repo, nc4), Is.False, "orphan NC4 above the persisted block should be pruned from the persisted tier");
-        Assert.That(LeasePresent(repo, c4), Is.True, "canonical C4 should be kept");
-        Assert.That(repo.HasBasePersistedSnapshot(c3), Is.True, "canonical target C3 should be kept");
-        Assert.That(repo.HasBasePersistedSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
-        Assert.That(repo.HasState(c5), Is.True, "canonical in-memory C5 reachable through persisted C4 must be kept");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeasePresent(repo, nc4), Is.False, "orphan NC4 above the persisted block should be pruned from the persisted tier");
+            Assert.That(LeasePresent(repo, c4), Is.True, "canonical C4 should be kept");
+            Assert.That(repo.HasBasePersistedSnapshot(c3), Is.True, "canonical target C3 should be kept");
+            Assert.That(repo.HasBasePersistedSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
+            Assert.That(repo.HasState(c5), Is.True, "canonical in-memory C5 reachable through persisted C4 must be kept");
+        }
     }
 
     [Test]
@@ -147,9 +152,12 @@ public class PersistenceManagerPersistedTests
 
         repo.RemoveSiblingAndDescendents(c3);
 
-        Assert.That(LeasePresent(repo, nc4), Is.False, "persisted orphan NC4 above the in-memory tip should be pruned");
-        Assert.That(repo.HasBasePersistedSnapshot(c3), Is.True, "canonical C3 should be kept");
-        Assert.That(repo.HasBasePersistedSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeasePresent(repo, nc4), Is.False, "persisted orphan NC4 above the in-memory tip should be pruned");
+            Assert.That(repo.HasBasePersistedSnapshot(c3), Is.True, "canonical C3 should be kept");
+            Assert.That(repo.HasBasePersistedSnapshot(nc3), Is.True, "NC3 at the persisted block is left to RemoveStatesUntil");
+        }
     }
 
     [Test]
@@ -169,9 +177,12 @@ public class PersistenceManagerPersistedTests
         int before = repo.PersistedSnapshotCount;
         repo.RemoveSiblingAndDescendents(s1);
 
-        Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(before), "a linear persisted chain has no fork; nothing should be pruned");
-        Assert.That(repo.HasBasePersistedSnapshot(s2), Is.True);
-        Assert.That(repo.HasBasePersistedSnapshot(s3), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(before), "a linear persisted chain has no fork; nothing should be pruned");
+            Assert.That(repo.HasBasePersistedSnapshot(s2), Is.True);
+            Assert.That(repo.HasBasePersistedSnapshot(s3), Is.True);
+        }
     }
 
     private void PersistToTier(FlatTestContainer tier, StateId from, StateId to)

@@ -192,8 +192,11 @@ public class ExecutionPayloadTests
 
         Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
+        }
     }
 
     private sealed class PayloadTestDecoder : TxDecoder<Transaction>
@@ -297,8 +300,11 @@ public class ExecutionPayloadTests
         ExecutionPayload payload = new() { Transactions = rlps };
         Result<Transaction[]> result = payload.TryGetTransactions();
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.Data, Has.Length.EqualTo(count));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Data, Has.Length.EqualTo(count));
+        }
         for (int i = 0; i < count; i++)
         {
             Assert.That(result.Data[i].Nonce, Is.EqualTo((ulong)i));

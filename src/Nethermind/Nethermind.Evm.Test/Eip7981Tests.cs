@@ -134,13 +134,19 @@ public class Eip7981Tests
 
         if (standardWins)
         {
-            Assert.That(cost.Standard, Is.GreaterThan(cost.FloorGas));
-            Assert.That(cost.MinimalGas, Is.EqualTo(cost.Standard));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cost.Standard, Is.GreaterThan(cost.FloorGas));
+                Assert.That(cost.MinimalGas, Is.EqualTo(cost.Standard));
+            }
         }
         else
         {
-            Assert.That(cost.FloorGas, Is.GreaterThan(cost.Standard));
-            Assert.That(cost.MinimalGas, Is.EqualTo(cost.FloorGas));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cost.FloorGas, Is.GreaterThan(cost.Standard));
+                Assert.That(cost.MinimalGas, Is.EqualTo(cost.FloorGas));
+            }
         }
     }
 
@@ -158,7 +164,10 @@ public class Eip7981Tests
 
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
-        Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
-        Assert.That(cost.MinimalGas, Is.EqualTo(27_736UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
+            Assert.That(cost.MinimalGas, Is.EqualTo(27_736UL));
+        }
     }
 }

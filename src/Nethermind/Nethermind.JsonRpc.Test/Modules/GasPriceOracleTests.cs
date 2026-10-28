@@ -34,8 +34,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = GasPriceOracle.SelectKthSmallestInPlace(list, k);
 
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(list, Has.Count.EqualTo(values.Length));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expected));
+                Assert.That(list, Has.Count.EqualTo(values.Length));
+            }
             Assert.That(list, Is.EquivalentTo(values.Select(static v => (UInt256)v))); // ensures mutation doesn't lose/duplicate items
         }
 
