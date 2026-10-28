@@ -194,8 +194,11 @@ starts after asynchronous container/cgroup lookup and ends when the load-generat
 Docker command returns, before deep-check. It can include container startup,
 tool handshakes and all node background activity; CPU/request is not isolated
 RPC CPU cost. The sampler is best-effort: missing sampling is logged as
-unavailable, not grounds to claim a measured zero. `resource-scope.json` records
-these limits. `memory.current` includes anon/file/kernel memory; `memory.stat`
+unavailable, not grounds to claim a measured zero. Unreadable or malformed
+counters and decreasing cumulative counters produce nulls, not zero or negative
+consumption; per-request rates are omitted for unavailable counters. A readable
+empty `io.stat` represents no accounted device I/O and remains zero.
+`resource-scope.json` records these limits. `memory.current` includes anon/file/kernel memory; `memory.stat`
 anon includes managed **and native** memory, and file is page cache. Neither is
 process RSS or managed retained heap. Managed heap, allocations and GC counters
 remain unavailable (null); no profiler is installed for these fields.

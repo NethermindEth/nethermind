@@ -50,6 +50,60 @@ tests.Case("missing memory stat reports null", () =>
     var summary = Sample(() => { });
     RpcScriptTests.Assert(summary["memory_anon_avg_bytes"] is null && summary["memory_anon_peak_bytes"] is null && summary["memory_file_avg_bytes"] is null, summary.ToJsonString());
 });
+foreach (var defect in new[] { "missing", "malformed", "negative" })
+    foreach (var boundary in new[] { "start", "end", "both" })
+        tests.Case($"unavailable counters stay null: {defect} at {boundary}", () =>
+        {
+            Reset();
+            void Invalidate()
+            {
+                foreach (var name in new[] { "cpu.stat", "io.stat", "memory.current", "memory.stat", "cpu.pressure" })
+                {
+                    if (defect == "missing") File.Delete(Path.Combine(cgroup, name));
+                    else Write(name, defect == "malformed" ? "unreadable" : name switch
+                    {
+                        "cpu.stat" => "usage_usec -1\nthrottled_usec -1\n",
+                        "io.stat" => "8:0 rbytes=-1 wbytes=-1\n",
+                        "memory.stat" => "anon -1\nfile -1\n",
+                        "cpu.pressure" => "some total=-1\n",
+                        _ => "-1"
+                    });
+                }
+            }
+            if (boundary != "end") Invalidate();
+            var summary = Sample(boundary == "start" ? Reset : Invalidate);
+            foreach (var key in new[] { "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec", "io_read_bytes", "io_write_bytes", "stall_cpu_usec" })
+                RpcScriptTests.Assert(summary[key] is null, key + " fabricated: " + summary.ToJsonString());
+            if (boundary != "start")
+                foreach (var key in new[] { "memory_avg_bytes", "memory_peak_bytes", "memory_anon_avg_bytes", "memory_anon_peak_bytes", "memory_file_avg_bytes" })
+                    RpcScriptTests.Assert(summary[key] is null, key + " fabricated: " + summary.ToJsonString());
+            var path = Path.Combine(tests.DirectoryPath, "unavailable.json");
+            ResourceSampling.Write(path, summary);
+            ResourceSampling.Normalize(path, 10);
+            var normalized = JsonNode.Parse(File.ReadAllText(path))!;
+            RpcScriptTests.Assert(normalized["cpu_ms_per_request"] is null && normalized["io_read_bytes_per_request"] is null, "unavailable counters normalized into rates");
+        });
+tests.Case("counter reset is unavailable rather than negative consumption", () =>
+{
+    Reset(); Write("cpu.stat", "usage_usec 1000\nthrottled_usec 1000\n");
+    Write("io.stat", "8:0 rbytes=1000 wbytes=1000\n"); Write("cpu.pressure", "some total=1000\n");
+    var summary = Sample(Reset);
+    foreach (var key in new[] { "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec", "io_read_bytes", "io_write_bytes", "stall_cpu_usec" })
+        RpcScriptTests.Assert(summary[key] is null, key + " survived reset: " + summary.ToJsonString());
+});
+tests.Case("readable idle counters remain measured zeros", () =>
+{
+    Reset(); Write("io.stat", "");
+    var summary = Sample(() => { });
+    foreach (var key in new[] { "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec", "memory_peak_bytes", "io_read_bytes", "io_write_bytes", "stall_cpu_usec" })
+        RpcScriptTests.Assert(summary[key]?.ToString() == "0", key + " lost measured zero: " + summary.ToJsonString());
+});
+tests.Case("no memory observations remain unavailable", () =>
+{
+    Reset();
+    var summary = Sample();
+    RpcScriptTests.Assert(summary["samples"]!.GetValue<long>() == 0 && summary["memory_avg_bytes"] is null && summary["memory_peak_bytes"] is null && summary["cpu_peak_cores"] is null, summary.ToJsonString());
+});
 tests.Case("sampling defers per-request rates", () =>
 {
     Reset();
