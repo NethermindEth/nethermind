@@ -677,16 +677,6 @@ public class DebugRpcModule(
         }
     }
 
-    private static ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? CheckBlockTraceTimeout(Block block, GethTraceOptions options)
-    {
-        bool hasTransactionToTrace = options.TxHash is { } txHash
-            ? block.GetTransactionIndex(txHash.ValueHash256) >= 0
-            : block.Transactions.Length != 0;
-        return hasTransactionToTrace && options.ParsedTimeout.Error is { } durationError
-            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput)
-            : null;
-    }
-
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null)
     {
         Block? block = debugBridge.GetBadBlocks().FirstOrDefault(b => b.Hash == blockHash);
