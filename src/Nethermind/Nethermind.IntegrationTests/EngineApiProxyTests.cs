@@ -45,11 +45,13 @@ public class EngineApiProxyTests
     {
         if (_proxyContainer is not null)
         {
+            await _proxyContainer.WriteDiagnosticLogsAsync("EngineApiProxy");
             await _proxyContainer.DisposeAsync();
             _proxyContainer = null;
         }
         if (_nethermindContainer is not null)
         {
+            await _nethermindContainer.WriteDiagnosticLogsAsync("Nethermind");
             await _nethermindContainer.DisposeAsync();
             _nethermindContainer = null;
         }
