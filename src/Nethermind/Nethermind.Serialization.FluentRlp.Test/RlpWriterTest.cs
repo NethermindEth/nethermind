@@ -292,6 +292,38 @@ public class RlpWriterTest
         }
     }
 
+    // The reader accepts only canonical input, so any input that it accepts must encode again to the same bytes.
+    // Other input must fail with RlpReaderException and never with another exception.
+    [Test]
+    public void AcceptedInputEncodesToTheSameBytes([Range(0, 499)] int seed)
+    {
+        Random random = new(seed);
+        byte[] input = Node.Encode(Node.Random(random, depth: 1));
+        if (seed % 5 == 0)
+        {
+            input = new byte[random.Next(1, 64)];
+            random.NextBytes(input);
+        }
+        else
+        {
+            for (int i = random.Next(1, 4); i > 0 && input.Length > 0; i--)
+            {
+                input[random.Next(input.Length)] = (byte)random.Next(256);
+            }
+        }
+
+        Node? decoded = null;
+        try
+        {
+            decoded = Rlp.Read(input, Node.Read);
+        }
+        catch (RlpReaderException)
+        {
+        }
+
+        if (decoded is not null) Assert.That(Node.Encode(decoded), Is.EqualTo(input));
+    }
+
     /// <summary>A byte string, or a sequence of nodes, with a reference encoder that builds prefixes after the payload.</summary>
     private sealed class Node(byte[]? bytes, List<Node>? children)
     {
@@ -344,6 +376,19 @@ public class RlpWriterTest
                 }
             });
         }
+
+        public static Node Read(scoped ref RlpReader reader) => reader.Choice(
+            static (scoped ref RlpReader r) => r.ReadSequence(static (scoped ref RlpReader r) =>
+            {
+                List<Node> children = [];
+                while (r.HasNext)
+                {
+                    children.Add(Read(ref r));
+                }
+
+                return new Node(null, children);
+            }),
+            static (scoped ref RlpReader r) => new Node(r.ReadBytes().ToArray(), null));
 
         public static byte[] Encode(Node node)
         {
