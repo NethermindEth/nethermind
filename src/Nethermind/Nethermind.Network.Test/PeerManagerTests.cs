@@ -388,9 +388,12 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.GetOrAdd(refused);
 
-            Assert.That(filled, Is.True, "the candidate never reached the claim");
-            Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "dialed with no slot left");
-            Assert.That(ctx.RlpxPeer.ContactedIps, Is.Empty, "a filter entry was spent on a dial that never happened");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(filled, Is.True, "the candidate never reached the claim");
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero, "dialed with no slot left");
+                Assert.That(ctx.RlpxPeer.ContactedIps, Is.Empty, "a filter entry was spent on a dial that never happened");
+            }
 
             // Capacity is back, so the retry has to get through - a spent entry would hold it off for the
             // next five minutes.
@@ -439,13 +442,19 @@ namespace Nethermind.Network.Test
 
             InitSession(freshSession);
 
-            Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            }
 
             staleSession.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
 
-            Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
+                Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
+            }
         }
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
@@ -480,16 +489,22 @@ namespace Nethermind.Network.Test
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
         {
             Enode enode = new(enode6String);
-            Assert.That(enode.Port, Is.EqualTo(12345));
-            Assert.That(enode.DiscoveryPort, Is.EqualTo(12345));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.Port, Is.EqualTo(12345));
+                Assert.That(enode.DiscoveryPort, Is.EqualTo(12345));
+            }
         }
 
         [Test]
         public void Will_parse_port_correctly_when_there_is_only_one()
         {
             Enode enode = new(enode7String);
-            Assert.That(enode.Port, Is.EqualTo(12345));
-            Assert.That(enode.DiscoveryPort, Is.EqualTo(6789));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.Port, Is.EqualTo(12345));
+                Assert.That(enode.DiscoveryPort, Is.EqualTo(6789));
+            }
         }
 
         [Test]
@@ -651,8 +666,11 @@ namespace Nethermind.Network.Test
 
             Peer activePeer = ctx.PeerManager.ActivePeers.Single();
             InitializeSessions(activePeer);
-            Assert.That(HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing: keepIn), Is.True);
-            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing: keepIn), Is.True);
+                Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -1076,8 +1094,11 @@ namespace Nethermind.Network.Test
             ctx.StaticNodesManager.NodeRemoved += Raise.EventWith<NodeEventArgs>(new ExplicitNodeRemovalEventArgs(
                 new Node(staticNodes.First())));
 
-            Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
-            Assert.That(disconnections, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
+                Assert.That(disconnections, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -1096,7 +1117,9 @@ namespace Nethermind.Network.Test
 
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(ctx.PeerPool.TryRemove(node.NodeId, out _), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(ctx.PeerManager.ActivePeers, Is.Empty);
             Assert.That(disconnections, Is.EqualTo(1));
         }

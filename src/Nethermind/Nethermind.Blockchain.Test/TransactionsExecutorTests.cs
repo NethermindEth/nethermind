@@ -411,8 +411,11 @@ namespace Nethermind.Blockchain.Test
                 block,
                 spec);
             Assert.That(selectedTransactions, Has.Length.EqualTo(2));
-            Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
-            Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
+                Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+            }
         }
 
         // The middle transaction passes the picker but the processor rejects it, either before its receipt is
@@ -560,8 +563,11 @@ namespace Nethermind.Blockchain.Test
 
             if (expectedSkipped)
             {
-                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-                Assert.That(args.Reason, Does.StartWith("Not enough").And.Contains("gas in block"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+                    Assert.That(args.Reason, Does.StartWith("Not enough").And.Contains("gas in block"));
+                }
             }
             else
             {

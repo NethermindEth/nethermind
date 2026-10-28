@@ -196,7 +196,9 @@ public class FrameTxWidthFilterTests
         cache.Earn(Sender, 50_000);
         cache.Earn(Sender, 10_000);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(cache.TrySpend(Sender, 21_000), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)39_000));
 
         Assert.That(cache.TrySpend(Sender, 39_001), Is.False);
@@ -401,7 +403,9 @@ public class FrameTxWidthFilterTests
         Transaction additional = SponsoredTx(nonce: 1);
         Transaction next = SponsoredTx(nonce: 2);
         admission.PaymasterWidth.Earn(Paymaster, ChargeOf(additional));
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(admission.Submit(baseline), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
 
         admission.Remove(baseline);
@@ -426,7 +430,9 @@ public class FrameTxWidthFilterTests
         Transaction additional = SponsoredTx(nonce: 1);
         UInt256 cost = ChargeOf(additional);
         admission.PaymasterWidth.Earn(Paymaster, cost);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(admission.Submit(SponsoredTx(nonce: 0)), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
         ulong replacedNonce = replacesBaseline ? 0ul : 1ul;
 

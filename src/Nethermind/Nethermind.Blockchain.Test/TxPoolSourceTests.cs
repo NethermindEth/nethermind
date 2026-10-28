@@ -862,7 +862,9 @@ public class TxPoolSourceTests
     {
         Transaction sparseBlobTx = CreateSparseBlobTransaction(new BlobCellMask((UInt128)ulong.MaxValue));
         ShardBlobNetworkWrapper sparseWrapper = (ShardBlobNetworkWrapper)sparseBlobTx.NetworkWrapper!;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(BlobCellsHelper.ValidateCells(sparseWrapper), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(BlobCellsHelper.TryRecoverBlobsFromVerifiedCells(sparseWrapper, out ShardBlobNetworkWrapper recoveredWrapper), Is.True);
         sparseBlobTx.NetworkWrapper = recoveredWrapper;
 
