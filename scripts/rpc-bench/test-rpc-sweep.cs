@@ -22,7 +22,7 @@ foreach (var entry in new[] { "nethermind+--a;;--b", "nethermind+", "nethermind+
         catch (ArgumentException) { return; }
         throw new InvalidOperationException("malformed entry accepted");
     });
-foreach (var (name, value) in new[] { ("ROUNDS", "0"), ("JB_SEED", "-1"), ("CORPUS_TIMINGS_RPS", "-1"), ("CORPUS_WARMUP_DURATION", "1.5s"), ("CORPUS_WARMUP_RPS_MAX", "x"), ("RPS_LIST", "10 0"), ("CORPUS_BASELINE", "other"), ("STATE_LAYOUT", "full"), ("JB_ETH_CALL_CORPUS", "yes"), ("CORPUS_METHOD", "other"), ("DB_ISOLATION_ALL", "direct"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "-1"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "14401"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "x"), ("NODE_IO_DIAGNOSTICS", "yes") })
+foreach (var (name, value) in new[] { ("ROUNDS", "0"), ("JB_SEED", "-1"), ("CORPUS_TIMINGS_RPS", "-1"), ("CORPUS_WARMUP_DURATION", "1.5s"), ("CORPUS_WARMUP_RPS_MAX", "x"), ("RPS_LIST", "10 0"), ("CORPUS_BASELINE", "other"), ("STATE_LAYOUT", "full"), ("JB_ETH_CALL_CORPUS", "yes"), ("CORPUS_METHOD", "other"), ("DB_ISOLATION_ALL", "direct"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "-1"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "14401"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "x"), ("NODE_IO_DIAGNOSTICS", "yes"), ("GENERIC_FIRST_USE", "yes"), ("GENERIC_RESOURCE_SAMPLING", "1"), ("GENERIC_WARMUP_DURATION", "1.5s"), ("GENERIC_WARMUP_RPS", "0") })
     tests.Case("reject invalid " + name, () =>
     {
         var values = EnvironmentValues(); values[name] = value;
@@ -36,6 +36,19 @@ tests.Case("migration gating and I/O diagnostics default off", () =>
     var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
     RpcScriptTests.Assert(configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") == 0 && configuration["NODE_IO_DIAGNOSTICS"] == "false", "readiness defaults changed");
 });
+tests.Case("generic phases and resources default off", () =>
+{
+    var configuration = new SweepConfiguration(key => EnvironmentValues().GetValueOrDefault(key));
+    RpcScriptTests.Assert(configuration["GENERIC_FIRST_USE"] == "false" && configuration.Number("GENERIC_WARMUP_SECONDS") == 0 && configuration["GENERIC_RESOURCE_SAMPLING"] == "false", "generic defaults changed");
+});
+foreach (var (name, value) in new[] { ("GENERIC_FIRST_USE", "true"), ("GENERIC_WARMUP_DURATION", "1s"), ("GENERIC_RESOURCE_SAMPLING", "true") })
+    tests.Case("private corpus refuses public phase option " + name, () =>
+    {
+        var values = EnvironmentValues(); values["JB_ETH_CALL_CORPUS"] = "true"; values[name] = value;
+        try { _ = new SweepConfiguration(key => values.GetValueOrDefault(key)); }
+        catch (ArgumentException) { return; }
+        throw new InvalidOperationException("private corpus accepted public instrumentation");
+    });
 foreach (var (client, isolation) in new[] { ("nethermind", "readonly-bind"), ("nethermind", "direct"), ("reth", "overlay") })
     tests.Case("migration gating refuses unsupported isolation/client " + client + " " + isolation, () =>
     {
@@ -94,6 +107,13 @@ File.WriteAllText(Environment.GetEnvironmentVariable("LOG_OUT")!, "Nethermind is
 return Environment.GetEnvironmentVariable("FAIL_STOP") == "true" ? 1 : 0;
 """);
 File.WriteAllText(Path.Combine(scriptRoot, "run-json-bench.cs"), """
+using System.Text.Json.Nodes;
+var names = new[] { "OUT_DIR", "JB_BENCHMARK_CONFIG", "JB_CAPTURE_ONLY", "JB_STRICT_WARMUP", "JB_MAX_FAIL_RATE_PCT", "JB_SEED", "JB_RPS", "JB_DURATION", "JB_DEEP_CHECK", "RESOURCE_SAMPLER_CONTAINER", "RESOURCE_SAMPLER_OUT" };
+var row = new JsonObject();
+foreach (var name in names) row[name] = Environment.GetEnvironmentVariable(name) ?? "";
+if (Environment.GetEnvironmentVariable("CELL_CAPTURE") is { } capture) File.AppendAllText(capture, row.ToJsonString() + "\n");
+if (Environment.GetEnvironmentVariable("FAIL_PHASE") is { } phase && row[phase]!.ToString() == "true") return 1;
+if (row["JB_CAPTURE_ONLY"]!.ToString() == "true") return 0;
 var output = Environment.GetEnvironmentVariable("OUT_DIR")!;
 File.WriteAllText(Path.Combine(output, "jsonbench-summary.md"), "summary");
 File.WriteAllText(Path.Combine(output, "summary.json"), "{\"metrics\":{\"http_req_failed\":{\"values\":{\"rate\":0}}}}");
@@ -115,7 +135,7 @@ var bin = Path.Combine(tests.DirectoryPath, "bin"); Directory.CreateDirectory(bi
 var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nif [ \"$1\" = inspect ]; then echo true; fi\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var identity = Path.Combine(bin, "id"); File.WriteAllText(identity, "#!/bin/sh\necho 0\n"); File.SetUnixFileMode(identity, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var disk = Path.Combine(bin, "df"); File.WriteAllText(disk, "#!/bin/sh\nprintf 'Avail\\n999999999999999\\n'\n"); File.SetUnixFileMode(disk, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
+var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "FAIL_PHASE", "CELL_CAPTURE", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
 var original = changedNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 try
 {
@@ -179,6 +199,54 @@ try
             var values = EnvironmentValues(); values["RPS_LIST"] = "10";
             try { RpcScriptTests.Assert(Run(values) == 1, "partial run passed"); }
             finally { Environment.SetEnvironmentVariable(failure, null); }
+        });
+    foreach (var phases in new[] { false, true })
+        foreach (var sampling in new[] { false, true })
+            tests.Case($"generic phase order and sampling phases={phases} sampling={sampling}", () =>
+            {
+                var values = EnvironmentValues();
+                var output = Path.Combine(tests.DirectoryPath, $"generic-{phases}-{sampling}");
+                values["OUT_DIR"] = output; values["RPS_LIST"] = "10 20"; values["ISO_CONFIGS"] = "iso.yaml"; values["JB_SEED"] = "12";
+                values["GENERIC_FIRST_USE"] = phases ? "true" : "false"; values["GENERIC_WARMUP_DURATION"] = phases ? "3s" : "0";
+                values["GENERIC_RESOURCE_SAMPLING"] = sampling ? "true" : "false";
+                values["CORPUS_RESOURCE_SAMPLING"] = "false";
+                var capture = output + ".jsonl"; Environment.SetEnvironmentVariable("CELL_CAPTURE", capture);
+                try
+                {
+                    RpcScriptTests.Assert(Run(values) == 0, "generic sweep failed");
+                    var rows = File.ReadAllLines(capture).Select(line => JsonNode.Parse(line)!).ToArray();
+                    string Phase(JsonNode row) => row["JB_CAPTURE_ONLY"]!.ToString() == "true" ? "first-use" : row["JB_STRICT_WARMUP"]!.ToString() == "true" ? "warmup" : "measured";
+                    RpcScriptTests.Assert(rows.Select(Phase).SequenceEqual(phases ? ["first-use", "warmup", "measured", "first-use", "warmup", "measured", "warmup", "measured", "warmup", "measured"] : ["measured", "measured", "measured", "measured"]), "phase order/repeated first-use changed");
+                    RpcScriptTests.Assert(rows.Select(row => row["OUT_DIR"]!.ToString()).Distinct().Count() == rows.Length, "phase outputs collided");
+                    foreach (var row in rows)
+                    {
+                        var measured = Phase(row) == "measured";
+                        RpcScriptTests.Assert((row["RESOURCE_SAMPLER_CONTAINER"]!.ToString().StartsWith("rpcbench-sweep-nethermind-", StringComparison.Ordinal)) == (measured && sampling), "node sampler interval leaked");
+                        RpcScriptTests.Assert(row["JB_DEEP_CHECK"]!.ToString() == (measured ? "true" : "false"), "extra capture contaminated warmup");
+                        if (Phase(row) == "warmup") RpcScriptTests.Assert(row["JB_MAX_FAIL_RATE_PCT"]!.ToString() == "0" && row["JB_SEED"]!.ToString() == "1012" && row["JB_RPS"]!.ToString() == "25" && row["JB_DURATION"]!.ToString() == "3s", "warmup is not identical and strict");
+                    }
+                    var summaries = File.ReadAllLines(Path.Combine(output, "summaries.manifest"));
+                    RpcScriptTests.Assert(summaries.Length == 4 && summaries.All(line => !line.Contains("/phases/", StringComparison.Ordinal)), "premeasurement summary leaked into measured matrix");
+                }
+                finally { Environment.SetEnvironmentVariable("CELL_CAPTURE", null); }
+            });
+    foreach (var phase in new[] { "JB_CAPTURE_ONLY", "JB_STRICT_WARMUP" })
+        tests.Case("generic phase failure aborts measurement and tears down " + phase, () =>
+        {
+            var values = EnvironmentValues(); values["RPS_LIST"] = "10"; values["GENERIC_FIRST_USE"] = "true"; values["GENERIC_WARMUP_DURATION"] = "1s";
+            values["OUT_DIR"] = Path.Combine(tests.DirectoryPath, phase); values["STATE_ROOT"] = values["OUT_DIR"] + "-state";
+            Environment.SetEnvironmentVariable("FAIL_PHASE", phase);
+            try
+            {
+                try { Run(values); }
+                catch (IOException exception) when (exception.Message.Contains("measured cells aborted", StringComparison.Ordinal))
+                {
+                    RpcScriptTests.Assert(!Directory.Exists(Path.Combine(values["OUT_DIR"], "mix")) && Directory.GetFiles(values["STATE_ROOT"], "node.log", SearchOption.AllDirectories).Length == 1, "failed phase timed requests or skipped teardown");
+                    return;
+                }
+                throw new InvalidOperationException("failed generic phase accepted");
+            }
+            finally { Environment.SetEnvironmentVariable("FAIL_PHASE", null); }
         });
     foreach (var baseline in new[] { "missing", "unreadable", "saved", "save" })
         tests.Case("corpus baseline gate " + baseline, () =>

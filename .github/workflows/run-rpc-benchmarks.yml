@@ -678,7 +678,7 @@ jobs:
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","max_response_bytes",
                       "node_env_vars","node_io_diagnostics","receipt_hashes_migration_timeout","migration_latest_start_utc","migration_finish_by_utc","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
-                      "timings_rps","vus"]'
+                      "timings_rps","vus","generic_first_use","generic_warmup_duration","generic_warmup_rps","generic_resource_sampling"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
             --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
             --arg method "${corpus_method}" --arg tracer "${trace_call_tracer}" --arg types "${trace_call_types}" \
@@ -1395,12 +1395,14 @@ jobs:
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS \
                       receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT \
+                      generic_warmup_duration:GENERIC_WARMUP_DURATION generic_warmup_rps:GENERIC_WARMUP_RPS \
                       migration_latest_start_utc:MIGRATION_LATEST_START_UTC migration_finish_by_utc:MIGRATION_FINISH_BY_UTC \
                       max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \
-                      vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT node_io_diagnostics:NODE_IO_DIAGNOSTICS; do
+                      vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT node_io_diagnostics:NODE_IO_DIAGNOSTICS \
+                      generic_first_use:GENERIC_FIRST_USE generic_resource_sampling:GENERIC_RESOURCE_SAMPLING; do
             v="$(getb ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           # An absent rps_list means the default; an explicitly empty one means no k6 cells.

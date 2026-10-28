@@ -108,6 +108,15 @@ internal sealed partial class SweepConfiguration
         Set("NETWORK", "mainnet"); Set("JSONRPC_MODULES", "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"); Set("HEALTH_TIMEOUT", "1800");
         Set("DIAG_DIR", Path.Combine(this["SCRATCH_ROOT"], "diag")); Set("JB_ETH_CALL_CORPUS", "false");
         Set("RECEIPT_HASHES_MIGRATION_TIMEOUT", "0"); Set("NODE_IO_DIAGNOSTICS", "false");
+        Set("GENERIC_FIRST_USE", "false"); Set("GENERIC_WARMUP_DURATION", "0s"); Set("GENERIC_WARMUP_RPS", "25"); Set("GENERIC_RESOURCE_SAMPLING", "false");
+        foreach (var name in new[] { "GENERIC_FIRST_USE", "GENERIC_RESOURCE_SAMPLING" })
+            if (this[name] is not ("true" or "false")) throw new ArgumentException(name + " must be true or false");
+        if (!DurationRegex().IsMatch(this["GENERIC_WARMUP_DURATION"])) throw new ArgumentException("generic_warmup_duration must be integer seconds");
+        Values["GENERIC_WARMUP_SECONDS"] = this["GENERIC_WARMUP_DURATION"].TrimEnd('s');
+        Integer("GENERIC_WARMUP_SECONDS", this["GENERIC_WARMUP_SECONDS"], false);
+        Integer("GENERIC_WARMUP_RPS", this["GENERIC_WARMUP_RPS"], true);
+        if (Corpus && (this["GENERIC_FIRST_USE"] == "true" || Number("GENERIC_WARMUP_SECONDS") > 0 || this["GENERIC_RESOURCE_SAMPLING"] == "true"))
+            throw new ArgumentException("generic phases and sampling require a public non-corpus sweep");
         Set("MIGRATION_LATEST_START_UTC"); Set("MIGRATION_FINISH_BY_UTC");
         if (Integer("RECEIPT_HASHES_MIGRATION_TIMEOUT", this["RECEIPT_HASHES_MIGRATION_TIMEOUT"], false) > 14400)
             throw new ArgumentException("RECEIPT_HASHES_MIGRATION_TIMEOUT must not exceed 14400 seconds");
@@ -297,16 +306,30 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             }
             else
             {
+                var captured = new HashSet<string>(StringComparer.Ordinal);
+                var cellIndex = 0;
                 foreach (var rate in configuration.Rates)
                 {
                     foreach (var config in SweepConfiguration.Words(Get("ISO_CONFIGS")))
                     {
                         var scenario = Path.GetFileNameWithoutExtension(config);
                         var cell = Path.Combine(Get("OUT_DIR"), "iso", label, rate.ToString(CultureInfo.InvariantCulture), scenario);
-                        await MeasuredCell(config, rate, Get("ISO_DURATION"), cell, arm.Client, label, "", "", $"iso|{scenario}|{label}|{rate}", cancellationToken);
+                        await GenericCell(config, rate, Get("ISO_DURATION"), cell, $"iso|{scenario}|{label}|{rate}");
                     }
                     var mixed = Path.Combine(Get("OUT_DIR"), "mix", label, rate.ToString(CultureInfo.InvariantCulture));
-                    await MeasuredCell(Get("JB_BENCHMARK_CONFIG"), rate, Get("JB_DURATION"), mixed, arm.Client, label, "", "", $"mix|{label}|{rate}", cancellationToken);
+                    await GenericCell(Get("JB_BENCHMARK_CONFIG"), rate, Get("JB_DURATION"), mixed, $"mix|{label}|{rate}");
+                }
+
+                async Task GenericCell(string config, long rate, string duration, string cell, string manifest)
+                {
+                    var phases = Path.Combine(Get("OUT_DIR"), "phases", label, (++cellIndex).ToString(CultureInfo.InvariantCulture));
+                    if (Get("GENERIC_FIRST_USE") == "true" && captured.Add(config))
+                        if (await Cell(config, rate, duration, Path.Combine(phases, "first-use"), arm.Client, label, "", "", false, cancellationToken, captureOnly: true) != 0)
+                            throw new IOException("generic first-use capture failed; measured cells aborted");
+                    if (configuration.Number("GENERIC_WARMUP_SECONDS") > 0)
+                        if (await Cell(config, configuration.Number("GENERIC_WARMUP_RPS"), Get("GENERIC_WARMUP_SECONDS") + "s", Path.Combine(phases, "warmup"), arm.Client, label, "", "", true, cancellationToken) != 0)
+                            throw new IOException("generic warmup failed; measured cells aborted");
+                    await MeasuredCell(config, rate, duration, cell, arm.Client, label, "", Get("GENERIC_RESOURCE_SAMPLING") == "true" ? container : "", manifest, cancellationToken);
                 }
             }
         }
@@ -328,20 +351,29 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         if (corpus.Length > 0) ReportFailureRate(cell, label);
     }
 
-    private async Task<int> Cell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, bool warmup, CancellationToken cancellationToken)
+    private async Task<int> Cell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, bool warmup, CancellationToken cancellationToken, bool captureOnly = false)
     {
         Directory.CreateDirectory(cell);
-        var sample = container.Length > 0 && Get("CORPUS_RESOURCE_SAMPLING") == "true";
+        var sample = container.Length > 0 && Get(corpus.Length > 0 ? "CORPUS_RESOURCE_SAMPLING" : "GENERIC_RESOURCE_SAMPLING") == "true";
+        if (sample && corpus.Length == 0)
+            await File.WriteAllTextAsync(Path.Combine(cell, "resource-scope.json"), new JsonObject
+            {
+                ["container"] = container,
+                ["scope"] = "Node cgroup during load-generator docker run, after sampler container lookup; includes node background activity, container startup and tool handshakes, excludes workload first-use, warmup and post-load deep-check.",
+                ["memory"] = "memory.current includes anon/file/kernel; memory.stat anon includes managed and native memory, file is page cache; neither is managed retained heap or process RSS.",
+                ["managed_heap_bytes"] = null, ["allocation_bytes"] = null, ["gc_counts"] = null, ["gc_pause_seconds"] = null
+            }.ToJsonString(), cancellationToken);
         var environment = new Dictionary<string, string>
         {
             ["OUT_DIR"] = cell, ["RPC_URL"] = Rpc, ["CLIENT_TYPE"] = client, ["LABEL"] = label, ["SCRATCH_ROOT"] = Get("SCRATCH_ROOT"),
             ["JB_REF"] = Get("JB_REF"), ["JB_MODE"] = "benchmark", ["JB_BENCHMARK_CONFIG"] = config, ["JB_RPS"] = rate.ToString(CultureInfo.InvariantCulture),
             ["JB_DURATION"] = duration, ["JB_SEED"] = (configuration.Number("JB_SEED") + (warmup ? 1000 : 0)).ToString(CultureInfo.InvariantCulture),
-            ["JB_HTML_REPORT"] = "false", ["JB_DEEP_CHECK"] = corpus.Length == 0 ? "true" : "false", ["JB_ETH_CALL_CORPUS"] = corpus.Length > 0 ? "true" : "false",
+            ["JB_HTML_REPORT"] = "false", ["JB_DEEP_CHECK"] = corpus.Length == 0 && !warmup && !captureOnly ? "true" : "false", ["JB_ETH_CALL_CORPUS"] = corpus.Length > 0 ? "true" : "false",
+            ["JB_CAPTURE_ONLY"] = captureOnly ? "true" : "false", ["JB_STRICT_WARMUP"] = warmup && corpus.Length == 0 ? "true" : "false",
             ["JB_ETH_CALL_CORPUS_FILE"] = corpus, ["CORPUS_METHOD"] = Get("CORPUS_METHOD"), ["CORPUS_TRACER"] = Get("CORPUS_TRACER"), ["CORPUS_TRACE_TYPES"] = Get("CORPUS_TRACE_TYPES"),
             ["RESOURCE_SAMPLER_CONTAINER"] = sample ? container : "", ["RESOURCE_SAMPLER_OUT"] = sample ? Path.Combine(cell, "resources.json") : ""
         };
-        if (warmup) environment["JB_MAX_FAIL_RATE_PCT"] = "100";
+        if (warmup) environment["JB_MAX_FAIL_RATE_PCT"] = corpus.Length > 0 ? "100" : "0";
         return (await Script("run-json-bench.cs", [], environment, cancellationToken)).Code;
     }
 

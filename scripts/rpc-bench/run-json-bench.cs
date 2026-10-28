@@ -10,6 +10,7 @@
 #:include rpc-json.helpers.cs
 #:include resource-sampling.helpers.cs
 
+using System.Diagnostics;
 using System.Globalization;
 #if !SCRIPT_TEST
 using System.Runtime.InteropServices;
@@ -44,7 +45,11 @@ try
     var mode = Get("JB_MODE", reference.Length > 0 ? "compare" : "benchmark");
     if (mode is not ("benchmark" or "compare")) throw new ArgumentException($"unknown JB_MODE '{mode}' (expected benchmark | compare)");
     if (mode == "compare" && reference.Length == 0) throw new ArgumentException("JB_MODE=compare needs a reference node");
+    var captureOnly = Get("JB_CAPTURE_ONLY", "false") == "true";
+    var strictWarmup = Get("JB_STRICT_WARMUP", "false") == "true";
     var corpus = Get("JB_ETH_CALL_CORPUS", "false");
+    if ((captureOnly || strictWarmup) && (corpus != "false" || mode != "benchmark" || reference.Length > 0))
+        throw new ArgumentException("capture-only and strict warmup require a public single-node benchmark");
     if (corpus is not ("true" or "false")) throw new ArgumentException("JB_ETH_CALL_CORPUS must be true or false");
     var seed = Get("JB_SEED", "1"); if (!SeedRegex().IsMatch(seed)) throw new ArgumentException($"JB_SEED must be a non-negative integer, got '{seed}'");
     var method = Get("CORPUS_METHOD", "eth_call");
@@ -124,6 +129,13 @@ try
         Save(Path.Combine(io, "benchmark.yaml"), benchmark);
     }
     if (reuse) await File.WriteAllTextAsync(marker, preparationId + "\n", cancellation.Token);
+    if (captureOnly || strictWarmup) File.Copy(Path.Combine(io, "benchmark.yaml"), Path.Combine(output, "benchmark.yaml"), overwrite: true);
+    if (captureOnly)
+    {
+        await JsonBenchReporting.CaptureAsync(benchmark!, source, url, Path.Combine(output, "first-use.jsonl"), cancellation.Token,
+            Path.Combine(output, "first-use-timings.jsonl"), strict: true);
+        return 0;
+    }
     await Required("chmod", ["-R", "a+rwX", io]);
     await BenchmarkProcess.RunAsync("docker", ["rm", "-fv", container], cancellation.Token);
     var docker = new List<string> { "run", "--rm", "--name", container, "--network", "host", "-w", "/jb", "-v", source + ":/jb:ro", "-v", io + ":/io", tag, mode };
@@ -194,7 +206,7 @@ try
                 var document = parsed as JsonObject ?? (parsed is null ? [] : throw new JsonException("summary must be an object"));
                 var rendered = JsonBenchReporting.Performance(document); summary.Append(rendered.Markdown).Append('\n'); failPercent = rendered.FailPercent;
                 var sample = Get("RESOURCE_SAMPLER_OUT");
-                if (sample.Length > 0 && Nonempty(sample) && document["metrics"]?["http_reqs"]?["values"]?["count"] is JsonValue count && count.TryGetValue<long>(out var delivered) && delivered > 0)
+                if (sample.Length > 0 && Nonempty(sample) && JsonBenchReporting.DeliveredRequests(document) is > 0 and var delivered)
                     try { ResourceSampling.Normalize(sample, delivered); }
                     catch (IOException exception) { BenchmarkProcess.Log($"resource sampling unavailable: {exception.Message}"); }
             }
@@ -210,6 +222,7 @@ try
     {
         if (!Nonempty(Path.Combine(output, "summary.json")) && !Nonempty(Path.Combine(output, "results.csv"))) throw new IOException("json-bench benchmark produced no summary.json or results.csv");
         if (parseFailed) throw new IOException("summary.json exists but could not be parsed");
+        if (strictWarmup) JsonBenchReporting.ValidateWarmup(JsonNode.Parse(File.ReadAllText(Path.Combine(output, "summary.json"))) as JsonObject ?? throw new IOException("warmup summary must be an object"));
         if (failPercent > double.Parse(Get("JB_MAX_FAIL_RATE_PCT", "1"), CultureInfo.InvariantCulture)) throw new IOException($"http fail rate {failPercent:F4}% exceeds max_fail_rate_pct={Get("JB_MAX_FAIL_RATE_PCT", "1")}%");
     }
     else if (differences is null || parseFailed) throw new IOException("json-bench compare produced no parseable results");
@@ -305,6 +318,23 @@ static YamlNode ToYaml(JsonNode? node) => node switch
 
 internal static partial class JsonBenchReporting
 {
+    internal static long DeliveredRequests(JsonObject root)
+    {
+        var requests = root["metrics"]?["http_reqs"];
+        var count = requests?["count"] ?? requests?["values"]?["count"];
+        return count is JsonValue value && value.TryGetValue<long>(out var delivered) && delivered > 0 ? delivered : 0;
+    }
+
+    internal static void ValidateWarmup(JsonObject root)
+    {
+        var metrics = root["metrics"] as JsonObject ?? throw new IOException("warmup metrics missing");
+        var failures = metrics["http_req_failed"] as JsonObject;
+        var failureRate = failures?["rate"] ?? failures?["value"] ?? failures?["values"]?["rate"] ?? failures?["values"]?["value"];
+        if (DeliveredRequests(root) == 0 || failureRate is not JsonValue value || !value.TryGetValue<double>(out var rate) || rate != 0 ||
+            !(Number(metrics["checks"], "passes") > 0) || Number(metrics["checks"], "fails", double.NaN) != 0 || Number(metrics["dropped_iterations"], "count") != 0)
+            throw new IOException("generic warmup requires delivered requests, passing checks, zero HTTP/RPC failures and zero dropped iterations");
+    }
+
     internal static (string Markdown, double FailPercent) Performance(JsonObject root)
     {
         var metrics = root["metrics"] as JsonObject ?? (root["metrics"] is null ? [] : throw new JsonException("metrics must be an object"));
@@ -332,11 +362,11 @@ internal static partial class JsonBenchReporting
         return (text.ToString(), rate * 100);
     }
 
-    internal static double Number(JsonNode? node, string field)
+    internal static double Number(JsonNode? node, string field, double fallback = 0)
     {
-        if (node is not JsonObject obj) return 0;
+        if (node is not JsonObject obj) return fallback;
         if (obj[field] is JsonValue value && value.TryGetValue<double>(out var number)) return number;
-        return obj["values"] is JsonObject values && values[field] is JsonValue nested && nested.TryGetValue<double>(out number) ? number : 0;
+        return obj["values"] is JsonObject values && values[field] is JsonValue nested && nested.TryGetValue<double>(out number) ? number : fallback;
     }
 
     internal static (string Markdown, int Differences) Comparison(JsonNode? root)
@@ -359,10 +389,11 @@ internal static partial class JsonBenchReporting
         return (text.ToString(), different.Length);
     }
 
-    internal static async Task CaptureAsync(YamlMappingNode config, string source, string url, string output, CancellationToken cancellationToken)
+    internal static async Task CaptureAsync(YamlMappingNode config, string source, string url, string output, CancellationToken cancellationToken, string? timingsPath = null, bool strict = false)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
         await using var writer = File.CreateText(output);
+        await using var timings = timingsPath is null ? null : File.CreateText(timingsPath);
         var sequence = 0;
         if (config.Children.TryGetValue(new YamlScalarNode("calls"), out var calls) && calls is YamlSequenceNode entries)
             foreach (var call in entries.Children.Cast<YamlMappingNode>())
@@ -378,7 +409,8 @@ internal static partial class JsonBenchReporting
                 }
                 else await Capture(call.Children.TryGetValue(new YamlScalarNode("method"), out var method) ? method.ToString() : null, call.Children.TryGetValue(new YamlScalarNode("params"), out var parameters) ? ToJson(parameters) : new JsonArray());
             }
-        BenchmarkProcess.Log($"deep-check: captured {sequence} responses -> {output}");
+        if (strict && sequence == 0) throw new IOException("first-use captured no requests");
+        BenchmarkProcess.Log($"{(strict ? "first-use" : "deep-check")}: captured {sequence} responses -> {output}");
 
         async Task Capture(string? method, JsonNode? parameters)
         {
@@ -386,17 +418,31 @@ internal static partial class JsonBenchReporting
             using var identityDocument = JsonDocument.Parse(identity.ToJsonString());
             var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(RpcJson.Canonical(identityDocument.RootElement))))[..16];
             JsonNode? response;
+            long? responseBytes = null;
+            var startedUtc = DateTimeOffset.UtcNow;
+            var started = Stopwatch.GetTimestamp();
             try
             {
                 var request = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = method, ["params"] = parameters?.DeepClone() };
                 using var content = new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json");
                 using var result = await http.PostAsync(url, content, cancellationToken); result.EnsureSuccessStatusCode();
-                response = JsonNode.Parse(await result.Content.ReadAsStringAsync(cancellationToken), documentOptions: RpcJson.DocumentOptions);
+                var body = await result.Content.ReadAsStringAsync(cancellationToken);
+                responseBytes = Encoding.UTF8.GetByteCount(body);
+                response = JsonNode.Parse(body, documentOptions: RpcJson.DocumentOptions);
             }
             catch (Exception exception) when (exception is HttpRequestException or JsonException || exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
             { response = new JsonObject { ["_capture_error"] = exception.Message }; }
+            var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            var success = response is JsonObject resultObject && resultObject.ContainsKey("result") && !resultObject.ContainsKey("error") && !resultObject.ContainsKey("_capture_error");
             var row = new JsonObject { ["seq"] = sequence++, ["fp"] = fingerprint, ["method"] = method, ["response"] = response };
             await writer.WriteLineAsync(row.ToJsonString(RpcJson.SerializerOptions).AsMemory(), cancellationToken);
+            if (timings is not null)
+                await timings.WriteLineAsync(new JsonObject
+                {
+                    ["seq"] = sequence - 1, ["fp"] = fingerprint, ["started_utc"] = startedUtc.ToString("O", CultureInfo.InvariantCulture),
+                    ["elapsed_ms"] = elapsed, ["response_bytes"] = responseBytes, ["success"] = success
+                }.ToJsonString().AsMemory(), cancellationToken);
+            if (strict && !success) throw new IOException($"first-use request {sequence - 1} failed; capture retained at {output}");
         }
     }
 

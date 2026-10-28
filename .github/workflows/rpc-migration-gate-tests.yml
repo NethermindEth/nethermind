@@ -2,7 +2,7 @@ name: RPC migration gate script tests
 
 on:
   push:
-    branches: [perf/getlogs-migration-gate-20261028]
+    branches: [perf/getlogs-migration-gate-20261028, perf/getlogs-night3-phases-20261028]
     paths:
       - scripts/rpc-bench/**
       - .github/workflows/rpc-migration-gate-tests.yml
@@ -26,3 +26,12 @@ jobs:
         run: dotnet run --file scripts/rpc-bench/test-rpc-sweep.cs
       - name: Workflow contracts
         run: dotnet run --file scripts/rpc-bench/test-workflow-contracts.cs
+      - name: JSON benchmark phases and reuse
+        run: dotnet run --file scripts/rpc-bench/test-json-bench-reuse.cs
+      - name: Resource sampling
+        run: dotnet run --file scripts/rpc-bench/test-sample-resources.cs
+      - name: Analyze changed scripts
+        run: |
+          for script in run-json-bench run-rpc-sweep test-json-bench-reuse test-rpc-sweep test-workflow-contracts; do
+            dotnet run --file scripts/ci/run-script-tests.cs -- --check "scripts/rpc-bench/${script}.cs"
+          done

@@ -151,6 +151,55 @@ chain ID, head/hash, client version, image reference and arm flags in
 `runtime-identity.json` before measurement. These diagnostic artifacts are for
 public workloads; private-corpus staging retains its existing allowlist.
 
+### Optional public-sweep measurement phases
+
+Generic `jsonbench-sweep` workloads can opt into these `tool_config` keys;
+all are independent of the private corpus warmup/resource settings:
+
+```json
+{"generic_first_use": true, "generic_warmup_duration": "60s",
+ "generic_warmup_rps": 25, "generic_resource_sampling": true}
+```
+
+Defaults are `false`, `0s`, `25`, and `false`, respectively. Public phase
+options are refused with `eth_call_corpus: true`; existing corpus behavior is
+unchanged. After readiness/migration/identity gates, each arm runs:
+
+1. With `generic_first_use`, one deterministic capture of every configured call
+   in configuration/file order, once per distinct config before its first warmup
+   or measured cell. Weights do not change this pass. `first-use.jsonl` retains
+   responses; `first-use-timings.jsonl` records sequence/fingerprint, UTC start,
+   elapsed HTTP/body-read/JSON-parse milliseconds, decoded response bytes and
+   success. Transport, malformed/missing result, RPC error or empty capture aborts
+   measurement, retaining partial evidence and still tearing down the node.
+2. Before **each** measured cell, an optional fixed-duration, fixed-rate warmup
+   of that workload using `seed + 1000`, identical between arms. This is a seeded
+   random draw, **not** a deterministic pass or guarantee of complete coverage.
+   Warmup must deliver requests and passing checks with zero HTTP/RPC failures
+   and zero dropped iterations. Missing required metrics or a tool failure aborts
+   measurement; it never inherits the private corpus's 100% failure allowance.
+3. The original timed cell, followed by its existing deep-check capture.
+
+Premeasurement outputs and rendered configs live under
+`phases/<arm>/<cell-ordinal>/{first-use,warmup}` and are excluded from
+`summaries.manifest` and the steady-state matrix. First-use is **not cold OS
+cache**: earlier workloads, readiness and migration may have touched the same
+blocks, and later rates reuse the same node. Use a single workload per fresh
+arm when workload-specific process first-use matters.
+
+`generic_resource_sampling` supplies the actual node container only to timed
+cells. `resources.json` uses the existing cgroup-v2 sampler; flat and nested k6
+`http_reqs` counts both normalize CPU/I/O by delivered requests. Its interval
+starts after asynchronous container/cgroup lookup and ends when the load-generator
+Docker command returns, before deep-check. It can include container startup,
+tool handshakes and all node background activity; CPU/request is not isolated
+RPC CPU cost. The sampler is best-effort: missing sampling is logged as
+unavailable, not grounds to claim a measured zero. `resource-scope.json` records
+these limits. `memory.current` includes anon/file/kernel memory; `memory.stat`
+anon includes managed **and native** memory, and file is page cache. Neither is
+process RSS or managed retained heap. Managed heap, allocations and GC counters
+remain unavailable (null); no profiler is installed for these fields.
+
 ## Goals
 
 1. **A CI to check current node RPC performance** with any of three tools.

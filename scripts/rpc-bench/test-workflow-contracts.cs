@@ -63,6 +63,11 @@ tests.Case("migration qualification exports UTC budgets and leaves termination g
         "receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT", "node_io_diagnostics:NODE_IO_DIAGNOSTICS",
         "- 1800", "timeout --signal=TERM --kill-after=15m");
 });
+tests.Case("generic phases and sampling reach sweep independently of corpus options", () =>
+{
+    Contains(StepText("Run RPC sweep"), "generic_first_use:GENERIC_FIRST_USE", "generic_warmup_duration:GENERIC_WARMUP_DURATION",
+        "generic_warmup_rps:GENERIC_WARMUP_RPS", "generic_resource_sampling:GENERIC_RESOURCE_SAMPLING");
+});
 tests.Case("cached baselines are checked before use and retain metadata", () =>
 {
     Contains(StepText("Validate the cached master baseline"), ".schema // empty", ".cell_key // empty", "usable=${usable}", "rm -rf");
