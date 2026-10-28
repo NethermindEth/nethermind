@@ -43,6 +43,7 @@ public sealed class HistoryReader
     // repeated traces of a block, single-transaction traces and calls at past blocks. Created on the first store, so
     // a node that serves no historical reads does not hold it.
     private ReadCache? _reads;
+    private readonly Lock _readsCreation = new();
     private long _cachedRecords;
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
@@ -336,10 +337,18 @@ public sealed class HistoryReader
         return records;
     }
 
+    // Under a lock, so concurrent first stores do not each build the large arrays only to discard them.
     private ReadCache CreateReads()
     {
-        ReadCache created = new();
-        return Interlocked.CompareExchange(ref _reads, created, null) ?? created;
+        using Lock.Scope scope = _readsCreation.EnterScope();
+        ReadCache? reads = _reads;
+        if (reads is null)
+        {
+            reads = new ReadCache();
+            Volatile.Write(ref _reads, reads);
+        }
+
+        return reads;
     }
 
     /// <summary>Only a covered block's answer is final, and only if no restart removed the records it was read from.</summary>
