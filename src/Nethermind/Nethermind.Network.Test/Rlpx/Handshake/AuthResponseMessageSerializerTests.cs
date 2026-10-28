@@ -27,7 +27,7 @@ public class AuthResponseMessageSerializerTests
         before.Nonce = new byte[AckMessageSerializer.NonceLength];
         _random.NextBytes(before.Nonce);
         before.IsTokenUsed = true;
-        byte[] data = _serializer.Serialize(before);
+        byte[] data = _serializer.SerializeToArray(before);
         AckMessage after = _serializer.Deserialize(data);
 
         using (Assert.EnterMultipleScope())

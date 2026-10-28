@@ -32,7 +32,7 @@ public class AuthMessageSerializerTests
         authMessage.PublicKey = _privateKey.PublicKey;
         _random.NextBytes(authMessage.Nonce);
         authMessage.IsTokenUsed = true;
-        byte[] bytes = _serializer.Serialize(authMessage);
+        byte[] bytes = _serializer.SerializeToArray(authMessage);
         AuthMessage after = _serializer.Deserialize(bytes);
 
         using (Assert.EnterMultipleScope())

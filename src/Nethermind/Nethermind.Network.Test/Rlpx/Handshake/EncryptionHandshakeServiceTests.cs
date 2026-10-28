@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using Org.BouncyCastle.Crypto;
@@ -27,9 +28,9 @@ public class EncryptionHandshakeServiceTests
 
         _messageSerializationService = new MessageSerializationService(
             SerializerInfo.Create(new AuthMessageSerializer()),
-            SerializerInfo.Create(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom))),
+            SerializerInfo.Create(new AuthEip8MessageSerializer()),
             SerializerInfo.Create(new AckMessageSerializer()),
-            SerializerInfo.Create(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)))
+            SerializerInfo.Create(new AckEip8MessageSerializer())
         );
 
         _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
@@ -200,6 +201,24 @@ public class EncryptionHandshakeServiceTests
             Assert.That(recipientIngress, Is.EqualTo(initiatorEgress), "Egress");
             Assert.That(recipientEgress, Is.EqualTo(initiatorIngress), "Ingress");
         }
+    }
+
+    [TestCase(false, 100, Description = "Pads with at least 100 bytes")]
+    [TestCase(true, 300, Description = "Pads with at most 300 bytes")]
+    public void Pads_eip8_auth_with_random_bytes(bool useMaxRandom, int expectedPadding)
+    {
+        byte[] padding = new byte[expectedPadding];
+        Array.Fill(padding, (byte)0xAB);
+        Func<int, int> nextInt = useMaxRandom ? static max => max - 1 : static _ => 0;
+        TestRandom random = new(nextInt, NetTestVectors.NonceA, NetTestVectors.EphemeralKeyA.KeyBytes, padding);
+        HandshakeService service = new(_messageSerializationService, _eciesCipher, random, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
+
+        Packet auth = service.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
+
+        (_, byte[]? plainText) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, auth.Data[2..], auth.Data[..2]);
+        RlpReader body = new(plainText.AsSpan());
+        int bodyLength = body.ReadSequenceLength() + body.Position;
+        Assert.That(plainText.AsSpan(bodyLength).ToArray(), Is.EqualTo(padding));
     }
 
     [Test]

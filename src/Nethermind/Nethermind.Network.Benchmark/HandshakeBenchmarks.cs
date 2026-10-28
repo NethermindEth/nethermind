@@ -23,9 +23,9 @@ namespace Nethermind.Network.Benchmarks
 
             _messageSerializationService = new MessageSerializationService(
                 SerializerInfo.Create(new AuthMessageSerializer()),
-                SerializerInfo.Create(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom))),
+                SerializerInfo.Create(new AuthEip8MessageSerializer()),
                 SerializerInfo.Create(new AckMessageSerializer()),
-                SerializerInfo.Create(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)))
+                SerializerInfo.Create(new AckEip8MessageSerializer())
             );
 
             _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
