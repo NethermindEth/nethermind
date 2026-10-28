@@ -190,15 +190,7 @@ public static partial class TrieUpdater<TKey, TPath>
         public IMetricObserver? PhaseTime { get; } = phaseTime;
         public FoldPhaseLabels? PhaseLabels { get; } = phaseLabels;
 
-        /// <summary>Commits the working state's pending groups from <paramref name="top"/>, as <see cref="FoldWorkingState.Commit"/> does, observing the time as the commit phase.</summary>
-        public ulong Commit(ulong top)
-        {
-            if (PhaseTime is null) return WorkingState.Commit(Store, top);
-
-            long start = Stopwatch.GetTimestamp();
-            ulong pointer = WorkingState.Commit(Store, top);
-            PhaseTime.Observe(Stopwatch.GetTimestamp() - start, PhaseLabels!.Commit);
-            return pointer;
-        }
+        /// <summary>Commits the working state's pending groups from <paramref name="top"/>, as <see cref="FoldWorkingState.Commit"/> does.</summary>
+        public ulong Commit(ulong top) => WorkingState.Commit(Store, top, PhaseTime, PhaseLabels);
     }
 }

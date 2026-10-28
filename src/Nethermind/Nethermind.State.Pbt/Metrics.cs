@@ -75,11 +75,11 @@ public static class Metrics
 
     /// <remarks>
     /// <c>sort</c> and <c>fold</c> are each observed once per folded partition, and together make up its <see cref="PbtPartitionFoldTime"/>.
-    /// <c>commit</c> is observed once per fold unit, and the units commit concurrently inside <c>fold</c>, so its sum is thread
-    /// time that overlaps <c>fold</c> rather than adding to it.
+    /// <c>commit_size</c> and <c>commit_write</c> are each observed once per fold unit, and the units commit concurrently inside
+    /// <c>fold</c>, so their sums are thread time that overlaps <c>fold</c> rather than adding to it.
     /// </remarks>
     [DetailedMetric]
-    [Description("Time of one phase of the pbt trie updater, by partition (account, storage; root for the root group's commit) and phase: sort (sorting and leaf hashing), fold (the walk, with its commits), commit (writing one fold unit's groups, summed over concurrent units) (Stopwatch ticks)")]
+    [Description("Time of one phase of the pbt trie updater, by partition (account, storage; root for the root group's commit) and phase: sort (sorting and leaf hashing), fold (the walk, with its commits), commit_size (summing one fold unit's record lengths) and commit_write (writing its groups into one batch), each summed over concurrent units (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40, LabelNames = ["partition", "phase"])]
     public static IMetricObserver PbtTrieUpdaterPhaseTime { get; set; } = new NoopMetricObserver();
 

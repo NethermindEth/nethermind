@@ -280,8 +280,11 @@ public class ParallelUpdateRootTests
         string[] phases = [.. phaseTime.Observations.Select(static observation => observation.Phase)];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(phases.Where(static phase => !phase.EndsWith("/commit")), Is.EquivalentTo(new[] { "account/sort", "account/fold", "storage/sort", "storage/fold" }));
-            Assert.That(phases.Where(static phase => phase.EndsWith("/commit")).Distinct(), Is.EquivalentTo(new[] { "account/commit", "storage/commit", "root/commit" }));
+            Assert.That(phases.Where(static phase => !phase.Contains("/commit_")), Is.EquivalentTo(new[] { "account/sort", "account/fold", "storage/sort", "storage/fold" }));
+            Assert.That(phases.Where(static phase => phase.Contains("/commit_")).Distinct(), Is.EquivalentTo(new[]
+            {
+                "account/commit_size", "account/commit_write", "storage/commit_size", "storage/commit_write", "root/commit_size", "root/commit_write",
+            }));
             Assert.That(phaseTime.Observations.Select(static observation => observation.Ticks), Is.All.GreaterThanOrEqualTo(0));
         }
     }
@@ -450,16 +453,28 @@ public class ParallelUpdateRootTests
             Assert.That(store.StoreReads, Is.EqualTo(store.LastFallbackReads));
             Assert.That(store.TreePayloads().PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()), "the walk from the root reaches exactly the tree's groups");
             Assert.That(store.TreePayloads(pin.WriteBoundary).Select(static group => group.Key), Is.EquivalentTo(store.LastWrittenGroups.SelectMany(static batch => batch)), "a bounded walk yields only the fold's own groups");
-            Assert.That(store.LastWrittenGroups.Select(static batch => batch.Select(static path => path.BitDepth).Distinct().Count()), Is.All.EqualTo(1), "a write batch holds one level");
+            Assert.That(store.LastWrittenGroups.All(IsPostOrderSubtree), "a write batch holds one subtree, each group after the groups below it");
             // Unsplit, each root slot folds its groups in one scope, and the root group in one of its own.
             if (!splitEveryFrame)
-                Assert.That(store.LastWrittenGroups, Has.Count.EqualTo(store.LastWrittenGroups.SelectMany(static batch => batch).Select(static path => (path.BitDepth == 0 ? -1 : path.GetByte(0) >> 5, path.BitDepth)).Distinct().Count()),
-                    "one write batch per level");
+                Assert.That(store.LastWrittenGroups, Has.Count.EqualTo(store.LastWrittenGroups.SelectMany(static batch => batch).Select(static path => path.BitDepth == 0 ? -1 : path.GetByte(0) >> 5).Distinct().Count()),
+                    "one write batch per fold scope");
             foreach (PbtPhysicalPayload group in expected.PhysicalPayloads)
                 Assert.That(store.FindGroup(group.Key), Is.EqualTo(group.Payload.ToArray()));
             foreach (PbtStorageNodePath removed in previous.Where(key => !current.Contains(key)))
                 Assert.That(store.FindGroup(removed), Is.Null, "a removed group misses");
         }
+    }
+
+    private static bool IsPostOrderSubtree(List<PbtStorageNodePath> batch) =>
+        batch.Take(batch.Count - 1).All(group => IsBelow(group, batch[^1]))
+        && batch.Select((group, index) => batch.Skip(index + 1).All(later => !IsBelow(later, group))).All(static inOrder => inOrder);
+
+    private static bool IsBelow(PbtStorageNodePath group, PbtStorageNodePath ancestor)
+    {
+        if (ancestor.BitDepth >= group.BitDepth) return false;
+        for (int bit = 0; bit < ancestor.BitDepth; bit++)
+            if (((group.GetByte(bit / 8) ^ ancestor.GetByte(bit / 8)) & (0x80 >> (bit % 8))) != 0) return false;
+        return true;
     }
 
     [Test]

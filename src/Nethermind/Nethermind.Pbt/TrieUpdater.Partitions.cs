@@ -114,13 +114,14 @@ public static partial class TrieUpdater
         return (hash, context.Commit(publication.Pointer));
     }
 
-    /// <summary>The labels of one partition's phases on the trie updater's phase observer: <c>sort</c>, <c>fold</c> and <c>commit</c>.</summary>
+    /// <summary>The labels of one partition's phases on the trie updater's phase observer: <c>sort</c>, <c>fold</c>, <c>commit_size</c> and <c>commit_write</c>.</summary>
     /// <remarks>The labels are stable, so an instance must live for the process.</remarks>
     public sealed class FoldPhaseLabels(string partition)
     {
         public IMetricLabels Sort { get; } = new PhaseLabel(partition, "sort");
         public IMetricLabels Fold { get; } = new PhaseLabel(partition, "fold");
-        public IMetricLabels Commit { get; } = new PhaseLabel(partition, "commit");
+        public IMetricLabels CommitSize { get; } = new PhaseLabel(partition, "commit_size");
+        public IMetricLabels CommitWrite { get; } = new PhaseLabel(partition, "commit_write");
 
         private sealed class PhaseLabel(string partition, string phase) : IStableMetricLabels
         {

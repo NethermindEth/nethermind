@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Metric;
 using Nethermind.Pbt.NodeBuffer;
+using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
 
@@ -15,16 +18,13 @@ public static partial class TrieUpdater<TKey, TPath>
     {
         /// <summary>How many pending groups a pooled state keeps room for; a state grown past it is not pooled.</summary>
         private const int MaxPooledPendingGroups = 4096;
-        private const int MaxLevels = PbtVariableTreeKey.MaxLength * 8 / PbtThreeLevelGroupGeometry.LevelsPerGroup + 1;
 
         private readonly ArrayPoolList<PendingGroup> _pendingGroups = new(16);
-        private readonly ArrayPoolList<int> _collected = new(16);
-        private readonly ArrayPoolList<int> _order = new(16);
 
         private bool IsPoolable => _pendingGroups.Capacity <= MaxPooledPendingGroups;
 
         /// <summary>Takes <paramref name="writer"/>'s finished group of <paramref name="payloadLength"/> bytes, detached into the store by the next <see cref="Commit"/>.</summary>
-        /// <remarks>The writer is kept until then, so the group is written once, straight into its level's batch, and goes back to the pool after.</remarks>
+        /// <remarks>The writer is kept until then, so the group is written once, straight into the commit's batch, and goes back to the pool after.</remarks>
         /// <returns>The pointer standing for the group in its parent's links until it is committed.</returns>
         public ulong AddPendingGroup(PbtNodeGroupWriter<TPath> writer, in PbtStorageNodePath path, in PbtGroupLinks links,
             ReadOnlySpan<long> descendantBytes, ushort candidateSlots, int payloadLength)
@@ -45,40 +45,35 @@ public static partial class TrieUpdater<TKey, TPath>
 
         /// <summary>Writes the pending group at <paramref name="top"/> and every pending group it links below it to <paramref name="store"/>, then drops every pending group.</summary>
         /// <remarks>
-        /// Groups are committed one depth at a time, deepest first: two groups of one depth are never
-        /// each other's ancestor, and by then every group they link is committed, so a level is reserved in the store at once, with
-        /// its children's pointers. Pending groups <paramref name="top"/> does not reach are dropped unwritten.
+        /// One walk sums the records' lengths, so a single batch is reserved, and a second writes them into it in post-order,
+        /// each group after the groups it links, so its links take their pointers. Pending groups <paramref name="top"/> does not
+        /// reach are dropped unwritten. The walks are timed on <paramref name="phaseTime"/>, when set, as the
+        /// <see cref="FoldPhaseLabels.CommitSize"/> and <see cref="FoldPhaseLabels.CommitWrite"/> phases.
         /// </remarks>
         /// <returns>The pointer of the committed top group, or <paramref name="top"/> itself when it is not pending.</returns>
-        public ulong Commit(IPbtStore store, ulong top)
+        public ulong Commit(IPbtStore store, ulong top, IMetricObserver? phaseTime, FoldPhaseLabels? phaseLabels)
         {
             try
             {
                 if (!IsPending(top)) return top;
 
                 int topIndex = (int)top - 1;
-                int count = CollectPending(topIndex);
-                Span<int> levelEnds = stackalloc int[MaxLevels + 1];
-                Span<int> positions = stackalloc int[MaxLevels + 1];
-                levelEnds.Clear();
-                Span<int> collected = _collected.AsSpan();
-                for (int i = 0; i < count; i++) levelEnds[Level(collected[i])]++;
-
-                // Suffix sums, so level l takes [levelEnds[l + 1], levelEnds[l]) of the order.
-                for (int level = MaxLevels - 1; level >= 0; level--) levelEnds[level] += levelEnds[level + 1];
-
-                levelEnds.CopyTo(positions);
-                _order.Clear();
-                _order.AddRange(collected);
-                Span<int> order = _order.AsSpan();
-                foreach (int index in collected) order[--positions[Level(index)]] = index;
-
-                for (int level = MaxLevels - 1; level >= 0; level--)
+                long start = phaseTime is null ? 0 : Stopwatch.GetTimestamp();
+                int totalLength = PendingLength(topIndex);
+                long sized = phaseTime is null ? 0 : Stopwatch.GetTimestamp();
+                ulong pointer;
+                using (IPbtGroupRecordWriteBatch batch = store.StartWriteBatch(totalLength))
                 {
-                    if (levelEnds[level] != levelEnds[level + 1]) CommitLevel(store, order[levelEnds[level + 1]..levelEnds[level]]);
+                    int offset = 0;
+                    pointer = WritePending(batch.Bytes, batch.BasePointer, topIndex, ref offset);
                 }
 
-                return _pendingGroups[topIndex].Pointer;
+                if (phaseTime is not null)
+                {
+                    phaseTime.Observe(sized - start, phaseLabels!.CommitSize);
+                    phaseTime.Observe(Stopwatch.GetTimestamp() - sized, phaseLabels.CommitWrite);
+                }
+                return pointer;
             }
             finally
             {
@@ -96,62 +91,42 @@ public static partial class TrieUpdater<TKey, TPath>
             _pendingGroups.Clear();
         }
 
-        /// <summary>Lists the pending group at <paramref name="top"/> and its pending descendants, setting their parent and slot.</summary>
-        /// <returns>The number listed.</returns>
-        private int CollectPending(int top)
+        /// <summary>The aligned length of the pending group at <paramref name="index"/> and of its pending descendants.</summary>
+        private int PendingLength(int index)
         {
-            _collected.Clear();
-            _collected.Add(top);
-            _pendingGroups.GetRef(top).Parent = -1;
-            for (int head = 0; head < _collected.Count; head++)
+            ref PendingGroup group = ref _pendingGroups.GetRef(index);
+            int length = group.Length;
+            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
             {
-                int parent = _collected[head];
-                ref PbtGroupLinks links = ref _pendingGroups.GetRef(parent).Links;
-                for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
-                {
-                    if (!IsPending(links[slot])) continue;
-                    int child = (int)links[slot] - 1;
-                    ref PendingGroup group = ref _pendingGroups.GetRef(child);
-                    group.Parent = parent;
-                    group.Slot = (byte)slot;
-                    _collected.Add(child);
-                }
+                if (IsPending(group.Links[slot])) length += PendingLength((int)group.Links[slot] - 1);
             }
-
-            return _collected.Count;
+            return length;
         }
 
-        private void CommitLevel(IPbtStore store, ReadOnlySpan<int> level)
+        /// <summary>Writes the pending descendants of the group at <paramref name="index"/>, then the group, from <paramref name="offset"/> on.</summary>
+        /// <returns>The group's pointer.</returns>
+        private ulong WritePending(Span<byte> bytes, ulong basePointer, int index, ref int offset)
         {
-            int totalLength = 0;
-            foreach (int index in level) totalLength += _pendingGroups[index].Length;
-
-            using IPbtGroupRecordWriteBatch batch = store.StartWriteBatch(totalLength);
-            Span<byte> bytes = batch.Bytes;
-            ulong basePointer = batch.BasePointer;
-            int start = 0;
-            foreach (int index in level)
+            ref PendingGroup group = ref _pendingGroups.GetRef(index);
+            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
             {
-                ref PendingGroup group = ref _pendingGroups.GetRef(index);
-                group.Writer!.DetachTo(PbtGroupRecordCodec.WriteGroup(bytes[start..], group.Path, group.Links, group.PayloadLength), group.DescendantBytes,
-                    group.CandidateSlots);
-                ReturnWriter(group.Writer);
-                group.Writer = null;
-                // A store keeping groups by path links no pointer, so its batch has none.
-                group.Pointer = basePointer == 0 ? 0 : basePointer + (ulong)start;
-                if (group.Parent >= 0) _pendingGroups.GetRef(group.Parent).Links[group.Slot] = group.Pointer;
-                start += group.Length;
+                if (IsPending(group.Links[slot])) group.Links[slot] = WritePending(bytes, basePointer, (int)group.Links[slot] - 1, ref offset);
             }
-        }
 
-        private int Level(int index) => _pendingGroups[index].Path.BitDepth / PbtThreeLevelGroupGeometry.LevelsPerGroup;
+            int start = offset;
+            group.Writer!.DetachTo(PbtGroupRecordCodec.WriteGroup(bytes[start..], group.Path, group.Links, group.PayloadLength), group.DescendantBytes,
+                group.CandidateSlots);
+            ReturnWriter(group.Writer);
+            group.Writer = null;
+            offset += group.Length;
+            // A store keeping groups by path links no pointer, so its batch has none.
+            return basePointer == 0 ? 0 : basePointer + (ulong)start;
+        }
 
         private void DisposePending()
         {
             foreach (PendingGroup group in _pendingGroups.AsSpan()) group.Writer?.Dispose();
             _pendingGroups.Dispose();
-            _collected.Dispose();
-            _order.Dispose();
         }
 
         /// <summary>Whether <paramref name="pointer"/> stands for a pending group: one of generation 0, which no store's pointer has.</summary>
@@ -167,9 +142,6 @@ public static partial class TrieUpdater<TKey, TPath>
             public ushort CandidateSlots;
             public int PayloadLength;
             public int Length;
-            public int Parent;
-            public byte Slot;
-            public ulong Pointer;
         }
 
         [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]
