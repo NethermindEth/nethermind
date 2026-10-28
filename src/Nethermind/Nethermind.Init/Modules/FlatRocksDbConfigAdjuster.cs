@@ -19,10 +19,16 @@ internal class FlatRocksDbConfigAdjuster(
     IRocksDbConfigFactory rocksDbConfigFactory,
     IFlatDbConfig flatDbConfig,
     IDisposableStack disposeStack,
+    IHardwareInfo hardwareInfo,
     ILogManager logManager)
     : IRocksDbConfigFactory
 {
+    private const long AutoHistoryCacheMemoryPercent = 4;
+    private static readonly long AutoHistoryCacheMinSize = 256.MiB;
+    private static readonly long AutoHistoryCacheMaxSize = 8.GiB;
+
     private readonly ILogger _logger = logManager.GetClassLogger<FlatRocksDbConfigAdjuster>();
+    private nint? _historyCacheHandle;
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
@@ -62,11 +68,46 @@ internal class FlatRocksDbConfigAdjuster(
             config = new AdjustedRocksdbConfig(config, additionalConfig, config.WriteBufferSize.GetValueOrDefault(), cacheHandle);
         }
 
-        if (databaseName == nameof(DbNames.FlatHistory) && flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling)
+        if (databaseName == nameof(DbNames.FlatHistory))
         {
-            config = new AdjustedRocksdbConfig(config, "", config.WriteBufferSize.GetValueOrDefault(), compactOnDeletions: true);
+            nint? cacheHandle = GetHistoryCacheHandle(columnName);
+            bool compactOnDeletions = flatDbConfig.HistoryRetention == HistoryRetentionMode.Rolling;
+            if (cacheHandle is not null || compactOnDeletions)
+            {
+                config = new AdjustedRocksdbConfig(config, "", config.WriteBufferSize.GetValueOrDefault(), cacheHandle, compactOnDeletions);
+            }
         }
 
         return config;
     }
+
+    // As-of reads seek AccountHistory and StorageHistory, and every storage read can also seek StorageClears.
+    private nint? GetHistoryCacheHandle(string? columnName)
+    {
+        if (!flatDbConfig.HistoryEnabled || flatDbConfig.HistoryBlockCacheSize == 0) return null;
+        if (columnName != nameof(FlatHistoryColumns.AccountHistory) &&
+            columnName != nameof(FlatHistoryColumns.StorageHistory) &&
+            columnName != nameof(FlatHistoryColumns.StorageClears)) return null;
+
+        if (_historyCacheHandle is null)
+        {
+            ulong cacheCapacity = flatDbConfig.HistoryBlockCacheSize ?? GetAutoHistoryCacheSize(hardwareInfo.AvailableMemoryBytes);
+            if (_logger.IsInfo)
+            {
+                string source = flatDbConfig.HistoryBlockCacheSize is null
+                    ? $"{AutoHistoryCacheMemoryPercent}% of {hardwareInfo.AvailableMemoryBytes / 1.MiB:N0} MB available memory"
+                    : $"FlatDb.{nameof(IFlatDbConfig.HistoryBlockCacheSize)}";
+                _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to history ({source})");
+            }
+
+            HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+            _historyCacheHandle = cacheWrapper.Handle;
+            disposeStack.Push(cacheWrapper);
+        }
+
+        return _historyCacheHandle;
+    }
+
+    internal static ulong GetAutoHistoryCacheSize(long availableMemoryBytes) =>
+        (ulong)Math.Clamp(availableMemoryBytes / 100 * AutoHistoryCacheMemoryPercent, AutoHistoryCacheMinSize, AutoHistoryCacheMaxSize);
 }
