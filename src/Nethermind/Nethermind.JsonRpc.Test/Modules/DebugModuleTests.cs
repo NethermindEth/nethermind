@@ -111,7 +111,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(header.Hash!).Returns(header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
         _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(new Block(header));
         _blockFinder.FindBlock(header.Hash!, header.Number).ReturnsNull();
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         GethTraceOptions options = new() { StreamMode = true };
@@ -127,6 +127,9 @@ public class DebugModuleTests
             Assert.That(result.Result.Error, Is.EqualTo(byHash
                 ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
         }
+        if (byHash)
+            _blockFinder.Received(1).FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+        _blockFinder.Received(1).FindBlock(header.Hash!, header.Number);
     }
 
     [Test]
@@ -677,6 +680,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
         _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
         _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
         Assert.That(_blockFinder.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None, block.Number - 1), Is.Null);
         object selector = method switch
@@ -731,6 +735,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(header.Hash!).Returns(header);
         _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
         _blockFinder.FindBlock(header.Hash!).Returns(block);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(block);
         _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
         _blockFinder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeaderMissing ? null : parent);
         // The RLP-decoded block of debug_traceBlock is a copy, so headers are matched by hash.
@@ -754,7 +759,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer()
+    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer([Values] bool streaming)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
@@ -764,15 +769,24 @@ public class DebugModuleTests
         _blockchainBridge.HasStateForBlock(header).Returns(false);
         _blockchainBridge.HasStateForBlock(parent).Returns(true);
         GethLikeTxTrace trace = new();
-        _debugBridge.GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        _debugBridge.GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>()).Returns(trace);
 
         using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceTransaction(TestItem.KeccakA,
-            new GethTraceOptions { Tracer = "noopTracer" });
-        using (Assert.EnterMultipleScope())
+            new GethTraceOptions { Tracer = streaming ? string.Empty : "noopTracer", StreamMode = streaming });
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+        if (streaming)
         {
-            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingSingleResult)actual.Data).WriteAsJson(writer);
+        }
+        else
+        {
             Assert.That(actual.Data, Is.SameAs(trace));
         }
+        _debugBridge.Received(1).GetTransactionBlockHash(TestItem.KeccakA);
+        _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
     }
 
     [Test]
