@@ -27,11 +27,11 @@ public class OpcodeBlockTracerTests
         blockTracer.EndBlockTrace();
 
         Assert.That(completedTrace, Is.Not.Null);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(completedTrace!.TransactionCount, Is.EqualTo(1));
             Assert.That(completedTrace.Opcodes[(byte)Instruction.ADD], Is.EqualTo(1));
-        });
+        }
     }
 
     [Test]
@@ -59,12 +59,12 @@ public class OpcodeBlockTracerTests
         blockTracer.EndBlockTrace();
 
         Assert.That(completedTrace, Is.Not.Null);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(completedTrace!.TransactionCount, Is.EqualTo(txCount));
             Assert.That(completedTrace.Opcodes[(byte)Instruction.ADD], Is.EqualTo(txCount));
             Assert.That(completedTrace.Opcodes[(byte)Instruction.STOP], Is.EqualTo(txCount));
-        });
+        }
     }
 
     [Test]
@@ -90,13 +90,13 @@ public class OpcodeBlockTracerTests
         firstBlockTracer.EndBlockTrace();
         secondBlockTracer.EndBlockTrace();
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(firstCompletedTrace, Is.Not.Null);
             Assert.That(secondCompletedTrace, Is.Not.Null);
             Assert.That(firstCompletedTrace!.Opcodes[(byte)Instruction.ADD], Is.EqualTo(1));
             Assert.That(secondCompletedTrace!.Opcodes[(byte)Instruction.STOP], Is.EqualTo(1));
-        });
+        }
     }
 
     private static BlockHeader CreateHeader() =>

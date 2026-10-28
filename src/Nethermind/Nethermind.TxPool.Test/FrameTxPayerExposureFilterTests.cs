@@ -439,8 +439,11 @@ public class FrameTxPayerExposureFilterTests
         tx.Hash = TestItem.KeccakA;
         if (payerless) tx.PayerAddress = null;
 
-        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
-        Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+            Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+        }
 
         TestReadOnlyStateProvider senderAccounts = new();
         senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);

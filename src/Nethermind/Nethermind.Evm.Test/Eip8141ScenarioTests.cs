@@ -137,14 +137,17 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(_stateProvider.GetCode(smartSender), Is.SequenceEqualTo(runtimeCode),
-            "the deploy frame must install the smart-account code at the sender address");
-        Assert.That(receipt.Payer, Is.EqualTo(smartSender));
-        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
-        Assert.That(_stateProvider.GetNonce(smartSender), Is.EqualTo(2UL),
-            "contract creation sets the account nonce to 1 and payment approval increments it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(_stateProvider.GetCode(smartSender), Is.SequenceEqualTo(runtimeCode),
+                "the deploy frame must install the smart-account code at the sender address");
+            Assert.That(receipt.Payer, Is.EqualTo(smartSender));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
+            Assert.That(_stateProvider.GetNonce(smartSender), Is.EqualTo(2UL),
+                "contract creation sets the account nonce to 1 and payment approval increments it");
+        }
     }
 
     // EIP-8141 § Gas Accounting: intrinsic + per-frame + per-scheme verification
@@ -181,9 +184,12 @@ public class Eip8141ScenarioTests
                          + 2 * 475UL
                          + 100 // ARBITRARY signature verification cost
                          + Math.Max(tokens * 4 + frameGasUsed, floorTokens * 16); // EIP-7976 floor rate
-        Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
-            "the refund must return exactly max cost minus charged gas at the effective price");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
+                "the refund must return exactly max cost minus charged gas at the effective price");
+        }
     }
 
     [Test]
@@ -356,14 +362,17 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(receipt.Payer, Is.EqualTo(Sponsor), "the receipt must report the sponsor as payer");
-        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(_stateProvider.GetBalance(Sponsor), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
-            "gas is charged to the sponsor");
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the sender pays nothing");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL), "payment approval consumes the sender nonce");
-        Assert.That(_stateProvider.GetNonce(Sponsor), Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Payer, Is.EqualTo(Sponsor), "the receipt must report the sponsor as payer");
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(_stateProvider.GetBalance(Sponsor), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
+                "gas is charged to the sponsor");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the sender pays nothing");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL), "payment approval consumes the sender nonce");
+            Assert.That(_stateProvider.GetNonce(Sponsor), Is.Zero);
+        }
     }
 
     // Spec Example 2: an ERC-20-style approval batched with a swap — if the swap reverts, neither the
@@ -396,18 +405,24 @@ public class Eip8141ScenarioTests
         Assert.That(FrameStatuses(receipt), Is.EqualTo(expectedStatuses));
         AssertStorage(token, 0, swapReverts ? UInt256.Zero : UInt256.One,
             swapReverts ? "the approval must be rolled back with the batch — no dangling allowance" : "the committed approval must persist");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
-            "payment approval precedes the batch and survives its outcome");
-        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
+                "payment approval precedes the batch and survives its outcome");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        }
 
         if (swapReverts)
         {
             // An unrolled batch discards earlier frames' logs with their state, keeping status and gas_used.
-            Assert.That(receipt.FrameReceipts![1].Logs, Is.Empty,
-                "the unrolled frame's per-frame receipt logs must be discarded");
-            Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
-                "the unrolled frame retains its recorded gas_used");
-            Assert.That(receipt.Logs, Is.Empty, "no logs survive the unrolled batch");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.FrameReceipts![1].Logs, Is.Empty,
+                    "the unrolled frame's per-frame receipt logs must be discarded");
+                Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
+                    "the unrolled frame retains its recorded gas_used");
+                Assert.That(receipt.Logs, Is.Empty, "no logs survive the unrolled batch");
+            }
         }
         else
         {
@@ -448,21 +463,26 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
         {
             TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
             TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess,
         }));
+#pragma warning restore NUnit2045
         Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
             "the pre-batch frame's log survives — the clear window must not reach below the batch start");
         Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "the unrolled batch frame's log is discarded");
         Assert.That(receipt.FrameReceipts[4].Logs, Has.Length.EqualTo(1),
             "the post-batch frame's log survives — the clear window must not run past the batch");
         Assert.That(receipt.Logs, Has.Length.EqualTo(2), "exactly the pre- and post-batch logs survive the unroll");
-        Assert.That(receipt.Logs![0], Is.SameAs(receipt.FrameReceipts[1].Logs[0]),
-            "the first surviving tx log is the pre-batch frame's log");
-        Assert.That(receipt.Logs[1], Is.SameAs(receipt.FrameReceipts[4].Logs[0]),
-            "the second surviving tx log is the post-batch frame's log — frame order is preserved");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Logs![0], Is.SameAs(receipt.FrameReceipts[1].Logs[0]),
+                "the first surviving tx log is the pre-batch frame's log");
+            Assert.That(receipt.Logs[1], Is.SameAs(receipt.FrameReceipts[4].Logs[0]),
+                "the second surviving tx log is the post-batch frame's log — frame order is preserved");
+        }
         AssertBloomAndReceiptLogsAgree(receipt);
     }
 
@@ -559,6 +579,7 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
         {
             TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
@@ -566,6 +587,7 @@ public class Eip8141ScenarioTests
             secondBatchReverts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess,
             TxFrameReceipt.StatusSuccess,
         }));
+#pragma warning restore NUnit2045
         Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the pre-batch log survives both batches");
         Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "batch A unrolled — its log is discarded");
         Assert.That(receipt.FrameReceipts[4].Logs, Has.Length.EqualTo(1),
@@ -584,21 +606,27 @@ public class Eip8141ScenarioTests
     {
         LogEntry[] frameOrderConcatenation = receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray();
         // Same LogEntry references, so reference equality is enough to pin contents and order.
-        Assert.That(receipt.Logs, Is.EqualTo(frameOrderConcatenation),
-            "the tx log set must be the frame-order concatenation of the surviving frame logs");
-        Assert.That(receipt.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
-            "the producer header bloom must reflect exactly the surviving frame logs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Logs, Is.EqualTo(frameOrderConcatenation),
+                "the tx log set must be the frame-order concatenation of the surviving frame logs");
+            Assert.That(receipt.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
+                "the producer header bloom must reflect exactly the surviving frame logs");
+        }
 
         ReceiptMessageDecoder decoder = new();
         byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
         RlpReader reader = new(encoded);
         TxReceipt decoded = decoder.Decode(ref reader)!;
 
-        Assert.That(decoded.Logs!.Length, Is.EqualTo(frameOrderConcatenation.Length),
-            "the wire receipt (hashed into the receipts root) must carry the same logs as the bloom reflects");
-        // LogEntry has no value equality, so compare the derived bloom rather than the entries.
-        Assert.That(decoded.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
-            "the receipts-root logs and the header bloom must agree");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Logs!.Length, Is.EqualTo(frameOrderConcatenation.Length),
+                "the wire receipt (hashed into the receipts root) must carry the same logs as the bloom reflects");
+            // LogEntry has no value equality, so compare the derived bloom rather than the entries.
+            Assert.That(decoded.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
+                "the receipts-root logs and the header bloom must agree");
+        }
     }
 
     // EIP-8141 § Expiry Verifier Frame: reverts unless block.timestamp <= the 8-byte calldata expiry,
@@ -626,9 +654,12 @@ public class Eip8141ScenarioTests
         else
         {
             TxReceipt receipt = ProcessBlock(tx)[0];
-            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+                Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
+            }
         }
     }
 
@@ -648,11 +679,14 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.FrameReceipts![2].GasUsed, Is.LessThan(receipt.FrameReceipts[1].GasUsed),
-            "the slot touched by the previous frame must be warm");
-        Assert.That(receipt.FrameReceipts[3].GasUsed, Is.EqualTo(receipt.FrameReceipts[2].GasUsed),
-            "warm cost must be stable across further frames");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts![2].GasUsed, Is.LessThan(receipt.FrameReceipts[1].GasUsed),
+                "the slot touched by the previous frame must be warm");
+            Assert.That(receipt.FrameReceipts[3].GasUsed, Is.EqualTo(receipt.FrameReceipts[2].GasUsed),
+                "warm cost must be stable across further frames");
+        }
     }
 
     // EIP-8141 § Cross-frame interactions: a reverted frame's touches must not warm later frames.
@@ -677,13 +711,16 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        using (Assert.EnterMultipleScope())
         {
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
-        }));
-        Assert.That(receipt.FrameReceipts![2].GasUsed, Is.GreaterThan(receipt.FrameReceipts[3].GasUsed),
-            "the first probe must pay cold access — the reverted frame's touch was rolled back");
+            Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+            {
+                TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+                TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            }));
+            Assert.That(receipt.FrameReceipts![2].GasUsed, Is.GreaterThan(receipt.FrameReceipts[3].GasUsed),
+                "the first probe must pay cold access — the reverted frame's touch was rolled back");
+        }
     }
 
     // Cumulative gas must chain across the type boundary. The regular transfer targets a fresh account,
@@ -708,10 +745,13 @@ public class Eip8141ScenarioTests
 
         TxReceipt[] receipts = ProcessBlock(legacyTx, frameTx);
 
-        Assert.That(receipts.Select(static r => r.TxType), Is.EqualTo(new[] { TxType.Legacy, TxType.FrameTx }));
-        Assert.That(receipts.Select(static r => r.StatusCode), Has.All.EqualTo(StatusCode.Success));
-        Assert.That(receipts[1].GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal + receipts[1].GasUsed),
-            "cumulative gas must chain across the legacy/frame boundary");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts.Select(static r => r.TxType), Is.EqualTo(new[] { TxType.Legacy, TxType.FrameTx }));
+            Assert.That(receipts.Select(static r => r.StatusCode), Has.All.EqualTo(StatusCode.Success));
+            Assert.That(receipts[1].GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal + receipts[1].GasUsed),
+                "cumulative gas must chain across the legacy/frame boundary");
+        }
 
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(Spec, receipts, new ReceiptMessageDecoder());
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
@@ -728,10 +768,13 @@ public class Eip8141ScenarioTests
 
         TxReceipt[] receipts = ProcessBlock(first, second);
 
-        Assert.That(receipts.Select(static r => r.StatusCode), Has.All.EqualTo(StatusCode.Success));
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(2UL));
-        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)300));
-        Assert.That(receipts[1].GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal + receipts[1].GasUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts.Select(static r => r.StatusCode), Has.All.EqualTo(StatusCode.Success));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(2UL));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)300));
+            Assert.That(receipts[1].GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal + receipts[1].GasUsed));
+        }
 
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(Spec, receipts, new ReceiptMessageDecoder());
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
@@ -808,11 +851,14 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.Zero,
-            "the creating frame's state gas is refunded to it once the later frame reverses the slot");
-        Assert.That(receipt.FrameReceipts![2].StateGasUsed, Is.Zero,
-            "the reversing frame is not credited state gas it never charged");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.Zero,
+                "the creating frame's state gas is refunded to it once the later frame reverses the slot");
+            Assert.That(receipt.FrameReceipts![2].StateGasUsed, Is.Zero,
+                "the reversing frame is not credited state gas it never charged");
+        }
         AssertStorage(slotOwner, 0, 0, "the reversing frame clears the slot");
     }
 
@@ -834,12 +880,15 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        using (Assert.EnterMultipleScope())
         {
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
-        }));
-        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
-            "a reverted frame's refill to the creating frame is undone");
+            Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+            {
+                TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+            }));
+            Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
+                "a reverted frame's refill to the creating frame is undone");
+        }
         AssertStorage(slotOwner, 0, 1, "the reverted frame's clear is rolled back");
     }
 
@@ -864,9 +913,12 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
-            "an inner-call reversal that is itself reverted must not reduce the creating frame's state gas");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
+                "an inner-call reversal that is itself reverted must not reduce the creating frame's state gas");
+        }
         AssertStorage(slotOwner, 0, 1, "the inner-call reversal is rolled back");
     }
 
@@ -924,14 +976,17 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        using (Assert.EnterMultipleScope())
         {
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
-        }));
-        Assert.That(_stateProvider.GetBalance(freshTarget), Is.EqualTo(UInt256.Zero),
-            "the underfunded entry charge must fail the frame before the value transfer creates the account");
-        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.Zero,
-            "a frame that halts on its entry charge owes no state gas");
+            Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+            {
+                TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+            }));
+            Assert.That(_stateProvider.GetBalance(freshTarget), Is.EqualTo(UInt256.Zero),
+                "the underfunded entry charge must fail the frame before the value transfer creates the account");
+            Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.Zero,
+                "a frame that halts on its entry charge owes no state gas");
+        }
     }
 
     private static byte[] ToggleSlotZeroCode() =>

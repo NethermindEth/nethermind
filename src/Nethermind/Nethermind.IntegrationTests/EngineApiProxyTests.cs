@@ -45,11 +45,13 @@ public class EngineApiProxyTests
     {
         if (_proxyContainer is not null)
         {
+            await _proxyContainer.WriteDiagnosticLogsAsync("EngineApiProxy");
             await _proxyContainer.DisposeAsync();
             _proxyContainer = null;
         }
         if (_nethermindContainer is not null)
         {
+            await _nethermindContainer.WriteDiagnosticLogsAsync("Nethermind");
             await _nethermindContainer.DisposeAsync();
             _nethermindContainer = null;
         }
@@ -157,9 +159,12 @@ public class EngineApiProxyTests
 
         JsonNode fcuResult = await Utils.SendEngineRequestAsync(proxyClient, "engine_forkchoiceUpdatedV3", forkchoiceState, payloadAttributes);
 
-        Assert.That(fcuResult["payloadStatus"]["status"].GetValue<string>(), Is.EqualTo("VALID"));
-        Assert.That(fcuResult["payloadStatus"]["latestValidHash"].GetValue<string>(), Is.EqualTo(parentHash));
-        Assert.That(fcuResult["payloadId"], Is.Null, "Merged mode hides payloadId from CL even when EL produced one");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcuResult["payloadStatus"]["status"].GetValue<string>(), Is.EqualTo("VALID"));
+            Assert.That(fcuResult["payloadStatus"]["latestValidHash"].GetValue<string>(), Is.EqualTo(parentHash));
+            Assert.That(fcuResult["payloadId"], Is.Null, "Merged mode hides payloadId from CL even when EL produced one");
+        }
     }
 
     [Test]

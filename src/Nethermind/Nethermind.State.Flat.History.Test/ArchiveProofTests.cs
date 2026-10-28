@@ -2223,7 +2223,9 @@ public class ArchiveProofTests
     public void Physical_floors_read_back_what_this_instance_raised_and_what_another_persisted()
     {
         using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(metadata.DroppedThroughEpoch, Is.Zero);
+#pragma warning restore NUnit2045
         Assert.That(metadata.TryRaiseDroppedThroughEpoch(3), Is.True);
         using (Assert.EnterMultipleScope())
         {
