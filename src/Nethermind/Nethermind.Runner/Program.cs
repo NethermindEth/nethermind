@@ -143,6 +143,17 @@ async Task<int> ConfigureAsync(string[] args)
     parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
     parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
 
+    // The default error action follows the errors with the help for every config option, which buries them.
+    if (parseResult.Action is ParseErrorAction)
+    {
+        foreach (ParseError error in parseResult.Errors)
+            logger.Error(error.Message);
+
+        logger.Error("Run with --help to list the available options. An option that worked in an earlier version may have been removed; check the release notes.");
+
+        return ExitCodes.GeneralError;
+    }
+
     try
     {
         return await parseResult.InvokeAsync();
@@ -547,7 +558,16 @@ static class BasicOptions
     public static Argument<string?> Command { get; } = new("command")
     {
         Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
-        Arity = ArgumentArity.ZeroOrOne
+        Arity = ArgumentArity.ZeroOrOne,
+        // An unrecognized option is otherwise taken as the command name.
+        Validators =
+        {
+            static result =>
+            {
+                if (result.Tokens is [Token token] && token.Value.StartsWith('-'))
+                    result.AddError($"Unrecognized option '{token.Value}'.");
+            }
+        }
     };
 
     public static Option<string> Configuration { get; } =
