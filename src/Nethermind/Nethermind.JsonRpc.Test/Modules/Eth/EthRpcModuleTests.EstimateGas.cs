@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -28,7 +29,6 @@ using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using System.Text;
-using Nethermind.Abi;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -83,6 +83,33 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"], Is.Null, response);
         if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
         else Assert.That(parsed["result"]!["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task FrameGas_rejects_unsupported_overrides_before_frame_validation(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values("beaconRoot", "withdrawals", "both", "null")] string field)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.Frames![1].Mode = byte.MaxValue;
+        object blockOverride = JsonSerializer.Deserialize<object>(field switch
+        {
+            "beaconRoot" => $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}",
+            "withdrawals" => """{"withdrawals": []}""",
+            "both" => $"{{\"beaconRoot\":\"{Hash256.Zero}\",\"withdrawals\":[]}}",
+            _ => """{"beaconRoot":null,"withdrawals":null}"""
+        })!;
+
+        string response = await ctx.Test.TestEthRpc(method, request, "latest", null, blockOverride);
+        string expectedMessage = field switch
+        {
+            "withdrawals" => BlockOverride.WithdrawalsNotSupported,
+            "null" => FrameTxValidation.InvalidMode,
+            _ => BlockOverride.BeaconRootNotSupported
+        };
+
+        AssertCallBlockOverrideError(JToken.Parse(response)["error"], expectedMessage, response);
     }
 
     [Test]
@@ -994,17 +1021,9 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        AbiEncoder abiEncoder = new();
-        AbiSignature errorSignature = new(
-            "Error",
-            AbiType.String
-        );
+        AbiSignature<string> errorSignature = new AbiSignature("Error").With(AbiType.String);
         string errorMessage = "wrong-parameters";
-        byte[] encodedError = abiEncoder.Encode(
-            AbiEncodingStyle.IncludeSignature,  // Include the 0x08c379a0 selector
-            errorSignature,
-            errorMessage
-        );
+        byte[] encodedError = AbiCodec.Encode(errorSignature, errorMessage);
         string abiEncodedErrorMessage = encodedError.ToHexString(true);
 
         byte[] code = Prepare.EvmCode
