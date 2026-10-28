@@ -1403,8 +1403,8 @@ public partial class EthRpcModule(
 
             return new ForkConfig
             {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
+                ActivationTime = fork.Value.Activation.Timestamp,
+                ActivationBlock = fork.Value.Activation.Timestamp is null ? fork.Value.Activation.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
