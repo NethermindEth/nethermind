@@ -98,7 +98,8 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<ValueHash256, CellRequestState> _sentCellRequests = [];
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
     private readonly PooledTransactionRequests _sentPooledTransactionRequests = new(MaxSentCellRequests);
-    private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
+    // The type each counted cell announcement claimed, restored with the announcement after a backoff.
+    private readonly ClockCache<ValueHash256, TxType> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
     private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
         static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
     private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
@@ -486,14 +487,14 @@ public class Eth72ProtocolHandler(
                     continue;
                 }
 
-                if (_countedBlobAnnouncements.Set(hash, 1))
+                if (_countedBlobAnnouncements.Set(hash, txType))
                 {
                     Interlocked.Increment(ref _blobAnnouncementsReceived);
                 }
             }
 
-            // A dependency-bearing frame transaction's body comes only with its covering proof wrapper; asking for it is
-            // answered as unavailable (EIP-8437).
+            // An announcement does not say whether a frame transaction is dependency-bearing, so its body is requested even though
+            // a dependency-bearing one comes only with its covering proof wrapper and the request is answered as unavailable (EIP-8437).
             bool shouldRequestTx = !_txPool.IsKnown(hash)
                 && _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired;
 
@@ -1681,8 +1682,10 @@ public class Eth72ProtocolHandler(
                 Hash256 hash = key.ToHash256();
                 // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
                 // peer is at its announcement cap or the transaction is quarantined, and dropping the
-                // mask there would lose the provider for good.
-                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask))
+                // mask there would lose the provider for good. The announced type goes back too: tracked
+                // state that expired during the backoff would otherwise take the restored claim for type 3.
+                TxType? restoreType = _countedBlobAnnouncements.TryGet(key, out TxType announcedType) ? announcedType : null;
+                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask, restoreType))
                 {
                     lock (_cellStateLock)
                     {

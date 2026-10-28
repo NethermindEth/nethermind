@@ -3671,6 +3671,35 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
+    // The restored announcement carries the type the peer announced, so tracked state that expired during the backoff does
+    // not take it for a type-3 claim.
+    [Test]
+    public void should_restore_announcement_with_its_announced_type()
+    {
+        ISparseBlobPoolPeerRegistry registry = Substitute.For<ISparseBlobPoolPeerRegistry>();
+        registry.TryRequestCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<PublicKey>()).Returns(true);
+        registry.RemoveAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>()).Returns(BlobCellMask.Full);
+        registry.RecordAnnouncement(Arg.Any<ISparseBlobPoolPeer>(), Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<TxType?>()).Returns(true);
+        RecreateHandler(sparseBlobPoolPeerRegistry: registry);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        _transactionPool.IsKnown(tx.Hash!).Returns(true);
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+
+        HandleIncomingStatusMessage();
+        using NewPooledTransactionHashesMessage72 announcement = new([(byte)TxType.Blob], [1024], [tx.Hash!], BlobCellMask.Full.ToBytes());
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        ParkEmptyCellsResponse(tx.Hash!, cellMask);
+
+        registry.ClearReceivedCalls();
+        ((ISparseBlobPoolPeer)_handler).MaintainSparseBlobState(DateTimeOffset.UtcNow + TimeSpan.FromSeconds(6));
+
+        registry.Received(1).RecordAnnouncement(_handler, tx.Hash!, BlobCellMask.Full, TxType.Blob);
+    }
+
     // A peer that announces full custody but never answers cells requests must not be restored as a
     // provider forever: each restore re-arms the retry and the registry lifetime.
     [Test]

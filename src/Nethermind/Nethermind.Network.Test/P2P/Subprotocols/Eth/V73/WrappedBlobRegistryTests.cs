@@ -132,6 +132,20 @@ public class WrappedBlobRegistryTests
         }
     }
 
+    [Test]
+    public void A_body_from_a_disconnected_source_is_refused()
+    {
+        Peer source = Connect(0);
+        _registry.RemovePeer(source);
+        using Pin pin = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_registry.Admit(BlobFrameTransaction(1), source, pin), Is.EqualTo(AcceptTxResult.IncompleteBlobData));
+            Assert.That(pin.Disposed, Is.True);
+            Assert.That(_registry.WrappedCount, Is.Zero);
+        }
+    }
+
     // A body nobody announces cells for expires after 30 seconds; one with a provider is kept for the tracked-state lifetime.
     [Test]
     public void Unannounced_wrapped_bodies_expire_sooner()

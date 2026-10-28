@@ -61,6 +61,13 @@ public sealed partial class SparseBlobPoolPeerRegistry
             return AcceptTxResult.Accepted;
         }
 
+        // A body from a peer that has disconnected would be held uncharged until it expires.
+        if (peer is not null && sourceId is null)
+        {
+            proofPin.Dispose();
+            return AcceptTxResult.IncompleteBlobData.WithMessage("The wrapper's source peer disconnected.");
+        }
+
         AcceptTxResult valid = _txPool.ValidateTxForBlobSampling(transaction);
         if (!valid)
         {
@@ -81,8 +88,7 @@ public sealed partial class SparseBlobPoolPeerRegistry
         if (!_wrapped.TryAdd(hash.ValueHash256, entry))
         {
             ReleaseWrapped(entry, hash.ValueHash256);
-            proofPin.Dispose();
-            return Admit(transaction, source, NoPin.Instance);
+            return Admit(transaction, source, proofPin);
         }
 
         // The source may have disconnected while this was added, after its bodies were dropped.
@@ -472,11 +478,5 @@ public sealed partial class SparseBlobPoolPeerRegistry
             copy.ClearLengthCache();
             return copy;
         }
-    }
-
-    private sealed class NoPin : IDisposable
-    {
-        public static readonly NoPin Instance = new();
-        public void Dispose() { }
     }
 }
