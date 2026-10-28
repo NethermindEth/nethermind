@@ -28,10 +28,13 @@ public class IReleaseSpecExtensionsTests
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         enable(spec, true);
         IReleaseSpec wrapper = wrap(spec);
-        Assert.That(wrapper, Is.Not.SameAs(spec));
-        Assert.That(isEnabled(wrapper), Is.False);
-        Assert.That(wrap(spec), Is.SameAs(wrapper));
-        Assert.That(wrap(wrapper), Is.SameAs(wrapper));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapper, Is.Not.SameAs(spec));
+            Assert.That(isEnabled(wrapper), Is.False);
+            Assert.That(wrap(spec), Is.SameAs(wrapper));
+            Assert.That(wrap(wrapper), Is.SameAs(wrapper));
+        }
 
         IReleaseSpec otherSpec = ReleaseSpecSubstitute.Create();
         enable(otherSpec, true);

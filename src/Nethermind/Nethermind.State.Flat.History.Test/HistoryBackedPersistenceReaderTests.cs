@@ -350,8 +350,11 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         UInt256 value = default;
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        }
     }
 
     [Test]

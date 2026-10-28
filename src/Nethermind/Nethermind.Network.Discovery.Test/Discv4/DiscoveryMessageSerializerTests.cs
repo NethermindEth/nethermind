@@ -250,8 +250,11 @@ public class DiscoveryMessageSerializerTests
 
         PingMsg ping = _messageSerializationService.Deserialize<PingMsg>(Bytes.FromHexString(devp2pDiscoveryOnlyPing));
 
-        Assert.That(ping.SourceAddress, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 62139)));
-        Assert.That(ping.DestinationAddress, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 32101)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ping.SourceAddress, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 62139)));
+            Assert.That(ping.DestinationAddress, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 32101)));
+        }
     }
 
     [Test]
@@ -369,8 +372,11 @@ public class DiscoveryMessageSerializerTests
         EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
         EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
-        Assert.That(deserialized.ExpirationTime, Is.EqualTo(msg.ExpirationTime));
-        Assert.That(_privateKey.PublicKey, Is.EqualTo(deserialized.FarPublicKey));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.ExpirationTime, Is.EqualTo(msg.ExpirationTime));
+            Assert.That(_privateKey.PublicKey, Is.EqualTo(deserialized.FarPublicKey));
+        }
     }
 
     [Test]
@@ -386,7 +392,9 @@ public class DiscoveryMessageSerializerTests
         EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(input);
         Array.Clear(packet);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(deserialized.Hash, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(new Hash256(deserialized.Hash!.Value), Is.EqualTo(expectedHash));
     }
 

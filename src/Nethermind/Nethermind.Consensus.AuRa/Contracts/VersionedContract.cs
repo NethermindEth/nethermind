@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     versionNumber = _versionSelectorContract.ContractVersion(blockHeader);
                     _versionsCache.Set(blockHeader.Hash, versionNumber);
                 }
-                catch (AbiException ex)
+                catch (ContractException ex)
                 {
                     if (_logger.IsDebug) _logger.Debug($"The contract version set to 1: {ex}");
                     versionNumber = UInt256.One;

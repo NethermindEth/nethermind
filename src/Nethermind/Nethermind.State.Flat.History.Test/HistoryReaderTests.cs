@@ -53,8 +53,12 @@ public class HistoryReaderTests
     {
         HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
-        Assert.That(_reader.TryGetAccount(3, Address, out _), Is.False);
-        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct first), Is.True);
+        AccountStruct first;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.TryGetAccount(3, Address, out _), Is.False);
+            Assert.That(_reader.TryGetAccount(10, Address, out first), Is.True);
+        }
 
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 2, new Account(2, 200));
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 8, new Account(8, 800));
@@ -383,8 +387,11 @@ public class HistoryReaderTests
             if (storage)
             {
                 UInt256 value = default;
-                Assert.That(reader.TryGetSlot(addresses[i], Slot, ref value), Is.True);
-                Assert.That(value, Is.EqualTo((UInt256)0x55));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.TryGetSlot(addresses[i], Slot, ref value), Is.True);
+                    Assert.That(value, Is.EqualTo((UInt256)0x55));
+                }
             }
             else
             {

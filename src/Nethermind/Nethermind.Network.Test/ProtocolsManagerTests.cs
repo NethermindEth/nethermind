@@ -84,10 +84,13 @@ public class ProtocolsManagerTests
             session,
             new DisconnectEventArgs(DisconnectReason.Other, DisconnectType.Remote, "test"));
 
-        Assert.That(initializedHandler, Is.Not.Null);
-        Assert.That(session.AddedDisconnectedHandler, Is.Null);
-        Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
-        Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initializedHandler, Is.Not.Null);
+            Assert.That(session.AddedDisconnectedHandler, Is.Null);
+            Assert.That(session.RemovedInitializedHandler, Is.SameAs(initializedHandler));
+            Assert.That(session.RemovedDisconnectedHandler, Is.Null);
+        }
     }
 
     [TestCase(DisconnectReason.TooManyPeers, DisconnectType.Remote)]
@@ -146,13 +149,19 @@ public class ProtocolsManagerTests
         ProtocolsManager manager = BuildManagerWithResolvers(resolver);
 
         Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+            Assert.That(resolver.ResolveCount, Is.EqualTo(1), "advertised capabilities should be cached across calls");
+        }
 
         resolver.RaiseChanged();
 
-        Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
-        Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
+            Assert.That(resolver.ResolveCount, Is.EqualTo(2), "cache should rebuild after a resolver signals a change");
+        }
     }
 
     private static ProtocolsManager BuildManagerWithResolvers(params IP2PCapabilityResolver[] resolvers) =>
@@ -411,10 +420,13 @@ public class ProtocolsManagerTests
         public Context VerifyEthInitialized()
         {
             INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-            Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
-            Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
-            Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
-            Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
+                Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
+                Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(68));
+                Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
+            }
             return this;
         }
 
@@ -571,7 +583,9 @@ public class ProtocolsManagerTests
     public void Persists_verified_enr_after_protocol_initialization()
     {
         NodeRecord record = CreateSignedRecord("35.0.0.1", includeIpv6: true);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
         When.CreateOutgoingSession(node)

@@ -93,7 +93,8 @@ namespace Nethermind.Facade
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
-        bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
+        /// <returns>The installed log filter, or <c>null</c> if <paramref name="filterId"/> does not identify one.</returns>
+        LogFilter? GetLogFilter(int filterId);
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
