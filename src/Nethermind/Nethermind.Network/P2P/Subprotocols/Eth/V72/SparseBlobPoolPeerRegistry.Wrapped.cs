@@ -203,7 +203,7 @@ public sealed partial class SparseBlobPoolPeerRegistry
             typeThreeClaimersOnly = true;
             foreach (PublicKey announcer in state.Announcements.Keys)
             {
-                if (ClaimedType(state, announcer) != TxType.FrameTx)
+                if (ClaimedType(state, announcer) is { } claimed && claimed != TxType.FrameTx)
                 {
                     return true;
                 }
@@ -213,22 +213,24 @@ public sealed partial class SparseBlobPoolPeerRegistry
         }
     }
 
-    /// <summary>Under <c>state.Lock</c>, adds the announcers that claimed a frame transaction to <paramref name="excluded"/>.</summary>
+    /// <summary>Under <c>state.Lock</c>, adds the announcers that claimed a frame transaction, or whose claim is unknown, to
+    /// <paramref name="excluded"/>.</summary>
     private static void ExcludeFrameClaimers(TrackedSparseBlobTx state, ref HashSet<PublicKey>? excluded)
     {
         foreach (PublicKey announcer in state.Announcements.Keys)
         {
-            if (ClaimedType(state, announcer) == TxType.FrameTx)
+            if (ClaimedType(state, announcer) is null or TxType.FrameTx)
             {
                 (excluded ??= []).Add(announcer);
             }
         }
     }
 
-    private static TxType ClaimedType(TrackedSparseBlobTx state, PublicKey announcer)
-        => state.AnnouncedTypes.TryGetValue(announcer, out TxType type) ? type : TxType.Blob;
+    /// <summary>The type <paramref name="announcer"/> claimed: type 3 when it stated none, null when a restore left it unknown.</summary>
+    private static TxType? ClaimedType(TrackedSparseBlobTx state, PublicKey announcer)
+        => state.AnnouncedTypes.TryGetValue(announcer, out TxType? type) ? type : TxType.Blob;
 
-    private static TxType ClaimedTypeLocked(TrackedSparseBlobTx state, PublicKey announcer)
+    private static TxType? ClaimedTypeLocked(TrackedSparseBlobTx state, PublicKey announcer)
     {
         lock (state.Lock)
         {
@@ -252,7 +254,7 @@ public sealed partial class SparseBlobPoolPeerRegistry
             state.BodyDependencyBearing = Eip8288Dependencies.IsDependencyBearing(body);
             foreach (PublicKey announcer in state.Announcements.Keys)
             {
-                if (ClaimedType(state, announcer) != body.Type)
+                if (ClaimedType(state, announcer) is { } claimed && claimed != body.Type)
                 {
                     (mismatched ??= []).Add(announcer);
                 }

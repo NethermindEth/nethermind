@@ -132,6 +132,26 @@ public class WrappedBlobRegistryTests
         }
     }
 
+    // A restore whose type the handler no longer holds, into tracked state that expired during the backoff, is an unknown claim:
+    // it keeps cells gated until the body is known and is never taken for a type mismatch.
+    [Test]
+    public void An_unknown_restored_type_keeps_cells_gated_and_is_never_a_mismatch()
+    {
+        Peer peer = Connect(0);
+        Transaction blob = BlobFrameTransaction(1);
+        Hash256 hash = blob.Hash!;
+        Assert.That(_registry.RestoreAnnouncement(peer, hash, BlobCellMask.Full, null), Is.True);
+        Assert.That(_registry.TryRequestCells(hash, BlobCellMask.Full, peer.Id), Is.False, "an unknown claim does not open the frame gate");
+
+        using Pin pin = new();
+        Assert.That(_registry.Admit(blob, peer, pin), Is.EqualTo(AcceptTxResult.Accepted));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.Disconnects, Is.Empty);
+            Assert.That(_registry.HasRecordedTransaction(hash), Is.True);
+        }
+    }
+
     [Test]
     public void A_body_from_a_disconnected_source_is_refused()
     {

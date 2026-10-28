@@ -1680,12 +1680,12 @@ public class Eth72ProtocolHandler(
             {
                 (ValueHash256 key, BlobCellMask restoreMask, long restoreEpoch) = dueRetries[i];
                 Hash256 hash = key.ToHash256();
-                // Restoring is one-shot only once it lands: RecordAnnouncement also refuses when the
+                // Restoring is one-shot only once it lands: RestoreAnnouncement also refuses when the
                 // peer is at its announcement cap or the transaction is quarantined, and dropping the
-                // mask there would lose the provider for good. The announced type goes back too: tracked
-                // state that expired during the backoff would otherwise take the restored claim for type 3.
+                // mask there would lose the provider for good. The announced type goes back too, so tracked
+                // state that expired during the backoff does not take the restored claim for type 3.
                 TxType? restoreType = _countedBlobAnnouncements.TryGet(key, out TxType announcedType) ? announcedType : null;
-                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, restoreMask, restoreType))
+                if (!restoreMask.IsEmpty && _sparseBlobPoolPeerRegistry.RestoreAnnouncement(this, hash, restoreMask, restoreType))
                 {
                     lock (_cellStateLock)
                     {

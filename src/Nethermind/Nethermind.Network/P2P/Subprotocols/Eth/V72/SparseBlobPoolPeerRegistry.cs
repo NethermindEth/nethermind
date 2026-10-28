@@ -470,6 +470,16 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
 
     /// <inheritdoc/>
     public bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType = null)
+        => RecordAnnouncement(peer, hash, announcementMask, announcedType, unknownIfUnclaimed: false);
+
+    /// <inheritdoc/>
+    public bool RestoreAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType)
+        => RecordAnnouncement(peer, hash, announcementMask, announcedType, unknownIfUnclaimed: true);
+
+    /// <param name="unknownIfUnclaimed">Whether a null <paramref name="announcedType"/> records an unknown claim for a peer without
+    /// one, rather than leaving the type-3 default.</param>
+    private bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType,
+        bool unknownIfUnclaimed)
     {
         if (announcementMask.IsEmpty || !IsActivePeer(peer))
         {
@@ -501,12 +511,12 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
         bool mismatched = false;
         lock (state.Lock)
         {
-            if (announcedType is { } claimed)
+            if (announcedType is not null || unknownIfUnclaimed && !state.AnnouncedTypes.ContainsKey(peer.Id))
             {
-                state.AnnouncedTypes[peer.Id] = claimed;
+                state.AnnouncedTypes[peer.Id] = announcedType;
             }
 
-            mismatched = state.BodyType is { } bodyType && ClaimedType(state, peer.Id) != bodyType;
+            mismatched = state.BodyType is { } bodyType && ClaimedType(state, peer.Id) is { } claimedType && claimedType != bodyType;
             if (!mismatched
                 && IsCurrentState(hash, state)
                 && IsActivePeer(peer)
@@ -2743,7 +2753,8 @@ public sealed partial class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegi
         public bool ApplyingRecordedCells { get; set; }
 
         /// <summary>The transaction type each announcer claimed; type-3 when absent.</summary>
-        public Dictionary<PublicKey, TxType> AnnouncedTypes { get; } = [];
+        /// <summary>Each announcer's claimed type; null when a restored announcement's type is unknown, and type 3 when absent.</summary>
+        public Dictionary<PublicKey, TxType?> AnnouncedTypes { get; } = [];
 
         /// <summary>The recorded body's type, once known; it, not an announcement, decides how cells are gated.</summary>
         public TxType? BodyType { get; set; }

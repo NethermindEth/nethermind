@@ -26,6 +26,12 @@ public interface ISparseBlobPoolPeerRegistry : IWrappedBlobTransactionAdmission
     /// <returns><c>true</c> when the announcement is tracked; otherwise <c>false</c>.</returns>
     bool RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType = null);
 
+    /// <summary>Puts back an announcement <see cref="RemoveAnnouncement"/> took for a backoff.</summary>
+    /// <param name="announcedType">The type the peer announced, or null when it is no longer known. A peer with an earlier claim
+    /// keeps it; otherwise an unknown type never counts as a type mismatch, and cells it announced stay gated until the body is
+    /// known.</param>
+    bool RestoreAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask, TxType? announcedType);
+
     /// <summary>Returns the node-wide provider or sampler request mask for an announcement.</summary>
     BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask, int providerProbabilityPercent);
 
