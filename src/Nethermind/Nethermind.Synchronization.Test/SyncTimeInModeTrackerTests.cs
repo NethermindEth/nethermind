@@ -51,10 +51,13 @@ public class SyncTimeInModeTrackerTests
         Advance(3);
         tracker.UpdateMetrics();
 
-        Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.FastBodies], Is.EqualTo(3));
-        Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.FastReceipts], Is.EqualTo(3));
-        // The composite FastBlocks bit must not be double-counted as its own leaf stage.
-        Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.FastHeaders], Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.FastBodies], Is.EqualTo(3));
+            Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.FastReceipts], Is.EqualTo(3));
+            // The composite FastBlocks bit must not be double-counted as its own leaf stage.
+            Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.FastHeaders], Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -68,8 +71,11 @@ public class SyncTimeInModeTrackerTests
         Advance(7);
         tracker.UpdateMetrics();
 
-        Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.WaitingForBlock], Is.EqualTo(2));
-        Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.Full], Is.EqualTo(7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.WaitingForBlock], Is.EqualTo(2));
+            Assert.That(Metrics.SyncTimeInModeSeconds[SyncMode.Full], Is.EqualTo(7));
+        }
     }
 
     [Test]
