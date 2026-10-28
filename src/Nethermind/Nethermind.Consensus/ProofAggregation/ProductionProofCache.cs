@@ -30,6 +30,8 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     private readonly object _provingLock = new();
     private int _producersWaiting;
     private Task? _scheduled;
+    private CancellationTokenSource? _scheduledCancellation;
+    private HashSet<FrameDependency>? _scheduledDeps;
     private (ulong Timestamp, ulong Number) _latestProduction;
 
     /// <summary>How far behind the latest recorded production a pass may start before that record is taken as bogus, such as
@@ -180,6 +182,13 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     /// <summary>Whether a scheduled production statement is still being proven.</summary>
     internal bool IsScheduled => Volatile.Read(ref _scheduled) is { IsCompleted: false };
 
+    /// <summary>Whether a scheduled statement is still being proven and every dependency it covers is in
+    /// <paramref name="needed"/>, so its proof stays useful to a body that needs them.</summary>
+    internal bool IsScheduledWithin(IReadOnlySet<FrameDependency> needed)
+    {
+        lock (_cacheLock) return _scheduled is { IsCompleted: false } && _scheduledDeps!.IsSubsetOf(needed);
+    }
+
     /// <summary>Records a production pass and reports whether no pass for a later slot or a higher block has started.</summary>
     /// <remarks>
     /// Payloads keep improving after the next slot's payload started, and a proposer also prepares the next slot on the
@@ -200,37 +209,57 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
 
     /// <summary>Proves a production statement off the deadline-bound path and publishes it for exact reuse.</summary>
     /// <remarks>
-    /// At most one statement runs at a time; a later request is dropped and repeated by the next production pass that
-    /// still needs it. The statement is proven with producer priority, so background wrapper aggregation yields to it. A later
-    /// slot does not cancel it: a statement that takes longer than a slot would otherwise never finish while dependencies keep
-    /// arriving, whereas a finished one is narrowed or extended by later passes.
+    /// At most one statement runs at a time. The statement is proven with producer priority, so background wrapper aggregation
+    /// yields to it. A later slot alone does not cancel it: a statement that takes longer than a slot would otherwise never
+    /// finish while dependencies keep arriving, whereas a finished one is narrowed or extended by later passes. A newer statement
+    /// supersedes it, cancelling it between fold steps; callers schedule one only once the latest body no longer needs every
+    /// dependency the running one covers (<see cref="IsScheduledWithin"/>).
     /// </remarks>
-    /// <returns>Whether the statement was scheduled.</returns>
-    internal bool TrySchedule(IReadOnlyList<FrameDependency> deps, ValueHash256 depsHash, AggregationInput input, Eip8288Verifier forkVerifier,
+    internal void Schedule(IReadOnlyList<FrameDependency> deps, ValueHash256 depsHash, AggregationInput input, Eip8288Verifier forkVerifier,
         LeanProofStore store)
     {
+        CancellationTokenSource cancellation = new();
+        CancellationTokenSource? superseded;
         lock (_cacheLock)
         {
-            if (_scheduled is { IsCompleted: false }) return false;
+            superseded = _scheduled is { IsCompleted: false } ? _scheduledCancellation : null;
+            _scheduledCancellation = cancellation;
+            _scheduledDeps = [.. deps];
             // The caller's proving scope, if any, must not decide this statement's priority or cancellation.
             using (ExecutionContext.SuppressFlow())
                 _scheduled = Task.Factory.StartNew(Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
+        // Cancellation callbacks may run inline, so they run outside the lock.
+        if (superseded is not null)
+        {
+            try { superseded.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
         if (_logger.IsDebug)
             _logger.Debug($"Scheduled EIP-8288 production proof for {deps.Count} dependencies: {input.Deps.Count} direct, " +
-                $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded");
-        return true;
+                $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded{(superseded is null ? "" : ", superseding the running one")}");
 
         void Run()
         {
             try
             {
-                byte[] proof = RecursiveStarkAggregator.Prove(input, this, forkVerifier, in depsHash, CancellationToken.None);
+                // A started native call still finishes and stays cached when superseded.
+                byte[] proof = RecursiveStarkAggregator.Prove(input, this, forkVerifier, in depsHash, cancellation.Token);
                 store.AddCachedRecursive(deps, proof);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof superseded by a newer statement");
             }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
+            }
+            finally
+            {
+                lock (_cacheLock)
+                    if (_scheduledCancellation == cancellation) _scheduledCancellation = null;
+                cancellation.Dispose();
             }
         }
     }

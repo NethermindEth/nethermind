@@ -249,7 +249,7 @@ public class Eip8288BlockProductionTests
         ProductionProofCache cache = new(verifier);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Assert.That(cache.ObserveProduction(100, 10), Is.True);
-        Assert.That(cache.TrySchedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store), Is.True);
+        cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps), input, Eip8288Verifier.Pinned, store);
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
@@ -263,6 +263,36 @@ public class Eip8288BlockProductionTests
             Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
             Assert.That(store.TryGetRecursiveProof(deps, out _), Is.True);
         }
+    }
+
+    [Test]
+    public async Task Scheduled_statement_is_superseded_only_once_the_body_no_longer_needs_it()
+    {
+        List<FrameDependency> first = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 5)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"superseded-{i}"), default)));
+        List<FrameDependency> second = [new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("superseding"), default)];
+        AggregationInput firstInput = new() { Deps = first, Witnesses = [.. first.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
+        AggregationInput secondInput = new() { Deps = second, Witnesses = [new byte[] { 1 }] };
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        cache.Schedule(first, Eip8288Dependencies.ComputeDepsHash(first), firstInput, Eip8288Verifier.Pinned, store);
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first, .. second])), Is.True, "a body extending it keeps it");
+                Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first.Skip(1), .. second])), Is.False);
+            }
+            cache.Schedule(second, Eip8288Dependencies.ComputeDepsHash(second), secondInput, Eip8288Verifier.Pinned, store);
+        }
+        finally { release.Set(); }
+        Assert.That(() => store.TryGetRecursiveProof(second, out _), Is.True.After(5000, 20));
+        for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
+        Assert.That(store.TryGetRecursiveProof(first, out _), Is.False, "the superseded statement stops between fold steps");
     }
 
     [Test]
@@ -772,6 +802,40 @@ public class Eip8288BlockProductionTests
         HashSet<FrameDependency> all = [.. backlog];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
         Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > 8), Is.False);
+    }
+
+    [Test]
+    public async Task Scheduled_production_proof_passes_over_a_transaction_that_alone_exceeds_the_bound()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency[] wide = [.. Enumerable.Range(0, 9).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"wide-{i}"), default))];
+        foreach (FrameDependency dependency in wide) proofs.AddVerified([dependency], [[1]], null);
+        Transaction oversized = CreateTransaction(chain, wide[0], [(UInt256)100], transaction =>
+        {
+            transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)wide.Length * Eip8288Constants.LeanSphincsVerificationGas,
+                UInt256.Zero, Eip8288Dependencies.Serialize(wide));
+            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+            transaction.GasPrice = 2.GWei;
+        });
+        Assert.That(chain.TxPool.SubmitTx(oversized, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        FrameDependency[] backlog = [.. Enumerable.Range(0, 12).Select(i =>
+            new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"narrow-{i}"), default))];
+        for (int i = 0; i < backlog.Length; i++)
+        {
+            proofs.AddVerified([backlog[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, backlog[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        HashSet<FrameDependency> all = [.. backlog, .. wide];
+        Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == 8), Is.True.After(5000, 20));
+        Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.False);
     }
 
     [TestCase(1, false)]

@@ -307,7 +307,7 @@ public partial class BlockProcessor(
                         IncludableTransactions includable = new(block);
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                         // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
-                        if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
+                        if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
                             ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore, verifier);
                         throw new LeanProofNotReadyException(limit);
                     }
@@ -330,7 +330,7 @@ public partial class BlockProcessor(
     private const int MaxExtensionCandidates = 4;
 
     /// <summary>Estimated cost (<see cref="RecursiveStarkAggregator.EstimatedCost"/>) above which a scheduled statement is cut to
-    /// a nonce-ordered prefix of the body: two recursive merges and a leaf, about two slots on a two-thread prover.</summary>
+    /// a nonce-ordered prefix of the body: two recursive merges and a four-signature leaf, about 50 s at the measured costs.</summary>
     internal const long MaxScheduledStatementCost = 2 * RecursiveStarkAggregator.MergeCost + 4 * RecursiveStarkAggregator.SignatureCost;
 
     /// <summary>Offers the verified recursive proofs of the inclusion lists as reusable statements.</summary>
@@ -379,9 +379,12 @@ public partial class BlockProcessor(
             List<FrameDependency> discards = [];
             foreach (FrameDependency dependency in narrowed.InnerDeps)
                 if (!narrowedNeeded.Contains(dependency)) discards.Add(dependency);
-            _productionProofCache.TrySchedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget),
-                new AggregationInput { RecursiveProofs = [narrowed], Discards = discards }, verifier, store);
-            return;
+            AggregationInput narrowing = new() { RecursiveProofs = [narrowed], Discards = discards };
+            if (RecursiveStarkAggregator.EstimatedCost(narrowing) <= MaxScheduledStatementCost)
+            {
+                _productionProofCache.Schedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget), narrowing, verifier, store);
+                return;
+            }
         }
         HashSet<FrameDependency> pending = includable.NeededAfter(provenLimit);
         if (pending.Count == 0) return;
@@ -398,7 +401,7 @@ public partial class BlockProcessor(
         List<FrameDependency> target = pending.Count == deps.Count ? deps : Eip8288Dependencies.Canonicalize(pending);
         if (store.TryGetRecursiveProof(target, out _)) return;
         ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : Eip8288Dependencies.ComputeDepsHash(target);
-        _productionProofCache.TrySchedule(target, targetHash, scheduled, verifier, store);
+        _productionProofCache.Schedule(target, targetHash, scheduled, verifier, store);
 
         // Folding every witness again, or extending a verified overlapping statement, whichever is estimated cheaper.
         (AggregationInput Input, long Cost) Cheapest(HashSet<FrameDependency> set)
@@ -512,31 +515,49 @@ public partial class BlockProcessor(
         }
 
         /// <summary>The dependencies, within <paramref name="needed"/>, of the longest nonce-ordered run of transactions not kept
-        /// under <paramref name="limit"/> whose proving cost stays within <paramref name="budget"/>; the first such transaction is
-        /// always taken.</summary>
+        /// under <paramref name="limit"/> whose proving cost stays within <paramref name="budget"/>; empty when none fits.</summary>
+        /// <remarks>The run is found by binary search over its length, taking cost to grow with the run, so <paramref name="cost"/>
+        /// is evaluated a logarithmic number of times. A first transaction that alone exceeds the budget is passed over with the rest
+        /// of its nonce domain, at most <see cref="MaxOversizedSkips"/> times.</remarks>
         public HashSet<FrameDependency> BoundedNeed(IReadOnlySet<FrameDependency> limit, IReadOnlySet<FrameDependency> needed,
             Func<HashSet<FrameDependency>, long> cost, long budget)
         {
             bool[] kept = new bool[_dependencies.Length];
             Keep(limit, [], kept);
-            HashSet<(Address?, UInt256)> blocked = [];
-            HashSet<FrameDependency> selected = [];
-            for (int i = 0; i < _dependencies.Length; i++)
+            HashSet<(Address?, UInt256)> skipped = [];
+            for (int attempt = 0; attempt <= MaxOversizedSkips; attempt++)
             {
-                if (kept[i] || blocked.Contains(_domains[i])) continue;
-                HashSet<FrameDependency> candidate = [.. selected];
-                foreach (FrameDependency dependency in _dependencies[i])
-                    if (needed.Contains(dependency)) candidate.Add(dependency);
-                if (candidate.Count == selected.Count) continue;
-                if (selected.Count != 0 && cost(candidate) > budget)
+                List<(List<FrameDependency> Dependencies, (Address?, UInt256) Domain)> run = [];
+                for (int i = 0; i < _dependencies.Length; i++)
                 {
-                    blocked.Add(_domains[i]);
-                    continue;
+                    if (kept[i] || skipped.Contains(_domains[i])) continue;
+                    List<FrameDependency> own = [];
+                    foreach (FrameDependency dependency in _dependencies[i])
+                        if (needed.Contains(dependency)) own.Add(dependency);
+                    if (own.Count != 0) run.Add((own, _domains[i]));
                 }
-                selected = candidate;
+                if (run.Count == 0) break;
+                int fits = 0;
+                for (int low = 1, high = run.Count; low <= high;)
+                {
+                    int middle = low + (high - low) / 2;
+                    if (cost(Prefix(run, middle)) <= budget) (fits, low) = (middle, middle + 1);
+                    else high = middle - 1;
+                }
+                if (fits != 0) return Prefix(run, fits);
+                skipped.Add(run[0].Domain);
             }
-            return selected;
+            return [];
+
+            static HashSet<FrameDependency> Prefix(List<(List<FrameDependency> Dependencies, (Address?, UInt256) Domain)> run, int length)
+            {
+                HashSet<FrameDependency> prefix = [];
+                for (int i = 0; i < length; i++) prefix.UnionWith(run[i].Dependencies);
+                return prefix;
+            }
         }
+
+        private const int MaxOversizedSkips = 4;
 
         /// <summary>The dependencies the body still needs once the transactions kept under <paramref name="limit"/> are included.</summary>
         /// <remarks>
