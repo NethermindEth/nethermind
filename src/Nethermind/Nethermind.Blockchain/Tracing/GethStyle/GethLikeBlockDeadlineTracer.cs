@@ -55,6 +55,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
         try
         {
             TimeSpan duration = options.ResolveTimeout() ?? GethTraceDeadline.DefaultTimeout;
+            ReleaseDeadline();
             _deadline = new(_external, options.DeadlineClock);
             _deadline.Start(duration);
             CheckDeadline();
