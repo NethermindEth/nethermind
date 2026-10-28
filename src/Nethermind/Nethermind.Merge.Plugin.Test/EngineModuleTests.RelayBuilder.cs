@@ -102,11 +102,14 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
-        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
-        Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
+            Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
+            Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [TestCase(
@@ -201,8 +204,11 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        }
 
         mockHttp.VerifyNoOutstandingExpectation();
     }

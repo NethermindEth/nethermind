@@ -60,7 +60,7 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <PackageVersion Include="Nethermind.Crypto.Bls" Version="0.3.17.15" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="0.8.0.42" />
-    <PackageVersion Include="Nethermind.Crypto.SecP256r1" Version="1.2.0" />
+    <PackageVersion Include="Nethermind.Crypto.SecP256r1" Version="1.2.1" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="0.8.0.11" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="0.8.0.11" />

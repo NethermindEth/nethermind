@@ -39,9 +39,12 @@ public class MainStateBlockBuildingChainProcessorTests : ChainProcessorTestsBase
 
         Block? processed = _processor.Process(block, options, NullBlockTracer.Instance);
 
-        Assert.That(processed, Is.Not.Null);
-        Assert.That(BlockTree.Head!.Hash, Is.Not.EqualTo(block.Hash));
-        Assert.That(BranchProcessor.ProcessedBranches, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed, Is.Not.Null);
+            Assert.That(BlockTree.Head!.Hash, Is.Not.EqualTo(block.Hash));
+            Assert.That(BranchProcessor.ProcessedBranches, Is.Not.Empty);
+        }
     }
 
     // The second case is what BlockProducerBase uses with BuildBlocksOnMainState.
@@ -55,8 +58,11 @@ public class MainStateBlockBuildingChainProcessorTests : ChainProcessorTestsBase
 
         Block? processed = _processor.Process(block, options, NullBlockTracer.Instance);
 
-        Assert.That(processed, Is.Null);
-        Assert.That(BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed, Is.Null);
+            Assert.That(BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
     }
 
     [Test]

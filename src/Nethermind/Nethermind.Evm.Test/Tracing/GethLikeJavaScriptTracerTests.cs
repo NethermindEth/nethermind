@@ -697,8 +697,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         string[] counts = ResultJson(traces).Trim('"').Split(':');
         int steps = int.Parse(counts[0]);
-        Assert.That(steps, Is.GreaterThan(0));
-        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps), "postStep must fire once per step");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(steps, Is.GreaterThan(0));
+            Assert.That(int.Parse(counts[1]), Is.EqualTo(steps), "postStep must fire once per step");
+        }
     }
 
     [TestCase("5f5f20", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_fallthrough_to_implicit_stop")]

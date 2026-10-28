@@ -128,14 +128,20 @@ public class SimpleDispatcherTests
         Task first = await Task.WhenAny(runTask, Task.Delay(200, cancellationToken));
         // Surfaces Run's exception in the failure if it faulted early.
         if (first == runTask) await runTask;
-        Assert.That(first, Is.Not.SameAs(runTask));
-        Assert.That(downloader.Started, Is.EqualTo(InFlightCap));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.Not.SameAs(runTask));
+            Assert.That(downloader.Started, Is.EqualTo(InFlightCap));
+        }
 
         downloader.ReleaseAll();
         await runTask.WaitAsync(cancellationToken);
 
-        Assert.That(feed.HandledCount, Is.EqualTo(PeerCount));
-        Assert.That(peerPool.FreedCount, Is.EqualTo(PeerCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.HandledCount, Is.EqualTo(PeerCount));
+            Assert.That(peerPool.FreedCount, Is.EqualTo(PeerCount));
+        }
     }
 
     [Test, CancelAfter(30_000)]
@@ -166,8 +172,11 @@ public class SimpleDispatcherTests
         }
         await runTask.WaitAsync(cancellationToken);
 
-        Assert.That(feed.HandledCount, Is.EqualTo(PeerCount));
-        Assert.That(feed.MaxConcurrentHandling, Is.EqualTo(MaxThreads));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.HandledCount, Is.EqualTo(PeerCount));
+            Assert.That(feed.MaxConcurrentHandling, Is.EqualTo(MaxThreads));
+        }
     }
 
     // With more peers than the cap the loop parks in the in-flight cap wait; with fewer it parks
@@ -191,8 +200,11 @@ public class SimpleDispatcherTests
         cts.Cancel();
         await runTask.WaitAsync(cancellationToken);
 
-        Assert.That(peerPool.FreedCount, Is.EqualTo(peerPool.AllocatedCount), "every allocation must be freed");
-        Assert.That(feed.HandledCount, Is.Zero, "cancelled dispatches must not reach HandleResponse");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerPool.FreedCount, Is.EqualTo(peerPool.AllocatedCount), "every allocation must be freed");
+            Assert.That(feed.HandledCount, Is.Zero, "cancelled dispatches must not reach HandleResponse");
+        }
     }
 
     // Blocked response workers must not compete with other fixtures for thread-pool capacity.
@@ -226,9 +238,12 @@ public class SimpleDispatcherTests
         }
         await runTask.WaitAsync(cancellationToken);
 
-        Assert.That(feed.FailedAllocationCount, Is.EqualTo(1));
-        Assert.That(feed.HandledCount, Is.EqualTo(3));
-        Assert.That(peerPool.FreedCount, Is.EqualTo(peerPool.AllocatedCount), "a failed allocation must not be freed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.FailedAllocationCount, Is.EqualTo(1));
+            Assert.That(feed.HandledCount, Is.EqualTo(3));
+            Assert.That(peerPool.FreedCount, Is.EqualTo(peerPool.AllocatedCount), "a failed allocation must not be freed");
+        }
     }
 
     [Test, CancelAfter(30_000)]
@@ -259,9 +274,12 @@ public class SimpleDispatcherTests
         }
         await runTask.WaitAsync(cancellationToken);
 
-        Assert.That(feed.HandledCount, Is.EqualTo(InFlightCap));
-        Assert.That(feed.MaxConcurrentHandling, Is.EqualTo(MaxThreads));
-        Assert.That(peerPool.FreedCount, Is.EqualTo(InFlightCap));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.HandledCount, Is.EqualTo(InFlightCap));
+            Assert.That(feed.MaxConcurrentHandling, Is.EqualTo(MaxThreads));
+            Assert.That(peerPool.FreedCount, Is.EqualTo(InFlightCap));
+        }
     }
 
     [Test, CancelAfter(30_000)]
@@ -429,8 +447,10 @@ public class SimpleDispatcherTests
             // after the loop rather than in the finally, the OperationCanceledException carries straight out of
             // Run and this is what catches it. Only the failing path pays the wait, and the unwind it is racing
             // is a handful of continuations with no IO, so the margin is four orders of magnitude.
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await Task.WhenAny(runTask, Task.Delay(WorkerHold, cancellationToken)), Is.Not.SameAs(runTask),
                 "Run returned while a worker was still inside HandleResponse");
+#pragma warning restore NUnit2045
 
             Assert.That(feed.HandleResponseCompleted, Is.EqualTo(0), "the gate is still closed");
         }
