@@ -9,7 +9,7 @@ public class DbConfig : IDbConfig
 {
     public static DbConfig Default = new();
 
-    public ulong SharedBlockCacheSize { get; set; } = 512UL.MiB;
+    public ulong SharedBlockCacheSize { get; set; } = 8192UL.MiB;
 
     public bool WriteAheadLogSync { get; set; } = false;
     public bool EnableDbStatistics { get; set; } = false;
