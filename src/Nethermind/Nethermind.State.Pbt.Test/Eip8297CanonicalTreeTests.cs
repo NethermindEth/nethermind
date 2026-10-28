@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Buffers.Binary;
 using System.IO;
@@ -1241,8 +1240,8 @@ public class Eip8297CanonicalTreeTests
             record = default;
             return false;
         }
-        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
+        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
 
         public byte[]? GetNodeGroup(scoped in PbtTraversalPath groupKey) => store.GetNodeGroup(groupKey);
         private void SetNodeGroup(PbtGroupRecord record)
@@ -1466,8 +1465,8 @@ public class Eip8297CanonicalTreeTests
             record = default;
             return false;
         }
-        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
+        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
 
         internal PbtNodeGroupStore Inner { get; } = new();
         internal int Reads { get; private set; }

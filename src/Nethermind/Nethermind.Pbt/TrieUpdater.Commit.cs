@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
-using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Pbt.NodeBuffer;
 
@@ -19,32 +18,29 @@ public static partial class TrieUpdater<TKey, TPath>
         private const int MaxLevels = PbtVariableTreeKey.MaxLength * 8 / PbtThreeLevelGroupGeometry.LevelsPerGroup + 1;
 
         private readonly ArrayPoolList<PendingGroup> _pendingGroups = new(16);
-        /// <summary>The pending records, laid out one after another, from <see cref="ArrayPool{T}.Shared"/>.</summary>
-        private byte[] _pendingRecords = [];
-        private int _pendingBytes;
         private readonly ArrayPoolList<int> _collected = new(16);
         private readonly ArrayPoolList<int> _order = new(16);
 
         private bool IsPoolable => _pendingGroups.Capacity <= MaxPooledPendingGroups;
 
-        /// <summary>Takes a zero-filled record of <paramref name="alignedLength"/> bytes for a group at <paramref name="bitDepth"/>, written to the store by the next <see cref="Commit"/>.</summary>
-        /// <param name="pointer">The pointer standing for the record in its parent's links until it is committed.</param>
-        public Span<byte> AddPendingGroup(int alignedLength, int bitDepth, out ulong pointer)
+        /// <summary>Takes <paramref name="writer"/>'s finished group of <paramref name="payloadLength"/> bytes, detached into the store by the next <see cref="Commit"/>.</summary>
+        /// <remarks>The writer is kept until then, so the group is written once, straight into its level's batch, and goes back to the pool after.</remarks>
+        /// <returns>The pointer standing for the group in its parent's links until it is committed.</returns>
+        public ulong AddPendingGroup(PbtNodeGroupWriter<TPath> writer, in PbtStorageNodePath path, in PbtGroupLinks links,
+            ReadOnlySpan<long> descendantBytes, ushort candidateSlots, int payloadLength)
         {
-            if (_pendingBytes + alignedLength > _pendingRecords.Length)
+            PendingGroup group = new()
             {
-                byte[] grown = ArrayPool<byte>.Shared.Rent(Math.Max(_pendingBytes + alignedLength, 2 * _pendingRecords.Length));
-                _pendingRecords.AsSpan(0, _pendingBytes).CopyTo(grown);
-                if (_pendingRecords.Length != 0) ArrayPool<byte>.Shared.Return(_pendingRecords);
-                _pendingRecords = grown;
-            }
-
-            _pendingGroups.Add(new PendingGroup { Offset = _pendingBytes, Length = alignedLength, BitDepth = bitDepth });
-            pointer = (ulong)_pendingGroups.Count;
-            Span<byte> record = _pendingRecords.AsSpan(_pendingBytes, alignedLength);
-            record.Clear();
-            _pendingBytes += alignedLength;
-            return record;
+                Writer = writer,
+                Path = path,
+                Links = links,
+                CandidateSlots = candidateSlots,
+                PayloadLength = payloadLength,
+                Length = PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payloadLength)),
+            };
+            descendantBytes.CopyTo(group.DescendantBytes);
+            _pendingGroups.Add(group);
+            return (ulong)_pendingGroups.Count;
         }
 
         /// <summary>Writes the pending group at <paramref name="top"/> and every pending group it links below it to <paramref name="store"/>, then drops every pending group.</summary>
@@ -90,10 +86,14 @@ public static partial class TrieUpdater<TKey, TPath>
             }
         }
 
+        /// <summary>Drops every pending group, returning the writers of those never committed.</summary>
         private void ClearPending()
         {
+            foreach (PendingGroup group in _pendingGroups.AsSpan())
+            {
+                if (group.Writer is not null) ReturnWriter(group.Writer);
+            }
             _pendingGroups.Clear();
-            _pendingBytes = 0;
         }
 
         /// <summary>Lists the pending group at <paramref name="top"/> and its pending descendants, setting their parent and slot.</summary>
@@ -106,7 +106,7 @@ public static partial class TrieUpdater<TKey, TPath>
             for (int head = 0; head < _collected.Count; head++)
             {
                 int parent = _collected[head];
-                ref PbtGroupLinks links = ref Header(parent).Links;
+                ref PbtGroupLinks links = ref _pendingGroups.GetRef(parent).Links;
                 for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
                 {
                     if (!IsPending(links[slot])) continue;
@@ -133,26 +133,25 @@ public static partial class TrieUpdater<TKey, TPath>
             foreach (int index in level)
             {
                 ref PendingGroup group = ref _pendingGroups.GetRef(index);
-                _pendingRecords.AsSpan(group.Offset, group.Length).CopyTo(bytes[start..]);
+                group.Writer!.DetachTo(PbtGroupRecordCodec.WriteGroup(bytes[start..], group.Path, group.Links, group.PayloadLength), group.DescendantBytes,
+                    group.CandidateSlots);
+                ReturnWriter(group.Writer);
+                group.Writer = null;
                 // A store keeping groups by path links no pointer, so its batch has none.
                 group.Pointer = basePointer == 0 ? 0 : basePointer + (ulong)start;
-                if (group.Parent >= 0) Header(group.Parent).Links[group.Slot] = group.Pointer;
+                if (group.Parent >= 0) _pendingGroups.GetRef(group.Parent).Links[group.Slot] = group.Pointer;
                 start += group.Length;
             }
         }
 
-        private int Level(int index) => _pendingGroups[index].BitDepth / PbtThreeLevelGroupGeometry.LevelsPerGroup;
-
-        private ref PbtGroupRecordHeader Header(int index) =>
-            ref MemoryMarshal.AsRef<PbtGroupRecordHeader>(_pendingRecords.AsSpan(_pendingGroups[index].Offset));
+        private int Level(int index) => _pendingGroups[index].Path.BitDepth / PbtThreeLevelGroupGeometry.LevelsPerGroup;
 
         private void DisposePending()
         {
+            foreach (PendingGroup group in _pendingGroups.AsSpan()) group.Writer?.Dispose();
             _pendingGroups.Dispose();
             _collected.Dispose();
             _order.Dispose();
-            if (_pendingRecords.Length != 0) ArrayPool<byte>.Shared.Return(_pendingRecords);
-            _pendingRecords = [];
         }
 
         /// <summary>Whether <paramref name="pointer"/> stands for a pending group: one of generation 0, which no store's pointer has.</summary>
@@ -160,12 +159,23 @@ public static partial class TrieUpdater<TKey, TPath>
 
         private struct PendingGroup
         {
-            public int Offset;
+            /// <summary>The writer holding the group until it is committed, then null.</summary>
+            public PbtNodeGroupWriter<TPath>? Writer;
+            public PbtStorageNodePath Path;
+            public PbtGroupLinks Links;
+            public DescendantBytesBuffer DescendantBytes;
+            public ushort CandidateSlots;
+            public int PayloadLength;
             public int Length;
-            public int BitDepth;
             public int Parent;
             public byte Slot;
             public ulong Pointer;
+        }
+
+        [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]
+        private struct DescendantBytesBuffer
+        {
+            private long _element;
         }
     }
 }

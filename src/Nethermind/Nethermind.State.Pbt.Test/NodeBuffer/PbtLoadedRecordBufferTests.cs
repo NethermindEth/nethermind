@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 using NUnit.Framework;
@@ -20,59 +20,55 @@ public class PbtLoadedRecordBufferTests
     private const int OversizedPayloadLength = 100 * 1024;
 
     [Test]
-    public void Loads_payloads_or_records_into_records_that_stay_readable([Values] bool asRecord)
+    public void Reads_values_that_stay_readable_until_cleared_lending_native_ones_in_place([Values] bool native)
     {
         byte[][] payloads = [.. Enumerable.Range(0, GroupCount).Select(i => Payload(i, i == GroupCount / 2 ? OversizedPayloadLength : PayloadLength))];
-        Store store = new(payloads.Select((payload, i) => (PbtWarmedGroupBufferTests.Path(i), payload)), asRecord);
-        using PbtLoadedRecordBuffer loaded = new();
-        PbtGroupRecord[] records = new PbtGroupRecord[GroupCount];
+        TestMemDb store = native ? new NativeStore() : new TestMemDb();
+        for (int i = 0; i < GroupCount; i++) store[Key(i)] = payloads[i];
+        PbtLoadedRecordBuffer loaded = new();
+        ReadOnlyMemory<byte>[] reads = new ReadOnlyMemory<byte>[GroupCount];
         bool[] found = new bool[GroupCount];
-        for (int i = 0; i < GroupCount; i++) found[i] = TryLoad(loaded, store, PbtWarmedGroupBufferTests.Path(i), out records[i]);
+        for (int i = 0; i < GroupCount; i++) found[i] = loaded.TryRead(store, Key(i), out reads[i]);
+        bool missing = loaded.TryRead(store, Key(GroupCount), out _);
+        byte[][] readBack = [.. reads.Select(static read => read.ToArray())];
+        bool[] inPlace = [.. reads.Select((read, i) => read.Span.Overlaps(payloads[i]))];
+        int releasedBeforeClear = (store as NativeStore)?.Released ?? 0;
+        loaded.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.All.True);
-            Assert.That(records.Select(static record => record.Payload.ToArray()), Is.EqualTo(payloads), "records stay readable as later ones fill new chunks");
-            Assert.That(records.Select(static record => record.Path), Is.EqualTo(Enumerable.Range(0, GroupCount).Select(PbtWarmedGroupBufferTests.Path)));
-            Assert.That(records.SelectMany(static record => Enumerable.Range(0, PbtThreeLevelGroupGeometry.BoundarySlots).Select(record.GetLink)), Is.All.Zero, "a loaded group links to no descendant");
-            Assert.That(TryLoad(loaded, store, PbtWarmedGroupBufferTests.Path(GroupCount), out _), Is.False, "a store miss");
+            Assert.That(missing, Is.False, "a store miss");
+            Assert.That(readBack, Is.EqualTo(payloads), "values stay readable as later ones fill new chunks");
+            Assert.That(inPlace, Is.All.EqualTo(native), "a native value is lent in place, any other is copied");
+            Assert.That(releasedBeforeClear, Is.Zero, "a lent value stays pinned until cleared");
+            Assert.That((store as NativeStore)?.Released ?? 0, Is.EqualTo(native ? GroupCount : 0), "clearing releases every pinned value once");
         }
     }
 
-    private static bool TryLoad(PbtLoadedRecordBuffer loaded, Store store, PbtStorageNodePath path, out PbtGroupRecord record) =>
-        loaded.TryLoad(store, PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], path), out record);
+    private static byte[] Key(int index) => BitConverter.GetBytes(index);
 
-    /// <summary>A distinct group payload, starting with the group header as a payload does.</summary>
+    /// <summary>A distinct group payload, starting with the group header as a payload does, in memory the collector never moves.</summary>
     private static byte[] Payload(int seed, int length)
     {
-        byte[] payload = new byte[length];
+        byte[] payload = GC.AllocateArray<byte>(length, pinned: true);
         PbtNodeGroupCodec.Header.CopyTo(payload);
         BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(PbtNodeGroupCodec.HeaderLength), seed);
         return payload;
     }
 
-    /// <summary>Hands over each group's payload, or its record when <paramref name="asRecord"/> is set, as a store holding records does.</summary>
-    private sealed class Store(IEnumerable<(PbtStorageNodePath Path, byte[] Payload)> groups, bool asRecord) : IPbtStore
+    /// <summary>Lends its stored arrays as native slices, as RocksDB does, counting the released handles.</summary>
+    private sealed class NativeStore : TestMemDb, IReadOnlyNativeKeyValueStore
     {
-        private readonly Dictionary<PbtStorageNodePath, byte[]> _groups = groups.ToDictionary(group => group.Path, group => asRecord ? Record(group.Path, group.Payload) : group.Payload);
+        public int Released { get; private set; }
 
-        public bool TryLocate(ulong pointer, out PbtGroupRecord record) => throw new NotSupportedException();
-
-        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => throw new NotSupportedException();
-
-        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
         {
-            if (!_groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? group)) return false;
-
-            action(group, arg);
-            return true;
+            byte[]? value = Get(key, flags);
+            handle = value is null ? 0 : 1;
+            return value;
         }
 
-        private static byte[] Record(in PbtStorageNodePath path, byte[] payload)
-        {
-            byte[] record = new byte[PbtGroupRecordCodec.Length(payload.Length)];
-            payload.CopyTo(PbtGroupRecordCodec.WriteGroup(record, path, default, payload.Length));
-            return record;
-        }
+        public void DangerousReleaseHandle(nint handle) => Released++;
     }
 }

@@ -24,16 +24,17 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>
     private readonly int _offsetTable;
     private readonly uint _stored;
 
-    /// <summary>Borrows a buffer record whose operation lease remains alive throughout this frame.</summary>
-    public GroupFrameReader(PbtGroupRecord record)
+    /// <summary>Borrows the payload of a group at <paramref name="bitDepth"/>, which must stay readable throughout this frame.</summary>
+    /// <param name="links">The group's boundary links, a record's, or none for a group loaded by its path.</param>
+    public GroupFrameReader(ReadOnlyMemory<byte> payload, int bitDepth, in PbtGroupLinks links)
     {
-        BitDepth = record.Path.BitDepth;
-        _payload = record.Payload;
-        _links = record.Links;
-        ReadOnlySpan<byte> payload = _payload.Span;
-        uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
+        BitDepth = bitDepth;
+        _payload = payload;
+        _links = links;
+        ReadOnlySpan<byte> payloadSpan = _payload.Span;
+        uint availability = PbtNodeGroupCodec.ReadAvailability(payloadSpan);
         Debug.Assert(BitDepth == 0 || (availability & (1u << PbtThreeLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
-        _offsetTable = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
+        _offsetTable = payloadSpan.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payloadSpan);
         _stored = availability;
     }
 

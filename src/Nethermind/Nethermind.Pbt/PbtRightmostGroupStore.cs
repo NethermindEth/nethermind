@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
@@ -29,15 +28,20 @@ public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) 
         return false;
     }
 
-    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
     {
         PbtStorageNodePath groupPath = path.ToPath<PbtStorageNodePath>();
         lock (_lock)
         {
             Group group = _edge[path.BitDepth];
             if (!group.Holds(groupPath)) group = _superseded[path.BitDepth];
-            if (!group.Holds(groupPath)) return false;
-            action(new PbtGroupRecord(group.Record, 0).Span, arg);
+            if (!group.Holds(groupPath))
+            {
+                payload = default;
+                return false;
+            }
+
+            payload = new PbtGroupRecord(group.Record, 0).Payload;
             return true;
         }
     }
@@ -61,7 +65,7 @@ public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) 
     /// <summary>Forgets the groups the last fold superseded; call once each fold ends.</summary>
     public void ReleaseSuperseded() => Array.Clear(_superseded);
 
-    /// <param name="Record">The group's record bytes, kept in a managed array so a borrowed record stays valid after it is superseded.</param>
+    /// <param name="Record">The group's record bytes, kept in a managed array never written again, so a borrowed record or payload stays valid after it is superseded.</param>
     private readonly record struct Group(PbtStorageNodePath Path, byte[]? Record)
     {
         public bool Holds(in PbtStorageNodePath path) => Record is not null && Path.Equals(path);

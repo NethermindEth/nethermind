@@ -124,9 +124,10 @@ public static partial class TrieUpdater<TKey, TPath>
             absent = new(bitDepth, 0, 0);
         else
         {
-            if (!context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record) && !context.WorkingState.Loaded.TryLoad(context.Store, path, out record))
-                throw new InvalidDataException("A referenced PBT node group is missing.");
-            GroupFrameReader<TKey, TPath> reader = new(record);
+            GroupFrameReader<TKey, TPath> reader;
+            if (context.Store.TryLocate(current.GroupPointer, out PbtGroupRecord record)) reader = new(record.Payload, record.Path.BitDepth, record.Links);
+            else if (context.Store.TryLoad(path, context.WorkingState.Loaded, out ReadOnlyMemory<byte> payload)) reader = new(payload, path.BitDepth, default);
+            else throw new InvalidDataException("A referenced PBT node group is missing.");
             return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
         }
         return FoldSortedAndPublish(context, ref absent, current, operations, ref path, bitDepth, anchorDepth, encoding);
@@ -152,7 +153,6 @@ public static partial class TrieUpdater<TKey, TPath>
             writer.DropLast(PbtThreeLevelGroupGeometry.RootPosition);
         }
         GroupPublication publication = PublishGroup(context, ref reader, writer, path);
-        context.WorkingState.ReturnWriter(writer);
         result.SizeDelta = publication.SizeDelta;
         result.GroupPointer = publication.Pointer;
         return result;

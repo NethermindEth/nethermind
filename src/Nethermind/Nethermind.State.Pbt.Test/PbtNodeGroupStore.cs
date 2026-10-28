@@ -12,7 +12,7 @@ using Nethermind.Pbt.NodeBuffer;
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by three-level ownership boundaries.</summary>
-/// <remarks>Groups are kept as managed record bytes, so a borrowed record stays valid after its group is replaced.</remarks>
+/// <remarks>Groups are kept as managed record bytes, so a borrowed record or payload stays valid after its group is replaced.</remarks>
 public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
 {
     public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
@@ -48,14 +48,18 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         return false;
     }
 
-    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? record)) return false;
+            if (!_groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? record))
+            {
+                payload = default;
+                return false;
+            }
 
-            action(record, arg);
+            payload = new PbtGroupRecord(record, 0).Payload;
             return true;
         }
     }
@@ -66,7 +70,7 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
         using PbtLoadedRecordBuffer loaded = new();
-        return loaded.TryLoad(this, groupKey, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
+        return TryLoad(groupKey, loaded, out ReadOnlyMemory<byte> payload) ? payload.ToArray() : null;
     }
 
     /// <summary>Drops every group the tree from the root group no longer reaches, or every group of an empty tree.</summary>
@@ -114,14 +118,12 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         }
     }
 
-    /// <summary>Hands a test store's group payload to <paramref name="action"/>.</summary>
+    /// <summary>Hands out a test store's group payload as a load does.</summary>
     /// <returns>False for a null payload, which stands for a missing group.</returns>
-    public static bool TryLoadPayload<TArg>(byte[]? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    public static bool TryLoadPayload(byte[]? payload, out ReadOnlyMemory<byte> loadedPayload)
     {
-        if (payload is null) return false;
-
-        action(payload, arg);
-        return true;
+        loadedPayload = payload;
+        return payload is not null;
     }
 
     private static byte[] Record(in PbtStorageNodePath path, ReadOnlySpan<byte> payload)

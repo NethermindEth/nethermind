@@ -168,16 +168,20 @@ internal static class PbtSnapshotTestExtensions
     /// <summary>A caller-owned copy of the group at <paramref name="groupKey"/> in the branch's tree, from its buffer or else as a fold loads it.</summary>
     internal static byte[]? GetNodeGroup(this PbtSnapshotBundle bundle, PbtStorageNodePath groupKey) =>
         bundle.GroupRecordBuffer.TryFindGroup(bundle.RootGroupPointer, groupKey, out PbtGroupRecord record) ? record.Payload.ToArray()
-        : LoadPayload((action, groups) => bundle.TryLoadNodeGroup(groupKey, action, groups));
+        : bundle.LoadNodeGroup(groupKey);
 
-    /// <summary>The payload of the group <paramref name="load"/> hands over, as a record or as a payload, or null when it misses.</summary>
+    /// <summary>A copy of the group the bundle loads at <paramref name="path"/> as a fold does, or null when it misses.</summary>
+    internal static byte[]? LoadNodeGroup(this PbtSnapshotBundle bundle, in PbtStorageNodePath path)
+    {
+        using PbtLoadedRecordBuffer loaded = new();
+        return bundle.TryLoadNodeGroup(path, loaded, out ReadOnlyMemory<byte> payload) ? payload.ToArray() : null;
+    }
+
+    /// <summary>The payload of the group <paramref name="load"/> hands over, or null when it misses.</summary>
     internal static byte[]? LoadPayload(Func<ReadOnlySpanAction<byte, List<byte[]>>, List<byte[]>, bool> load)
     {
         List<byte[]> groups = [];
-        if (!load(CollectGroup, groups)) return null;
-
-        byte[] group = groups.Single();
-        return PbtGroupRecordCodec.IsRecord(group) ? new PbtGroupRecord(group, 0).Payload.ToArray() : group;
+        return load(CollectGroup, groups) ? groups.Single() : null;
     }
 
     /// <summary>Writes the group <paramref name="payload"/> to <paramref name="warmed"/> and indexes it at <paramref name="path"/>, as a warm-up does.</summary>

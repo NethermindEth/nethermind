@@ -14,6 +14,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
@@ -140,10 +141,32 @@ public sealed class PbtReadOnlySnapshotBundle(
         long sw = Stopwatch.GetTimestamp();
         int length = 0;
         bool found = TryLoadPersistedNodeGroupUnmeasured(groupKey, MeasuredGroupLoad<TArg>.Pass, new MeasuredGroupLoad<TArg>(action, arg, ref length));
-        int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
-        Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (found ? _readNodeGroupPersistenceLabels : _readNodeGroupPersistenceNullLabels)[partition]);
-        if (found) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupPersistenceSizeKeys[partition], length);
+        ObservePersistedNodeGroupLoad(groupKey, sw, found, length);
         return found;
+    }
+
+    /// <summary>Loads the persisted payload of a group, readable until <paramref name="loaded"/> is cleared.</summary>
+    /// <remarks>
+    /// Reads persisted snapshots, whose groups are copied into <paramref name="loaded"/>, and the captured persistence reader,
+    /// which may lend its group in place, without probing in-memory snapshots.
+    /// </remarks>
+    /// <returns>Whether the group was found.</returns>
+    public bool TryLoadPersistedNodeGroup(in PbtStorageNodePath groupKey, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+    {
+        GuardDispose();
+        if (!recordDetailedMetrics) return TryLoadPersistedNodeGroupUnmeasured(groupKey, loaded, out payload);
+
+        long sw = Stopwatch.GetTimestamp();
+        bool found = TryLoadPersistedNodeGroupUnmeasured(groupKey, loaded, out payload);
+        ObservePersistedNodeGroupLoad(groupKey, sw, found, payload.Length);
+        return found;
+    }
+
+    private void ObservePersistedNodeGroupLoad(in PbtStorageNodePath groupKey, long start, bool found, int length)
+    {
+        int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
+        Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start, (found ? _readNodeGroupPersistenceLabels : _readNodeGroupPersistenceNullLabels)[partition]);
+        if (found) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupPersistenceSizeKeys[partition], length);
     }
 
     private bool TryLoadPersistedNodeGroupUnmeasured<TArg>(in PbtStorageNodePath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
@@ -151,6 +174,15 @@ public sealed class PbtReadOnlySnapshotBundle(
         for (int index = persistedSnapshots.Count - 1; index >= 0; index--)
             if (persistedSnapshots[index].TryLoadNodeGroup(groupKey, action, arg, out bool tombstone)) return !tombstone;
         return reader.TryLoadNodeGroup(groupKey, action, arg);
+    }
+
+    private bool TryLoadPersistedNodeGroupUnmeasured(in PbtStorageNodePath groupKey, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+    {
+        payload = default;
+        for (int index = persistedSnapshots.Count - 1; index >= 0; index--)
+            if (persistedSnapshots[index].TryLoadNodeGroup(groupKey, PbtLoadedRecordBuffer.Copy, new PbtLoadedRecordBuffer.CopyTarget(loaded, ref payload), out bool tombstone))
+                return !tombstone;
+        return reader.TryLoadNodeGroup(groupKey, loaded, out payload);
     }
 
     /// <summary>Passes the payload handed to it on to the wrapped action, recording its length.</summary>

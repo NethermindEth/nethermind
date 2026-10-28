@@ -28,7 +28,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
-    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IReadPrefetcher, IDisposable
+    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IReadOnlyNativeKeyValueStore, IReadPrefetcher, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -114,6 +114,35 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
+
+    /// <inheritdoc/>
+    /// <remarks>Pinned as read with this reader's options, so a snapshot's reader lends its snapshot's version.</remarks>
+    public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+    {
+        _mainDb.UpdateReadMetrics();
+        return _mainDb.GetNativeSlice(key, _columnFamily, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options, out handle);
+    }
+
+    public void DangerousReleaseHandle(nint handle) => _mainDb.DangerousReleaseHandle(handle);
+
+    /// <inheritdoc/>
+    /// <remarks>Lends the pinned value rather than a copy of it.</remarks>
+    public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadOnlySpanAction<byte, TArg> action, TArg arg, ReadFlags flags = ReadFlags.None)
+        where TArg : allows ref struct
+    {
+        ReadOnlySpan<byte> value = GetNativeSlice(key, out nint handle, flags);
+        if (value.IsNull()) return false;
+
+        try
+        {
+            action(value, arg);
+            return true;
+        }
+        finally
+        {
+            DangerousReleaseHandle(handle);
+        }
+    }
 
     public void Prefetch(ReadOnlySpan<byte> keys, int keyLength) => _mainDb.Prefetch(keys, keyLength, _columnFamily, _options);
 

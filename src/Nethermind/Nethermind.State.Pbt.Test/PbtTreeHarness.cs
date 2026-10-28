@@ -184,7 +184,7 @@ internal static class PbtStoreTestExtensions
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
         using PbtLoadedRecordBuffer loaded = new();
-        return loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
+        return store.TryLoad(cursor, loaded, out ReadOnlyMemory<byte> payload) ? payload.ToArray() : null;
     }
 
     internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, byte[]? payload)
@@ -198,10 +198,7 @@ internal static class PbtStoreTestExtensions
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtNodeGroupCodec.ValidateNodes(groupKey, payload);
-        byte[] record = new byte[PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length))];
-        PbtStorageNodePath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey).ToPath<PbtStorageNodePath>();
-        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(record, path, default, payload.Length));
-        return new(new PbtGroupRecord(record, 0));
+        return new(payload.ToArray(), groupKey.BitDepth, default);
     }
 
     /// <summary>Reads the group <paramref name="payload"/> holds at <paramref name="path"/>.</summary>

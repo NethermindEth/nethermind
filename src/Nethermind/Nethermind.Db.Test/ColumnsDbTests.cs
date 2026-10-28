@@ -6,12 +6,14 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
@@ -185,6 +187,47 @@ public class ColumnsDbTests
 
         if (!disposeSnapshotFirst) snapshot.Dispose();
         Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, 0));
+    }
+
+    [Test]
+    public void Snapshot_column_lends_the_snapshot_version_pinned([Values] bool viaTryGet, [Values] bool flush)
+    {
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] key = [1, 2, 3];
+        column.Set(key, [1, 1]);
+        if (flush) _db.Flush();
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        column.Set(key, [2, 2]);
+        IReadOnlyKeyValueStore reader = snapshot.GetColumn(ReceiptsColumns.Blocks);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Read(key), Is.EqualTo(new byte[] { 1, 1 }), "a snapshot reads its own version");
+            Assert.That(Read([9]), Is.Null, "a miss");
+        }
+
+        byte[]? Read(byte[] readKey)
+        {
+            if (viaTryGet)
+            {
+                StrongBox<byte[]?> value = new();
+                reader.TryGet(readKey, static (span, value) => value.Value = span.ToArray(), value);
+                return value.Value;
+            }
+
+            IReadOnlyNativeKeyValueStore native = (IReadOnlyNativeKeyValueStore)reader;
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(readKey, out nint handle);
+            if (slice.IsNull()) return null;
+
+            try
+            {
+                return slice.ToArray();
+            }
+            finally
+            {
+                native.DangerousReleaseHandle(handle);
+            }
+        }
     }
 
     [Test]

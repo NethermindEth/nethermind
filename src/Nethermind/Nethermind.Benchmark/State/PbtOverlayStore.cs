@@ -3,7 +3,7 @@
 
 #nullable enable
 
-using System.Buffers;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Pbt;
@@ -14,7 +14,7 @@ namespace Nethermind.Benchmarks.State;
 /// <summary>An in-memory store whose writes land in an overlay above fixed base groups, so the base tree can be reused.</summary>
 /// <remarks>
 /// Parallel folds read and publish from several threads, each group from one, so the overlay is a concurrent map; the base is read-only once built.
-/// Groups are kept as managed record bytes, so a borrowed record stays valid after its group is replaced.
+/// Groups are kept as managed record bytes, so a borrowed payload stays valid after its group is replaced.
 /// </remarks>
 internal sealed class PbtOverlayStore : IPbtStore
 {
@@ -29,11 +29,16 @@ internal sealed class PbtOverlayStore : IPbtStore
         return false;
     }
 
-    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
     {
         PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
-        if (!_overlay.TryGetValue(key, out byte[]? bytes) && !_base.TryGetValue(key, out bytes)) return false;
-        action(bytes, arg);
+        if (!_overlay.TryGetValue(key, out byte[]? bytes) && !_base.TryGetValue(key, out bytes))
+        {
+            payload = default;
+            return false;
+        }
+
+        payload = new PbtGroupRecord(bytes, 0).Payload;
         return true;
     }
 

@@ -7,6 +7,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 
@@ -125,6 +126,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct => inner.TryLoadNodeGroup(groupKey, action, arg);
+        public bool TryLoadNodeGroup<TPath>(in TPath groupKey, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+            where TPath : struct, IPbtNodePath<TPath> => inner.TryLoadNodeGroup(groupKey, loaded, out payload);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
     }

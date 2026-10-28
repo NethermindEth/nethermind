@@ -150,7 +150,7 @@ public class PbtSnapshotBundleTests
         byte[]?[] loads = new byte[2][];
         using PbtLoadedRecordBuffer loaded = new();
         for (int attempt = 0; attempt < loads.Length; attempt++)
-            loads[attempt] = loaded.TryLoad(store, cursor, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
+            loads[attempt] = store.TryLoad(cursor, loaded, out ReadOnlyMemory<byte> payload) ? payload.ToArray() : null;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.TryLocate(0, out _), Is.False);
@@ -236,7 +236,7 @@ public class PbtSnapshotBundleTests
         store.Publish();
         using PbtSnapshot unchanged = bundle.Collect(new StateId(parent), new StateId(2, rootHash), bundle.TreeRoot);
         Assert.That(buffer.TryLocate(unchanged.RootGroupPointer, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
-        Assert.That(PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(default, action, groups)), Is.EqualTo(root.Payload.ToArray()));
+        Assert.That(bundle.LoadNodeGroup(default), Is.EqualTo(root.Payload.ToArray()));
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(store);
@@ -310,13 +310,17 @@ public class PbtSnapshotBundleTests
         byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
         Reader reader = new(default, null) { GroupPayload = encoding };
         PbtSnapshotBundle bundle = CreateBundle(reader);
-        byte[]? Load() => PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(path, action, groups));
+        byte[]? Load() => bundle.LoadNodeGroup(path);
 
         byte[]?[] loads = [Load(), Load()];
         int loadReads = reader.GroupReadCount;
         bundle.WarmUp(path, []);
         bundle.WarmUp(path, []);
         byte[]? warmedLoad = Load();
+        using PbtLoadedRecordBuffer firstLoad = new();
+        using PbtLoadedRecordBuffer secondLoad = new();
+        bool warmedLentInPlace = bundle.TryLoadNodeGroup(path, firstLoad, out ReadOnlyMemory<byte> firstWarmed)
+            && bundle.TryLoadNodeGroup(path, secondLoad, out ReadOnlyMemory<byte> secondWarmed) && firstWarmed.Span.Overlaps(secondWarmed.Span);
         int warmUpReads = reader.GroupReadCount;
         (PbtSnapshot snapshot, PbtTransientResource retired) = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
         int retiredGroups = retired.WarmedGroupBuffer.Count;
@@ -331,6 +335,7 @@ public class PbtSnapshotBundleTests
             Assert.That(new[] { loads[0], loads[1], warmedLoad, loadAfterCollect }, Is.All.EqualTo(encoding));
             Assert.That(loadReads, Is.EqualTo(2), "a loaded group is not warmed");
             Assert.That(warmUpReads, Is.EqualTo(3), "the warm-up reads the group once, then finds it warmed and answers loads");
+            Assert.That(warmedLentInPlace, "a warmed group is lent to every load in place rather than copied");
             Assert.That(retiredGroups, Is.EqualTo(1), "collect hands out the resource that warmed the group");
             Assert.That(readsAfterCollect, Is.EqualTo(4), "the next block reads a fresh resource");
             Assert.That(reader.GroupReadCount, Is.EqualTo(readsAfterCollect), "a disposed bundle warms nothing");
@@ -462,7 +467,7 @@ public class PbtSnapshotBundleTests
         byte[]? encoding = null;
         if (bundle.GroupRecordBuffer.TryLocate(bundle.RootGroupPointer, out PbtGroupRecord record))
         {
-            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record);
+            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record.Payload, record.Path.BitDepth, record.Links);
             encoding = frame.GetEncoding(PbtThreeLevelGroupGeometry.RootPosition).ToArray();
         }
         using (Assert.EnterMultipleScope())
@@ -1038,10 +1043,10 @@ public class PbtSnapshotBundleTests
             if (found) System.Threading.Interlocked.Increment(ref _directReads);
             return found;
         }
-        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
         {
             System.Threading.Interlocked.Increment(ref _snapshotReads);
-            return store.TryLoad(path, action, arg);
+            return store.TryLoad(path, loaded, out payload);
         }
 
         private void Apply(in PbtStorageNodePath path)

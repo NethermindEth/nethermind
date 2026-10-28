@@ -105,8 +105,9 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <summary>Publishes a frame's group and returns the size change of the group and everything folded below it.</summary>
     /// <remarks>
     /// Each stored descendant size is the loaded (or inherited) size of its slot adjusted by the change folded below that
-    /// slot. A group that is or becomes absent writes no record, so only the folded change survives. A written record is
-    /// pending in the working state, with a pending pointer, until <see cref="FoldWorkingState.Commit"/> writes it to the store.
+    /// slot. A group that is or becomes absent writes no record, so only the folded change survives. A written group is
+    /// pending in the working state, with a pending pointer and its writer, until <see cref="FoldWorkingState.Commit"/> writes it to
+    /// the store. The working state takes the writer either way.
     /// </remarks>
     public readonly record struct GroupPublication(long SizeDelta, ulong Pointer);
 
@@ -135,12 +136,8 @@ public static partial class TrieUpdater<TKey, TPath>
         }
         int length = writer.GetPayloadLength(descendantBytes, candidateSlots);
         ulong pointer = surviving;
-        if (length != 0)
-        {
-            Span<byte> record = context.WorkingState.AddPendingGroup(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(length)), path.BitDepth, out pointer);
-            writer.DetachTo(PbtGroupRecordCodec.WriteGroup(record, path.ToPath<PbtStorageNodePath>(), links, length), descendantBytes, candidateSlots);
-        }
-        else writer.DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
+        if (length != 0) pointer = context.WorkingState.AddPendingGroup(writer, path.ToPath<PbtStorageNodePath>(), links, descendantBytes, candidateSlots, length);
+        else context.WorkingState.ReturnWriter(writer);
         return new GroupPublication(length - reader.PayloadLength + deltaTotal, pointer);
     }
 

@@ -75,9 +75,10 @@ public static partial class TrieUpdater
                 AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
                 return FoldRoot(context, ref emptyRoot, default, touchedSlots, foldSlot);
             }
-            if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !workingState.Loaded.TryLoad(store, rootPath, out rootRecord))
-                throw new InvalidDataException("A referenced PBT node group is missing.");
-            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
+            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader;
+            if (store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord)) rootReader = new(rootRecord.Payload, 0, rootRecord.Links);
+            else if (store.TryLoad(rootPath, workingState.Loaded, out ReadOnlyMemory<byte> payload)) rootReader = new(payload, 0, default);
+            else throw new InvalidDataException("A referenced PBT node group is missing.");
             return FoldRoot(context, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot);
         }
         finally
@@ -91,25 +92,18 @@ public static partial class TrieUpdater
         where TRoot : struct, IGroupFrame<PbtVariableTreeKey, PbtStorageNodePath>
     {
         ValueHash256 hash = default;
-        GroupPublication publication;
+        // A fold that throws leaves its writer to the collector rather than to the working state.
         PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = context.WorkingState.RentWriter(0);
-        try
+        PbtTraversalPath rootPath = new(Span<byte>.Empty);
+        StoredGroupHashes.Open(out StoredGroupHashes hashes);
+        ComposedNode rootNode = WalkFrameOverForeignSlots(context, ref rootReader, ref hashes, rootWriter, root, rootPath, touchedSlots, foldSlot);
+        if (!rootNode.IsEmpty)
         {
-            PbtTraversalPath rootPath = new(Span<byte>.Empty);
-            StoredGroupHashes.Open(out StoredGroupHashes hashes);
-            ComposedNode rootNode = WalkFrameOverForeignSlots(context, ref rootReader, ref hashes, rootWriter, root, rootPath, touchedSlots, foldSlot);
-            if (!rootNode.IsEmpty)
-            {
-                ReadOnlySpan<byte> entry = rootWriter.Entry(rootNode.Offset, rootNode.Length).Span;
-                rootWriter.ValidateEntry(rootPath, PbtThreeLevelGroupGeometry.RootPosition, entry);
-                hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
-            }
-            publication = PublishGroup(context, ref rootReader, rootWriter, rootPath);
+            ReadOnlySpan<byte> entry = rootWriter.Entry(rootNode.Offset, rootNode.Length).Span;
+            rootWriter.ValidateEntry(rootPath, PbtThreeLevelGroupGeometry.RootPosition, entry);
+            hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
         }
-        finally
-        {
-            context.WorkingState.ReturnWriter(rootWriter);
-        }
+        GroupPublication publication = PublishGroup(context, ref rootReader, rootWriter, rootPath);
         return (hash, context.WorkingState.Commit(context.Store, publication.Pointer));
     }
 
