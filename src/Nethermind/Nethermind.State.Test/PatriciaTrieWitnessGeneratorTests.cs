@@ -48,8 +48,11 @@ public class PatriciaTrieWitnessGeneratorTests
 
         HashSet<Hash256AsKey> oracle = CaptureDuringMutation(db, root, scenario, out _);
 
-        Assert.That(RunGenerator(db, root, scenario, parallelize: false), Is.EquivalentTo(oracle));
-        Assert.That(RunGenerator(db, root, scenario, parallelize: true), Is.EquivalentTo(oracle));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RunGenerator(db, root, scenario, parallelize: false), Is.EquivalentTo(oracle));
+            Assert.That(RunGenerator(db, root, scenario, parallelize: true), Is.EquivalentTo(oracle));
+        }
     }
 
     /// <summary>
@@ -101,15 +104,18 @@ public class PatriciaTrieWitnessGeneratorTests
 
         HashSet<Hash256AsKey> upsertFirst = CaptureOrdered(db, root, (c, valC), (a, null));
         HashSet<Hash256AsKey> deleteFirst = CaptureOrdered(db, root, (a, null), (c, valC));
-        Assert.That(deleteFirst.Count, Is.GreaterThan(upsertFirst.Count), "scenario must be order-sensitive");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleteFirst.Count, Is.GreaterThan(upsertFirst.Count), "scenario must be order-sensitive");
 
-        Assert.That(RunGenerator(db, root,
-            [new(a, PatriciaTrieWitnessGenerator.AccessType.Delete), new(c, PatriciaTrieWitnessGenerator.AccessType.Upsert)]),
-            Is.EquivalentTo(upsertFirst));
+            Assert.That(RunGenerator(db, root,
+                [new(a, PatriciaTrieWitnessGenerator.AccessType.Delete), new(c, PatriciaTrieWitnessGenerator.AccessType.Upsert)]),
+                Is.EquivalentTo(upsertFirst));
 
-        Assert.That(RunGenerator(db, root,
-            [new(a, PatriciaTrieWitnessGenerator.AccessType.Delete), new(c, PatriciaTrieWitnessGenerator.AccessType.Read)]),
-            Is.EquivalentTo(deleteFirst));
+            Assert.That(RunGenerator(db, root,
+                [new(a, PatriciaTrieWitnessGenerator.AccessType.Delete), new(c, PatriciaTrieWitnessGenerator.AccessType.Read)]),
+                Is.EquivalentTo(deleteFirst));
+        }
     }
 
     private static HashSet<Hash256AsKey> RunGenerator(TestMemDb db, Hash256 root, PatriciaTrieWitnessGenerator.PathEntry[] entries)

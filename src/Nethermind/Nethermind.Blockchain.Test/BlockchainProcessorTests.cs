@@ -344,8 +344,10 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext InclusionListPreservedFor(Block block)
         {
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
             Assert.That(_branchProcessor.ProcessedBlockByHash.TryGetValue(block.Hash!, out Block? processed), Is.True,
                 $"Block {block.ToString(Block.Format.Short)} was not processed");
+#pragma warning restore NUnit2045
             Assert.That(processed!.InclusionListTransactions, Is.Not.Null,
                 "Inclusion list was dropped before validation (recovery-queue re-resolve stripped it)");
             Assert.That(processed.InclusionListTransactions!, Has.Length.EqualTo(block.InclusionListTransactions!.Length));
@@ -399,8 +401,11 @@ public class BlockchainProcessorTests
             _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
             _branchProcessor.AllowToFail(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
-            Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
-            Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
+                Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
+            }
             _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
             return new AfterBlock(_logManager, this, block);
         }

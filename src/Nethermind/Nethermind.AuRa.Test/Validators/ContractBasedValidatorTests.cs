@@ -196,8 +196,11 @@ public class ContractBasedValidatorTests
 
         // initial validator should be true
         Address[] expectedValidators = { initialValidator };
-        Assert.That(validator.Validators, Is.EqualTo(expectedValidators));
-        Assert.That(_validatorStore.GetValidators(), Is.EqualTo(expectedValidators.AsEnumerable()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator.Validators, Is.EqualTo(expectedValidators));
+            Assert.That(_validatorStore.GetValidators(), Is.EqualTo(expectedValidators.AsEnumerable()));
+        }
     }
 
     public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData

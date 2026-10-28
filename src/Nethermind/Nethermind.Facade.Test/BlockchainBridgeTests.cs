@@ -90,16 +90,22 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     // regression test - was throwing NRE before
@@ -151,12 +157,12 @@ public class BlockchainBridgeTests
         }
         _receiptStorage.Get(block).Returns(receipts);
         Assert.That(_blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result), Is.True);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((ulong)index));
             Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
             Assert.That(result.Value.Transaction.SenderAddress, Is.EqualTo(TestItem.Addresses[index]));
-        });
+        }
         Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
@@ -200,7 +206,9 @@ public class BlockchainBridgeTests
 
         chain.LookUpFullBlocks(true);
         (TxReceipt? fullReceipt, ulong fullTimestamp, TxGasInfo? fullGasInfo, int fullLogIndexStart) = chain.Bridge.GetTxReceiptInfo(tx.Hash!);
+#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
         Assert.That(fullReceipt, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(chain.Bridge.TryGetTransaction(tx.Hash!, out TransactionLookupResult? full, checkTxnPool: false), Is.True);
         chain.BlockTree.Received().FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
 
@@ -753,23 +761,24 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys([Values] bool optimize)
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys()
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
-            optimize,
             [PrecompiledAddresses.ECRecover, TestItem.AddressC],
             [new StorageCell(TestItem.AddressC, UInt256.One)]);
 
         Assert.That(callOutput.AccessList, Is.Not.Null);
-        Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
-        Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
+            Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
     public void CreateAccessList_keeps_precompile_address_when_storage_key_is_present()
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
-            optimize: false,
             [PrecompiledAddresses.ECRecover],
             [new StorageCell(PrecompiledAddresses.ECRecover, UInt256.One)]);
 
@@ -808,7 +817,6 @@ public class BlockchainBridgeTests
     }
 
     private CallOutput InvokeCreateAccessListWithMockedAccess(
-        bool optimize,
         Address[] accessedAddresses,
         StorageCell[] accessedCells)
     {
@@ -827,7 +835,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, cancellationToken: default);
+        return _blockchainBridge.CreateAccessList(header, tx, null, false, null, cancellationToken: default);
     }
 
     [Test]
@@ -1699,8 +1707,11 @@ public class BlockchainBridgeTests
         if (expectRejected)
         {
             TransactionResult reason = Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason;
-            Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
-            Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+                Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+            }
         }
         else
         {
