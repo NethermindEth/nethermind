@@ -96,7 +96,7 @@ public static partial class TrieUpdater<TKey, TPath>
         {
             ref PendingGroup group = ref _pendingGroups.GetRef(index);
             int length = group.Length;
-            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
+            for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
             {
                 if (IsPending(group.Links[slot])) length += PendingLength((int)group.Links[slot] - 1);
             }
@@ -108,7 +108,7 @@ public static partial class TrieUpdater<TKey, TPath>
         private ulong WritePending(Span<byte> bytes, ulong basePointer, int index, ref int offset)
         {
             ref PendingGroup group = ref _pendingGroups.GetRef(index);
-            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
+            for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
             {
                 if (IsPending(group.Links[slot])) group.Links[slot] = WritePending(bytes, basePointer, (int)group.Links[slot] - 1, ref offset);
             }
@@ -144,7 +144,7 @@ public static partial class TrieUpdater<TKey, TPath>
             public int Length;
         }
 
-        [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]
+        [InlineArray(PbtFourLevelGroupGeometry.BoundarySlots)]
         private struct DescendantBytesBuffer
         {
             private long _element;

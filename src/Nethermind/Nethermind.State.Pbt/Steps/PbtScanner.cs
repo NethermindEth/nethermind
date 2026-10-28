@@ -133,7 +133,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             if (!node.LeftKeyPostfix.IsEmpty) stats.LeafCount++;
             if (!node.RightKeyPostfix.IsEmpty) stats.LeafCount++;
         }
-        stats.NodesByDepth[group.BitDepth + PbtThreeLevelGroupGeometry.LocalPathOf(position).Length]++;
+        stats.NodesByDepth[group.BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length]++;
     };
 
     private static byte[][] CreateBounds(PbtColumns column, int rangeCount)
@@ -303,13 +303,13 @@ public sealed class PbtScanReport
         /// <summary>Contained encoding bytes, excluding group keys and footers.</summary>
         public long NodeEncodingBytes { get; set; }
         /// <summary>Stored groups by boundary bit depth.</summary>
-        public long[] GroupsByDepth { get; } = new long[PbtThreeLevelGroupGeometry.MaxPathDepth + 1];
+        public long[] GroupsByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         /// <summary>Whole group payload bytes by boundary bit depth.</summary>
-        public long[] PayloadBytesByDepth { get; } = new long[PbtThreeLevelGroupGeometry.MaxPathDepth + 1];
+        public long[] PayloadBytesByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         /// <summary>Contained nodes by their position's bit depth.</summary>
-        public long[] NodesByDepth { get; } = new long[PbtThreeLevelGroupGeometry.MaxPathDepth + 1];
+        public long[] NodesByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         /// <summary>Stored groups by the number of nodes they contain.</summary>
-        public long[] GroupsByOccupancy { get; } = new long[PbtThreeLevelGroupGeometry.PositionCount + 1];
+        public long[] GroupsByOccupancy { get; } = new long[PbtFourLevelGroupGeometry.PositionCount + 1];
         /// <summary>Stored groups with at least one nonzero descendant size.</summary>
         public long GroupsWithDescendants { get; set; }
 

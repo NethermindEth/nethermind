@@ -32,10 +32,10 @@ public static partial class TrieUpdater<TKey, TPath>
         public PbtLoadedRecordBuffer Loaded { get; } = new();
 
         /// <summary>The slot folds of a frame fanning out, which never nests on one state, as its runs fold on spare states.</summary>
-        public SortedSlotFold[] Folds { get; } = new SortedSlotFold[PbtThreeLevelGroupGeometry.BoundarySlots];
+        public SortedSlotFold[] Folds { get; } = new SortedSlotFold[PbtFourLevelGroupGeometry.BoundarySlots];
 
         /// <summary>The ends of the runs <see cref="Folds"/> is folded in.</summary>
-        public int[] RunEnds { get; } = new int[PbtThreeLevelGroupGeometry.BoundarySlots];
+        public int[] RunEnds { get; } = new int[PbtFourLevelGroupGeometry.BoundarySlots];
 
         public static FoldWorkingState Rent()
         {
@@ -87,7 +87,7 @@ public static partial class TrieUpdater<TKey, TPath>
         public void RentFoldedAhead(out byte[] encodings, out SlotNode[] nodes)
         {
             if (!_foldedAhead.TryPop(out (byte[] Encodings, SlotNode[] Nodes) buffers))
-                buffers = (new byte[PbtThreeLevelGroupGeometry.BoundarySlots * MaxNodeLength], new SlotNode[PbtThreeLevelGroupGeometry.BoundarySlots]);
+                buffers = (new byte[PbtFourLevelGroupGeometry.BoundarySlots * MaxNodeLength], new SlotNode[PbtFourLevelGroupGeometry.BoundarySlots]);
             (encodings, nodes) = buffers;
         }
 

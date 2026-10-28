@@ -3,20 +3,16 @@
 
 namespace Nethermind.Pbt;
 
-/// <summary>Maps canonical node paths to the positions in their three-level node group.</summary>
+/// <summary>Maps canonical node paths to the positions in their four-level node group.</summary>
 /// <remarks>
 /// A node owns the group whose boundary is at or immediately above its parent. Thus a node at depth
-/// three belongs to the root group, while a node at depth four belongs to the group at depth three.
+/// four belongs to the root group, while a node at depth five belongs to the group at depth four.
 /// The group root is the only exception: the tree root is represented at <see cref="RootPosition"/>.
 /// </remarks>
-public static class PbtThreeLevelGroupGeometry
+public static class PbtFourLevelGroupGeometry
 {
     /// <summary>The number of levels represented by one group.</summary>
-    /// <remarks>
-    /// Groups are not byte-aligned: a group's boundary slot can span two key bytes, and a 272-bit key ends one level
-    /// before the boundary of its deepest group.
-    /// </remarks>
-    public const int LevelsPerGroup = 3;
+    public const int LevelsPerGroup = 4;
 
     /// <summary>The number of boundary slots in one group.</summary>
     public const int BoundarySlots = 1 << LevelsPerGroup;
@@ -53,7 +49,7 @@ public static class PbtThreeLevelGroupGeometry
 
     public static int WidthOf(int position) => BoundarySlots >> PositionDepths[position];
 
-    private static ReadOnlySpan<byte> PositionPaths => [0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 6, 7, 3, 1, 0];
+    private static ReadOnlySpan<byte> PositionPaths => [0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 6, 7, 3, 1, 0, 8, 9, 4, 10, 11, 5, 2, 12, 13, 6, 14, 15, 7, 3, 1, 0];
 
-    private static ReadOnlySpan<byte> PositionDepths => [3, 3, 2, 3, 3, 2, 1, 3, 3, 2, 3, 3, 2, 1, 0];
+    private static ReadOnlySpan<byte> PositionDepths => [4, 4, 3, 4, 4, 3, 2, 4, 4, 3, 4, 4, 3, 2, 1, 4, 4, 3, 4, 4, 3, 2, 4, 4, 3, 4, 4, 3, 2, 1, 0];
 }

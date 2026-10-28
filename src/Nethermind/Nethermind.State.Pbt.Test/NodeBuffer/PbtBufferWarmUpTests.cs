@@ -90,7 +90,7 @@ public class PbtBufferWarmUpTests
         {
             Assert.That(PbtGroupRecordCodec.IsTransient(pointer), Is.False, "committed records link no warmed group");
             if (!buffer.TryLocate(pointer, out PbtGroupRecord record)) continue;
-            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
+            for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
                 if (record.GetLink(slot) != 0) pending.Push(record.GetLink(slot));
         }
     }

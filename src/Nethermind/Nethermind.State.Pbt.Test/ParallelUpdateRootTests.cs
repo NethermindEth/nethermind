@@ -181,7 +181,7 @@ public class ParallelUpdateRootTests
     [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 20000, 20000, 20000, 0 }, FoldFanOut.DefaultMinOperationsPerWorker, new[] { 2, 4 }, TestName = "A cut forgets the descendants it already charged")]
     public void Bucket_runs_merge_consecutive_buckets_up_to_their_own_minimum(int[] counts, long[] descendantBytes, int minOperations, int[] expectedRunEnds)
     {
-        int[] runEnds = new int[PbtThreeLevelGroupGeometry.BoundarySlots];
+        int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
         int runCount = (FoldFanOut.Default with { MinOperationsPerWorker = minOperations }).PlanBucketRuns(counts, descendantBytes, runEnds);
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
@@ -230,7 +230,7 @@ public class ParallelUpdateRootTests
 
     // Zones with at least two worker minimums of operations fold their buckets on worker threads, each worker taking a
     // run of consecutive buckets; a fold at a quota of one is the serial oracle for both the root and the
-    // byte-identical group payloads. 4096 changes are ~85 per bucket of each zone's two depth-9 groups, so a minimum of 64 gives every bucket
+    // byte-identical group payloads. 4096 changes are ~85 per depth-8 bucket, so a minimum of 64 gives every bucket
     // its own worker and 200 merges three buckets per worker.
     [TestCase(0, 64)]
     [TestCase(0, 200)]
@@ -832,7 +832,7 @@ public class ParallelUpdateRootTests
         return [.. entries];
     }
 
-    /// <summary>Keys spread uniformly below each zone byte, so every group level fans out into all eight buckets.</summary>
+    /// <summary>Keys spread uniformly below each zone byte, so every group level fans out into all sixteen buckets.</summary>
     private static (byte[] Key, byte[]? Value)[] RandomZoneEntries(Random random, int keysPerZone)
     {
         (byte[] Key, byte[]? Value)[] entries = new (byte[], byte[]?)[3 * keysPerZone];
@@ -884,8 +884,8 @@ public class ParallelUpdateRootTests
             Interlocked.Increment(ref _activeReads);
             try
             {
-                // The storage zone's depth-six group lies under another root slot than the one the account and code zones share.
-                if (Coordinate && groupKey.BitDepth == 6)
+                // The account and storage zone groups lie under different root slots; the code zone's shares the account's.
+                if (Coordinate && groupKey.BitDepth == 8 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) != Eip8297KeyDerivation.CodeZone)
                 {
                     Interlocked.Increment(ref _arrivedWorkers);
                     if (!_barrier.SignalAndWait(TimeSpan.FromSeconds(30)))

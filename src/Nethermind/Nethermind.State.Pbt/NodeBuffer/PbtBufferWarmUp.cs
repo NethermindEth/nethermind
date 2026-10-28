@@ -34,7 +34,7 @@ public static class PbtBufferWarmUp
         where TPath : struct, IPbtNodePath<TPath>
     {
         if (root.Hash == default) return;
-        using ArrayPoolList<Frame> frames = new(PbtStorageNodePath.MaxBitDepth / PbtThreeLevelGroupGeometry.LevelsPerGroup + 1);
+        using ArrayPoolList<Frame> frames = new(PbtStorageNodePath.MaxBitDepth / PbtFourLevelGroupGeometry.LevelsPerGroup + 1);
         using ArrayPoolList<byte> scratch = new(1024);
         using ArrayPoolList<byte> records = new(SafeArrayPool<byte>.Shared, RecordsLength, RecordsLength, clearFirst: false);
         int recordsLength = 0;

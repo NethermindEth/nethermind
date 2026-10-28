@@ -34,7 +34,7 @@ public class PbtLoadedRecordBufferTests
             Assert.That(found, Is.All.True);
             Assert.That(records.Select(static record => record.Payload.ToArray()), Is.EqualTo(payloads), "records stay readable as later ones fill new chunks");
             Assert.That(records.Select(static record => record.Path), Is.EqualTo(Enumerable.Range(0, GroupCount).Select(PbtWarmedGroupBufferTests.Path)));
-            Assert.That(records.SelectMany(static record => Enumerable.Range(0, PbtThreeLevelGroupGeometry.BoundarySlots).Select(record.GetLink)), Is.All.Zero, "a loaded group links to no descendant");
+            Assert.That(records.SelectMany(static record => Enumerable.Range(0, PbtFourLevelGroupGeometry.BoundarySlots).Select(record.GetLink)), Is.All.Zero, "a loaded group links to no descendant");
             Assert.That(TryLoad(loaded, store, PbtWarmedGroupBufferTests.Path(GroupCount), out _), Is.False, "a store miss");
         }
     }

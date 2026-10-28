@@ -123,7 +123,7 @@ internal static class PbtSnapshotTestExtensions
         tree.TryAdd(default, [0]);
         if (fillAncestors)
             foreach ((PbtStorageNodePath path, _) in groups)
-                for (int depth = 0; depth < path.BitDepth; depth += PbtThreeLevelGroupGeometry.LevelsPerGroup) tree.TryAdd(path.Prefix(depth), [0]);
+                for (int depth = 0; depth < path.BitDepth; depth += PbtFourLevelGroupGeometry.LevelsPerGroup) tree.TryAdd(path.Prefix(depth), [0]);
         Dictionary<PbtStorageNodePath, ulong> published = [];
         foreach ((PbtStorageNodePath path, byte[]? payload) in tree.OrderByDescending(static group => group.Key.BitDepth))
         {
@@ -148,7 +148,7 @@ internal static class PbtSnapshotTestExtensions
 
     private static PbtStorageNodePath NearestAncestor(Dictionary<PbtStorageNodePath, byte[]?> tree, PbtStorageNodePath path)
     {
-        for (int depth = path.BitDepth - PbtThreeLevelGroupGeometry.LevelsPerGroup; depth > 0; depth -= PbtThreeLevelGroupGeometry.LevelsPerGroup)
+        for (int depth = path.BitDepth - PbtFourLevelGroupGeometry.LevelsPerGroup; depth > 0; depth -= PbtFourLevelGroupGeometry.LevelsPerGroup)
             if (tree.TryGetValue(path.Prefix(depth), out byte[]? payload) && payload is not null) return path.Prefix(depth);
         return default;
     }

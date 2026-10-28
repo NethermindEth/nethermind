@@ -28,7 +28,7 @@ public sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     /// <summary>File header: magic followed by the record format version; records start right after it.</summary>
     public const int FileHeaderLength = 8;
-    private const uint FormatVersion = 4;
+    private const uint FormatVersion = 5;
     private static ReadOnlySpan<byte> Magic => "TNLG"u8;
 
     private static long _aliveCount;

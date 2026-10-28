@@ -109,7 +109,7 @@ public static partial class TrieUpdater
         int index = groupDepth >> 3;
         int window = key[index] << 8;
         if (index + 1 < key.Length) window |= key[index + 1];
-        return (window >> (16 - PbtThreeLevelGroupGeometry.LevelsPerGroup - (groupDepth & 7))) & (PbtThreeLevelGroupGeometry.BoundarySlots - 1);
+        return (window >> (16 - PbtFourLevelGroupGeometry.LevelsPerGroup - (groupDepth & 7))) & (PbtFourLevelGroupGeometry.BoundarySlots - 1);
     }
 
 }
@@ -130,7 +130,7 @@ public static partial class TrieUpdater<TKey, TPath>
     public static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter writer,
         scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame
     {
-        Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
+        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
         ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
         long deltaTotal = 0;
         PbtGroupLinks links = writer.DescendantPointers;
@@ -180,7 +180,7 @@ public static partial class TrieUpdater<TKey, TPath>
     private static bool IsAbsentGroupBelow(scoped in BoundaryNode current, int bitDepth)
     {
         Debug.Assert(bitDepth != 0, "The root group always exists.");
-        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
+        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     }
 
     /// <summary>Per-fold state shared by every frame of one root update, with the working state of the thread folding.</summary>

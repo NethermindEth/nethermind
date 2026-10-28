@@ -152,9 +152,9 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>The boundary slot of the group at <paramref name="bitDepth"/> that this branch's prefix passes through.</summary>
         public readonly int BranchSlot(scoped in PbtTraversalPath cursor, int bitDepth)
         {
-            Debug.Assert(BranchDepth >= bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup);
+            Debug.Assert(BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup);
             int slot = 0;
-            for (int bit = bitDepth; bit < bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup; bit++)
+            for (int bit = bitDepth; bit < bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup; bit++)
                 slot = (slot << 1) | PrefixBit(cursor, bit);
             return slot;
         }
@@ -180,7 +180,7 @@ public static partial class TrieUpdater<TKey, TPath>
 
         private static int AnchorDepthAt<TFrame>(scoped ref TFrame frame, int position)
             where TFrame : struct, IGroupFrame =>
-            frame.BitDepth + PbtThreeLevelGroupGeometry.LocalPathOf(position).Length;
+            frame.BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length;
 
         /// <summary>Takes a node read under a wider key type, which a fold below the root group continues under its own.</summary>
         /// <remarks>Nothing is decoded: the encoding is the stored one either way, and only reading a key off it is typed.</remarks>

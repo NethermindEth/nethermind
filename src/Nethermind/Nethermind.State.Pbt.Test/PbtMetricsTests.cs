@@ -138,7 +138,7 @@ public class PbtMetricsTests
     }
 
     private static readonly (string Path, int Depth, string Partition)[] GroupKeys =
-        [("", 0, "account"), ("00", 3, "account"), ("0000", 9, "account"), ("0100", 9, "code"), ("e0", 3, "storage"), ("ff00", 9, "storage")];
+        [("", 0, "account"), ("00", 4, "account"), ("00", 8, "account"), ("01", 8, "code"), ("f0", 4, "storage"), ("ff", 8, "storage")];
 
     [Test]
     public void PointReads_ReportOnlyTheAnsweringTier(
