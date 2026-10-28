@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -76,10 +79,45 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
 
     private static void DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, bool allowEmptySignature)
     {
-        ulong v = DecodeSignatureItems(ref decoderContext, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes);
-        transaction.Signature = allowEmptySignature && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
-            ? null
-            : SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+        int vPosition = decoderContext.Position;
+        try
+        {
+            ulong v = DecodeSignatureItems(ref decoderContext, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes);
+            transaction.Signature = allowEmptySignature && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
+                ? null
+                : SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+        }
+        catch (RlpException) when (TryGetWideVError(decoderContext.Data, vPosition, out string? error))
+        {
+            throw new RlpException(error);
+        }
+    }
+
+    /// <summary>Names the error of a <c>v</c> at <paramref name="position"/> too wide for a <see cref="ulong"/>.</summary>
+    /// <remarks>
+    /// EIP-155 sets <c>v = 35 + 2 * chainId + parity</c>, so such a <c>v</c> can still hold a 64-bit chain id, which is
+    /// only one no supported network has. A chain id wider than 64 bits makes <c>v</c> itself invalid.
+    /// </remarks>
+    private static bool TryGetWideVError(ReadOnlySpan<byte> data, int position, [NotNullWhen(true)] out string? error)
+    {
+        error = null;
+        if (data[position] >= Rlp.EmptyListByte)
+        {
+            return false;
+        }
+
+        (int prefixLength, int contentLength) = RlpHelpers.PeekPrefixAndContentLength(data, position);
+        if (contentLength is <= sizeof(ulong) or > 32 || data[position + prefixLength] == 0)
+        {
+            return false;
+        }
+
+        RlpHelpers.DecodeUInt256(data, position, out UInt256 v);
+        UInt256 chainId = (v + v % 2 - 36) / 2;
+        error = chainId <= ulong.MaxValue
+            ? $"InvalidTxChainId: Chain id {chainId} in v is not supported."
+            : $"{TxErrorMessages.InvalidTxSignature} Chain id in v exceeds uint64.";
+        return true;
     }
 
     private readonly struct Payload : ITxPayloadDecoder

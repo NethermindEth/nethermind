@@ -503,7 +503,7 @@ namespace Ethereum.Test.Base
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(networks[1], testSpec.Config?.BlobSchedule), testSpec.Config);
+                    testSpec.EthereumNetworkAfterTransition = WithZeroNonceStorageAccounts(LoadSpec(TransitionTarget(networks[0], networks[1]), testSpec.Config?.BlobSchedule), testSpec.Config);
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
@@ -519,9 +519,28 @@ namespace Ethereum.Test.Base
         private static ulong LoadChainId(ConfigJson? config) =>
             config?.Chainid is null ? MainnetSpecProvider.Instance.ChainId : System.Convert.ToUInt64(config.Chainid, 16);
 
+        /// <summary>The full name of the fork a transition network named <c>{from}To{to}</c> moves to.</summary>
+        /// <remarks>A transition into a BPO scenario of <paramref name="from"/> drops that fork's prefix, as in
+        /// <c>AmsterdamToBPOIncreaseAtTime15k</c>, while its blob schedule stays keyed by the full name.</remarks>
+        private static string TransitionTarget(string from, string to) =>
+            to is BpoIncreaseScenario or BpoDecreaseScenario ? from + to : to;
+
+        /// <remarks>
+        /// EEST derives a <c>{Fork}BPOIncrease</c> and a <c>{Fork}BPODecrease</c> from every fork from Amsterdam on.
+        /// Each keeps the rules of its fork and only changes the blob schedule, which the fixture carries.
+        /// </remarks>
+        private static IReleaseSpec ParseSpec(string name) =>
+            SpecNameParser.Parse(ForkAliases.Resolve(
+                name.EndsWith(BpoIncreaseScenario, StringComparison.Ordinal) || name.EndsWith(BpoDecreaseScenario, StringComparison.Ordinal)
+                    ? name[..^BpoIncreaseScenario.Length]
+                    : name));
+
+        private const string BpoIncreaseScenario = "BPOIncrease";
+        private const string BpoDecreaseScenario = "BPODecrease";
+
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
-            IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(name));
+            IReleaseSpec spec = ParseSpec(name);
             // The blob schedule stays keyed by the name the fixture declares, not by the alias target.
             if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
             {
@@ -531,7 +550,7 @@ namespace Ethereum.Test.Base
             SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
             return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                IReleaseSpec spec = SpecNameParser.Parse(ForkAliases.Resolve(key.Name));
+                IReleaseSpec spec = ParseSpec(key.Name);
                 return new OverridableReleaseSpec(spec)
                 {
                     MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),
