@@ -37,6 +37,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -664,7 +665,7 @@ public class StartupTests
             if (!ownedDeadline)
             {
                 using GethLikeBlockEnvelopeStreamingTracer tracer = new(GethTraceOptions.Default, writer, pipe, token);
-                using (((Nethermind.Evm.Tracing.IBlockTracer)tracer).StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject))
+                using (((IBlockTracer)tracer).StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject))
                 {
                     writer.WriteStartObject();
                     writer.WriteString("memory", new string('a', payloadSize == 0 ? 1 : payloadSize));
@@ -717,7 +718,8 @@ public class StartupTests
                 (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
                 using JsonDocument document = JsonDocument.Parse(response);
                 JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
-                Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.True);
+                Assert.That(envelope.TryGetProperty("result", out JsonElement traceResult), Is.True);
+                JsonElement traces = traceResult;
                 Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
                 using (Assert.EnterMultipleScope())
                 {
