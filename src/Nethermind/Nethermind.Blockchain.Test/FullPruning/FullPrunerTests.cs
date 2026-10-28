@@ -106,8 +106,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         Nethermind.Db.Metrics.FullPruningLastDurationSeconds = -1;
         TestContext test = CreateTest();
         await test.RunFullPruning();
-        Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
-        Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Nethermind.Db.Metrics.FullPruningCount, Is.EqualTo(countBefore + 1));
+            Assert.That(Nethermind.Db.Metrics.FullPruningLastDurationSeconds, Is.GreaterThanOrEqualTo(0));
+        }
     }
 
     [Test, NonParallelizable, MaxTime(Timeout.MaxTestTime)]
@@ -219,7 +222,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         byte[] key = { 1, 2, 3 };
         test.FullPruningDb[key] = key;
 
+#pragma warning disable NUnit2045 // Completion is required before checking the resulting state.
         Assert.That(await test.WaitForPruningEnd(ctx), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 

@@ -466,9 +466,12 @@ public class FrameTxDecoderTests
         // `c3 82 01 2c` is the whole nonce_keys list; `c1` under-declares it without moving any other byte.
         ReadOnlySpan<byte> canonical = [0xc3, 0x82, 0x01, 0x2c];
         int headerIndex = bytes.AsSpan().IndexOf(canonical);
-        Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
-        // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
-        Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headerIndex, Is.GreaterThanOrEqualTo(0), "canonical nonce_keys encoding not found");
+            // A second occurrence would let the patch corrupt an unrelated list and still throw, i.e. pass for the wrong reason.
+            Assert.That(bytes.AsSpan(headerIndex + 1).IndexOf(canonical), Is.LessThan(0), "the nonce_keys encoding is not unique");
+        }
 
         if (underDeclare)
         {

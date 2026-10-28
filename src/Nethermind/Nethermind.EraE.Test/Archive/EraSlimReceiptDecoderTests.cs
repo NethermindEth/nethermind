@@ -51,9 +51,12 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].PostTransactionState, Is.EqualTo(expectedStateRoot), "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
-            "the decoder must restore PostTransactionState, not StatusCode");
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(0), "StatusCode must not be set for pre-Byzantium receipts");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].PostTransactionState, Is.EqualTo(expectedStateRoot), "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
+                "the decoder must restore PostTransactionState, not StatusCode");
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(0), "StatusCode must not be set for pre-Byzantium receipts");
+        }
     }
 
     [Test]
@@ -66,8 +69,11 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
-        Assert.That(receipts[0].PostTransactionState, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+            Assert.That(receipts[0].PostTransactionState, Is.Null);
+        }
     }
 
     [Test]
@@ -80,8 +86,11 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(0));
-        Assert.That(receipts[0].PostTransactionState, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(0));
+            Assert.That(receipts[0].PostTransactionState, Is.Null);
+        }
     }
 
     [Test]
@@ -93,8 +102,11 @@ internal class EraSlimReceiptDecoderTests
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
         Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].TxType, Is.EqualTo((TxType)txType));
-        Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts[0].TxType, Is.EqualTo((TxType)txType));
+            Assert.That(receipts[0].StatusCode, Is.EqualTo(1));
+        }
     }
 
     [Test]

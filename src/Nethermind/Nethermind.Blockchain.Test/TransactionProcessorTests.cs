@@ -306,13 +306,19 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         if (txValue == AccountBalance)
         {
             // Gas price is zero so no gas payment is needed; sending the full balance as value is valid.
-            Assert.That(err, Is.Null);
-            Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+            }
         }
         else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
-            Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
-            Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
+                Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
+            }
         }
         else
         {
@@ -371,9 +377,12 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
         GasEstimation estimation = Estimate(tx, block);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
-        Assert.That(estimation.Gas, Is.EqualTo(21000ul));
-        Assert.That(estimation.Error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
+            Assert.That(estimation.Gas, Is.EqualTo(21000ul));
+            Assert.That(estimation.Error, Is.Null);
+        }
     }
 
     [TestCase]

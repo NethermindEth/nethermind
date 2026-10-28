@@ -229,7 +229,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Let an ancestor already answered VALID finish committing within this request's budget.
             if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
             {
-                bool hasExecutedCopy = await _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider);
+                bool hasExecutedCopy = await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(lastValidHash, RemainingBudget(deadline), _timeProvider));
                 if (!hasExecutedCopy || !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
                     return NewPayloadV1Result.Syncing;
             }
