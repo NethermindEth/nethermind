@@ -84,7 +84,8 @@ public class OtsRpcModuleTests
         f.Save(3);
         using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs.Count(t => t.Hash == trace.TransactionHash), Is.EqualTo(1));
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs.Count(t => t.Hash == trace.TransactionHash), Is.EqualTo(1));
     }
 
     [Test]
@@ -95,7 +96,8 @@ public class OtsRpcModuleTests
         f.Save(3);
         using ResultWrapper<OtsSearchResult> response = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs, Is.Empty);
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs, Is.Empty);
     }
 
     [Test]
@@ -252,14 +254,15 @@ public class OtsRpcModuleTests
 
         using ResultWrapper<List<OtsTraceEntry>> response = f.Module.ots_traceTransaction(tx.Hash!);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data, Has.Count.EqualTo(1));
+        List<OtsTraceEntry> entries = response.Data;
+        Assert.That(entries, Has.Count.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Data[0].Type, Is.EqualTo(creation ? "CREATE" : "CALL"));
-            Assert.That(response.Data[0].Depth, Is.Zero);
-            Assert.That(response.Data[0].From, Is.EqualTo(tx.SenderAddress));
-            Assert.That(response.Data[0].To, Is.EqualTo(recipient));
-            Assert.That(response.Data[0].Output, Is.Empty);
+            Assert.That(entries[0].Type, Is.EqualTo(creation ? "CREATE" : "CALL"));
+            Assert.That(entries[0].Depth, Is.Zero);
+            Assert.That(entries[0].From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(entries[0].To, Is.EqualTo(recipient));
+            Assert.That(entries[0].Output, Is.Empty);
         }
     }
 
@@ -312,7 +315,8 @@ public class OtsRpcModuleTests
         foreach (Transaction transaction in f.Tree.FindBlock(3)!.Transactions) transaction.SenderAddress = null;
         using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs.Cast<LegacyTransactionForRpc>().Select(tx => tx.From), Is.All.EqualTo(TestItem.AddressB));
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs.Cast<LegacyTransactionForRpc>().Select(tx => tx.From), Is.All.EqualTo(TestItem.AddressB));
     }
 
     [Test]
@@ -323,7 +327,8 @@ public class OtsRpcModuleTests
         f.Store.Delete(f.Blocks[4].Hash!);
         using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs.Select(tx => tx.BlockNumber), Is.EqualTo(new ulong?[] { 3, 3 }));
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs.Select(tx => tx.BlockNumber), Is.EqualTo(new ulong?[] { 3, 3 }));
     }
 
     [Test]
@@ -387,8 +392,11 @@ public class OtsRpcModuleTests
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(TestItem.AddressD, 0, 25);
         using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(tx.Hash!);
-        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
-        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+            Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
@@ -444,8 +452,11 @@ public class OtsRpcModuleTests
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
         using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(outer.Hash!);
-        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
-        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+            Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { outer.Hash }));
@@ -503,8 +514,11 @@ public class OtsRpcModuleTests
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
         using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(tx.Hash!);
-        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
-        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+            Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
