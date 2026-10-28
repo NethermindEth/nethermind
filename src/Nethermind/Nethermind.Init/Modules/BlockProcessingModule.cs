@@ -79,7 +79,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
-            .AddScoped<IInclusionListSatisfactionChecker, InclusionListSatisfactionChecker>()
             .AddScoped<IBlockProcessor, StandardBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
@@ -106,6 +105,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 (lifetime, worldStateManager, specProvider, blockFinder, txPoolConfig, logManager) => new FrameTxPrefixSimulator(
                     new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
                     blockFinder, specProvider, txPoolConfig, logManager))
+            // Its own code cache for the same reason: the replay materialises code the access list deploys.
+            .AddSingleton<IProfile2EligibilityReplayer, ILifetimeScope, IWorldStateManager, ISpecProvider, IEthereumEcdsa, IBlocksConfig, ILogManager>(
+                (lifetime, worldStateManager, specProvider, ecdsa, blocksConfig, logManager) => new Profile2EligibilityReplayer(
+                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
+                    ecdsa, blocksConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<OverridableEnvFactory>()

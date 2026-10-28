@@ -324,7 +324,7 @@ public class MempoolStatePrewarmerTests
     /// </summary>
     [Test]
     public void RemovedBlock_WithoutSuccess_StartsWarmingAgain(
-        [Values(ProcessingResult.Success, ProcessingResult.InclusionListUnsatisfied, ProcessingResult.QueueException, ProcessingResult.MissingBlock)] ProcessingResult result)
+        [Values(ProcessingResult.Success, ProcessingResult.QueueException, ProcessingResult.MissingBlock)] ProcessingResult result)
     {
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
         Block head = new(headHeader);
@@ -338,7 +338,7 @@ public class MempoolStatePrewarmerTests
         queue.BlockAdded += Raise.EventWith(new BlockEventArgs(child));
         queue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(child.Hash!, result));
 
-        bool expectRestart = result is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied or ProcessingResult.QueueException);
+        bool expectRestart = result is not (ProcessingResult.Success or ProcessingResult.QueueException);
         bool restarted = preWarmer.TryNextSession(expectRestart ? TimeSpan.FromSeconds(5) : TimeSpan.FromMilliseconds(200), out CancellationToken second);
 
         using (Assert.EnterMultipleScope())

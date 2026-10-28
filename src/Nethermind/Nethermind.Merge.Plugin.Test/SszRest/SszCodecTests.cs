@@ -792,6 +792,22 @@ public class SszCodecTests
         AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V6");
     }
 
+    /// <summary>getPayloadV7 over SSZ is the V6 container plus the claims, which round-trip intact.</summary>
+    [Test]
+    public void EncodeGetPayloadV7Response_round_trips_the_claims()
+    {
+        ExecutionPayloadV4 ep = SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL);
+        Block block = (Block)ep.TryGetBlock();
+        OmissionClaim[] claims = [new(TestItem.KeccakA, 0), new(TestItem.KeccakB, 5)];
+        block.OmissionClaims = claims;
+
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV7Response(new GetPayloadV7Result(block, UInt256.One, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false), w);
+        GetPayloadResponseV7Wire.Decode(new ReadOnlySequence<byte>(w.WrittenMemory), out GetPayloadResponseV7Wire decoded);
+
+        Assert.That(decoded.OmissionClaims.ToClaims(), Is.EqualTo(claims));
+    }
+
     [Test]
     public void EncodeGetPayloadWithWitnessV6Response_embeds_the_built_payload_encoding()
     {
@@ -1004,7 +1020,8 @@ public class SszCodecTests
         {
             Status = PayloadStatus.Valid,
             LatestValidHash = TestItem.KeccakA,
-            InclusionListSatisfied = satisfied
+            InclusionListSatisfied = satisfied,
+            InclusionCheckId = TestItem.KeccakB
         };
 
         byte[] encoded = Encode(ps, SszCodec.EncodePayloadStatusV2);
@@ -1017,6 +1034,7 @@ public class SszCodecTests
             Assert.That(decoded.LatestValidHash![0], Is.EqualTo(TestItem.KeccakA));
             Assert.That(decoded.InclusionListSatisfied, Has.Length.EqualTo(1));
             Assert.That(decoded.InclusionListSatisfied![0], Is.EqualTo(expectedByte));
+            Assert.That(decoded.InclusionCheckId, Is.EqualTo(new[] { TestItem.KeccakB }));
         }
     }
 
@@ -1032,11 +1050,12 @@ public class SszCodecTests
         {
             Assert.That(decoded.Status, Is.EqualTo((byte)2));
             Assert.That(decoded.InclusionListSatisfied, Is.Null.Or.Empty);
+            Assert.That(decoded.InclusionCheckId, Is.Null.Or.Empty);
         }
     }
 
     [Test]
-    public void DecodeNewPayload_v6_roundtrip_preserves_inclusion_list_and_v5_fields()
+    public void DecodeNewPayload_v6_roundtrip_preserves_inclusion_lists_claims_and_v5_fields()
     {
         byte[] executionRequest = [0xAA, 0xBB];
         byte[] ilTx1 = [0x01, 0x02, 0x03];
@@ -1049,7 +1068,8 @@ public class SszCodecTests
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList, slotNumber)),
             ParentBeaconBlockRoot = TestItem.KeccakD,
             ExecutionRequests = [new SszTransaction { Bytes = executionRequest }],
-            InclusionListTransactions = [new SszTransaction { Bytes = ilTx1 }, new SszTransaction { Bytes = ilTx2 }]
+            InclusionLists = [new SszInclusionList { Transactions = [new SszTransaction { Bytes = ilTx1 }] }, new SszInclusionList(), new SszInclusionList { Transactions = [new SszTransaction { Bytes = ilTx2 }, new SszTransaction { Bytes = ilTx1 }] }],
+            OmissionClaims = [new OmissionClaimWire { TransactionHash = TestItem.KeccakA, EvaluationIndex = 3 }]
         };
 
         byte[] encoded = NewPayloadV6RequestWire.Encode(wire);
@@ -1057,7 +1077,7 @@ public class SszCodecTests
         NewPayloadV6RequestWire.Decode(encoded, out NewPayloadV6RequestWire decoded);
         ExecutionPayloadV4 payload = decoded.ExecutionPayload.AsExecutionPayload();
         byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
-        byte[][]? inclusionListTxs = decoded.InclusionListTransactions.ToExecutionRequests();
+        byte[][][]? inclusionLists = decoded.InclusionLists.ToInclusionLists();
 
         using (Assert.EnterMultipleScope())
         {
@@ -1066,7 +1086,8 @@ public class SszCodecTests
             Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
             Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakD));
             Assert.That(requests, Is.EqualTo(new[] { executionRequest }));
-            Assert.That(inclusionListTxs, Is.EqualTo(new[] { ilTx1, ilTx2 }));
+            Assert.That(inclusionLists, Is.EqualTo(new[] { new[] { ilTx1 }, [], new[] { ilTx2, ilTx1 } }));
+            Assert.That(decoded.OmissionClaims.ToClaims(), Is.EqualTo(new[] { new OmissionClaim(TestItem.KeccakA, 3) }));
         }
     }
 
@@ -1096,7 +1117,7 @@ public class SszCodecTests
                     ParentBeaconBlockRoot = TestItem.KeccakE,
                     SlotNumber = expectedSlot,
                     TargetGasLimit = expectedTargetGasLimit,
-                    InclusionListTransactions = [new SszTransaction { Bytes = ilTx }]
+                    InclusionLists = [new SszInclusionList(), new SszInclusionList { Transactions = [new SszTransaction { Bytes = ilTx }] }]
                 }
             ]
         };
@@ -1116,7 +1137,7 @@ public class SszCodecTests
             Assert.That(attrs.SlotNumber, Is.EqualTo(expectedSlot));
             Assert.That(attrs.TargetGasLimit, Is.EqualTo(expectedTargetGasLimit));
             Assert.That(attrs.SuggestedFeeRecipient, Is.EqualTo(TestItem.AddressB));
-            Assert.That(attrs.InclusionListTransactions, Is.EqualTo(new[] { ilTx }));
+            Assert.That(attrs.InclusionLists, Is.EqualTo(new[] { [], new[] { ilTx } }));
         }
     }
 

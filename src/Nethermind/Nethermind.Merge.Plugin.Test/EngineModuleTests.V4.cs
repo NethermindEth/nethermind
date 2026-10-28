@@ -407,7 +407,7 @@ public partial class EngineModuleTests
             EngineApiVersions.NewPayload.V3 => (await rpc.engine_newPayloadV3(ExecutionPayloadV3.Create(block), [], Keccak.Zero)).ErrorCode,
             EngineApiVersions.NewPayload.V4 => (await rpc.engine_newPayloadV4(ExecutionPayloadV3.Create(block), [], Keccak.Zero, [])).ErrorCode,
             EngineApiVersions.NewPayload.V5 => (await rpc.engine_newPayloadV5(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [])).ErrorCode,
-            EngineApiVersions.NewPayload.V6 => (await rpc.engine_newPayloadV6(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [], [])).ErrorCode,
+            EngineApiVersions.NewPayload.V6 => (await rpc.engine_newPayloadV6(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [], AtPositions(), [])).ErrorCode,
             _ => throw new ArgumentOutOfRangeException(nameof(version))
         };
     }

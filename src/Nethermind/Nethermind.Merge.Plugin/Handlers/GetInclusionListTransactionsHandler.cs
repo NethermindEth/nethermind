@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -20,14 +21,16 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// Supplies head state. The pool admits a sender's bucket on any one entry being ready, so only the account
 /// itself says where that sender's appendable run starts.
 /// </param>
+/// <param name="blocksConfig">Supplies <c>MAX_VERIFY_GAS_PER_TX</c>, which bounds the frame transactions listed.</param>
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,
     ISpecProvider specProvider,
-    IChainHeadInfoProvider chainHeadInfo) : IHandler<Hash256?, InclusionListBytes>
+    IChainHeadInfoProvider chainHeadInfo,
+    IBlocksConfig blocksConfig) : IHandler<Hash256?, InclusionListBytes>
 {
     private readonly InclusionListBuilder? _inclusionListBuilder =
-        txPool is null ? null : new(txPool, blockTree, specProvider, chainHeadInfo.ReadOnlyStateProvider);
+        txPool is null ? null : new(txPool, blockTree, specProvider, chainHeadInfo.ReadOnlyStateProvider, blocksConfig.FocilProfile2MaxVerifyGas);
 
     /// <inheritdoc/>
     /// <param name="parentBlockHash">Block whose header fixes the next-block base fee the candidates are

@@ -81,12 +81,12 @@ namespace Nethermind.Consensus.Processing
 
                 if (executionReservation > gasRemaining)
                 {
-                    return args.Set(TxAction.Skip, $"Not enough execution gas in block, gas limit {executionReservation} > {gasRemaining}");
+                    return args.SetInvalid($"Not enough execution gas in block, gas limit {executionReservation} > {gasRemaining}");
                 }
 
                 if (stateReservation > stateGasRemaining)
                 {
-                    return args.Set(TxAction.Skip, $"Not enough state gas in block, gas limit {stateReservation} > {stateGasRemaining}");
+                    return args.SetInvalid($"Not enough state gas in block, gas limit {stateReservation} > {stateGasRemaining}");
                 }
 
                 if (currentTx.IsAboveInitCode(spec))
@@ -108,7 +108,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
                     {
-                        return args.Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
+                        return args.SetInvalid(KeyedNonceSkipReason(stateProvider, currentTx));
                     }
                 }
                 else
@@ -116,7 +116,7 @@ namespace Nethermind.Consensus.Processing
                     ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                     if (expectedNonce != currentTx.Nonce)
                     {
-                        return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                        return args.SetInvalid($"Invalid nonce - expected {expectedNonce}");
                     }
                 }
 

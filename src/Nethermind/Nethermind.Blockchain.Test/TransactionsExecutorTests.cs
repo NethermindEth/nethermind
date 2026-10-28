@@ -692,6 +692,73 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
+        public enum ClaimSkip { NeverApproves, StaleNonce, BuilderPolicy }
+
+        // EIP-8369: a claim binds the builder, which is judged at the claimed index alone, so a skipped candidate is
+        // claimed only where it is invalid, never where the builder's own policy passed it over.
+        [TestCase(ClaimSkip.NeverApproves, true, TestName = "Builder claims a candidate whose prefix fails at the index")]
+        [TestCase(ClaimSkip.StaleNonce, true, TestName = "Builder claims a candidate whose nonce is invalid at the index")]
+        [TestCase(ClaimSkip.BuilderPolicy, false, TestName = "Builder does not claim a candidate skipped by its own policy")]
+        public void Builder_claims_only_candidates_invalid_at_the_index(ClaimSkip skip, bool claimed)
+        {
+            ISpecProvider specProvider = new TestSpecProvider(Eip8369Prototype.Instance);
+            IReleaseSpec spec = specProvider.GenesisSpec;
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 100.Ether);
+            stateProvider.InsertCode(TestItem.AddressA, skip == ClaimSkip.NeverApproves
+                    ? Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done
+                    : Prepare.EvmCode.PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done,
+                spec);
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            Transaction candidate = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                Nonce = skip == ClaimSkip.StaleNonce ? 5UL : 0UL,
+                NonceKeys = [UInt256.Zero],
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, 100_000, UInt256.Zero, default)],
+                FrameSignatures = [],
+                GasLimit = 100_000,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+            };
+            candidate.Hash = candidate.CalculateHash();
+
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
+                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                new BuildUpTransactionProcessorAdapter(transactionProcessor),
+                stateProvider,
+                // A zero transaction-size budget stands in for any skip of the builder's own choosing.
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, skip == ClaimSkip.BuilderPolicy ? 0 : BlocksConfig.DefaultMaxTxKilobytes),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance,
+                NullTxPool.Instance);
+
+            Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithGasLimit(30_000_000).TestObject;
+            BlockToProduce blockToProduce = new(block.Header, [candidate], [])
+            {
+                InclusionListCandidates = new HashSet<Hash256AsKey> { candidate.Hash },
+            };
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockToProduce.Transactions, Is.Empty);
+                Assert.That(blockToProduce.OmissionClaims ?? [],
+                    claimed ? Is.EqualTo(new[] { new OmissionClaim(candidate.Hash, 0) }) : Is.Empty);
+            }
+        }
+
         private sealed class CountingTxProcessorAdapter(ITransactionProcessorAdapter inner) : ITransactionProcessorAdapter
         {
             public int Attempts { get; private set; }

@@ -28,10 +28,23 @@ namespace Nethermind.Consensus.Processing
             public TxAction Action { get; private set; } = TxAction.Add;
             public string Reason { get; private set; } = string.Empty;
 
+            /// <summary>Whether the transaction is skipped because it is invalid at this index, rather than by the builder's
+            /// policy; an omission claim is made only for such a skip.</summary>
+            public bool IsInvalidHere { get; private set; }
+
             public AddingTxEventArgs Set(TxAction action, string reason)
             {
                 Action = action;
                 Reason = reason;
+                IsInvalidHere = false;
+                return this;
+            }
+
+            /// <summary>Skips the transaction as invalid at this index.</summary>
+            public AddingTxEventArgs SetInvalid(string reason)
+            {
+                Set(TxAction.Skip, reason);
+                IsInvalidHere = true;
                 return this;
             }
         }

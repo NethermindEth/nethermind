@@ -163,7 +163,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Hash256 hash = block.Hash!;
         if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
 
-        BlockVerdictEventArgs verdict = new(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied);
+        BlockVerdictEventArgs verdict = new(hash, ProcessingResult.Success);
         try
         {
             BlockExecuted?.Invoke(this, verdict);
@@ -374,9 +374,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
         Hash256? blockHash = block.Hash!;
-        // InclusionListTransactions aren't in RLP, so a hash-only ref re-resolved from the DB would drop
-        // them and pass a censoring payload.
-        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
+        BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
         ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup(), allowSynchronousProcessing);
@@ -691,11 +689,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     NotifyFailedOrSkipped(blockRef, block, error);
                 }
-                else if (!processedBlock.IsInclusionListSatisfied)
-                {
-                    // The block was committed normally; signal the CL via newPayload status only.
-                    NotifyInclusionListUnsatisfied(blockRef, processedBlock);
-                }
                 else
                 {
                     if (isTrace) TraceProcessed(block);
@@ -746,13 +739,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
             OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error), processed: true);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void NotifyInclusionListUnsatisfied(BlockRef blockRef, Block block)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Inclusion list unsatisfied for block {block.ToString(Block.Format.Full)}");
-            OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.InclusionListUnsatisfied), processed: true);
         }
 
         // Reported by the catch below, which every other failure here goes through too: reporting twice would take a

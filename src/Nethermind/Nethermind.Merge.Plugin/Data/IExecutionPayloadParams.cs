@@ -13,7 +13,6 @@ public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
     byte[][]? ExecutionRequests { get; set; }
-    byte[][]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 
     /// <summary>Validates request parameters and bounds the transaction count before decoding when supported.</summary>
@@ -34,7 +33,8 @@ public enum ValidationResult : byte { Success, Fail, Invalid };
 
 public class ExecutionPayloadParams(
     byte[][]? executionRequests = null,
-    byte[][]? inclusionListTransactions = null)
+    byte[][][]? inclusionLists = null,
+    OmissionClaim[]? omissionClaims = null)
 {
     /// <summary>
     /// Gets or sets <see cref="ExecutionRequests"/> as defined in
@@ -42,8 +42,11 @@ public class ExecutionPayloadParams(
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
-    /// <summary>Inclusion-list entries as defined in <see href="https://eips.ethereum.org/EIPS/eip-7805">EIP-7805</see>.</summary>
-    public byte[][]? InclusionListTransactions { get; set; } = inclusionListTransactions;
+    /// <summary>EIP-7805 separate inclusion lists, one per committee position (<see cref="Core.InclusionLists"/>).</summary>
+    public byte[][][]? InclusionLists { get; } = inclusionLists;
+
+    /// <summary>The EIP-7805 omission claims the builder committed to, in order and with their duplicates.</summary>
+    public OmissionClaim[]? OmissionClaims { get; } = omissionClaims;
 
     protected ValidationResult ValidateInitialParams(IReleaseSpec spec, out string? error)
     {
@@ -79,27 +82,28 @@ public class ExecutionPayloadParams(
             }
         }
 
+        // bogota.md engine_newPayloadV6 point 2. Transaction contents and claims that match nothing are judged by
+        // the inclusion check, never here.
         if (spec.InclusionListsEnabled)
         {
-            if (InclusionListTransactions is null)
+            error = Core.InclusionLists.Validate(InclusionLists);
+            if (error is not null) return ValidationResult.Fail;
+
+            if (OmissionClaims is null)
             {
-                error = "Inclusion list must be set";
+                error = "Omission claims must be set";
                 return ValidationResult.Fail;
             }
 
-            // Count is bounded separately from bytes: an empty entry costs no bytes but still allocates a slot.
-            if (InclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions)
+            if (OmissionClaims.Length > Eip8369Constants.MaxOmissionClaims)
             {
-                error = "Inclusion list exceeds the maximum number of transactions";
+                error = $"Omission claims exceed the maximum of {Eip8369Constants.MaxOmissionClaims}";
                 return ValidationResult.Fail;
             }
 
-            long totalBytes = 0;
-            for (int i = 0; i < InclusionListTransactions.Length; i++)
-                totalBytes += InclusionListTransactions[i]?.Length ?? 0;
-            if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+            if (Array.Exists(OmissionClaims, static claim => claim.TransactionHash is null))
             {
-                error = "Inclusion list exceeds the maximum aggregate size";
+                error = "Omission claim transaction hash must be set";
                 return ValidationResult.Fail;
             }
         }
@@ -113,8 +117,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests = null,
-    byte[][]? inclusionListTransactions = null)
-    : ExecutionPayloadParams(executionRequests, inclusionListTransactions), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
+    byte[][][]? inclusionLists = null,
+    OmissionClaim[]? omissionClaims = null)
+    : ExecutionPayloadParams(executionRequests, inclusionLists, omissionClaims), IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 
@@ -316,6 +321,7 @@ public sealed class InclusionListExecutionPayloadParams(
     Hash256?[]? blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests,
-    byte[][]? inclusionListTransactions)
+    byte[][][]? inclusionLists,
+    OmissionClaim[]? omissionClaims)
     : ExecutionPayloadParams<ExecutionPayloadV4>(
-        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionLists, omissionClaims);

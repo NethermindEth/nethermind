@@ -325,6 +325,65 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    // EIP-7805: the sender's code is one body and each helper it calls another; EXTCODESIZE loads its target too.
+    [TestCase(3, 0L, false, false, TestName = "Code bodies at the replay limit are allowed")]
+    [TestCase(2, 0L, false, true, TestName = "One code body over the replay limit is refused")]
+    [TestCase(0, 0L, true, true, TestName = "EXTCODESIZE loads its target as a code body")]
+    [TestCase(0, -1L, false, true, TestName = "One byte over the replay code byte limit is refused")]
+    [TestCase(0, 0L, false, false, TestName = "Code bytes at the replay limit are allowed")]
+    public void Simulate_ReplayCodeLimits_BoundBodiesAndBytes(int maxBodies, long byteSlack, bool extCodeSize, bool violates)
+    {
+        byte[] helperB = [(byte)Instruction.PUSH1, 1, (byte)Instruction.STOP];
+        byte[] helperC = [(byte)Instruction.PUSH1, 2, (byte)Instruction.STOP];
+        DeployContract(TestItem.AddressB, helperB);
+        DeployContract(TestItem.AddressC, helperC);
+        Prepare code = Prepare.EvmCode.StaticCall(TestItem.AddressB, 50_000).Op(Instruction.POP);
+        code = extCodeSize
+            ? code.PushData(TestItem.AddressC).Op(Instruction.EXTCODESIZE).Op(Instruction.POP)
+            : code.StaticCall(TestItem.AddressC, 50_000).Op(Instruction.POP);
+        byte[] senderCode = code.PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, senderCode, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        long maxBytes = maxBodies == 0 ? senderCode.Length + helperB.Length + helperC.Length + byteSlack : 0;
+        FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec,
+            maxCodeBodies: maxBodies == 0 && extCodeSize ? 2 : maxBodies, maxCodeBytes: maxBytes);
+
+        try
+        {
+            Run(tx, tracer);
+        }
+        catch (OperationCanceledException) when (tracer.Violated)
+        {
+        }
+
+        Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
+    }
+
+    // A body is counted once however often execution returns to its first instruction: a loop jumping back to
+    // offset 0, or the body re-entered through a self-call, must not rehash a large body per iteration.
+    [TestCase(false, TestName = "A loop back to offset 0 hashes a large body at most once")]
+    [TestCase(true, TestName = "A body re-entered through self-calls hashes at most once")]
+    public void Simulate_ReplayCodeLimits_HashEachBodyOnce(bool selfCall)
+    {
+        // JUMPDEST [STATICCALL(self)] PUSH0 JUMP, padded to 48 KiB; it loops until the frame runs out of gas.
+        Prepare code = Prepare.EvmCode.Op(Instruction.JUMPDEST);
+        if (selfCall) code = code.StaticCall(Sender, 5_000).Op(Instruction.POP);
+        byte[] loop = code.Op(Instruction.PUSH0).Op(Instruction.JUMP).Done;
+        byte[] body = new byte[48 * 1024];
+        loop.CopyTo(body, 0);
+        DeployContract(Sender, body, 1.Ether);
+        FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec,
+            maxCodeBodies: Eip8369Constants.MaxReplayCodeBodies, maxCodeBytes: Eip8369Constants.MaxReplayCodeBytes);
+
+        Run(FrameTx(nonce: 0, SelfVerifyFrame()), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.False, tracer.ViolationReason);
+            Assert.That(tracer.CodeHashComputations, Is.LessThanOrEqualTo(1));
+        }
+    }
+
     [Test]
     public void Simulate_PrefixCallsCodelessTarget_RecordsViolation()
     {
@@ -1057,6 +1116,49 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(DeployTx(deployed));
 
         Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
+    }
+
+    // EIP-7805's Profile 2 deployment bookkeeping includes the creator's nonce, so its replay admits plain CREATE
+    // in the deploy frame, still only to install code at tx.sender, and still nowhere else.
+    [TestCase(true, false, TestName = "Profile 2 replay admits a deploy frame installing tx.sender with CREATE")]
+    [TestCase(false, true, TestName = "Profile 2 replay refuses CREATE outside the deploy frame")]
+    public void Simulate_CreateInDeployFrame_IsAllowedWhenEnabled(bool fromDeployFrame, bool violates)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        byte[] create = Prepare.EvmCode.Create(initCode, 0).Done;
+        Address sender;
+        Transaction tx;
+        if (fromDeployFrame)
+        {
+            DeployContract(Factory, create);
+            sender = ContractAddress.From(Factory, 0);
+            FundAccount(sender, 1.Ether);
+            tx = DeployTx(sender);
+        }
+        else
+        {
+            // The sender's own VERIFY code runs the CREATE.
+            sender = TestItem.AddressE;
+            DeployContract(sender, [.. create, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+            tx = FrameTx(nonce: 0, SelfVerifyFrame());
+            tx.SenderAddress = sender;
+        }
+
+        FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, createInDeployFrame: true);
+
+        try
+        {
+            Run(tx, tracer);
+        }
+        catch (OperationCanceledException) when (tracer.Violated)
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
+            if (violates) Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
+        }
     }
 
     // The endowment is the same one-bit dependency on the factory's balance that the funded-CALL ban closes:

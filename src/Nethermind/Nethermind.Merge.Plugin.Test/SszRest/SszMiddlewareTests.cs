@@ -370,12 +370,12 @@ public class SszMiddlewareTests
     [Test]
     public async Task Forkchoice_v5_passes_custody_columns()
     {
-        ForkchoiceUpdatedV2Result fcuResult = new()
+        ForkchoiceUpdatedV1Result fcuResult = new()
         {
-            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
         };
         _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
-            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
         BitArray custodyColumns = CustodyColumnsFixture();
         DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", BuildForkchoiceV5Request(custodyColumns), fork: "bogota");
@@ -1122,12 +1122,12 @@ public class SszMiddlewareTests
         _specProvider = CreateChainSpecProvider();
         _middleware = BuildMiddleware();
 
-        ForkchoiceUpdatedV2Result fcuResult = new()
+        ForkchoiceUpdatedV1Result fcuResult = new()
         {
-            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
         };
         _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
-            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
         ForkchoiceUpdatedV5RequestWire request = new()
         {
@@ -1148,7 +1148,7 @@ public class SszMiddlewareTests
                     ParentBeaconBlockRoot = Keccak.Zero,
                     SlotNumber = 1,
                     TargetGasLimit = 30_000_000,
-                    InclusionListTransactions = [],
+                    InclusionLists = [],
                 }
             ],
             CustodyColumns = [],
@@ -1800,7 +1800,7 @@ public class SszMiddlewareTests
     public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
     {
         _engineModule.engine_newPayloadV6(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][][]?>(), Arg.Any<OmissionClaim[]?>())
             .Returns(ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
             {
                 Status = PayloadStatus.Valid,
@@ -1820,18 +1820,132 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
         await _engineModule.Received(1).engine_newPayloadV6(
-            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>());
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][][]?>(), Arg.Any<OmissionClaim[]?>());
+    }
+
+    private static readonly byte[][][] InclusionListsFixture = [[[0x01]], [], [[0x02], [0x01]]];
+    private static readonly OmissionClaim[] ClaimsFixture = [new(TestItem.KeccakB, 1), new(TestItem.KeccakC, 7)];
+
+    private static SszInclusionList[] InclusionListsWire() =>
+        [.. InclusionListsFixture.Select(static list => new SszInclusionList { Transactions = [.. list.Select(static tx => new SszTransaction { Bytes = tx })] })];
+
+    private static NewPayloadV6RequestWire NewPayloadV6WireWithListsAndClaims() => new()
+    {
+        ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
+        ParentBeaconBlockRoot = TestItem.KeccakA,
+        InclusionLists = InclusionListsWire(),
+        OmissionClaims = ClaimsFixture.ToWire(),
+    };
+
+    private static bool InclusionListsMatch(byte[][][]? actual) =>
+        actual is { } lists && lists.Length == InclusionListsFixture.Length
+        && lists.Zip(InclusionListsFixture).All(static p => p.First.Length == p.Second.Length && p.First.Zip(p.Second).All(static t => t.First.AsSpan().SequenceEqual(t.Second)));
+
+    /// <summary>SSZ-REST newPayloadV6 carries the separate lists and claims to the engine exactly as JSON does.</summary>
+    [Test]
+    public async Task NewPayloadV6_ssz_carries_inclusion_lists_and_claims()
+    {
+        _engineModule.engine_newPayloadV6(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][][]?>(), Arg.Any<OmissionClaim[]?>())
+            .Returns(ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionCheckId = TestItem.KeccakD }));
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", NewPayloadV6RequestWire.Encode(NewPayloadV6WireWithListsAndClaims()), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+        PayloadStatusV2Wire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadStatusV2Wire status);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status.InclusionListSatisfied, Is.Null.Or.Empty, "a pending verdict is absent");
+            Assert.That(status.InclusionCheckId, Is.EqualTo(new[] { TestItem.KeccakD }));
+        }
+        await _engineModule.Received(1).engine_newPayloadV6(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(),
+            Arg.Is<byte[][][]?>(lists => InclusionListsMatch(lists)),
+            Arg.Is<OmissionClaim[]?>(c => c != null && c.SequenceEqual(ClaimsFixture)));
+    }
+
+    /// <summary>An over-cap claim list decodes over SSZ and reaches the engine, so it is answered as the engine's
+    /// -32602 rather than as an SSZ decode failure.</summary>
+    [Test]
+    public async Task NewPayloadV6_ssz_reports_over_cap_claims_as_invalid_params()
+    {
+        _engineModule.engine_newPayloadV6(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][][]?>(),
+                Arg.Is<OmissionClaim[]?>(c => c != null && c.Length > Eip8369Constants.MaxOmissionClaims))
+            .Returns(ResultWrapper<PayloadStatusV2>.Fail("Omission claims exceed the maximum", ErrorCodes.InvalidParams));
+
+        NewPayloadV6RequestWire wire = NewPayloadV6WireWithListsAndClaims();
+        wire.OmissionClaims = [.. Enumerable.Repeat(new OmissionClaimWire { TransactionHash = TestItem.KeccakA }, Eip8369Constants.MaxOmissionClaims + 1)];
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", NewPayloadV6RequestWire.Encode(wire), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status422UnprocessableEntity));
+            Assert.That(body, Does.Contain("/engine-api/errors/invalid-body"));
+            Assert.That(body, Does.Contain("Omission claims exceed the maximum"));
+        }
+    }
+
+    /// <summary>SSZ-REST newPayloadWithWitnessV6 carries the separate lists and claims to the engine exactly as JSON does.</summary>
+    [Test]
+    public async Task NewPayloadWithWitnessV6_ssz_carries_inclusion_lists_and_claims()
+    {
+        _engineModule.engine_newPayloadWithWitnessV6(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][][]?>(), Arg.Any<OmissionClaim[]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(NewPayloadWithWitnessV1Result.FromPayloadStatus(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }, null)));
+
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, NewPayloadV6RequestWire.Encode(NewPayloadV6WireWithListsAndClaims()), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        await _engineModule.Received(1).engine_newPayloadWithWitnessV6(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(),
+            Arg.Is<byte[][][]?>(lists => InclusionListsMatch(lists)),
+            Arg.Is<OmissionClaim[]?>(c => c != null && c.SequenceEqual(ClaimsFixture)));
+    }
+
+    /// <summary>SSZ-REST forkchoiceUpdatedV5 carries the attributes' separate lists to the engine.</summary>
+    [Test]
+    public async Task ForkchoiceUpdatedV5_ssz_carries_inclusion_lists()
+    {
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Bogota.Instance);
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result
+            {
+                PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+            }));
+
+        byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
+        {
+            ForkchoiceState = new ForkchoiceStateWire { HeadBlockHash = TestItem.KeccakA, SafeBlockHash = TestItem.KeccakB, FinalizedBlockHash = Keccak.Zero },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV5Wire
+                {
+                    Timestamp = 1, PrevRandao = TestItem.KeccakC, SuggestedFeeRecipient = TestItem.AddressA, Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakD, SlotNumber = 1, TargetGasLimit = 30_000_000,
+                    InclusionLists = InclusionListsWire(),
+                },
+            ],
+            CustodyColumns = [],
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body, fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
+            Arg.Any<ForkchoiceStateV1>(), Arg.Is<PayloadAttributes?>(pa => pa != null && InclusionListsMatch(pa.InclusionLists)), Arg.Any<BitArray?>());
     }
 
     [Test]
     public async Task ForkchoiceUpdatedV5_bogota_routes_to_engine_forkchoiceUpdatedV5()
     {
-        ForkchoiceUpdatedV2Result fcuResult = new()
+        ForkchoiceUpdatedV1Result fcuResult = new()
         {
-            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
         };
         _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
-            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
         DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", BuildForkchoiceV5Request(), fork: "bogota");
 

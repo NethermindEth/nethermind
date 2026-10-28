@@ -47,16 +47,10 @@ public static class SszCodec
             LatestValidHash = baseWire.LatestValidHash,
             ValidationError = baseWire.ValidationError,
             // Optional[bool] = List[byte, 1]: empty for null, else a single 0/1 byte.
-            InclusionListSatisfied = ps.InclusionListSatisfied is { } satisfied ? [satisfied ? (byte)1 : (byte)0] : []
+            InclusionListSatisfied = ps.InclusionListSatisfied is { } satisfied ? [satisfied ? (byte)1 : (byte)0] : [],
+            InclusionCheckId = ps.InclusionCheckId is { } inclusionCheckId ? [inclusionCheckId] : []
         };
     }
-
-    public static int EncodeForkchoiceUpdatedResponseV2(ForkchoiceUpdatedV2Result resp, IBufferWriter<byte> writer)
-        => EncodeToWriter(new ForkchoiceUpdatedResponseWireV2
-        {
-            PayloadStatus = BuildPayloadStatusV2Wire(resp.PayloadStatus),
-            PayloadId = BuildPayloadIdList(resp.PayloadId)
-        }, writer);
 
     public static int EncodeInclusionListResponse(InclusionListBytes inclusionList, IBufferWriter<byte> writer)
     {
@@ -201,6 +195,17 @@ public static class SszCodec
         ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
         ShouldOverrideBuilder = r.ShouldOverrideBuilder
     };
+
+    public static int EncodeGetPayloadV7Response(GetPayloadV7Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV7Wire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
+            BlockValue = r.BlockValue,
+            BlobsBundle = r.BlobsBundle.ToWire(),
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
+            OmissionClaims = r.OmissionClaims.ToWire()
+        }, writer);
 
     public static byte[][] DecodeGetBlobsRequest(ReadOnlySequence<byte> buf)
     {
@@ -464,7 +469,7 @@ public static class SszCodec
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
             slotNumber: pa.SlotNumber,
             targetGasLimit: pa.TargetGasLimit);
-        attributes.InclusionListTransactions = pa.InclusionListTransactions.ToExecutionRequests();
+        attributes.InclusionLists = pa.InclusionLists.ToInclusionLists();
         return attributes;
     }
 

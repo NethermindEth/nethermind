@@ -42,6 +42,7 @@ public class GethGenesisParityTests
         // Names the EIP set frames-devnet-1 runs; geth genesis generators only emit the per-prototype labels.
         // Its parent's eip8141PrototypeTime schedules frame transactions, these labels the EIPs on top.
         [nameof(FramesDevnet1)] = [nameof(Eip8250Prototype), nameof(Eip8272Prototype), nameof(Eip7906Prototype)],
+        [nameof(Eip8369Prototype)] = [nameof(Eip8141Prototype), nameof(Eip8250Prototype), nameof(Eip8272Prototype)],
     };
 
     /// <summary>

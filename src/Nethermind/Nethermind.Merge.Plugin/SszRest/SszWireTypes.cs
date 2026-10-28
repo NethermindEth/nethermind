@@ -60,7 +60,8 @@ public partial struct PayloadStatusWire
     [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
 }
 
-// InclusionListSatisfied follows the Optional[T] = List[T, 1] pattern used above: 0/1 = false/true, empty = null.
+// InclusionListSatisfied and InclusionCheckId follow the Optional[T] = List[T, 1] pattern used above: for the verdict
+// 0/1 = false/true, and empty = null for both.
 [SszContainer]
 public partial struct PayloadStatusV2Wire
 {
@@ -68,6 +69,7 @@ public partial struct PayloadStatusV2Wire
     [SszList(1)] public Hash256[]? LatestValidHash { get; set; }
     [SszList(1)] public SszValidationError[]? ValidationError { get; set; }
     [SszList(1)] public byte[]? InclusionListSatisfied { get; set; }
+    [SszList(1)] public Hash256[]? InclusionCheckId { get; set; }
 }
 
 [SszContainer]
@@ -138,8 +140,24 @@ public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
     public ulong TargetGasLimit { get; set; }
-    // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
-    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
+    // A list rather than a vector, so a wrong count is answered as the JSON path answers it.
+    [SszList(Eip7805Constants.InclusionListCommitteeSize)] public SszInclusionList[]? InclusionLists { get; set; }
+}
+
+/// <summary>One committee position's inclusion list, in its original order with its duplicates.</summary>
+/// <remarks>The byte cap is checked by the engine, which answers it as it answers the JSON path.</remarks>
+[SszContainer(isCollectionItself: true)]
+public partial struct SszInclusionList
+{
+    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? Transactions { get; set; }
+}
+
+/// <summary>An EIP-7805 omission claim, <c>OmissionClaimV1</c>.</summary>
+[SszContainer]
+public partial struct OmissionClaimWire
+{
+    public Hash256 TransactionHash { get; set; }
+    public ulong EvaluationIndex { get; set; }
 }
 
 [SszContainer]
@@ -198,14 +216,6 @@ public partial struct ForkchoiceUpdatedResponseWire
     [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
 }
 
-// Carries PayloadStatusV2 so a VALID head can report inclusionListSatisfied (execution-apis#609).
-[SszContainer]
-public partial struct ForkchoiceUpdatedResponseWireV2
-{
-    public PayloadStatusV2Wire PayloadStatus { get; set; }
-    [SszList(1)] public SszPayloadId[]? PayloadId { get; set; }
-}
-
 [SszContainer]
 public partial struct NewPayloadV1RequestWire
 {
@@ -247,8 +257,10 @@ public partial struct NewPayloadV6RequestWire
     public SszExecutionPayloadV4 ExecutionPayload { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
-    // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
-    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
+    [SszList(Eip7805Constants.InclusionListCommitteeSize)] public SszInclusionList[]? InclusionLists { get; set; }
+    // Decoded past MAX_OMISSION_CLAIMS so the engine answers an over-cap list with -32602, as over JSON; one claim
+    // per entry the lists can carry is the transport's own bound.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public OmissionClaimWire[]? OmissionClaims { get; set; }
 }
 
 [SszContainer]
@@ -331,6 +343,17 @@ public partial struct GetPayloadResponseV6Wire
     public BlobsBundleV2Wire BlobsBundle { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
     public bool ShouldOverrideBuilder { get; set; }
+}
+
+[SszContainer]
+public partial struct GetPayloadResponseV7Wire
+{
+    public SszExecutionPayloadV4 ExecutionPayload { get; set; }
+    public UInt256 BlockValue { get; set; }
+    public BlobsBundleV2Wire BlobsBundle { get; set; }
+    [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
+    [SszList(Eip8369Constants.MaxOmissionClaims)] public OmissionClaimWire[]? OmissionClaims { get; set; }
 }
 
 [SszContainer]

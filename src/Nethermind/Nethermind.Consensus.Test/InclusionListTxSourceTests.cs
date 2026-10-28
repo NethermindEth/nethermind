@@ -28,7 +28,11 @@ public class InclusionListTxSourceTests
         new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
         LimboLogs.Instance);
 
-    private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
+    private static PayloadAttributes Attributes(byte[][][] inclusionLists) => new() { InclusionLists = inclusionLists };
+
+    /// <summary>One list per committee position, <paramref name="inclusionList"/> at position 0 and the rest empty.</summary>
+    private static byte[][][] AtPosition0(byte[][] inclusionList) =>
+        [inclusionList, .. Enumerable.Repeat<byte[][]>([], Eip7805Constants.InclusionListCommitteeSize - 1)];
 
     private static IEnumerable<Transaction> GetTransactions(
         InclusionListTxSource source,
@@ -52,7 +56,7 @@ public class InclusionListTxSourceTests
     {
         InclusionListTxSource source = CreateSource();
         Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[][] il = [Encode(tx)];
+        byte[][][] il = AtPosition0([Encode(tx)]);
         PayloadAttributes attrs = Attributes(il);
 
         Assert.That(GetTransactions(source, attrs), Is.Empty);
@@ -70,8 +74,8 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = CreateSource();
         Transaction txA = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction txB = Build.A.Transaction.WithNonce(2).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] ilA = [Encode(txA)];
-        byte[][] ilB = [Encode(txB)];
+        byte[][][] ilA = AtPosition0([Encode(txA)]);
+        byte[][][] ilB = AtPosition0([Encode(txB)]);
         PayloadAttributes attrsA = Attributes(ilA);
         PayloadAttributes attrsB = Attributes(ilB);
 
@@ -87,7 +91,7 @@ public class InclusionListTxSourceTests
     public void Set_with_empty_array_yields_empty()
     {
         InclusionListTxSource source = CreateSource();
-        byte[][] il = [];
+        byte[][][] il = AtPosition0([]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -102,13 +106,31 @@ public class InclusionListTxSourceTests
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
         InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
         Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[][] il = [Encode(tx)];
+        byte[][][] il = AtPosition0([Encode(tx)]);
 
         source.Set(il, Bogota.Instance);
         Assert.That(ecdsa.Recoveries, Is.Zero);
 
         Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
         Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
+    }
+
+    // A validator at several committee positions has the same list at each: production takes each entry once, and
+    // its sender is recovered once however many positions carry it.
+    [Test]
+    public void Entries_repeated_across_positions_are_produced_and_recovered_once()
+    {
+        CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[][][] il = [.. Enumerable.Repeat<byte[][]>([Encode(tx), Encode(tx)], Eip7805Constants.InclusionListCommitteeSize)];
+
+        source.Set(il, Bogota.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, Attributes(il)).Select(t => t.Nonce), Is.EqualTo([1ul]));
+            Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
+        }
     }
 
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.
@@ -134,7 +156,7 @@ public class InclusionListTxSourceTests
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        byte[][] il = [Encode(normal), Encode(blob)];
+        byte[][][] il = AtPosition0([Encode(normal), Encode(blob)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -153,7 +175,7 @@ public class InclusionListTxSourceTests
         Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction blobFrameTx = FrameTx(nonce: 2, blobVersionedHashes: [new byte[32]]);
         Transaction plainFrameTx = FrameTx(nonce: 3, blobVersionedHashes: null!);
-        byte[][] il = [Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)];
+        byte[][][] il = AtPosition0([Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -183,7 +205,7 @@ public class InclusionListTxSourceTests
         InclusionListTxSource source = CreateSource();
         Transaction nonce1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction nonce0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[][] il = [Encode(nonce1), Encode(nonce0)];
+        byte[][][] il = AtPosition0([Encode(nonce1), Encode(nonce0)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
@@ -200,7 +222,7 @@ public class InclusionListTxSourceTests
         Transaction b1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Transaction a1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction b0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] il = [Encode(b1), Encode(a1), Encode(b0)];
+        byte[][][] il = AtPosition0([Encode(b1), Encode(a1), Encode(b0)]);
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);

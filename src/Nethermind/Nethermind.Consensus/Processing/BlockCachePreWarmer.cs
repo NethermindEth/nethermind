@@ -2061,7 +2061,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// <remarks>
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
     /// <see cref="ValueHash256"/> that <see cref="Address.ToHash"/> builds, so a repeated word allocates nothing.
-    /// Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.
     /// Once <paramref name="cancellationToken"/> is cancelled, the scan stops and returns what it has collected.
     /// </remarks>
     internal static ArrayPoolList<Address>? CollectCalldataAddresses(Block block, CancellationToken cancellationToken = default)
@@ -2070,11 +2069,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         ArrayPoolList<Address>? addresses = null;
         try
         {
-            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
-            for (int i = 0; i < count; i++)
+            foreach (Transaction tx in block.Transactions)
             {
                 if (cancellationToken.IsCancellationRequested) return addresses;
-                ReadOnlySpan<byte> data = AddressWarmer.TransactionAt(block, i).Data.Span;
+                ReadOnlySpan<byte> data = tx.Data.Span;
                 if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
                 for (int offset = 4; offset + 32 <= data.Length; offset += 32)
                 {
@@ -2234,7 +2232,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
                     // contended writes to one cache line for a few nanoseconds of work each.
                     _fanOutReleased?.Wait(parallelOptions.CancellationToken);
-                    int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+                    int count = block.Transactions.Length;
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
                     WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
                     ParallelUnbalancedWork.For(
@@ -2249,7 +2247,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                             int end = Math.Min((range + 1) * rangeSize, count);
                             for (int i = range * rangeSize; i < end; i++)
                             {
-                                Transaction tx = TransactionAt(block, i);
+                                Transaction tx = block.Transactions[i];
                                 WarmupSender(tx.SenderAddress, tx.To, worldState);
                             }
 
@@ -2273,12 +2271,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// </summary>
         private void PrefetchKnownState(Block block, IWorldState worldState, CancellationToken token)
         {
-            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+            int count = block.Transactions.Length;
             int accountCapacity = 2 * count + 1 + (WarmWithdrawals ? block.Withdrawals!.Length : 0);
             int slotCapacity = 0;
             for (int i = 0; i < count; i++)
             {
-                if (TransactionAt(block, i).AccessList is { IsEmpty: false } accessList)
+                if (block.Transactions[i].AccessList is { IsEmpty: false } accessList)
                 {
                     (int addresses, int storageKeys) = accessList.Count;
                     accountCapacity += addresses;
@@ -2296,7 +2294,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 for (int i = 0; i < count; i++)
                 {
                     if ((i & 0x3F) == 0 && token.IsCancellationRequested) return;
-                    Transaction tx = TransactionAt(block, i);
+                    Transaction tx = block.Transactions[i];
                     if (tx.SenderAddress is { } sender) accounts[accountCount++] = sender;
                     if (tx.To is { } recipient) accounts[accountCount++] = recipient;
                     if (tx.AccessList is { IsEmpty: false } accessList)
@@ -2331,13 +2329,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
                 ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
             }
-        }
-
-        /// <summary>Indexes past the block transactions address inclusion-list ones, which may be promoted into the block.</summary>
-        internal static Transaction TransactionAt(Block block, int i)
-        {
-            Transaction[] txs = block.Transactions;
-            return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
         }
 
         /// <summary>Warms every system-contract hint.</summary>

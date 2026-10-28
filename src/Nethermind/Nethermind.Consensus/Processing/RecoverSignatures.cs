@@ -53,11 +53,6 @@ namespace Nethermind.Consensus.Processing
             {
                 RecoverData(txs, AlignedEncodings(txs, block.EncodedTransactions), releaseSpec, skipErrors: false);
             }
-
-            if (block.InclusionListTransactions is not null)
-            {
-                RecoverData(block.InclusionListTransactions, releaseSpec, skipErrors: true);
-            }
         }
 
         private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)

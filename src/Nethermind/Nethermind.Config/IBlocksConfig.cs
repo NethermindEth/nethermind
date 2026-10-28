@@ -148,4 +148,13 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "1000000000",
         HiddenFromDocs = true)]
     ulong MaxGasLimit { get; set; }
+
+    [ConfigItem(
+        Description = "EIP-8369 `MAX_VERIFY_GAS_PER_TX`: the max VERIFY budget cost, in gas, of an EIP-8141 " +
+                      "frame transaction whose omission from a block FOCIL still enforces. A costlier one is no " +
+                      "Profile 2 candidate and its omission is excused. The default is the EIP-7805 value. All " +
+                      "validators on a network must use the same value to agree on inclusion-list satisfaction. " +
+                      "`0` to lift the limit.",
+        DefaultValue = "262144")]
+    ulong FocilProfile2MaxVerifyGas { get; set; }
 }

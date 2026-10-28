@@ -40,16 +40,22 @@ public class InclusionListBuilderTests
     }
 
     // Frontier leaves the parent's base fee unchanged, so the head header fixes the fee the builder asks for.
-    private static InclusionListBuilder BuildBuilder(ITxPool pool, UInt256 baseFee = default, (Address Sender, ulong Nonce)[]? accountNonces = null)
+    private static InclusionListBuilder BuildBuilder(ITxPool pool, UInt256 baseFee = default, (Address Sender, ulong Nonce)[]? accountNonces = null, IReleaseSpec? spec = null)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(baseFee).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithBaseFeePerGas(baseFee).WithTimestamp(HeadTimestamp).TestObject);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Frontier.Instance);
         IReadOnlyStateProvider headState = Substitute.For<IReadOnlyStateProvider>();
         foreach ((Address sender, ulong nonce) in accountNonces ?? []) headState.GetNonce(sender).Returns(nonce);
         return new InclusionListBuilder(pool, blockTree, specProvider, headState);
     }
+
+    private const ulong HeadTimestamp = 1_000;
+
+    /// <summary>A Profile 2 spec: inclusion lists, frame transactions, keyed nonces and recent roots, with a base fee
+    /// the head leaves unchanged when it sits at its target.</summary>
+    private static readonly IReleaseSpec Profile2Spec = Eip8369Prototype.Instance;
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
     private static ITxPool PoolOf(params Transaction[] readyTxs) => PoolOf(null, readyTxs);
@@ -64,6 +70,7 @@ public class InclusionListBuilderTests
         foreach (Address sender in emptyBucketSenders ?? []) bySender[new AddressAsKey(sender)] = [];
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(bySender);
+        pool.GetPendingTransactions().Returns(readyTxs);
         return pool;
     }
 
@@ -335,19 +342,97 @@ public class InclusionListBuilderTests
         TestContext.Out.WriteLine($"per_request_state_reads={(double)reads / iterations:F1}");
     }
 
-    private static Transaction FrameTx(Address sender, ulong nonce, UInt256[]? nonceKeys = null) => new()
+    private static Transaction FrameTx(Address sender, ulong nonce, UInt256[]? nonceKeys = null, TxFrame[]? frames = null, UInt256? maxFeePerGas = null) => new()
     {
         Type = TxType.FrameTx,
         ChainId = TestBlockchainIds.ChainId,
         SenderAddress = sender,
         Nonce = nonce,
         NonceKeys = nonceKeys,
-        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        Frames = frames ?? [SelfVerify(100_000)],
         FrameSignatures = [],
         GasLimit = 100_000,
         GasPrice = 1,
-        DecodedMaxFeePerGas = 10,
+        DecodedMaxFeePerGas = maxFeePerGas ?? 10,
     };
+
+    private static TxFrame SelfVerify(ulong gasLimit) =>
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
+
+    private static TxFrame Expiry(ulong deadline)
+    {
+        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
+        BinaryPrimitives.WriteUInt64BigEndian(data, deadline);
+        return new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, 10_000, UInt256.Zero, data);
+    }
+
+    /// <summary>EIP-7805 § IL Building: once Profile 2 is active a ready Profile 2 candidate is worth listing, since its
+    /// omission is no longer excused; before, it only spends the byte cap.</summary>
+    [Test]
+    public void Lists_a_ready_profile_2_candidate_once_profile_2_is_active([Values] bool profile2Active)
+    {
+        Transaction ordinary = TxOfSize(50, 0, TestItem.PrivateKeyA);
+        Transaction candidate = FrameTx(TestItem.AddressB, nonce: 3);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(ordinary, candidate), accountNonces: [(TestItem.AddressB, 3)],
+            spec: profile2Active ? Profile2Spec : Frontier.Instance).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Type), profile2Active
+            ? Is.EquivalentTo(new[] { TxType.Legacy, TxType.FrameTx })
+            : Is.EqualTo(new[] { TxType.Legacy }));
+    }
+
+    private static IEnumerable<TestCaseData> FrameTransactionsLeftOut()
+    {
+        yield return new TestCaseData(FrameTx(TestItem.AddressB, nonce: 2)).SetName("Leaves_out_a_candidate_not_at_the_account_nonce");
+        yield return new TestCaseData(FrameTx(TestItem.AddressB, nonce: 3, frames: [new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressC, 50_000, UInt256.Zero, default)]))
+            .SetName("Leaves_out_a_frame_transaction_with_no_profile_2_prefix");
+        yield return new TestCaseData(FrameTx(TestItem.AddressB, nonce: 3, frames: [SelfVerify(Eip8369Constants.MaxVerifyGasPerTx + 1)]))
+            .SetName("Leaves_out_a_frame_transaction_over_MAX_VERIFY_GAS_PER_TX");
+        yield return new TestCaseData(FrameTx(TestItem.AddressB, nonce: 3, maxFeePerGas: 4)).SetName("Leaves_out_a_candidate_below_the_next_base_fee");
+        yield return new TestCaseData(FrameTx(TestItem.AddressB, nonce: 3, frames: [Expiry(HeadTimestamp), SelfVerify(100_000)]))
+            .SetName("Leaves_out_a_candidate_expired_by_the_parent");
+    }
+
+    [TestCaseSource(nameof(FrameTransactionsLeftOut))]
+    public void Leaves_out_a_frame_transaction_that_could_not_be_enforced(Transaction frameTx)
+    {
+        using InclusionListBytes il = BuildBuilder(PoolOf(frameTx), baseFee: 5, accountNonces: [(TestItem.AddressB, 3)], spec: Profile2Spec).GetInclusionList();
+
+        Assert.That(il, Is.Empty);
+    }
+
+    [Test]
+    public void Lists_a_candidate_whose_expiry_is_after_the_parent()
+    {
+        Transaction candidate = FrameTx(TestItem.AddressB, nonce: 3, frames: [Expiry(HeadTimestamp + 1), SelfVerify(100_000)]);
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(candidate), accountNonces: [(TestItem.AddressB, 3)], spec: Profile2Spec).GetInclusionList();
+
+        Assert.That(il.Count, Is.EqualTo(1));
+    }
+
+    /// <summary>EIP-7805 § IL Building: the listed candidates' total VERIFY cost stays within MAX_VERIFY_GAS_PER_IL, so
+    /// the per-IL fill admits every one of them whatever its order, while ordinary transactions still fill the bytes.</summary>
+    [Test]
+    public void Keeps_listed_candidates_within_the_per_il_verify_budget()
+    {
+        const ulong verifyGas = 200_000;
+        Transaction[] candidates = [.. Enumerable.Range(0, 20).Select(i => FrameTx(SenderAt(i), nonce: 0, frames: [SelfVerify(verifyGas)]))];
+        Transaction[] ordinary = [.. Enumerable.Range(0, 10).Select(i => TxOfSize(50, 0, TestItem.PrivateKeys[i]))];
+
+        using InclusionListBytes il = BuildBuilder(PoolOf([.. candidates, .. ordinary]), spec: Profile2Spec).GetInclusionList();
+        Transaction[] listed = [.. il.Select(Decode)];
+        ulong verifyCost = listed.Where(tx => tx.SupportsFrames).Aggregate(0UL, (sum, tx) => sum + Eip8369Profile2.VerifyBudgetCost(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(listed.Count(tx => tx.SupportsFrames), Is.EqualTo((int)(Eip8369Constants.MaxVerifyGasPerIl / verifyGas)));
+            Assert.That(verifyCost, Is.LessThanOrEqualTo(Eip8369Constants.MaxVerifyGasPerIl));
+            Assert.That(listed.Count(tx => !tx.SupportsFrames), Is.EqualTo(ordinary.Length));
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
+    }
 
     // A later nonce only becomes appendable once the block includes the earlier one, so a gap ends the run.
     [Test]
