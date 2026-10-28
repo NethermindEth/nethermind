@@ -343,6 +343,51 @@ namespace Nethermind.Network.Test.P2P
             }
         }
 
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        [NonParallelizable]
+        public void Hello_diagnostics_mask_peer_identity(bool isOutbound, bool mismatchedIdentity)
+        {
+            bool previous = SensitiveLogMasking.Enabled;
+            SensitiveLogMasking.Enabled = true;
+            try
+            {
+                TestLogger logger = new();
+                P2PProtocolHandler handler = CreateSession(new OneLoggerLogManager(new(logger)));
+                handler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+                if (isOutbound) handler.Init();
+
+                using HelloMessage hello = new()
+                {
+                    Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                    NodeId = mismatchedIdentity ? TestItem.PublicKeyC : TestItem.PublicKeyB,
+                    ClientId = "remote-client-secret",
+                    ListenPort = 31417,
+                    P2PVersion = 5,
+                };
+
+                handler.HandleMessage(CreateP2PPacket(hello));
+
+                string diagnostic = logger.LogList.Single(line => line.Contains(mismatchedIdentity ? "Inconsistent Node ID details" : "P2P initiating"));
+                string expectedDirection = mismatchedIdentity
+                    ? isOutbound ? "OUT connection" : "IN connection"
+                    : isOutbound ? "outbound" : "inbound";
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(diagnostic, Does.Contain("[redacted]"));
+                    Assert.That(diagnostic, Does.Contain(expectedDirection));
+                    Assert.That(diagnostic, Does.Not.Contain(TestItem.PublicKeyB.ToString()).And.Not.Contain(TestItem.PublicKeyC.ToString())
+                        .And.Not.Contain("remote-client-secret").And.Not.Contain("31417"));
+                }
+            }
+            finally
+            {
+                SensitiveLogMasking.Enabled = previous;
+            }
+        }
+
         [Test]
         public void Duplicate_add_capability_is_ignored()
         {

@@ -89,7 +89,9 @@ public class NethermindNodeTests
         string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
 
         string combinedLogs = cleanStdout + cleanStderr;
-        Assert.That(combinedLogs, Does.Contain("Configuration 'nonexistent.json' not found"));
+        Assert.That(combinedLogs, Does.Contain("Configuration file not found.")
+            .And.Contain("Built-in configurations:")
+            .And.Not.Contain("nonexistent.json"));
     }
 
     [Test]

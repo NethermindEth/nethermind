@@ -349,15 +349,11 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DebugInconsistentNodeId(HelloMessage hello, bool isInbound)
-            => Logger.Debug($"Inconsistent Node ID details - expected {Session.RemoteNodeId:hide}, " +
-                            $"received hello with {hello.NodeId} " +
-                            $"on {(isInbound ? "IN connection" : "OUT connection")}");
+            => Logger.Debug($"Inconsistent Node ID details - expected {Session.RemoteNodeId:hide}, received hello with {hello.NodeId:hide} on {(isInbound ? "IN connection" : "OUT connection")}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceInitiating(HelloMessage hello)
-            => Logger.Trace(!_sentHello
-                ? $"{Session.RemoteNodeId} P2P initiating inbound {hello.Protocol}.{hello.P2PVersion} on {hello.ListenPort} ({hello.ClientId})"
-                : $"{Session.RemoteNodeId} P2P initiating outbound {hello.Protocol}.{hello.P2PVersion} on {hello.ListenPort} ({hello.ClientId})");
+            => Logger.Trace($"{Session.RemoteNodeId:hide} P2P initiating {(isInbound ? "inbound" : "outbound")} {hello.Protocol}.{hello.P2PVersion} on {hello.ListenPort:hide} ({hello.ClientId:hide})");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceAgreedCapability(Capability capability)
