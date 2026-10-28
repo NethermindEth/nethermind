@@ -194,10 +194,14 @@ public class HistoryBackedPersistenceReaderTests
     public void GetAccount_ForAnAccountWithoutStorageOrCode_AllocatesLessThanAContract()
     {
         HistoryColumnsWriter.RecordAccount(_historyColumns, ContractAddress, 5, new Account(1, 100, TestItem.KeccakA, TestItem.KeccakB));
-        HistoryBackedPersistenceReader reader = Reader(10);
+        // A reader per block, so every measured read misses the per-block read cache and decodes its row.
+        HistoryBackedPersistenceReader[] eoaReaders = ReadersFrom(5);
+        HistoryBackedPersistenceReader[] contractReaders = ReadersFrom(5);
+        int eoaRead = 0;
+        int contractRead = 0;
 
-        long eoaAllocated = MeasureAllocatedBytes(() => reader.GetAccount(Address));
-        long contractAllocated = MeasureAllocatedBytes(() => reader.GetAccount(ContractAddress));
+        long eoaAllocated = MeasureAllocatedBytes(() => eoaReaders[eoaRead++].GetAccount(Address));
+        long contractAllocated = MeasureAllocatedBytes(() => contractReaders[contractRead++].GetAccount(ContractAddress));
 
         Assert.That(eoaAllocated, Is.LessThan(contractAllocated),
             "an account without storage or code takes the shared empty-hash instances; only a contract materializes its two hashes");
@@ -231,6 +235,14 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
+
+    // MeasureAllocatedBytes runs its action six times.
+    private HistoryBackedPersistenceReader[] ReadersFrom(ulong firstBlock)
+    {
+        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[6];
+        for (int i = 0; i < readers.Length; i++) readers[i] = Reader(firstBlock + (ulong)i);
+        return readers;
+    }
 
     private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate) => Reader(block, scopeGate, Keccak.EmptyTreeHash);
 
