@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -24,7 +25,7 @@ public partial class Bls12381Fp2ToG2Precompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        Accelerators.Status status = Accelerators.Bls12381MapFp2ToG2(decoded, output);
+        Accelerators.Status status = CurveAccelerators.Bls12381MapFp2ToG2(decoded, output);
 
         if (status == Accelerators.Status.OK)
         {
