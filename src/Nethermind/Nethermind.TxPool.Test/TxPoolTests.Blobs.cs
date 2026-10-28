@@ -420,7 +420,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_know_persisted_blob_tx_after_restart()
+        public async Task should_know_persisted_blob_tx_after_restart_while_it_stays_pooled([Values] bool senderCanPayAtRestart)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.Storage, Size = 10 };
             BlobTxStorage blobTxStorage = new();
@@ -428,6 +428,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             Transaction blobTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
+                .WithValue(1)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
@@ -435,14 +436,20 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             await _txPool.DisposeAsync();
 
+            if (!senderCanPayAtRestart) EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
-            Assert.That(_txPool.TryGetPendingTransaction(blobTx.Hash!, out _), Is.True, "precondition: restored from storage");
+            await AddEmptyBlock();
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_txPool.IsKnown(blobTx.Hash), Is.True, "a pooled tx announced by a peer must not be fetched again");
-                Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+                Assert.That(_txPool.TryGetPendingTransaction(blobTx.Hash!, out _), Is.EqualTo(senderCanPayAtRestart), "restored from storage");
+                Assert.That(_txPool.IsKnown(blobTx.Hash), Is.EqualTo(senderCanPayAtRestart), "a pooled tx announced by a peer must not be fetched again");
             }
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _txPool.ResetAddress(TestItem.AddressA);
+            Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None),
+                Is.EqualTo(senderCanPayAtRestart ? AcceptTxResult.AlreadyKnown : AcceptTxResult.Accepted));
         }
 
         [Test]
