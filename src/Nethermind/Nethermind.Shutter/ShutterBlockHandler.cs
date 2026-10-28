@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
-using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
 using System.Threading.Tasks;
 using System.Threading;
@@ -28,7 +27,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly ShutterTxLoader _txLoader;
     private readonly ShutterValidatorsInfo _validatorsInfo;
     private readonly ILogManager _logManager;
-    private readonly IAbiEncoder _abiEncoder;
     private readonly IBlockTree _blockTree;
     private readonly ReadOnlyBlockTree _readOnlyBlockTree;
     private readonly ulong _chainId;
@@ -47,7 +45,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         IShutterConfig cfg,
         IShareableTxProcessorSource txProcessorSource,
         IBlockTree blockTree,
-        IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,
         ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
@@ -67,7 +64,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _txLoader = txLoader;
         _blockTree = blockTree;
         _readOnlyBlockTree = blockTree.AsReadOnly();
-        _abiEncoder = abiEncoder;
         _logManager = logManager;
         _txProcessorSource = txProcessorSource;
         _slotLength = slotLength;
@@ -219,7 +215,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         using IReadOnlyTxProcessingScope _ = scope;
         ITransactionProcessor processor = scope.TransactionProcessor;
 
-        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
+        ValidatorRegistryContract validatorRegistryContract = new(processor, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");

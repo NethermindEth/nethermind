@@ -194,6 +194,7 @@ public class JsonRpcProcessorTests
         await ProcessAsync(processor, CreateRequest("1", "eth_chainId"), context);
         await ProcessAsync(processor, "{", context);
         await ProcessAsync(processor, $"[{CreateRequest("2", "eth_chainId")}]", context);
+        await ProcessAsync(processor, "[1]", context);
 
         using (Assert.EnterMultipleScope())
         {
@@ -201,8 +202,12 @@ public class JsonRpcProcessorTests
             {
                 $"JSON RPC request eth_chainId{expectedSuffix}",
                 $"Error response handling JsonRpc Id:1 Method:eth_chainId | Code: {ErrorCodes.MethodNotFound} Message: test message{expectedSuffix}",
-                $"1 JSON RPC requests{expectedSuffix}"
+                $"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}",
+                $"Invalid JSON-RPC batch item 1/1{expectedSuffix}."
             }), string.Join(" | ", logger.LogList));
+            Assert.That(logger.LogList.IndexOf($"JSON RPC batch request 1/1 eth_chainId{expectedSuffix}"),
+                Is.LessThan(logger.LogList.FindIndex(l => l.StartsWith("Error response handling JsonRpc Id:2 ", StringComparison.Ordinal))),
+                "a batch item is logged before it runs");
             Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)} Data"));
         }
     }
