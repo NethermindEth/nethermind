@@ -1094,8 +1094,10 @@ uppercase names (`LOOKUP_PROTOCOL`, etc.):
 - `lookup_warmup_duration`: integer seconds, 1..120, default `60s`.
 - `lookup_samples`: `false` (default), or `true` for upstream k6 asynchronous
   compressed JSON output, `latency-samples.json.gz`, plus the seeded
-  `requests.csv`. Latency points carry timestamp, `rpc_method`, and `request_id`
-  matching the request CSV's first column (not the transaction hash itself).
+  `requests.csv`. Latency points carry timestamp, indexed `tags.rpc_method`, and
+  non-indexed `metadata.request_id` matching the request CSV's first column
+  (not the transaction hash itself). Capture rejects missing/duplicate IDs and
+  any `tags.request_id`, including points that also contain metadata.
   Capture settings are identical in warmup and measurement. Only these runs
   retain the request CSV; no response bodies are added to the timed hot path.
 
@@ -1109,8 +1111,10 @@ and artifact budgets separately. Every delivered request must have a matching
 latency point, with complete method counts; missing/truncated capture fails.
 Use a short matched capture-on/off pilot to assess capture overhead before a
 primary campaign; do not pool that pilot with primary cells. Request-identity
-tags are present with capture off too, so this pilot estimates output cost on
+metadata is set with capture off too, so this pilot estimates output cost on
 the instrumented runner, not total instrumentation cost against the original.
+Non-indexed metadata avoids request-ID tag cardinality; source/synthetic checks
+alone do not establish runtime compatibility, eliminated overhead, or a p99 fix.
 
 The root manifest is retained only once; cell checksums/reports reference it.
 The sweep checks its digest between cells and never regenerates it per arm.

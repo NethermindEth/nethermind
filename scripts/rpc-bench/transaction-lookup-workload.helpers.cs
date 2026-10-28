@@ -42,11 +42,15 @@ internal static class TransactionLookupWorkload
             if (script.Split(OriginalCheck, StringSplitOptions.None).Length != 2) throw new IOException("Unknown json-bench k6 result check; refusing to benchmark");
             script = script.Replace(OriginalCheck, StrictCheck, StringComparison.Ordinal);
         }
-        if (requestIdentity && !script.Contains("\"request_id\": requestData[0],", StringComparison.Ordinal))
+        if (requestIdentity)
         {
-            const string anchor = "\"rpc_method\": reqMethod,";
-            if (script.Split(anchor, StringSplitOptions.None).Length != 2) throw new IOException("Unknown k6 request tags");
-            script = script.Replace(anchor, anchor + "\n      \"request_id\": requestData[0],", StringComparison.Ordinal);
+            const string import = "import exec from 'k6/execution';";
+            const string anchor = "const payload = requestData[3];";
+            const string identified = anchor + "\n    exec.vu.metrics.metadata.request_id = requestData[0];";
+            if (script.Split(import, StringSplitOptions.None).Length != 2 || script.Split(anchor, StringSplitOptions.None).Length != 2 ||
+                script.Replace(identified, "", StringComparison.Ordinal).Contains("request_id", StringComparison.Ordinal))
+                throw new IOException("Unknown k6 request identity source; refusing indexed request IDs");
+            if (!script.Contains(identified, StringComparison.Ordinal)) script = script.Replace(anchor, identified, StringComparison.Ordinal);
         }
         return script;
     }
@@ -203,7 +207,8 @@ internal static class TransactionLookupWorkload
             var method = data["tags"]?["rpc_method"]?.GetValue<string>() ?? "";
             if (!counts.ContainsKey(method) || !DateTimeOffset.TryParse(data["time"]?.GetValue<string>(), CultureInfo.InvariantCulture, DateTimeStyles.None, out _) ||
                 data["value"] is not JsonValue value || !value.TryGetValue<double>(out var latency) || !double.IsFinite(latency) || latency < 0 ||
-                data["tags"]?["request_id"]?.GetValue<string>() is not { Length: > 0 } requestId || !requestIds.Add(requestId) || requestIds.Count > 66000) throw new IOException("Invalid/duplicate lookup latency point");
+                data["tags"] is JsonObject tags && tags.ContainsKey("request_id") ||
+                data["metadata"]?["request_id"]?.GetValue<string>() is not { Length: > 0 } requestId || !requestIds.Add(requestId) || requestIds.Count > 66000) throw new IOException("Invalid/duplicate lookup latency point");
             counts[method]++;
         }
         double MetricCount(string key) => double.TryParse((summary["metrics"]?[key]?["values"]?["count"] ?? summary["metrics"]?[key]?["count"])?.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var count) && double.IsFinite(count) ? count : throw new IOException("Missing sample count metric");
