@@ -24,9 +24,12 @@ internal static class HistoryTestHelpers
             .WithExtraData([1])
             .TestObject;
 
-        Assert.That(chain.BlockTree.SuggestBlock(sideBlock, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
-        Assert.That(chain.BlockTree.GetInfo(sideBlock.Number, sideBlock.Hash!).Info, Is.Not.Null,
-            "the side block must have chain-level metadata before it is marked processed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.SuggestBlock(sideBlock, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+            Assert.That(chain.BlockTree.GetInfo(sideBlock.Number, sideBlock.Hash!).Info, Is.Not.Null,
+                "the side block must have chain-level metadata before it is marked processed");
+        }
         chain.BlockTree.MarkChainAsProcessed([sideBlock]);
         chain.ReceiptStorage.Insert(sideBlock, [Build.A.Receipt
             .WithLogs(log)
