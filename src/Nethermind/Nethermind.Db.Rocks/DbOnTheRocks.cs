@@ -1878,20 +1878,44 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return !long.TryParse(numBlobFiles, out long count) || count > 0;
     }
 
-    /// <summary>Snapshots the live values of the options the blob-GC compaction overrides, read from this
-    /// database's own configuration, so the restore puts back exactly what the node runs with - a node that
-    /// enabled blob files or custom GC thresholds keeps them, a default node keeps them off - rather than the
-    /// fixed <see cref="GetStandardOptions"/> a <see cref="Tune"/> to <see cref="ITunableDb.TuneType.Default"/>
-    /// would otherwise impose on a customized blocks database.</summary>
+    /// <summary>Snapshots the live values of the options the blob-GC compaction overrides so the restore puts
+    /// back exactly what the database runs with, rather than the fixed <see cref="GetStandardOptions"/> a
+    /// <see cref="Tune"/> to <see cref="ITunableDb.TuneType.Default"/> would otherwise impose on a customized or
+    /// runtime-tuned blocks database.</summary>
+    /// <remarks>A value the sync tuner's runtime <see cref="Tune"/> forced on the live database wins over
+    /// configuration, because that is what the database actually runs with: for a blocks database the tuner
+    /// applies <see cref="ITunableDb.TuneType.EnableBlobFiles"/> while bodies sync, turning blob files on even
+    /// when configuration does not. Restoring the configured value there would both contradict the live options
+    /// and desync <see cref="_currentTune"/> from them - a later <see cref="Tune"/> to the same type would
+    /// short-circuit on its no-op guard and never re-apply. Anything no active tune set falls back to the
+    /// database's own configuration, then to the RocksDB defaults in <see cref="BlobGarbageCollectionDefaults"/>.</remarks>
     private IDictionary<string, string> SnapshotBlobGarbageCollectionOptions()
     {
         IDictionary<string, string> configured = ExtractOptions(_perTableDbConfig.RocksDbOptions + _perTableDbConfig.AdditionalRocksDbOptions);
+
+        // Of the tune types only EnableBlobFiles changes any of these four keys (it forces enable_blob_files on),
+        // so read the live override from that tune's own option set rather than assuming its value. Every other
+        // tune, and the Default sentinel that stands for the configured/standard options, leaves these keys at
+        // their configured values.
+        IDictionary<string, string>? activeTune = _currentTune == ITunableDb.TuneType.EnableBlobFiles
+            ? GetBlobFilesOptions()
+            : null;
+
         Dictionary<string, string> snapshot = new(BlobGarbageCollectionOptions.Count);
         foreach (string key in BlobGarbageCollectionOptions.Keys)
         {
-            snapshot[key] = configured.TryGetValue(key, out string? configuredValue)
-                ? configuredValue
-                : BlobGarbageCollectionDefaults[key];
+            if (activeTune is not null && activeTune.TryGetValue(key, out string? tunedValue))
+            {
+                snapshot[key] = tunedValue;
+            }
+            else if (configured.TryGetValue(key, out string? configuredValue))
+            {
+                snapshot[key] = configuredValue;
+            }
+            else
+            {
+                snapshot[key] = BlobGarbageCollectionDefaults[key];
+            }
         }
 
         return snapshot;

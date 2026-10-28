@@ -1257,6 +1257,49 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void CompactReclaimingBlobFiles_RestoresRuntimeTunedBlobFiles_WhenConfigurationDoesNotEnableThem()
+        {
+            // A blocks database whose configuration does not enable blob files: they are on only because the sync
+            // tuner's runtime Tune(EnableBlobFiles) turned them on. The one-shot must restore that live value, not
+            // the configured/default false: otherwise _currentTune stays EnableBlobFiles while the options say
+            // false, and the next Tune(EnableBlobFiles) short-circuits on its no-op guard and never turns blob
+            // files back on. Auto-compaction is pinned off (not a blob option) so the before/after blob sizes are
+            // the write's own, not a background compaction consolidating files between the measurements.
+            DbConfig config = new() { AdditionalRocksDbOptions = "disable_auto_compactions=true;" };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+
+            const int heights = 100;
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "the runtime tune must engage blob mode before the compaction");
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            // Re-apply the tune exactly as the sync tuner does when the bodies feed goes Active again. The guard
+            // makes it a no-op because _currentTune is still EnableBlobFiles, so blob files stay on only if the
+            // one-shot restored the live true rather than the configured false.
+            db.Tune(ITunableDb.TuneType.EnableBlobFiles);
+
+            long blobBeforeWrite = BlobBytes(DbPath);
+            db.PutSpan(BlockKey(heights + 1, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("true"),
+                    "the restore must put back the runtime-tuned enable_blob_files, not the configured/default false");
+                Assert.That(BlobBytes(DbPath), Is.GreaterThan(blobBeforeWrite),
+                    "a post-restore write must still produce blob files - a config-only restore would send it to SST and leave the tune desynced");
+            }
+        }
+
         private static int SstFileCount(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Count();
