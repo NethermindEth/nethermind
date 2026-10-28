@@ -92,14 +92,14 @@ public class LiveBlockProducerTests
     }
 
     [Test]
-    public void Execute_DerivedBlock_KeepsTheTotalDifficultyALiveBlockOnItNeeds()
+    public async Task Execute_DerivedBlock_KeepsTheTotalDifficultyALiveBlockOnItNeeds()
     {
         BlockHeader parent = _chain.BlockTree.Head!.Header;
         DerivedBlockExecutor executor = new(_chain.Container, _chain.Container.Resolve<IWorldStateManager>(), new DerivedBlockBuilder(_chain.SpecProvider, new Rollup0HeaderRules(_chain.SpecProvider, _context)));
         Block derived;
         using (IDerivedBlockSession session = executor.BeginSession())
         {
-            derived = session.Execute(parent, new DerivedBlock(Beneficiary, [], []));
+            derived = await session.ExecuteAsync(parent, new DerivedBlock(Beneficiary, [], []));
         }
 
         Assert.That(derived.TotalDifficulty, Is.EqualTo(parent.TotalDifficulty), "the chain processor refuses a block on a parent without one");

@@ -90,11 +90,11 @@ public sealed class BatchReconciler(
         {
             if (resumed)
             {
-                await Resume(session, from, parent, derived[^1], settlement, heads, replayed);
+                await Resume(session, from, parent, derived[^1], settlement, heads, replayed, token);
             }
             else
             {
-                await Replay(session, from, parent, derived, settlement, heads, replayed);
+                await Replay(session, from, parent, derived, settlement, heads, replayed, token);
             }
         }
 
@@ -165,7 +165,7 @@ public sealed class BatchReconciler(
 
     /// <summary>Keeps the leading local blocks that match the derived ones and replays from the first that does not.</summary>
     private async Task Replay(IDerivedBlockSession session, ulong from, BlockHeader parent, DerivedBlock[] derived, L1Settlement settlement,
-        FollowerHeads heads, Dictionary<ulong, Hash256> replayed)
+        FollowerHeads heads, Dictionary<ulong, Hash256> replayed, CancellationToken token)
     {
         Block? first = blockTree.FindBlock(from, BlockTreeLookupOptions.RequireCanonical);
         bool staleBoundary = first is null || first.ParentHash != parent.Hash;
@@ -192,13 +192,13 @@ public sealed class BatchReconciler(
             }
 
             replaying = true;
-            parent = await Commit(session, parent, derived[i], heads, replayed);
+            parent = await Commit(session, parent, derived[i], heads, replayed, token);
         }
     }
 
     /// <summary>Rewrites the Sync block a competing same-block batch committed, appending this batch's settled effects.</summary>
     private async Task Resume(IDerivedBlockSession session, ulong height, BlockHeader parent, DerivedBlock content, L1Settlement settlement,
-        FollowerHeads heads, Dictionary<ulong, Hash256> replayed)
+        FollowerHeads heads, Dictionary<ulong, Hash256> replayed, CancellationToken token)
     {
         Block? accepted = content.NativeEffectsStart >= 0
             ? blockTree.FindBlock(new Hash256(settlement.EntryState.Bytes), BlockTreeLookupOptions.None)
@@ -222,7 +222,7 @@ public sealed class BatchReconciler(
         Array.Copy(local, transactions, kept);
         content.Transactions.CopyTo(transactions, kept);
         if (_logger.IsInfo) _logger.Info($"Rewriting Sync block {height} with the {content.Transactions.Length} transactions a resumed batch settled.");
-        await Commit(session, parent, content with { Transactions = transactions, NativeEffectsStart = content.NativeEffectsStart < 0 ? -1 : kept + content.NativeEffectsStart }, heads, replayed);
+        await Commit(session, parent, content with { Transactions = transactions, NativeEffectsStart = content.NativeEffectsStart < 0 ? -1 : kept + content.NativeEffectsStart }, heads, replayed, token);
     }
 
     /// <summary>
@@ -247,12 +247,12 @@ public sealed class BatchReconciler(
 
     /// <summary>Executes and inserts one derived block and makes it the head, so the next block can be built on its state.</summary>
     private async Task<BlockHeader> Commit(IDerivedBlockSession session, BlockHeader parent, DerivedBlock derived, FollowerHeads heads,
-        Dictionary<ulong, Hash256> replayed)
+        Dictionary<ulong, Hash256> replayed, CancellationToken token)
     {
         Block block;
         try
         {
-            block = session.Execute(parent, derived);
+            block = await session.ExecuteAsync(parent, derived, token);
         }
         catch (EezSettlementException e)
         {

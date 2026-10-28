@@ -97,6 +97,84 @@ public partial class RollupXGenesisTests
     }
 
     [Test]
+    public async Task NativeCanonicalHistory_ExpandEarlierOrigin_VerifiesGapAndReusesCachedSuffix([Values(3UL, 5UL)] ulong through)
+    {
+        using NativeHistoryTestSource fixture = CreateHistorySource();
+        NativeL1HeaderChain borrowed = await fixture.History.Prepare(2, fixture.Anchor(5), CancellationToken.None);
+        List<ulong> reads = [];
+        fixture.OnRead = reads.Add;
+        NativeL1HeaderChain expanded = await fixture.History.Prepare(0, fixture.Anchor(through), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expanded.FirstNumber, Is.Zero);
+            Assert.That(expanded.Endpoint.Number, Is.EqualTo(through));
+            Assert.That(expanded.At(2), Is.SameAs(borrowed.At(2)), "already checked suffix headers are reused without decoding or copying bodies");
+            Assert.That(borrowed.FirstNumber, Is.EqualTo(2UL));
+            Assert.That(borrowed.Count, Is.EqualTo(4));
+            Assert.That(reads, Does.Contain(1UL));
+            Assert.That(reads, Does.Not.Contain(2UL).And.Not.Contain(4UL), "cached interior headers require no RPC reads");
+            Assert.That(fixture.History.Read().FirstNumber, Is.Zero);
+            Assert.That(fixture.History.Read().Endpoint.Number, Is.EqualTo(5UL), "historical lookback preserves checked descendants");
+        }
+    }
+
+    [Test]
+    public async Task NativeCanonicalHistory_ExpandContradictoryGap_RejectsAndPreservesBorrowedRoot(
+        [Values("join", "endpoint", "invalidated")] string failure)
+    {
+        using NativeHistoryTestSource fixture = CreateHistorySource();
+        L1Anchor anchor = fixture.Anchor(5);
+        NativeL1HeaderChain borrowed = await fixture.History.Prepare(2, anchor, CancellationToken.None);
+        int endpointReads = 0;
+        fixture.OnRead = number =>
+        {
+            if (failure == "join" && number == 1)
+                fixture.Headers[1] = RpcHeader(L1HeaderBytes(1, (ulong)fixture.Headers[1].Timestamp,
+                    fixture.Headers[0].Hash!.ValueHash256, 21, 12, Rlp.Encode(new byte[] { 7 })), 21);
+            if (failure == "endpoint" && number == 5 && ++endpointReads == 2)
+                fixture.Headers[5] = RpcHeader(L1HeaderBytes(5, (ulong)fixture.Headers[5].Timestamp,
+                    fixture.Headers[4].Hash!.ValueHash256, 21, 12, Rlp.Encode(new byte[] { 7 })), 21);
+            if (failure == "invalidated" && number == 1) fixture.History.Invalidate();
+        };
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(async () => await fixture.History.Prepare(0, anchor, CancellationToken.None));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => fixture.History.Read(), Throws.TypeOf<L1SourceIncompleteException>());
+            Assert.That(borrowed.FirstNumber, Is.EqualTo(2UL));
+            Assert.That(borrowed.Count, Is.EqualTo(4));
+            Assert.That(borrowed.Endpoint.Hash, Is.EqualTo(anchor.Hash.ValueHash256));
+        }
+    }
+
+    [Test]
+    public async Task NativeCanonicalHistory_CanceledExpansion_KeepsTheOldSnapshot()
+    {
+        using NativeHistoryTestSource fixture = CreateHistorySource();
+        NativeL1HeaderChain borrowed = await fixture.History.Prepare(2, fixture.Anchor(5), CancellationToken.None);
+        using CancellationTokenSource cancellation = new();
+        fixture.OnRead = number => { if (number == 1) cancellation.Cancel(); };
+        await Assert.CatchAsync<OperationCanceledException>(async () => await fixture.History.Prepare(0, fixture.Anchor(5), cancellation.Token));
+        Assert.That(fixture.History.Read(), Is.SameAs(borrowed), "cancelled preparation cannot replace or mutate published evidence");
+    }
+
+    [Test]
+    public async Task NativeCanonicalHistory_HistoricalRangeBeforeRetainedHeaders_RebuildsExactRequestedAnchor()
+    {
+        using NativeHistoryTestSource fixture = CreateHistorySource();
+        NativeL1HeaderChain borrowed = await fixture.History.Prepare(4, fixture.Anchor(5), CancellationToken.None);
+        L1Anchor anchor = fixture.Anchor(2);
+        NativeL1HeaderChain earlier = await fixture.History.Prepare(0, anchor, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(earlier.FirstNumber, Is.Zero);
+            Assert.That(earlier.Endpoint.Hash, Is.EqualTo(anchor.Hash.ValueHash256));
+            Assert.That(fixture.History.Read(), Is.SameAs(earlier));
+            Assert.That(borrowed.FirstNumber, Is.EqualTo(4UL));
+            Assert.That(borrowed.Endpoint.Number, Is.EqualTo(5UL));
+        }
+    }
+
+    [Test]
     public async Task NativeCanonicalHistory_BadSegment_DoesNotPublishPartialHistory([Values("missing", "parent", "anchor", "genesis")] string failure)
     {
         using NativeHistoryTestSource fixture = CreateHistorySource();

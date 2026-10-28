@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
@@ -20,6 +21,7 @@ internal sealed class NativeDerivedSuffix
 {
     internal int FirstTransaction { get; set; } = -1;
     internal bool DeriveOrigin { get; set; }
+    internal NativeL1HeaderChain? Evidence { get; set; }
 }
 
 internal sealed class NativeDerivedTransactionsExecutor(

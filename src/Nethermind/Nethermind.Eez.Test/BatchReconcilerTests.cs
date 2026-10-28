@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -345,10 +346,10 @@ public class BatchReconcilerTests
     {
         internal DerivedBlock? Recorded { get; private set; }
         public IDerivedBlockSession BeginSession() => this;
-        public Block Execute(BlockHeader parent, DerivedBlock derived)
+        public ValueTask<Block> ExecuteAsync(BlockHeader parent, DerivedBlock derived, CancellationToken token = default)
         {
             Recorded = derived;
-            return Build(parent, derived);
+            return ValueTask.FromResult(Build(parent, derived));
         }
 
         internal static Block Build(BlockHeader parent, DerivedBlock derived)
@@ -368,8 +369,8 @@ public class BatchReconcilerTests
     {
         public IDerivedBlockSession BeginSession() => this;
 
-        public Block Execute(BlockHeader parent, DerivedBlock derived) =>
-            Build(parent, new DaBlock(derived.Beneficiary, derived.ExtraData, derived.Transactions));
+        public ValueTask<Block> ExecuteAsync(BlockHeader parent, DerivedBlock derived, CancellationToken token = default) =>
+            ValueTask.FromResult(Build(parent, new DaBlock(derived.Beneficiary, derived.ExtraData, derived.Transactions)));
 
         public static Block Build(BlockHeader parent, DaBlock published) =>
             DerivedChain.Child(parent, published.Beneficiary, published.ExtraData, published.Transactions.Select(SyncSettlementFixture.Decode).ToArray());

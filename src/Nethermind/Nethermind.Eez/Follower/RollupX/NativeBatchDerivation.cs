@@ -6,21 +6,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Settlement.RollupX;
-using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Eez.Follower.RollupX;
 
-internal sealed class NativeBatchDerivation(EezSettlementContext context, EezChainRules rules, NativeCanonicalHistory history, IStateReader state, IEezConfig config) : IBatchDerivation
+internal sealed class NativeBatchDerivation(EezSettlementContext context, EezChainRules rules, NativeCanonicalHistory history, NativeParentHistory parentHistory, IEezConfig config) : IBatchDerivation
 {
     private readonly EezSettlementContext _context = context;
     private readonly EezChainRules _rules = rules;
     private readonly NativeCanonicalHistory _canonical = history;
+    private readonly NativeParentHistory _parentHistory = parentHistory;
     private readonly RollupXSchedule _schedule = rules.Schedule!;
     private readonly NativeHistorySchedule _history = new(rules.Schedule!.GenesisTimestamp, rules.Schedule.BlockIntervalSeconds,
         rules.Schedule.SyncIntervalBlocks, rules.NativeHistoryOffset);
@@ -32,32 +30,6 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
         if (config.MaxFollowerBatchBlocks <= 0 || operations.BlockCount > (uint)config.MaxFollowerBatchBlocks)
             throw new L1SourceIncompleteException(0, $"Native batch exceeds Eez.MaxFollowerBatchBlocks ({config.MaxFollowerBatchBlocks}).");
         return new Decoded(operations, NativeTransactions.Parse(stream.Messages, _context), this);
-    }
-
-    private NativeHistoryState ReadParent(BlockHeader parent)
-    {
-        if (!state.TryGetAccount(parent, EezConstants.L1HistoryAddress, out AccountStruct account) ||
-            (_rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? account.Nonce < 2 : account.Nonce != 1) ||
-            account.CodeHash != NativeHistoryBlockExecutor.GetRuntimeHash(_rules.NativeFormat))
-            throw NativeL1Header.Invalid("parent history account differs from the native profile");
-        if (_rules.NativeFormat == NativeSystemTxFormat.ContractV6)
-        {
-            ulong storedNumber = Scalar(parent, 1);
-            state.GetStorage(parent, EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(storedNumber), out UInt256 storedHash);
-            return NativeProxyHistory.ResolveState(storedNumber, storedHash.ToValueHash(), _schedule);
-        }
-        ulong first = Scalar(parent, 1), endpoint = Scalar(parent, 2), cutoff = Scalar(parent, 3);
-        if (first != _rules.Schedule!.L1Reference.Number || Scalar(parent, 4) != _history.Interval ||
-            Scalar(parent, 5) != _history.Delay || Scalar(parent, 6) != NativeHistoryCall.MaxHashes)
-            throw NativeL1Header.Invalid("parent history storage differs from the native profile");
-        state.GetStorage(parent, EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(endpoint), out UInt256 hash);
-        return new NativeHistoryState(first, endpoint, hash.ToValueHash(), cutoff);
-    }
-
-    private ulong Scalar(BlockHeader parent, ulong slot)
-    {
-        state.GetStorage(parent, EezConstants.L1HistoryAddress, (UInt256)slot, out UInt256 value);
-        return value > ulong.MaxValue ? throw NativeL1Header.Invalid("parent history scalar exceeds uint64") : (ulong)value;
     }
 
     private sealed class Decoded(OperationsPayload operations, NativeTransactions transactions, NativeBatchDerivation owner) : DecodedBatch
@@ -80,7 +52,7 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                 throw NativeL1Header.Invalid("native execution parent differs from its candidate range");
             NativeL1Header? historical = inputs.AnchorSelector == ulong.MaxValue ? null : await owner._canonical.ReadCanonical(inputs.AnchorSelector, token);
             EnsureCandidate(inputs, historical?.Timestamp ?? inputs.Settling.Timestamp);
-            NativeHistoryState current = owner.ReadParent(parent);
+            NativeHistoryState current = owner._parentHistory.ReadParent(parent);
             ulong first = historical is null ? current.Endpoint : Math.Min(current.Endpoint, inputs.AnchorSelector);
             NativeL1HeaderChain headers = await owner._canonical.Prepare(first, inputs.Settling, token);
             if (historical is not null && headers.At(historical.Number).Hash != historical.Hash)
@@ -96,7 +68,8 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                 OperationsRun last = default;
                 foreach (OperationsRun run in operations.Runs()) last = run;
                 return [new DerivedBlock(last.Beneficiary, last.ExtraData.ToArray(), effects)
-                    { PrevRandao = inputs.PrevRandao, NativeEffectsStart = effects.Length == 0 ? -1 : 0 }];
+                    { PrevRandao = inputs.PrevRandao, NativeEffectsStart = effects.Length == 0 ? -1 : 0,
+                        NativeHistoryAnchor = owner._rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? inputs.Settling : null }];
             }
             if (operations.BlockCount > int.MaxValue) throw NativeL1Header.Invalid("native block range exceeds the supported representation");
             DerivedBlock[] blocks = new DerivedBlock[operations.BlockCount];
@@ -114,7 +87,7 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                     {
                         _ = ReadImport(ordinary);
                         blocks[next++] = new DerivedBlock(run.Beneficiary, run.ExtraData.ToArray(), ordinary)
-                        { NativeOriginFromParent = true };
+                        { NativeOriginFromParent = true, NativeHistoryAnchor = inputs.Settling };
                         continue;
                     }
                     NativeHistoryExecution execution = Transition(ordinary, at, current, headers);

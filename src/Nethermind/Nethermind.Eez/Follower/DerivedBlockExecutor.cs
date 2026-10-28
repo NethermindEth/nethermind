@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -23,7 +25,7 @@ public interface IDerivedBlockExecutor
 public interface IDerivedBlockSession : IDisposable
 {
     /// <exception cref="EezSettlementException">The block does not execute on its parent's state.</exception>
-    Block Execute(BlockHeader parent, DerivedBlock derived);
+    ValueTask<Block> ExecuteAsync(BlockHeader parent, DerivedBlock derived, CancellationToken token = default);
 }
 
 /// <summary>
@@ -50,14 +52,15 @@ public sealed class DerivedBlockExecutor(ILifetimeScope rootLifetime, IWorldStat
         private readonly IWorldState _worldState = scope.Resolve<IWorldState>();
         private readonly NativeDerivedSuffix? _native = scope.ResolveOptional<NativeDerivedSuffix>();
 
-        public Block Execute(BlockHeader parent, DerivedBlock derived)
+        public ValueTask<Block> ExecuteAsync(BlockHeader parent, DerivedBlock derived, CancellationToken token = default)
         {
+            token.ThrowIfCancellationRequested();
             if (_native is not null)
             {
                 _native.FirstTransaction = derived.NativeEffectsStart;
                 _native.DeriveOrigin = derived.NativeOriginFromParent;
             }
-            try { return builder.Build(parent, derived, _processor, _worldState).Block; }
+            try { return ValueTask.FromResult(builder.Build(parent, derived, _processor, _worldState).Block); }
             finally
             {
                 if (_native is not null)

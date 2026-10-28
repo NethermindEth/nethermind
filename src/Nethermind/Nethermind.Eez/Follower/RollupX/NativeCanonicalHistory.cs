@@ -81,17 +81,19 @@ internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules r
             }
             else throw Reorganized(through.Number);
         }
-        else if (previous is not null && firstNumber <= previous.Endpoint.Number) throw Reorganized(through.Number);
-        if (prepared.Count == 0) prepared.AppendChecked([first]);
-        for (ulong next = prepared.Endpoint.Number + 1; next <= through.Number;)
+        else if (previous is not null && firstNumber < previous.FirstNumber && previous.FirstNumber <= through.Number)
         {
-            int count = checked((int)Math.Min((ulong)ReadConcurrency, through.Number - next + 1));
-            Task<NativeL1Header>[] reads = new Task<NativeL1Header>[count];
-            for (int index = 0; index < count; index++) reads[index] = source.Read(next + (ulong)index, token);
-            NativeL1Header[] headers = await Task.WhenAll(reads);
-            prepared.AppendChecked(headers);
-            next += (ulong)count;
+            ulong last = Math.Min(previous.Endpoint.Number, through.Number);
+            NativeL1Header boundary = await source.Read(last, token);
+            if (boundary.Hash != previous.At(last).Hash) throw Reorganized(through.Number);
+            prepared.AppendChecked([first]);
+            await AppendThrough(prepared, previous.FirstNumber - 1, token);
+            prepared.AppendRange(previous, previous.FirstNumber, last);
         }
+        else if (previous is not null && firstNumber <= previous.Endpoint.Number && through.Number >= previous.FirstNumber)
+            throw Reorganized(through.Number);
+        if (prepared.Count == 0) prepared.AppendChecked([first]);
+        await AppendThrough(prepared, through.Number, token);
         if (prepared.Endpoint.Number != through.Number || prepared.Endpoint.Hash != through.Hash.ValueHash256 ||
             prepared.Endpoint.Timestamp != through.Timestamp || prepared.Endpoint.PrevRandao != through.MixHash.ValueHash256)
             throw NativeL1Header.Invalid("canonical history differs from the settlement anchor");
@@ -102,16 +104,36 @@ internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules r
             throw new L1SourceIncompleteException(through.Number, "L1 reorganized during native history preparation.");
         }
         token.ThrowIfCancellationRequested();
+        NativeL1HeaderChain published = prepared;
+        if (previous is not null && prepared.FirstNumber < previous.FirstNumber && previous.FirstNumber <= prepared.Endpoint.Number &&
+            previous.Endpoint.Number > prepared.Endpoint.Number && previous.Endpoint.Number - prepared.FirstNumber < NativeL1HeaderChain.MaxHeaders)
+        {
+            published = prepared.Prefix(prepared.Count);
+            published.AppendRange(previous, prepared.Endpoint.Number + 1, previous.Endpoint.Number);
+        }
         lock (_gate)
         {
             if (_generation != generation)
                 throw new L1SourceIncompleteException(through.Number, "Canonical native L1 history was invalidated during preparation.");
             bool contained = previous is not null && previous.FirstNumber <= prepared.FirstNumber &&
                 previous.Endpoint.Number >= prepared.Endpoint.Number && previous.At(prepared.Endpoint.Number).Hash == prepared.Endpoint.Hash;
-            _ready = contained ? previous : prepared;
+            _ready = contained ? previous : published;
         }
         return prepared;
     }
+    private async Task AppendThrough(NativeL1HeaderChain prepared, ulong lastNumber, CancellationToken token)
+    {
+        for (ulong next = prepared.Endpoint.Number + 1; next <= lastNumber;)
+        {
+            int count = checked((int)Math.Min((ulong)ReadConcurrency, lastNumber - next + 1));
+            Task<NativeL1Header>[] reads = new Task<NativeL1Header>[count];
+            for (int index = 0; index < count; index++) reads[index] = source.Read(next + (ulong)index, token);
+            NativeL1Header[] headers = await Task.WhenAll(reads);
+            prepared.AppendChecked(headers);
+            next += (ulong)count;
+        }
+    }
+
     private L1SourceIncompleteException Reorganized(ulong number)
     {
         Invalidate();

@@ -148,7 +148,8 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
             .AddSingleton<IL1BatchScanner, IEezL1Api, IL1BlobSource, ILogManager>((l1, blobs, logManager) =>
                 new RollupXBatchScanner(l1, blobs, new Address(config.RegistryAddress!), config.RollupId, logManager));
         if (rules.UsesNativeContract)
-            builder.AddSingleton<IBatchDerivation, NativeBatchDerivation>()
+            builder.AddSingleton<NativeParentHistory>()
+                .AddSingleton<IBatchDerivation, NativeBatchDerivation>()
                 .AddSingleton<IDerivedBlockExecutor, NativeDerivedBlockExecutor>();
     }
 

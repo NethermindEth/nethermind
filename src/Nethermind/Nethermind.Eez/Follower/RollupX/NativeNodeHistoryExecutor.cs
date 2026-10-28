@@ -35,7 +35,7 @@ internal sealed class NativeNodeHistoryExecutor(
             return inner.ProcessTransactions(block, options, tracer, token);
         }
         NativeHistoryBlockExecutor execution = new(inner, state, specs, rules, _schedule, rules.Schedule!.L1Reference.Number,
-            null, captured ?? history.Read()) { DeriveOrigin = derived?.DeriveOrigin == true };
+            null, derived?.Evidence ?? captured ?? history.Read()) { DeriveOrigin = derived?.DeriveOrigin == true };
         return execution.ProcessTransactions(block, options, tracer, token);
     }
 

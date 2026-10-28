@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -53,6 +54,16 @@ internal sealed class NativeL1HeaderChain
             previous = header;
         }
         _headers.AddRange(segment);
+    }
+
+    internal void AppendRange(NativeL1HeaderChain source, ulong firstNumber, ulong lastNumber)
+    {
+        _ = source.At(firstNumber);
+        _ = source.At(lastNumber);
+        if (lastNumber < firstNumber) throw NativeL1Header.Invalid("reversed history range");
+        int offset = checked((int)(firstNumber - source.FirstNumber));
+        int count = checked((int)(lastNumber - firstNumber + 1));
+        AppendChecked(CollectionsMarshal.AsSpan(source._headers).Slice(offset, count));
     }
 
     internal NativeL1HeaderChain Range(ulong firstNumber, ulong lastNumber)

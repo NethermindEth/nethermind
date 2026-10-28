@@ -15,6 +15,7 @@ public sealed record DerivedBlock(Address Beneficiary, byte[] ExtraData, byte[][
     public Hash256 PrevRandao { get; init; } = Keccak.Zero;
     internal int NativeEffectsStart { get; init; } = -1;
     internal bool NativeOriginFromParent { get; init; }
+    internal L1Anchor? NativeHistoryAnchor { get; init; }
 }
 
 /// <summary>

@@ -46,7 +46,7 @@ public sealed class SequencedBlocks(
         Block block;
         using (IDerivedBlockSession session = derived.BeginSession())
         {
-            block = session.Execute(parent, new DerivedBlock(beneficiary, [], []));
+            block = await session.ExecuteAsync(parent, new DerivedBlock(beneficiary, [], []));
         }
 
         await Commit(parent, block, heads);

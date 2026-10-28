@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
@@ -85,7 +86,7 @@ public partial class RollupXGenesisTests
         try
         {
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
-            Block executed = session.Execute(parent, derived[0]);
+            Block executed = await session.ExecuteAsync(parent, derived[0]);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(executed.MixHash, Is.EqualTo(source.Headers[import ? 1UL : 0UL].MixHash));
@@ -106,7 +107,7 @@ public partial class RollupXGenesisTests
         using NativeHistoryTestSource source = CreateHistorySource();
         EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV6);
         using IContainer container = NativeFollowerContainer(source, rules);
-        BlockHeader parent = NativeFollowerParent(container, source, rules, noOpImplementation: true);
+        BlockHeader parent = NativeFollowerParent(container, source, rules, implementation: "no-op", number: 6);
         Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000).WithValue(0)
             .WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         byte[] history = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]).Encode();
@@ -117,23 +118,71 @@ public partial class RollupXGenesisTests
             new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
         DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
         DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
-            new DerivationInputs(0, parent.MixHash!, parent, source.Anchor(2) with { ParentHash = source.Headers[2].ParentHash }, false)
+            new DerivationInputs(0, parent.MixHash!, parent, source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash }, false)
             { ExecutionParent = parent }, CancellationToken.None);
         TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(NativeSystemTxFormat.ContractV6));
         try
         {
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
-            Block first = session.Execute(parent, derived[0]);
+            Block first = await session.ExecuteAsync(parent, derived[0]);
             Assert.That(first.MixHash, Is.EqualTo(source.Headers[1].MixHash), "the recorded import selects this block's origin even when storage stays empty");
             PersistFollowerBlock(container, parent, first);
             container.Resolve<IStateReader>().GetStorage(first.Header, EezConstants.L1HistoryAddress, (UInt256)1, out UInt256 endpoint);
             Assert.That(endpoint, Is.Zero, "precondition: the upgraded implementation did not publish the requested endpoint");
-            Block second = session.Execute(first.Header, derived[1]);
+            Block second = await session.ExecuteAsync(first.Header, derived[1]);
             UInt256 observed = PersistFollowerBlock(container, first.Header, second);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(second.MixHash, Is.EqualTo(source.Headers[0].MixHash), "the next block inherits the real empty store's bootstrap origin");
                 Assert.That(observed.ToValueHash(), Is.EqualTo(source.Headers[0].MixHash!.ValueHash256), "application execution uses the actual inherited origin");
+            }
+        }
+        finally { TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder()); }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task NativeFollower_UpgradeResetsHistoryBeforeRetainedRange_ExpandsEvidenceBeforeNextExecution()
+    {
+        using NativeHistoryTestSource source = CreateHistorySource();
+        EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV6);
+        using IContainer container = NativeFollowerContainer(source, rules);
+        BlockHeader parent = NativeFollowerParent(container, source, rules, implementation: "reset", importedEndpoint: 1, number: 6);
+        Transaction reset = Build.A.Transaction.WithChainId(1).WithTo(EezConstants.L1HistoryAddress).WithNonce(0).WithValue(0)
+            .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithNonce(1).WithValue(0)
+            .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[] operations = OperationsPayload.Encode([
+            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(reset, RlpBehaviors.SkipTypedWrapping).Bytes }),
+            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes }),
+            new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
+        DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
+        L1Anchor anchor = source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash };
+        DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
+            new DerivationInputs(0, parent.MixHash!, parent, anchor, false) { ExecutionParent = parent }, CancellationToken.None);
+        NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
+        await history.Prepare(1, source.Anchor(5), CancellationToken.None);
+        NativeL1HeaderChain borrowed = history.Read();
+        List<ulong> reads = [];
+        source.OnRead = reads.Add;
+        Assert.That(borrowed.FirstNumber, Is.EqualTo(1UL), "precondition: genesis history is outside the retained range");
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(NativeSystemTxFormat.ContractV6));
+        try
+        {
+            using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
+            Block first = await session.ExecuteAsync(parent, derived[0]);
+            Assert.That(first.MixHash, Is.EqualTo(source.Headers[1].MixHash));
+            PersistFollowerBlock(container, parent, first);
+            Block second = await session.ExecuteAsync(first.Header, derived[1]);
+            UInt256 observed = PersistFollowerBlock(container, first.Header, second);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(second.MixHash, Is.EqualTo(source.Headers[0].MixHash));
+                Assert.That(observed.ToValueHash(), Is.EqualTo(source.Headers[0].MixHash!.ValueHash256));
+                Assert.That(history.Read().FirstNumber, Is.Zero);
+                Assert.That(history.Read().Endpoint.Hash, Is.EqualTo(source.Headers[5].Hash!.ValueHash256), "global readiness preserves checked descendants");
+                Assert.That(reads, Does.Contain(anchor.Number).And.Not.Contain(5UL), "expansion binds the batch anchor instead of the newer ready endpoint");
+                Assert.That(borrowed.FirstNumber, Is.EqualTo(1UL), "the borrowed execution snapshot stays immutable");
             }
         }
         finally { TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder()); }
@@ -222,7 +271,7 @@ public partial class RollupXGenesisTests
                     raw.Resolve<IBlockProcessor>(), raw.Resolve<IWorldState>()), Throws.TypeOf<EezSettlementException>(),
                     "raw validation must reject a wire budget larger than the actual remaining block gas");
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
-            Block block = session.Execute(parent, derived);
+            Block block = await session.ExecuteAsync(parent, derived);
             byte[] final = TxDecoder.Instance.Encode(block.Transactions[1], RlpBehaviors.SkipTypedWrapping).Bytes;
             using (Assert.EnterMultipleScope())
             {
@@ -297,7 +346,7 @@ public partial class RollupXGenesisTests
         return builder.Build();
     }
 
-    private static BlockHeader NativeFollowerParent(IContainer container, NativeHistoryTestSource source, EezChainRules rules, bool noOpImplementation = false)
+    private static BlockHeader NativeFollowerParent(IContainer container, NativeHistoryTestSource source, EezChainRules rules, string? implementation = null, ulong? importedEndpoint = null, ulong number = 0)
     {
         IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
         Hash256 root;
@@ -307,9 +356,10 @@ public partial class RollupXGenesisTests
             if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
             {
                 NativeHistoryFixtures.InstallProxy(state);
-                if (noOpImplementation)
+                if (implementation is not null)
                 {
-                    state.InsertCode(NativeProxyHistory.ImplementationAddress, new byte[] { (byte)Instruction.STOP }, Osaka.Instance);
+                    byte[] code = implementation == "reset" ? [0x5f, 0x60, 0x01, 0x55, 0x00] : [0x00];
+                    state.InsertCode(NativeProxyHistory.ImplementationAddress, code, Osaka.Instance);
                     state.CreateAccount(TestItem.AddressB, 0, 1);
                     state.InsertCode(TestItem.AddressB, new byte[] { (byte)Instruction.PREVRANDAO, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE, (byte)Instruction.STOP }, Osaka.Instance);
                 }
@@ -324,12 +374,17 @@ public partial class RollupXGenesisTests
                     state.Set(new StorageCell(EezConstants.L1HistoryAddress, (UInt256)(index + 1)), slots[index]);
                 state.Set(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(0)), source.Headers[0].Hash!.ValueHash256.ToUInt256());
             }
-            state.Commit(Osaka.Instance, isGenesis: true);
-            state.CommitTree(0);
+            if (importedEndpoint is { } endpoint)
+            {
+                state.Set(new StorageCell(EezConstants.L1HistoryAddress, UInt256.One), endpoint);
+                state.Set(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(endpoint)), source.Headers[endpoint].Hash!.ValueHash256.ToUInt256());
+            }
+            state.Commit(Osaka.Instance, isGenesis: number == 0);
+            state.CommitTree(number);
             root = state.StateRoot;
         }
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithTimestamp(rules.Schedule!.GenesisTimestamp)
-            .WithGasLimit(EezChainRules.RollupXBlockGasLimit).WithMixHash(source.Headers[0].MixHash!).WithStateRoot(root).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(number).WithTimestamp(rules.Schedule!.Timestamp(number)!.Value)
+            .WithGasLimit(EezChainRules.RollupXBlockGasLimit).WithMixHash(source.Headers[importedEndpoint ?? 0].MixHash!).WithStateRoot(root).TestObject;
         parent.BaseFeePerGas = 1;
         parent.Hash = Keccak.Compute(Rlp.Encode(parent).Bytes);
         return parent;
