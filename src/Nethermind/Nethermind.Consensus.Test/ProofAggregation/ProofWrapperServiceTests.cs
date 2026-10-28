@@ -858,6 +858,31 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // Cancelled after a transaction was pooled, admission reports the interruption rather than a plain cancellation, and the
+    // same wrapper can be resubmitted.
+    [Test]
+    public async Task Admission_cancelled_after_pooling_reports_an_interruption()
+    {
+        (ProofWrapperService producer, _) = Create(3, 0);
+        byte[] wrapper = producer.BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        using CancellationTokenSource cancellation = new();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+        {
+            cancellation.Cancel();
+            return AcceptTxResult.Accepted;
+        });
+
+        ProofWrapperAcceptance interrupted = await service.AcceptDetailedAsync(wrapper, cancellation.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(interrupted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
+            Assert.That(interrupted.Result.Error, Does.Contain("after 1 of 3"));
+            Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
+        }
+    }
+
     [Test]
     public void Aggregation_reuses_proofs_and_cooperatively_cancels()
     {
@@ -909,7 +934,7 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public void Cancellation_preserves_only_successfully_admitted_coverage([Values] bool firstAccepted)
+    public async Task Cancellation_preserves_only_successfully_admitted_coverage([Values] bool firstAccepted)
     {
         using CancellationTokenSource cancellation = new();
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("first"), default);
@@ -943,8 +968,7 @@ public class ProofWrapperServiceTests
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.That(async () => await service.AcceptAsync(encoded, cancellation.Token),
-            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That((await service.AcceptDetailedAsync(encoded, cancellation.Token)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Covers(transactions[0]), Is.EqualTo(firstAccepted));

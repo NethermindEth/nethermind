@@ -15,7 +15,10 @@ public enum ProofWrapperAcceptanceStatus
     Accepted,
     PoolRejected,
     Busy,
-    LocalFailure
+    LocalFailure,
+    /// <summary>Admission stopped after some of the wrapper's transactions were pooled; they stay pooled, and resubmitting the
+    /// wrapper is safe.</summary>
+    Interrupted
 }
 
 /// <summary>A valid proof can cover transactions rejected by local pool policy.</summary>

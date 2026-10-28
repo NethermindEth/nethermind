@@ -478,7 +478,7 @@ public sealed partial class ProofWrapperTransport
                 case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error, null);
                 case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error, result.Verifier);
                 case ProofWrapperAcceptanceStatus.Malformed: return (Verdict.Malformed, result.Result.Error, null);
-                case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:
+                case ProofWrapperAcceptanceStatus.Busy or ProofWrapperAcceptanceStatus.Interrupted when attempt < MaxBusyRetries:
                     await Task.Delay(WrapperTransportLimits.BusyRetry, cancellation).ConfigureAwait(false);
                     continue;
                 default: return (Verdict.LocalFailure, result.Result.Error, null);

@@ -184,7 +184,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>Separates malformed wrappers and invalid proofs from ordinary pool admission failures.</summary>
-    /// <remarks>For local submissions, such as RPC; they wait for admission apart from peers.</remarks>
+    /// <remarks>For local submissions, such as RPC; they wait for admission apart from peers. Transactions are admitted in chunks,
+    /// so admission that times out waiting for its next turn, or is cancelled, after a chunk was pooled reports
+    /// <see cref="ProofWrapperAcceptanceStatus.Interrupted"/>: the pooled transactions stay, and resubmitting the same wrapper is
+    /// safe, as it skips them.</remarks>
     public Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => AcceptDetailedCoreAsync(wrapper, true, cancellationToken);
 
@@ -289,7 +292,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             admittedDependencies.Clear();
                             entered = false;
                             ExitAdmission(queue);
-                            if (!(entered = await EnterAdmissionAsync(queue, cancellationToken))) return AdmissionBusy();
+                            if (!(entered = await EnterAdmissionAsync(queue, cancellationToken))) return Interrupted(start, transactions.Count);
                             Eip8288Verifier? refreshed = RefreshVerifier();
                             if (refreshed != verifier)
                             {
@@ -300,6 +303,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
                             ref firstError, cancellationToken, admittedDependencies, source);
                     }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && hashes[0] is not null)
+                {
+                    int reached = Array.FindIndex(hashes, static hash => hash is null);
+                    return Interrupted(reached < 0 ? hashes.Length : reached, transactions.Count);
                 }
                 finally
                 {
@@ -353,6 +361,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         _admission.Release();
         queue.Turn.Release();
     }
+
+    private static ProofWrapperAcceptance Interrupted(int reached, int count) =>
+        new(ProofWrapperAcceptanceStatus.Interrupted, Result<Hash256[]>.Fail(
+            $"Proof admission stopped after {reached} of {count} transactions; resubmitting the wrapper is safe, as pooled ones are skipped."));
 
     private static ProofWrapperAcceptance AdmissionBusy() =>
         new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));

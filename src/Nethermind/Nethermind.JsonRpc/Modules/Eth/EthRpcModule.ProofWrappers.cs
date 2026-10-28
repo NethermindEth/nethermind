@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -21,7 +22,10 @@ public partial class EthRpcModule
         Result<Hash256[]> result;
         try
         {
-            result = (await proofWrapperService.AcceptDetailedAsync(wrapper, timeout.Token)).Result;
+            ProofWrapperAcceptance acceptance = await proofWrapperService.AcceptDetailedAsync(wrapper, timeout.Token);
+            if (acceptance.Status == ProofWrapperAcceptanceStatus.Interrupted)
+                return ResultWrapper<Hash256[]>.Fail(acceptance.Result.Error!, ErrorCodes.Timeout);
+            result = acceptance.Result;
         }
         catch (OperationCanceledException)
         {
