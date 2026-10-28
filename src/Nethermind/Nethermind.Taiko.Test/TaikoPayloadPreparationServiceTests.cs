@@ -38,11 +38,20 @@ public class TaikoPayloadPreparationServiceTests
         ValueHash256? builtBlockHash = l1OriginStore.ReadL1Origin(1)!.L2BlockHash;
 
         // The driver resends the same attributes, deserialized afresh with the zero L2 block hash it always sends.
-        string? secondId = service.StartPreparingPayload(parent, BuildAttributes());
+        // Its L1 fields differ from the first call's, so the stored record shows whether the update path rewrote L1Origin.
+        TaikoPayloadAttributes resent = BuildAttributes();
+        resent.L1Origin = new L1Origin(1, Keccak.Zero, 6, TestItem.KeccakD, null);
+        string? secondId = service.StartPreparingPayload(parent, resent);
 
-        Assert.That(secondId, Is.EqualTo(firstId));
-        Assert.That(builtBlockHash, Is.Not.Null);
-        Assert.That(l1OriginStore.ReadL1Origin(1)!.L2BlockHash, Is.EqualTo(builtBlockHash));
+        L1Origin stored = l1OriginStore.ReadL1Origin(1)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondId, Is.EqualTo(firstId));
+            Assert.That(builtBlockHash, Is.Not.Null);
+            Assert.That(stored.L2BlockHash, Is.EqualTo(builtBlockHash));
+            Assert.That(stored.L1BlockHeight, Is.EqualTo(6));
+            Assert.That(stored.L1BlockHash, Is.EqualTo(TestItem.KeccakD.ValueHash256));
+        }
     }
 
     private static TaikoPayloadAttributes BuildAttributes() => new()
