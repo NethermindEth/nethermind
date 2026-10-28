@@ -288,19 +288,17 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Scheduled_statement_is_superseded_only_once_the_body_no_longer_needs_it()
+    public async Task Newer_statements_wait_for_the_running_one_and_only_the_newest_runs_next()
     {
-        List<FrameDependency> first = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 5)
-            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"superseded-{i}"), default)));
-        List<FrameDependency> second = [new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("superseding"), default)];
-        AggregationInput firstInput = new() { Deps = first, Witnesses = [.. first.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] };
-        AggregationInput secondInput = new() { Deps = second, Witnesses = [new byte[] { 1 }] };
+        List<FrameDependency> first = Statement("running", 5);
+        List<FrameDependency> second = Statement("replaced", 1);
+        List<FrameDependency> third = Statement("newest", 1);
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
         ProductionProofCache cache = new(verifier);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        cache.Schedule(first, Eip8288Dependencies.ComputeDepsHash(first), firstInput, Eip8288Verifier.Pinned, store);
+        Schedule(first);
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
@@ -309,12 +307,23 @@ public class Eip8288BlockProductionTests
                 Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first, .. second])), Is.True, "a body extending it keeps it");
                 Assert.That(cache.IsScheduledWithin(new HashSet<FrameDependency>([.. first.Skip(1), .. second])), Is.False);
             }
-            cache.Schedule(second, Eip8288Dependencies.ComputeDepsHash(second), secondInput, Eip8288Verifier.Pinned, store);
+            Schedule(second);
+            Schedule(third);
         }
         finally { release.Set(); }
-        Assert.That(() => store.TryGetRecursiveProof(second, out _), Is.True.After(5000, 20));
+        Assert.That(() => store.TryGetRecursiveProof(third, out _), Is.True.After(5000, 20));
         for (int i = 0; i < 100 && cache.IsScheduled; i++) await Task.Delay(50);
-        Assert.That(store.TryGetRecursiveProof(first, out _), Is.False, "the superseded statement stops between fold steps");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetRecursiveProof(first, out _), Is.True, "the running statement is never cancelled");
+            Assert.That(store.TryGetRecursiveProof(second, out _), Is.False, "a pending statement is replaced by a newer one");
+        }
+
+        void Schedule(List<FrameDependency> deps) => cache.Schedule(deps, Eip8288Dependencies.ComputeDepsHash(deps),
+            new AggregationInput { Deps = deps, Witnesses = [.. deps.Select(_ => (ReadOnlyMemory<byte>)new byte[] { 1 })] }, Eip8288Verifier.Pinned, store);
+
+        static List<FrameDependency> Statement(string name, int count) => Eip8288Dependencies.Canonicalize(Enumerable.Range(0, count)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"{name}-{i}"), default)));
     }
 
     [Test]

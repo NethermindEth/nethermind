@@ -30,8 +30,12 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     private readonly object _provingLock = new();
     private int _producersWaiting;
     private Task? _scheduled;
-    private CancellationTokenSource? _scheduledCancellation;
     private HashSet<FrameDependency>? _scheduledDeps;
+    private Statement? _pending;
+
+    /// <summary>A production statement to prove off the deadline-bound path.</summary>
+    private sealed record Statement(IReadOnlyList<FrameDependency> Deps, ValueHash256 DepsHash, AggregationInput Input, Eip8288Verifier ForkVerifier,
+        LeanProofStore Store);
     private (ulong Timestamp, ulong Number) _latestProduction;
 
     /// <summary>How far behind the latest recorded production a pass may start before that record is taken as bogus, such as
@@ -209,62 +213,62 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
 
     /// <summary>Proves a production statement off the deadline-bound path and publishes it for exact reuse.</summary>
     /// <remarks>
-    /// At most one statement runs at a time. The statement is proven with producer priority, so background wrapper aggregation
-    /// yields to it. A later slot alone does not cancel it: a statement that takes longer than a slot would otherwise never
-    /// finish while dependencies keep arriving, whereas a finished one is narrowed or extended by later passes. A newer statement
-    /// supersedes it, cancelling it between fold steps; callers schedule one only once the latest body no longer needs every
-    /// dependency the running one covers (<see cref="IsScheduledWithin"/>).
+    /// At most one statement runs at a time, with producer priority, so background wrapper aggregation yields to it. A running
+    /// statement is never cancelled: one that takes longer than a slot would otherwise never finish while dependencies keep
+    /// arriving or other blocks include some of them, whereas a finished one is narrowed or extended by later passes. A
+    /// statement requested meanwhile waits as the single pending one, replacing any older pending request, and starts when the
+    /// running one completes.
     /// </remarks>
     internal void Schedule(IReadOnlyList<FrameDependency> deps, ValueHash256 depsHash, AggregationInput input, Eip8288Verifier forkVerifier,
         LeanProofStore store)
     {
-        CancellationTokenSource cancellation = new();
-        CancellationTokenSource? superseded;
+        Statement statement = new(deps, depsHash, input, forkVerifier, store);
+        bool queued;
         lock (_cacheLock)
         {
-            superseded = _scheduled is { IsCompleted: false } ? _scheduledCancellation : null;
-            _scheduledCancellation = cancellation;
-            _scheduledDeps = [.. deps];
-            // The caller's proving scope, if any, must not decide this statement's priority or cancellation.
-            using (ExecutionContext.SuppressFlow())
-                _scheduled = Task.Factory.StartNew(Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-        }
-        // Cancellation callbacks may run inline, so they run outside the lock.
-        if (superseded is not null)
-        {
-            try { superseded.Cancel(); }
-            catch (ObjectDisposedException) { }
+            queued = _scheduled is { IsCompleted: false };
+            if (queued) _pending = statement;
+            else Start(statement);
         }
         if (_logger.IsDebug)
-            _logger.Debug($"Scheduled EIP-8288 production proof for {deps.Count} dependencies: {input.Deps.Count} direct, " +
-                $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded{(superseded is null ? "" : ", superseding the running one")}");
+            _logger.Debug($"{(queued ? "Queued" : "Scheduled")} EIP-8288 production proof for {deps.Count} dependencies: {input.Deps.Count} direct, " +
+                $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded");
+    }
 
-        void Run()
+    /// <summary>Starts proving <paramref name="statement"/>; under the cache lock.</summary>
+    private void Start(Statement statement)
+    {
+        _scheduledDeps = [.. statement.Deps];
+        // The caller's proving scope, if any, must not decide this statement's priority or cancellation.
+        using (ExecutionContext.SuppressFlow())
+            _scheduled = Task.Factory.StartNew(() => Run(statement), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    private void Run(Statement statement)
+    {
+        try
         {
-            try
+            byte[] proof = RecursiveStarkAggregator.Prove(statement.Input, this, statement.ForkVerifier, statement.DepsHash, CancellationToken.None);
+            statement.Store.AddCachedRecursive(statement.Deps, proof);
+        }
+        // A later production pass schedules the statement again.
+        catch (LeanProverBusyException)
+        {
+            if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof skipped: the prover is busy");
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
+        }
+        finally
+        {
+            lock (_cacheLock)
             {
-                // A started native call still finishes and stays cached when superseded.
-                byte[] proof = RecursiveStarkAggregator.Prove(input, this, forkVerifier, in depsHash, cancellation.Token);
-                store.AddCachedRecursive(deps, proof);
-            }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-            {
-                if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof superseded by a newer statement");
-            }
-            // A later production pass schedules the statement again.
-            catch (LeanProverBusyException)
-            {
-                if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof skipped: the prover is busy");
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
-            }
-            finally
-            {
-                lock (_cacheLock)
-                    if (_scheduledCancellation == cancellation) _scheduledCancellation = null;
-                cancellation.Dispose();
+                if (_pending is { } next)
+                {
+                    _pending = null;
+                    Start(next);
+                }
             }
         }
     }
