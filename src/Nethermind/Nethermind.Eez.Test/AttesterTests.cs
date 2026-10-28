@@ -15,6 +15,7 @@ using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Eez.Execution;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -329,6 +330,29 @@ public class AttesterTests
         AttesterCommandLine.AddTo(root);
         string[] args = selection is null ? ValidArgs() : [.. ValidArgs(), "--skip-consensus-layer-calls=" + selection];
         Assert.That(AttesterCommandLine.Parse(root.Parse(args)).SkipConsensusLayerCalls, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Parse_SystemIdentity_MatchesTheSelectedGenesis([Values] bool native,
+        [Values("default", "matching", "other", "zero")] string selection)
+    {
+        string path = native ? StatelessFixtures.PathOf("rollupx/native-offline-v6", "l2-genesis.json")
+            : "genesis.json";
+        EezChainRules rules = native ? ChainConfigLoader.LoadProfile(path).Rules : EezChainRules.Rollup0;
+        System.CommandLine.RootCommand root = [];
+        AttesterCommandLine.AddTo(root);
+        string[] args = [.. ValidArgs().Where(arg => !arg.StartsWith("--chain-config=", StringComparison.Ordinal)), "--chain-config=" + path];
+        Address address = selection switch
+        {
+            "matching" => rules.SystemAddress,
+            "other" => native ? EezConstants.SystemAddress : Address.SystemUser,
+            _ => Address.Zero,
+        };
+        if (selection != "default") args = [.. args, "--l2-system-address=" + address];
+        if (selection is "other" or "zero")
+            Assert.That(() => AttesterCommandLine.Parse(root.Parse(args), rules), Throws.TypeOf<FormatException>());
+        else
+            Assert.That(AttesterCommandLine.Parse(root.Parse(args), rules).RollupId, Is.EqualTo(1UL));
     }
 
     private static string[] ValidArgs() =>

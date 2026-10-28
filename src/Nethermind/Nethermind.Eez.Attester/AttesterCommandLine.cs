@@ -22,7 +22,7 @@ internal static class AttesterCommandLine
     public static readonly Option<string?> RollupId = Flag("--rollup-id", "EEZ_ROLLUP_ID", "Rollup id registered on L1");
     public static readonly Option<string?> VerificationKey = Flag("--vkey", "EEZ_VKEY", "Proof system verification key, 32 bytes");
     public static readonly Option<string?> AttesterAddress = Flag("--attester-address", "EEZ_ATTESTER_ADDRESS", "Address of the attestation key");
-    public static readonly Option<string?> SystemAddress = Flag("--l2-system-address", "EEZ_L2_SYSTEM_ADDRESS", "Reserved L2 system address", EezConstants.SystemAddress.ToString());
+    public static readonly Option<string?> SystemAddress = Flag("--l2-system-address", "EEZ_L2_SYSTEM_ADDRESS", "Reserved L2 system address");
     public static readonly Option<string?> ProofSystem = Flag("--proof-system", "EEZ_PROOF_SYSTEM", "ECDSAProofSystem contract the batches name");
     public static readonly Option<string?> KeyStoreDirectory = Flag("--keystore-directory", "EEZ_KEYSTORE_DIRECTORY", "Directory holding the attestation keystore", "keystore");
     public static readonly Option<string?> PasswordFile = Flag("--password-file", "EEZ_KEYSTORE_PASSWORD_FILE", "File holding the keystore password");
@@ -40,10 +40,11 @@ internal static class AttesterCommandLine
     public static readonly Option<string?> StreamingConfig = Flag("--streaming-config", "EEZ_STREAMING_CONFIG", "Trusted configuration for the optional mutual-TLS prove.v2 endpoint");
 
     /// <exception cref="FormatException">A setting is missing or invalid.</exception>
-    public static AttesterOptions Parse(ParseResult result)
+    public static AttesterOptions Parse(ParseResult result, EezChainRules? rules = null)
     {
-        Address systemAddress = new(Required(result, SystemAddress));
-        if (systemAddress != EezConstants.SystemAddress)
+        Address expectedSystemAddress = rules?.SystemAddress ?? EezConstants.SystemAddress;
+        Address systemAddress = result.GetValue(SystemAddress) is { } configured ? new Address(configured) : expectedSystemAddress;
+        if (systemAddress != expectedSystemAddress)
         {
             throw new FormatException("native system transactions require the reserved EEZ system address");
         }

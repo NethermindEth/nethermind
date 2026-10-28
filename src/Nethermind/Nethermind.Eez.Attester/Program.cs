@@ -29,7 +29,12 @@ public static class Program
     {
         RootCommand root = new("EEZ attester: re-executes settlement windows streamed by a composer and signs their public inputs hash");
         AttesterCommandLine.AddTo(root);
-        root.SetAction(async (result, cancellation) => await Serve(AttesterCommandLine.Parse(result)));
+        root.SetAction(async (result, cancellation) =>
+        {
+            string chainConfig = AttesterCommandLine.Required(result, AttesterCommandLine.ChainConfig);
+            (ISpecProvider specs, EezChainRules rules) = ChainConfigLoader.LoadProfile(chainConfig);
+            await Serve(AttesterCommandLine.Parse(result, rules), specs, rules);
+        });
 
         Command import = new("keystore-import", "Encrypts a raw private key read from standard input into the keystore");
         import.Options.Add(AttesterCommandLine.KeyStoreDirectory);
@@ -101,11 +106,10 @@ public static class Program
         return app;
     }
 
-    private static async Task Serve(AttesterOptions options)
+    private static async Task Serve(AttesterOptions options, ISpecProvider specProvider, EezChainRules rules)
     {
         ILogManager logManager = SimpleConsoleLogManager.Instance;
         PrivateKey key = AttestationKeyStore.Unlock(options.KeyStoreDirectory, options.PasswordFile, options.AttesterAddress, logManager);
-        (ISpecProvider specProvider, EezChainRules rules) = ChainConfigLoader.LoadProfile(options.ChainConfigPath);
         if (options.SkipConsensusLayerCalls) rules = rules.WithoutConsensusLayerCalls();
         await InitializeExecution(rules, TxDecoder.Instance);
         if (rules.IsRollupX && options.StreamingConfigPath is null)
