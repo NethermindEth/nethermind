@@ -497,8 +497,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head -= TCondition.Inputs - 1;
                     sp = ref Moved(ref sp, -(TCondition.Inputs - 1));
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = *CellAt(handlers, ref ip);
-                    if (unfused != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                    nint unfused = NextEntry(handlers, ref ip);
+                    if (IsFilled(unfused)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
             }
@@ -507,8 +507,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
 
         AnalyzeBranch:
@@ -664,8 +664,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -959,8 +959,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 NotStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1020,14 +1020,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 else
                 {
                     // Reloaded rather than held across the call, where each would take a callee-saved register.
-                    handlers = state.CellBias;
+                    handlers = state.Dispatch;
                     code = ref stack.Code;
                     sp = ref SlotAt(ref stack.Bottom, head);
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1073,8 +1073,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint unfused = *CellAt(handlers, ref ip);
-                if (unfused != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                nint unfused = NextEntry(handlers, ref ip);
+                if (IsFilled(unfused)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1162,8 +1162,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint unfused = *CellAt(handlers, ref ip);
-                    if (unfused != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
+                    nint unfused = NextEntry(handlers, ref ip);
+                    if (IsFilled(unfused)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, unfused);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
             }
@@ -1172,8 +1172,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
 
         Dispatch:
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
         }
 
@@ -1199,8 +1199,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1236,14 +1236,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -1);
                     gas -= (nuint)(BaseGasCost.GasCost);
                     ip = ref Unsafe.Add(ref ip, 2);
-                    nint fused = *CellAt(handlers, ref ip);
-                    if (fused != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
+                    nint fused = NextEntry(handlers, ref ip);
+                    if (IsFilled(fused)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, fused);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
 
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1274,8 +1274,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1313,12 +1313,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 // Both read off the opcode's address, so the immediate's needs no add of its own.
                 ref byte opcode = ref ip;
-                nint next = *CellAt(handlers, ref Unsafe.Add(ref opcode, 2));
+                nint next = NextEntry(handlers, ref Unsafe.Add(ref opcode, 2));
                 SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), Unsafe.Add(ref opcode, 1));
                 ip = ref Unsafe.Add(ref ip, 2);
                 head++;
                 sp = ref Moved(ref sp, 1);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1343,8 +1343,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (TryCharge(ref gas, JumpDestGasCost.GasCost))
             {
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1373,8 +1373,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1479,8 +1479,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head++;
                 sp = ref Moved(ref sp, 1);
                 ip = ref Unsafe.Add(ref ip, 1 + TOpCount.Count);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1587,13 +1587,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 3);
             head++;
             sp = ref Moved(ref sp, 1);
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
 
         Dispatch:
-            nint target = *CellAt(handlers, ref ip);
-            if (target != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, target);
+            nint target = NextEntry(handlers, ref ip);
+            if (IsFilled(target)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, target);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
 
         Analyze:
@@ -1638,8 +1638,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = *CellAt(handlers, ref ip);
-                        if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                        nint next = NextEntry(handlers, ref ip);
+                        if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                     }
                 }
@@ -1682,8 +1682,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = *CellAt(handlers, ref ip);
-                        if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                        nint next = NextEntry(handlers, ref ip);
+                        if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                     }
                 }
@@ -1730,12 +1730,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas -= (nuint)(cost);
                 vm.WorldState.Get(in storageCell, out slot);
                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
-                handlers = state.CellBias;
+                handlers = state.Dispatch;
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1816,12 +1816,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 head -= 2;
                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
-                handlers = state.CellBias;
+                handlers = state.Dispatch;
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
 
             OutOfGas:
@@ -1856,12 +1856,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in slot);
                 vm.WorldState.GetTransientState(in storageCell, out slot);
                 // Reloaded rather than held across the call, where each would take a callee-saved register.
-                handlers = state.CellBias;
+                handlers = state.Dispatch;
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1894,13 +1894,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 StorageCell storageCell = new(frame.Env.ExecutingAccount, in key);
                 vm.WorldState.SetTransientState(in storageCell, in Unsafe.Subtract(ref key, 1));
                 // Reloaded rather than held across the call, where each would take a callee-saved register.
-                handlers = state.CellBias;
+                handlers = state.Dispatch;
                 code = ref stack.Code;
                 head -= 2;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -1969,7 +1969,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                                 Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, (uint)size - copied);
                                 // Reloaded rather than held across the calls, where each would take a callee-saved register.
-                                handlers = state.CellBias;
+                                handlers = state.Dispatch;
                                 code = ref stack.Code;
                                 sp = ref SlotAt(ref stack.Bottom, head);
                                 goto Dispatch;
@@ -1988,8 +1988,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head -= 3;
             sp = ref Moved(ref sp, -3);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
         }
 
@@ -2061,8 +2061,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = *CellAt(handlers, ref ip);
-                        if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                        nint next = NextEntry(handlers, ref ip);
+                        if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                     }
                 }
@@ -2103,8 +2103,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
                         LoadBigEndian(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = *CellAt(handlers, ref ip);
-                        if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                        nint next = NextEntry(handlers, ref ip);
+                        if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                     }
                 }
@@ -2146,8 +2146,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in stack.InputData), (nint)offset);
                     LoadBigEndian(ref slot, ref source);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint next = *CellAt(handlers, ref ip);
-                    if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    nint next = NextEntry(handlers, ref ip);
+                    if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
 
@@ -2195,7 +2195,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head--;
                         KeccakCache.ComputeTo(MemoryMarshal.CreateReadOnlySpan(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         // Reloaded rather than held across the call, where each would take a callee-saved register.
-                        handlers = state.CellBias;
+                        handlers = state.Dispatch;
                         code = ref stack.Code;
                         sp = ref SlotAt(ref stack.Bottom, head);
                         // The hash lands big-endian over the length; the slot holds it in limb layout.
@@ -2209,8 +2209,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = *CellAt(handlers, ref ip);
-                        if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                        nint next = NextEntry(handlers, ref ip);
+                        if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                     }
                 }
@@ -2241,8 +2241,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -2271,8 +2271,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -2315,8 +2315,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint following = *CellAt(handlers, ref ip);
-                    if (following != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
+                    nint following = NextEntry(handlers, ref ip);
+                    if (IsFilled(following)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, following);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
 
@@ -2336,8 +2336,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -2400,8 +2400,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
         }
 
@@ -2460,8 +2460,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
         }
 
@@ -2553,8 +2553,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head--;
                 sp = ref Moved(ref sp, -1);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -2596,7 +2596,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     divisor = result;
 
                     // Reloaded rather than held across the call, where each would take a callee-saved register.
-                    handlers = state.CellBias;
+                    handlers = state.Dispatch;
                     code = ref stack.Code;
                     sp = ref SlotAt(ref stack.Bottom, head);
                 }
@@ -2605,8 +2605,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head--;
             sp = ref Moved(ref sp, -1);
             ip = ref Unsafe.Add(ref ip, 1);
-            nint next = *CellAt(handlers, ref ip);
-            if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+            nint next = NextEntry(handlers, ref ip);
+            if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
         }
 
@@ -2647,8 +2647,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint next = *CellAt(handlers, ref ip);
-                    if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    nint next = NextEntry(handlers, ref ip);
+                    if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
 
@@ -2688,8 +2688,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= (nuint)(JumpIGasCost.GasCost);
                     ip = ref Unsafe.Add(ref ip, 1);
-                    nint notTaken = *CellAt(handlers, ref ip);
-                    if (notTaken != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
+                    nint notTaken = NextEntry(handlers, ref ip);
+                    if (IsFilled(notTaken)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
 
@@ -2708,8 +2708,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     sp = ref Moved(ref sp, -2);
                     gas -= (nuint)(jumpIAndJumpDestGas);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint taken = *CellAt(handlers, ref ip);
-                    if (taken != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
+                    nint taken = NextEntry(handlers, ref ip);
+                    if (IsFilled(taken)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
                 }
             }
@@ -2749,8 +2749,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref Moved(ref sp, -(TConditional.IsActive ? 2 : 1));
                 gas -= (nuint)(JumpAndJumpDestGas<TConditional>());
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
@@ -2780,21 +2780,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if (stack.AnalyzeJumpDestination(target, ref code))
             {
                 // Reloaded rather than held across the inlined analysis, which needs the callee-saved registers.
-                handlers = state.CellBias;
+                handlers = state.Dispatch;
                 code = ref stack.Code;
                 head -= TConditional.IsActive ? 2 : 1;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 gas -= (nuint)(JumpAndJumpDestGas<TConditional>());
                 ip = ref Unsafe.Add(ref code, target + 1);
-                nint next = *CellAt(handlers, ref ip);
-                if (next != 0) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                nint next = NextEntry(handlers, ref ip);
+                if (IsFilled(next)) return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, Decode(ref state, handlers, ref ip));
             }
 
             nint shared = TConditional.IsActive
                 ? Entry(&ExecuteJumpIfOpcode<OffFlag, OffFlag>)
                 : Entry(&ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
-            return TailDispatch(ref stack, gas, ref state, ref ip, head, state.CellBias, ref stack.Code, ref SlotAt(ref stack.Bottom, head), shared);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, state.Dispatch, ref stack.Code, ref SlotAt(ref stack.Bottom, head), shared);
         }
 
         /// <summary>The charge of a taken JUMP, or with <typeparamref name="TConditional"/> a taken JUMPI, and the JUMPDEST it lands on.</summary>

@@ -38,7 +38,7 @@ public sealed partial class CodeInfo
     private nint[]? _dispatchCells;
     private object? _dispatchCellsTable;
 
-    /// <summary>One dispatch cell for each byte of <see cref="ExecutionCodeSpan"/> and its padding, for the paired <paramref name="table"/>.</summary>
+    /// <summary>One Airbender dispatch cell for each byte of <see cref="ExecutionCodeSpan"/> and its padding, for the paired <paramref name="table"/>.</summary>
     /// <remarks>
     /// A cell caches the table's entry for an opcode at that position, written on the first dispatch there, and zero
     /// means not yet. The cells of another table start empty again. A fresh array costs the guest nothing to clear,
