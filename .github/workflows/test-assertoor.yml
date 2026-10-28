@@ -90,7 +90,7 @@ jobs:
             }'
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v5
+        uses: ./main-repo/.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.x
 
@@ -106,7 +106,7 @@ jobs:
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ github.ref }}
         run: |
-          dotnet run --file main-repo/scripts/WaitForWorkflow.cs
+          dotnet run --file main-repo/scripts/wait-for-workflow.cs
         working-directory: ${{ github.workspace }}
 
       - name: Replace Placeholders in YAML

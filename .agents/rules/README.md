@@ -7,5 +7,5 @@ Prepared instructions have a 16 KiB budget, and each selected source file has a 
 After changing consumed rules, run:
 
 ```bash
-dotnet run --file scripts/ci/TestAiReviewCommand.cs
+dotnet run --file scripts/ci/test-ai-review-command.cs
 ```

@@ -406,10 +406,11 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
+        if (writer is null) tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = txHash }, cancellationToken);
 
         try
         {
-            IBlockTracer traced = tracer.WithCancellation(cancellationToken);
+            IBlockTracer traced = GethLikeBlockDeadlineTracer.WithCancellation(tracer, cancellationToken);
             CallAtIndexBlockTracer? overridesTracer = null;
             if (useBlockAsBase && options.StateOverrides is { } stateOverrides)
             {
@@ -424,6 +425,11 @@ public class GethStyleTracer(
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             if (overridesTracer is { IsPrepared: false }) throw new InvalidOperationException($"The state overrides of the call in block {block.Number} were not applied.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
+        }
+        catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
+        {
+            deadline.HandleFailure(exception);
+            throw;
         }
         finally
         {
@@ -472,7 +478,9 @@ public class GethStyleTracer(
             && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex))
         {
             Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
-                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex);
+                (state, txHash) => GethLikeBlockDeadlineTracer.Wrap(
+                    CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex),
+                    options with { TxHash = txHash }, cancellationToken);
             if (writer is null)
             {
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
@@ -508,16 +516,22 @@ public class GethStyleTracer(
             : streamsNative
                 ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken)
                 : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
+        if (writer is null) tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken);
 
         try
         {
-            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), keptTxHash);
+            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(GethLikeBlockDeadlineTracer.WithCancellation(tracer, cancellationToken), keptTxHash);
             scope.Component.BlockchainProcessor.Process(block, processingOptions, executionTracer, cancellationToken);
             // On the streaming path traces are written straight to the writer; the returned collection
             // is discarded by the caller, so avoid wrapping an empty BuildResult in a fresh collection.
             if (writer is not null) return Array.Empty<GethLikeTxTrace>();
 
             return new GethLikeTxTraceCollection(keptTxHash is null ? tracer.BuildResult() : KeepTrace(tracer.BuildResult(), keptTxHash));
+        }
+        catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
+        {
+            deadline.HandleFailure(exception);
+            throw;
         }
         finally
         {

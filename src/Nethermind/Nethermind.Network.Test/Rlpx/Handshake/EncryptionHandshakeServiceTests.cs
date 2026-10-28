@@ -158,10 +158,13 @@ public class EncryptionHandshakeServiceTests
 
         _initiatorService.Agree(_initiatorHandshake, ack);
 
-        Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "initiator AES");
-        Assert.That(_recipientHandshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "recipient AES");
-        Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "initiator MAC");
-        Assert.That(_recipientHandshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "recipient MAC");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "initiator AES");
+            Assert.That(_recipientHandshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "recipient AES");
+            Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "initiator MAC");
+            Assert.That(_recipientHandshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "recipient MAC");
+        }
 
         // TODO: below failing, probably different format after serialization / during encryption (only tested decryption / deserialization in EciesCoder)
         // ingress uses the auth packet which is encrypted with a random IV and ephemeral key - need to remove that randomness for tests
@@ -180,8 +183,11 @@ public class EncryptionHandshakeServiceTests
         Ack();
         Agree();
 
-        Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(_recipientHandshake.Secrets.AesSecret), "AES");
-        Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(_recipientHandshake.Secrets.MacSecret), "MAC");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(_recipientHandshake.Secrets.AesSecret), "AES");
+            Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(_recipientHandshake.Secrets.MacSecret), "MAC");
+        }
 
         byte[] recipientEgress = _recipientHandshake.Secrets.EgressMac.Hash;
         byte[] recipientIngress = _recipientHandshake.Secrets.IngressMac.Hash;
@@ -189,8 +195,11 @@ public class EncryptionHandshakeServiceTests
         byte[] initiatorEgress = _initiatorHandshake.Secrets.EgressMac.Hash;
         byte[] initiatorIngress = _initiatorHandshake.Secrets.IngressMac.Hash;
 
-        Assert.That(recipientIngress, Is.EqualTo(initiatorEgress), "Egress");
-        Assert.That(recipientEgress, Is.EqualTo(initiatorIngress), "Ingress");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recipientIngress, Is.EqualTo(initiatorEgress), "Egress");
+            Assert.That(recipientEgress, Is.EqualTo(initiatorIngress), "Ingress");
+        }
     }
 
     [Test]

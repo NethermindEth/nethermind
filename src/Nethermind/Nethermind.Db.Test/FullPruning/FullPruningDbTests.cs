@@ -22,8 +22,11 @@ namespace Nethermind.Db.Test.FullPruning
         public void can_start_pruning()
         {
             TestContext test = new();
-            Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
-            Assert.That(test.DbIndex, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
+                Assert.That(test.DbIndex, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -41,8 +44,11 @@ namespace Nethermind.Db.Test.FullPruning
             test.FullPruningDb.TryStartPruning(out IPruningContext context);
             context.Commit();
             context.Dispose();
-            Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
-            Assert.That(test.DbIndex, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.FullPruningDb.TryStartPruning(out _), Is.True);
+                Assert.That(test.DbIndex, Is.EqualTo(2));
+            }
         }
 
         [Test]
