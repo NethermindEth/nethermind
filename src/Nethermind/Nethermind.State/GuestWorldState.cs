@@ -579,11 +579,8 @@ public sealed partial class GuestWorldState : IWorldState
         if (!IsContract(address)) return;
 
         ValueHash256 codeHash = GetCodeHash(address);
-        ReadOnlyMemory<byte> code = LoadCode(in codeHash);
-        if (code.IsNull()) throw new InvalidOperationException($"Missing bytecode at address {address}");
-
+        _checkedCode = LoadCode(in codeHash);
         _checkedCodeHash = codeHash;
-        _checkedCode = code;
     }
 
     #endregion

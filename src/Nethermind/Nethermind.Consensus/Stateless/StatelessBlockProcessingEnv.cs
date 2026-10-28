@@ -54,18 +54,16 @@ public partial class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
-        new WorldState(
-            new TrieStoreScopeProvider(
-                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
-                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
-            ),
-            logManager
-        )
+    public IWorldState WorldState => _worldState ??= CreateWorldState(
+        new TrieStoreScopeProvider(
+            // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+            new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
+        ),
+        logManager
     );
 
-    /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
-    private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
+    /// <summary>Creates the world state over the witness, where a bytecode access fails when the witness lacks the code.</summary>
+    private static partial IWorldState CreateWorldState(IWorldStateScopeProvider scopeProvider, ILogManager logManager);
 
     /// <summary>Creates the block's code cache, sized for <see cref="CodeCacheCapacity"/> codes.</summary>
     private static partial ICodeCache CreateCodeCache();

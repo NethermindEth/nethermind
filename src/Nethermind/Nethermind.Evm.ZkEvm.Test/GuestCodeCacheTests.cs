@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -58,6 +61,41 @@ public class GuestCodeCacheTests
             }
 
             Assert.That(cache.Get(in Absent), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Spreads_hashes_sharing_their_low_word_by_seed()
+    {
+        ValueHash256[] hashes = new ValueHash256[64];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            byte[] bytes = new byte[32];
+            bytes[4] = (byte)(i + 1);
+            hashes[i] = new ValueHash256(bytes);
+        }
+
+        int[] slots = SlotsOf(hashes);
+        try
+        {
+            SpanExtensions.SeedHashes(new UInt256(1, 2, 3, 4));
+            int[] otherSeedSlots = SlotsOf(hashes);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(slots.Distinct().Count(), Is.GreaterThan(hashes.Length / 2));
+                Assert.That(otherSeedSlots, Is.Not.EqualTo(slots));
+            }
+        }
+        finally
+        {
+            SpanExtensions.SeedHashes(SeedGuestHashes.Seed);
+        }
+
+        static int[] SlotsOf(ValueHash256[] hashes)
+        {
+            GuestCodeCache cache = new(hashes.Length);
+            return hashes.Select(h => cache.Slot(in h)).ToArray();
         }
     }
 }
