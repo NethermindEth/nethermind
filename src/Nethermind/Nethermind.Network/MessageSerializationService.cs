@@ -67,11 +67,17 @@ public class MessageSerializationService : IMessageSerializationService
 
     public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
     {
-        if (TryGetSerializer(out IMessageSerializer<T> serializer))
+        if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
+            ThrowNoSerializerRegistered<T>();
+
+        if (serializerObject is IMessageSerializer<T> serializer)
             return serializer.Deserialize(bytes);
 
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-            ThrowNoSerializerRegistered<T>();
+        if (serializerObject is not IZeroMessageSerializer<T> zeroMessageSerializer)
+        {
+            ThrowInvalidSerializerType<T>(serializerObject);
+            return null!;
+        }
 
         IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
         byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
