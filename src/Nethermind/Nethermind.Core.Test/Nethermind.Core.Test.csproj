@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Nethermind.Crypto.Bls" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.AuRa.Test" />

@@ -29,7 +29,6 @@ public static class NethermindPlugins
         typeof(Nethermind.Monitoring.MonitoringPlugin),
         typeof(Nethermind.Optimism.OptimismPlugin),
         typeof(Nethermind.SendPolicy.Plugin.SendPolicyPlugin),
-        typeof(Nethermind.Shutter.ShutterPlugin),
         typeof(Nethermind.Taiko.TaikoPlugin),
         typeof(Nethermind.UPnP.Plugin.UPnPPlugin),
         typeof(Nethermind.Xdc.XdcPlugin),

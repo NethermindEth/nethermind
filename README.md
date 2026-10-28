@@ -140,7 +140,7 @@ For more info, see [Building standalone binaries](https://docs.nethermind.io/dev
 
 ## Plugin development
 
-Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are loaded on startup and can provide:
+Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, and more. Plugins are loaded on startup and can provide:
 
 - New consensus engines
 - Custom transaction types and RLP decoders
