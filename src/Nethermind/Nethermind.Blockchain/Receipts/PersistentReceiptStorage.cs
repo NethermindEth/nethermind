@@ -50,6 +50,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IStateHistoryCaptureStatus? _historyCaptureStatus;
         private readonly ILogger _logger;
         private readonly bool _legacyHashKey;
+        private readonly bool _encodedReceiptCacheEnabled;
+        private readonly EncodedRlpCache<(ValueHash256 Hash, ulong Number)> _encodedReceiptCache = new(8192, 32 * 1024 * 1024);
 
         private const int SweepDeleteSliceSize = 4096;
 
@@ -93,7 +95,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
-        private readonly Lock _writeLock = new();
+        private readonly Lock _writeLock;
 
         // Bodies skipped by StoresBodies, held until capture durably covers their block so a capture breakdown can
         // persist them before the pending state persist prunes the blocks' snapshots — their only other source.
@@ -135,6 +137,7 @@ namespace Nethermind.Blockchain.Receipts
             ILogManager? logManager = null,
             IStateHistoryCaptureStatus? historyCaptureStatus = null)
         {
+            _writeLock = _encodedReceiptCache.SyncRoot;
             _historyCaptureStatus = historyCaptureStatus;
             _deferredWriter = deferredWriter is { Enabled: true } ? deferredWriter : null;
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
@@ -151,6 +154,8 @@ namespace Nethermind.Blockchain.Receipts
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _storageDecoder = storageDecoder ?? (receiptConfig is { StoreTxHashes: false } ? ReceiptArrayStorageDecoder.WithoutTxHashes : ReceiptArrayStorageDecoder.Instance);
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
+            // The tx-hash migration writes numbered rows outside this store's invalidation gate.
+            _encodedReceiptCacheEnabled = !(receiptConfig.StoreReceipts && receiptConfig.CompactReceiptStore && receiptConfig.StoreTxHashes);
             _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PersistentReceiptStorage>();
 
             _migratedBlockNumber = Get(MigrationBlockNumberKey, ulong.MaxValue);
@@ -584,9 +589,13 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        private unsafe Span<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash) =>
+            GetReceiptData(blockNumber, blockHash, out _);
+
         [SkipLocalsInit]
-        private unsafe Span<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash)
+        private unsafe Span<byte> GetReceiptData(ulong blockNumber, Hash256 blockHash, out bool numberedKey)
         {
+            numberedKey = false;
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
             {
@@ -598,6 +607,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
+                numberedKey = true;
                 receiptsData = _receiptsDb.GetSpan(blockNumPrefixed);
 
                 return receiptsData;
@@ -606,9 +616,11 @@ namespace Nethermind.Blockchain.Receipts
             {
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
 
+                numberedKey = true;
                 Span<byte> receiptsData = _receiptsDb.GetSpan(blockNumPrefixed);
                 if (receiptsData.IsNull())
                 {
+                    numberedKey = false;
                     receiptsData = _receiptsDb.GetSpan(blockHash);
                 }
 
@@ -688,21 +700,74 @@ namespace Nethermind.Blockchain.Receipts
                 return false;
             }
 
-            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            (ValueHash256 Hash, ulong Number) key = (blockHash.ValueHash256, blockNumber);
+            byte[]? cachedRlp = null;
+            long generation = 0;
+            if (_encodedReceiptCacheEnabled) _encodedReceiptCache.TryGet(key, out cachedRlp, out generation);
+            bool numberedKey = false;
+            Span<byte> receiptsData = cachedRlp is not null
+                ? (byte[])cachedRlp.Clone()
+                : GetReceiptData(blockNumber, blockHash, out numberedKey);
+            IDb? owner = cachedRlp is null ? _receiptsDb : null;
+            bool constructed = false;
+            bool transferred = false;
+            iterator = default;
+            try
+            {
+                // An empty iterator has no data to release in Dispose.
+                if (receiptsData.IsEmpty)
+                {
+                    IDb? emptyOwner = owner;
+                    owner = null;
+                    if (!receiptsData.IsNull()) emptyOwner?.DangerousReleaseMemory(receiptsData);
+                }
+                iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, owner);
+                constructed = true;
+                // Legacy keys can be deleted externally after a numbered-row replacement.
+                if (_encodedReceiptCacheEnabled && cachedRlp is null && numberedKey && !receiptsData.IsEmpty
+                    && receiptsData.Length <= _encodedReceiptCache.ByteCapacity
+                    && HasCompleteReceiptList(receiptsData))
+                {
+                    _encodedReceiptCache.Publish(key, receiptsData.ToArray(), generation);
+                }
+                transferred = true;
+                return true;
+            }
+            finally
+            {
+                if (!transferred)
+                {
+                    if (constructed) iterator.Dispose();
+                    else if (!receiptsData.IsNull()) owner?.DangerousReleaseMemory(receiptsData);
+                }
+            }
+        }
+
+        private static bool HasCompleteReceiptList(Span<byte> receiptsData)
+        {
+            RlpReader reader = new(receiptsData);
+            ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out _);
+            int length = reader.ReadSequenceLength();
+            return length >= 0 && length <= reader.Length - reader.Position;
+        }
+
+        private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IDb? owner)
+        {
             IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
             if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
             {
                 IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
                     new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
-                return true;
+                try
+                {
+                    return new ReceiptsIterator(receiptsData, owner, refDecoder, context, blockHash, blockNumber);
+                }
+                catch
+                {
+                    context.Dispose();
+                    throw;
+                }
             }
-            iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
-            return true;
-        }
-
-        private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IReceiptRefDecoder refDecoder)
-        {
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = static () => null;
             Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null;
             if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
@@ -711,7 +776,7 @@ namespace Nethermind.Blockchain.Receipts
                 logRecoveryContextFactory = () => _receiptsRecovery.CreateLogRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
             }
 
-            return new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder, logRecoveryContextFactory);
+            return new ReceiptsIterator(receiptsData, owner!, recoveryContextFactory, refDecoder, logRecoveryContextFactory);
         }
 
         private readonly struct RecoveryBlockSource(PersistentReceiptStorage storage, ulong blockNumber, Hash256 blockHash)
@@ -773,6 +838,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Set(blockHash, txReceipts);
             if (StoresBodies(spec)) _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
             else RetainSkippedBody(block, txReceipts);
+            lock (_writeLock) _encodedReceiptCache.Invalidate((blockHash.ValueHash256, block.Number));
 
             if (block.Number < MigratedBlockNumber)
             {
@@ -785,12 +851,16 @@ namespace Nethermind.Blockchain.Receipts
         [SkipLocalsInit]
         private void WriteReceipts(ulong blockNumber, Hash256 blockHash, (TxReceipt[] Receipts, RlpBehaviors Behaviors) payload)
         {
-            // Runs on the deferred-writer consumer: encode here, off the processing path. The receipts array is
-            // immutable after the synchronous recovery in InsertDeferred, so encoding it later is safe.
-            using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(payload.Receipts, payload.Behaviors);
-            Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
-            _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+            lock (_writeLock)
+            {
+                _encodedReceiptCache.Invalidate((blockHash.ValueHash256, blockNumber));
+                // Runs on the deferred-writer consumer: encode here, off the processing path. The receipts array is
+                // immutable after the synchronous recovery in InsertDeferred, so encoding it later is safe.
+                using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(payload.Receipts, payload.Behaviors);
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+                _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+            }
         }
 
         /// <summary>
@@ -853,6 +923,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_retainedBodies is null || !_retainedBodies.TryRemove(blockHash, out RetainedBody? dropped)) return false;
 
+            lock (_writeLock) _encodedReceiptCache.Invalidate((blockHash, dropped.BlockNumber));
             Interlocked.Add(ref _retainedBytes, -dropped.EstimatedBytes);
             return true;
         }
@@ -986,7 +1057,15 @@ namespace Nethermind.Blockchain.Receipts
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+                lock (_writeLock)
+                {
+                    _encodedReceiptCache.Invalidate((block.Hash!.ValueHash256, blockNumber));
+                    _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+                }
+            }
+            else
+            {
+                lock (_writeLock) _encodedReceiptCache.Invalidate((block.Hash!.ValueHash256, blockNumber));
             }
 
             // Sync and era import insert blocks decoded from the database, whose creations then get no contract address.
@@ -1023,8 +1102,12 @@ namespace Nethermind.Blockchain.Receipts
 
         internal void ClearCache()
         {
-            _receiptsCache.Clear();
-            _singleReceiptBlocks.Clear();
+            lock (_writeLock)
+            {
+                _encodedReceiptCache.Clear();
+                _receiptsCache.Clear();
+                _singleReceiptBlocks.Clear();
+            }
         }
 
         [SkipLocalsInit]
@@ -1062,8 +1145,17 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        [SkipLocalsInit]
         private void RemoveReceiptsCore(Block block)
+        {
+            lock (_writeLock)
+            {
+                _encodedReceiptCache.Invalidate((block.Hash!.ValueHash256, block.Number));
+                RemoveReceiptsFromDb(block);
+            }
+        }
+
+        [SkipLocalsInit]
+        private void RemoveReceiptsFromDb(Block block)
         {
             // Cancel any queued canonical write for this block so it cannot resurrect the tx-index below. The
             // block-level entry is the only overlay state, so one removal drops all its txs from the lazy scan.
@@ -1091,8 +1183,17 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        [SkipLocalsInit]
         private void RemoveReceiptsCore(ulong blockNumber, Hash256 blockHash)
+        {
+            lock (_writeLock)
+            {
+                _encodedReceiptCache.Invalidate((blockHash.ValueHash256, blockNumber));
+                RemoveReceiptsFromDb(blockNumber, blockHash);
+            }
+        }
+
+        [SkipLocalsInit]
+        private void RemoveReceiptsFromDb(ulong blockNumber, Hash256 blockHash)
         {
             _pendingCanonical.TryRemove(blockHash.ValueHash256, out _);
             if (DropRetainedBody(blockHash.ValueHash256)) UpdateRetentionMetrics();
@@ -1119,11 +1220,11 @@ namespace Nethermind.Blockchain.Receipts
                 // it would permanently drop the tx-index write of every block queued near the head.
                 if (_pendingReceipts is not null)
                 {
-                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => RemoveReceiptRangeFromDb(fromInclusive, toExclusive));
                 }
                 else
                 {
-                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
+                    RemoveReceiptRangeFromDb(fromInclusive, toExclusive);
                 }
 
                 removedAny |= fromInclusive < toExclusive;
@@ -1134,6 +1235,15 @@ namespace Nethermind.Blockchain.Receipts
             foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
             {
                 if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+            }
+        }
+
+        private void RemoveReceiptRangeFromDb(ulong fromInclusive, ulong toExclusive)
+        {
+            lock (_writeLock)
+            {
+                _encodedReceiptCache.Clear();
+                _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
             }
         }
 

@@ -125,6 +125,70 @@ public class LogFinderTests
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
     }
 
+    [Test]
+    public void Fallback_receipt_recovery_is_memoized_per_enumeration(
+        [Values(null, ReceiptsRecoveryResult.Success, ReceiptsRecoveryResult.Skipped, ReceiptsRecoveryResult.NeedReinsert)] ReceiptsRecoveryResult? recoveryResult,
+        [Values] bool multipleReceipts)
+    {
+        (Block block, TxReceipt[] receipts, LogFilter filter) = PrepareFallbackRecoveryTest(multipleReceipts);
+        IReceiptStorage storage = Substitute.For<IReceiptStorage>();
+        storage.HasBlock(block.Number, block.Hash!).Returns(true);
+        _receiptsRecovery.NeedRecover(receipts).Returns(recoveryResult is not null);
+        _receiptsRecovery.TryRecover(Arg.Is<Block>(candidate => candidate.Hash == block.Hash), receipts).Returns(recoveryResult ?? ReceiptsRecoveryResult.Skipped);
+        LogFinder finder = new(_blockTree, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
+
+        IEnumerable<FilterLog> logs = finder.FindLogs(filter);
+        Assert.That(logs.Select(static log => log.LogIndex), Is.EqualTo(multipleReceipts ? new long[] { 0, 1, 2 } : [1, 2]));
+        AssertSerializedAsFilterLogs(logs);
+
+        _receiptsRecovery.Received(3).NeedRecover(receipts);
+        _receiptsRecovery.Received(recoveryResult is null ? 0 : 3).TryRecover(Arg.Is<Block>(candidate => candidate.Hash == block.Hash), receipts);
+        storage.Received(recoveryResult == ReceiptsRecoveryResult.NeedReinsert ? 3 : 0).Insert(Arg.Is<Block>(candidate => candidate.Hash == block.Hash), receipts);
+    }
+
+    [Test]
+    public void Fallback_receipt_recovery_retries_until_success(
+        [Values] bool missingBody, [Values] bool retrySucceeds, [Values] bool multipleReceipts)
+    {
+        (Block block, TxReceipt[] receipts, LogFilter filter) = PrepareFallbackRecoveryTest(multipleReceipts);
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindCanonicalHeaderIfBloomMatches(block.Number, Arg.Any<Func<ReadOnlySpan<byte>, bool>>(), out Arg.Any<bool>())
+            .Returns(call =>
+            {
+                call[2] = true;
+                return block.Header;
+            });
+        int bodyLookups = 0;
+        blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+            .Returns(_ => !missingBody || (++bodyLookups > 1 && retrySucceeds) ? block : null);
+        _receiptsRecovery.NeedRecover(receipts).Returns(true);
+        _receiptsRecovery.TryRecover(block, receipts).Returns(
+            missingBody ? ReceiptsRecoveryResult.Success : ReceiptsRecoveryResult.Fail,
+            retrySucceeds ? ReceiptsRecoveryResult.Success : ReceiptsRecoveryResult.Fail);
+        IReceiptStorage storage = Substitute.For<IReceiptStorage>();
+        storage.HasBlock(block.Number, block.Hash!).Returns(true);
+        LogFinder finder = new(blockFinder, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
+
+        FilterLog[] logs = finder.FindLogs(filter, block.Header, block.Header).ToArray();
+
+        Assert.That(logs.Select(static log => log.LogIndex), Is.EqualTo(multipleReceipts ? new long[] { 0, 1, 2 } : [1, 2]));
+        int attempts = retrySucceeds ? 2 : logs.Length;
+        _receiptsRecovery.Received(attempts).NeedRecover(receipts);
+        blockFinder.Received(attempts).FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        _receiptsRecovery.Received(missingBody ? (retrySucceeds ? 1 : 0) : attempts).TryRecover(block, receipts);
+        storage.DidNotReceive().Insert(block, receipts);
+    }
+
+    private (Block Block, TxReceipt[] Receipts, LogFilter Filter) PrepareFallbackRecoveryTest(bool multipleReceipts)
+    {
+        SetUp(allowReceiptIterator: false);
+        Block block = _rawBlockTree.FindBlock(4, BlockTreeLookupOptions.None)!;
+        LogFilter filter = FilterBuilder.New().FromBlock(4).ToBlock(4)
+            .WithAddresses(multipleReceipts ? [TestItem.AddressB, TestItem.AddressC, TestItem.AddressD] : [TestItem.AddressC, TestItem.AddressD])
+            .Build();
+        return (block, _receiptStorage.Get(block.Hash!), filter);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Legacy_missing_bloom_and_log_entries_degrade_without_losing_valid_logs()
     {

@@ -20,6 +20,8 @@ public class BlockStore : IBlockStore, IClearableCache
 
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder;
+    private readonly EncodedRlpCache<ValueHash256> _recoveryRlp = new(8192, 64 * 1024 * 1024);
+
     // A block body is a re-execution input, so the persistence barrier must make it durable before state. Null when off.
     // Holds a sanitized header+body snapshot (not the live block, not encoded bytes): the body RLP depends only
     // on header/txs/uncles/withdrawals, none mutated after processing, so encoding defers to the consumer.
@@ -71,7 +73,11 @@ public class BlockStore : IBlockStore, IClearableCache
         }
 
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
-        _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
+        lock (_recoveryRlp.SyncRoot)
+        {
+            _recoveryRlp.Invalidate(block.Hash.ValueHash256);
+            _blockDb.Set(block.Number, block.Hash, rlp, writeFlags);
+        }
     }
 
     public void InsertDeferred(Block block)
@@ -93,13 +99,18 @@ public class BlockStore : IBlockStore, IClearableCache
         // Carry the pre-encoded transactions (populated when built from an ExecutionPayload) so the consumer reuses
         // them instead of re-encoding every tx; the arrays are immutable encoded bytes, so sharing the reference is safe.
         _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions, EncodedSize = block.EncodedSize });
+        lock (_recoveryRlp.SyncRoot) _recoveryRlp.Invalidate(block.Hash.ValueHash256);
     }
 
     private void WriteBlock(ulong blockNumber, Hash256 blockHash, Block block)
     {
         // Runs on the deferred-writer consumer: encode here, off the processing path.
         using ArrayPoolSpan<byte> rlp = _blockDecoder.EncodeToArrayPoolSpan(block);
-        _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
+        lock (_recoveryRlp.SyncRoot)
+        {
+            _recoveryRlp.Invalidate(blockHash.ValueHash256);
+            _blockDb.Set(blockNumber, blockHash, rlp, WriteFlags.None);
+        }
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -116,9 +127,13 @@ public class BlockStore : IBlockStore, IClearableCache
 
     private void DeleteFromDb(ulong blockNumber, Hash256 blockHash)
     {
-        _blockCache.Delete(in blockHash.ValueHash256);
-        _blockDb.Delete(blockNumber, blockHash);
-        _blockDb.Remove(blockHash.Bytes);
+        lock (_recoveryRlp.SyncRoot)
+        {
+            _recoveryRlp.Invalidate(blockHash.ValueHash256);
+            _blockCache.Delete(in blockHash.ValueHash256);
+            _blockDb.Delete(blockNumber, blockHash);
+            _blockDb.Remove(blockHash.Bytes);
+        }
     }
 
     /// <summary>Drops every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever their
@@ -136,11 +151,11 @@ public class BlockStore : IBlockStore, IClearableCache
         {
             if (_pending is not null)
             {
-                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
+                _pending.RemoveRange(fromInclusive, toExclusive, () => DeleteRangeFromDb(fromInclusive, toExclusive));
             }
             else
             {
-                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
+                DeleteRangeFromDb(fromInclusive, toExclusive);
             }
 
             removedAny |= fromInclusive < toExclusive;
@@ -154,6 +169,15 @@ public class BlockStore : IBlockStore, IClearableCache
         foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
         {
             if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+        }
+    }
+
+    private void DeleteRangeFromDb(ulong fromInclusive, ulong toExclusive)
+    {
+        lock (_recoveryRlp.SyncRoot)
+        {
+            _recoveryRlp.Clear();
+            _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
         }
     }
 
@@ -209,6 +233,14 @@ public class BlockStore : IBlockStore, IClearableCache
             return new ReceiptRecoveryBlock(pendingBlock);
         }
 
+        _recoveryRlp.TryGet(cacheKey, out byte[]? cachedRlp, out long generation);
+
+        // Memory-backed transaction data can be mutated by the caller; the cached snapshot must stay private.
+        if (cachedRlp is not null)
+        {
+            return _blockDecoder.DecodeToReceiptRecoveryBlock(null, (byte[])cachedRlp.Clone(), RlpBehaviors.MemoizeHeaderHash);
+        }
+
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
@@ -216,15 +248,27 @@ public class BlockStore : IBlockStore, IClearableCache
         memoryOwner ??= _blockDb.GetOwnedMemory(blockHash.Bytes);
         if (memoryOwner is null) return null;
 
-        ReceiptRecoveryBlock? block = null;
+        bool ownershipTransferred = false;
         try
         {
-            block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+            Memory<byte> rlp = memoryOwner.Memory;
+            ReceiptRecoveryBlock? block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, rlp, RlpBehaviors.MemoizeHeaderHash);
+            if (block is not null)
+            {
+                if (rlp.Length <= _recoveryRlp.ByteCapacity)
+                {
+                    byte[] snapshot = rlp.ToArray();
+                    _recoveryRlp.Publish(cacheKey, snapshot, generation);
+                }
+
+                ownershipTransferred = true;
+            }
+
             return block;
         }
         finally
         {
-            if (block is null) ((IMemoryOwner<byte>)memoryOwner).Dispose();
+            if (!ownershipTransferred) ((IMemoryOwner<byte>)memoryOwner).Dispose();
         }
     }
 
@@ -237,8 +281,19 @@ public class BlockStore : IBlockStore, IClearableCache
             // the original block, which downstream consumers may still use and dispose.
             : new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
 
-        _blockCache.Set(in cacheKey, cachedBlock);
+        lock (_recoveryRlp.SyncRoot)
+        {
+            _recoveryRlp.Invalidate(block.Hash!.ValueHash256);
+            _blockCache.Set(in cacheKey, cachedBlock);
+        }
     }
 
-    void IClearableCache.ClearCache() => _blockCache.Clear();
+    void IClearableCache.ClearCache()
+    {
+        lock (_recoveryRlp.SyncRoot)
+        {
+            _recoveryRlp.Clear();
+            _blockCache.Clear();
+        }
+    }
 }

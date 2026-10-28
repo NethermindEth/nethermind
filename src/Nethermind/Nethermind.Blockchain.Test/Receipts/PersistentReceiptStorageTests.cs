@@ -4,11 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -47,6 +50,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private IStateHistoryCaptureStatus _captureStatus = null!;
     private ILogManager _logManager = null!;
     private InterfaceLogger _logger = null!;
+    private BorrowedReceiptDb? _borrowedReceiptDb;
 
     [SetUp]
     public void SetUp()
@@ -67,7 +71,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [TearDown]
-    public void TearDown() => _receiptsDb.Dispose();
+    public void TearDown()
+    {
+        _borrowedReceiptDb?.Dispose();
+        _receiptsDb.Dispose();
+    }
 
     private static IReceiptStorage[] NonPersistentImplementations() =>
     [
@@ -752,6 +760,592 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         (_, TxReceipt[] receipts) = InsertBlock(block);
         // before should not be cached
         Assert.That(_storage.Get(block), Is.EqualTo(receipts));
+    }
+
+    [Test]
+    public void Encoded_iterators_reuse_owned_bytes_and_independent_cursors([Values] bool warm, [Values] bool native)
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(native);
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        TxReceipt second = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        WriteStoredReceipts(block, _decoder.EncodeAsBytes([receipts[0], second], RlpBehaviors.Storage));
+        if (warm) Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(2));
+        Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator first), Is.True);
+        try
+        {
+            Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator other), Is.True);
+            try
+            {
+                Assert.That(first.TryGetNext(out TxReceiptStructRef current), Is.True);
+                MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(current.LogsRlp), current.LogsRlp.Length).Fill(0);
+                Assert.That(other.TryGetNext(out TxReceiptStructRef independent), Is.True);
+                Assert.That(independent.GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+                Assert.That(first.TryGetNext(out current), Is.True);
+                Assert.That(other.TryGetNext(out independent), Is.True);
+                Assert.That(independent.GasUsedTotal, Is.EqualTo(second.GasUsedTotal));
+                Assert.That(current.GasUsedTotal, Is.EqualTo(second.GasUsedTotal));
+            }
+            finally { other.Dispose(); }
+            Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal, second.GasUsedTotal }));
+        }
+        finally { first.Dispose(); }
+
+        using (Assert.EnterMultipleScope())
+        {
+            db.KeyWasRead(StoredReceiptsKey(block), times: 1);
+            Assert.That(db.Releases, Is.EqualTo(1), "managed cache clones must never be released through the database");
+            Assert.That(db.Outstanding, Is.Zero);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> EncodedReceiptEligibilityCases()
+    {
+        foreach (bool hashes in new[] { false, true })
+        {
+            yield return new TestCaseData(true, true, true, hashes);
+            yield return new TestCaseData(false, true, true, hashes);
+            yield return new TestCaseData(true, false, true, hashes);
+            yield return new TestCaseData(true, true, false, hashes);
+        }
+    }
+
+    [TestCaseSource(nameof(EncodedReceiptEligibilityCases))]
+    public void Encoded_receipt_cache_is_disabled_when_the_hash_migration_can_run(
+        bool storeReceipts, bool compactConfig, bool storeTxHashes, bool storedHashes)
+    {
+        _receiptConfig.StoreReceipts = storeReceipts;
+        _receiptConfig.CompactReceiptStore = compactConfig;
+        _receiptConfig.StoreTxHashes = storeTxHashes;
+        CreateStorage();
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts, false);
+        if (!storedHashes) receipts[0].TxHash = null;
+        WriteStoredReceipts(block, _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+
+        bool eligible = !(storeReceipts && compactConfig && storeTxHashes);
+        using (Assert.EnterMultipleScope())
+        {
+            ((TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRead(StoredReceiptsKey(block), eligible ? 1 : 2);
+            Assert.That(EncodedReceiptCount(), Is.EqualTo(eligible ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Delayed_external_migration_write_after_store_replacement_cannot_leave_a_stale_encoded_snapshot()
+    {
+        _receiptConfig.StoreReceipts = true;
+        _receiptConfig.CompactReceiptStore = true;
+        _receiptConfig.StoreTxHashes = true;
+        CreateStorage();
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts, false);
+        ReceiptArrayStorageDecoder oldCompact = new(true, false);
+        WriteStoredReceipts(block, oldCompact.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        byte[] pendingMigrationInput = ReadStoredReceipts(block);
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        Assert.That(EncodedReceiptCount(), Is.Zero);
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+
+        ((IReceiptMigrationStore)_storage).InsertForMigration(block, [replacement]);
+        EvictDecodedReceipts();
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { replacement.GasUsedTotal }));
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { replacement.GasUsedTotal }));
+        Assert.That(EncodedReceiptCount(), Is.Zero);
+        byte[] migrated = ReceiptArrayStorageDecoder.AddTxHashes(pendingMigrationInput, block.Transactions[0].Hash!.Bytes);
+        WriteStoredReceipts(block, migrated);
+
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EncodedReceiptCount(), Is.Zero);
+            ((TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRead(StoredReceiptsKey(block), times: 7);
+        }
+    }
+
+    [Test]
+    public void Encoded_iterator_hits_preserve_log_recovery([Values] bool storedHashes)
+    {
+        (Block block, TxReceipt[] _) = PrepareEncodedIteratorInput(storedHashes);
+        _blockStore.ClearReceivedCalls();
+
+        Hash256? expected = useCompactReceipts ? block.Transactions[0].Hash : null;
+        Assert.That(RecoverFirstLogFields(block).TransactionHash, Is.EqualTo(expected));
+        Assert.That(RecoverFirstLogFields(block).TransactionHash, Is.EqualTo(expected));
+
+        _blockStore.Received(useCompactReceipts && !storedHashes ? 2 : 0).GetReceiptRecoveryBlock(block.Number, block.Hash!);
+        ((TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRead(StoredReceiptsKey(block), times: 1);
+    }
+
+    [Test]
+    public void Encoded_iterator_recovery_source_failure_releases_only_database_owned_input()
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(true);
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput(storedHashes: false);
+        ReceiptArrayStorageDecoder compact = new(true);
+        WriteStoredReceipts(block, compact.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        _blockStore.GetReceiptRecoveryBlock(block.Number, block.Hash!).Returns((ReceiptRecoveryBlock?)null);
+
+        Assert.Throws<InvalidOperationException>(() => RecoverFirstLogFields(block));
+        Assert.Throws<InvalidOperationException>(() => RecoverFirstLogFields(block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            db.KeyWasRead(StoredReceiptsKey(block), times: 1);
+            Assert.That(db.Releases, Is.EqualTo(1));
+            Assert.That(db.Outstanding, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Encoded_iterators_preserve_key_preference_and_empty_rows([Values] bool legacyFirst, [Values] bool emptyPreferred)
+    {
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        TestMemDb db = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] legacy = _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        byte[] numbered = _decoder.EncodeAsBytes([replacement], RlpBehaviors.Storage);
+        db.Clear();
+        if (legacyFirst) db.Set(block.Hash!.Bytes, emptyPreferred ? [] : legacy);
+        else db.Set(StoredReceiptsKey(block), emptyPreferred ? [] : numbered);
+        CreateStorage();
+        if (legacyFirst) db.Set(StoredReceiptsKey(block), numbered);
+        else db.Set(block.Hash!.Bytes, legacy);
+
+        ulong[] expected = emptyPreferred ? [] : [legacyFirst ? receipts[0].GasUsedTotal : replacement.GasUsedTotal];
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(expected));
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(expected));
+        Assert.That(ReadIteratorGas(block, block.Number + 1), Is.EqualTo(legacyFirst && emptyPreferred ? Array.Empty<ulong>() : new[] { receipts[0].GasUsedTotal }));
+        Assert.That(EncodedReceiptCount(), Is.EqualTo(emptyPreferred || legacyFirst ? 0 : 1));
+        if (legacyFirst) db.Remove(block.Hash!.Bytes);
+        else db.Remove(StoredReceiptsKey(block));
+        _storage.ClearCache();
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { legacyFirst ? replacement.GasUsedTotal : receipts[0].GasUsedTotal }));
+    }
+
+    [Test]
+    public void Encoded_iterators_keep_wrong_number_reads_missing_after_a_prefix_hit()
+    {
+        (Block block, TxReceipt[] _) = PrepareEncodedIteratorInput();
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+
+        Assert.That(ReadIteratorGas(block, block.Number + 1), Is.Empty);
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Migration_insert_followed_by_external_legacy_delete_cannot_retain_the_legacy_row([Values] bool legacyFirst)
+    {
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        TestMemDb db = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] original = _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+        db.Clear();
+        if (legacyFirst) db.Set(block.Hash!.Bytes, original);
+        else db.Set(StoredReceiptsKey(block), original);
+        CreateStorage();
+        if (legacyFirst) db.Set(StoredReceiptsKey(block), original);
+        else db.Set(block.Hash!.Bytes, original);
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+
+        ((IReceiptMigrationStore)_storage).InsertForMigration(block, [replacement]);
+        EvictDecodedReceipts();
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { legacyFirst ? receipts[0].GasUsedTotal : replacement.GasUsedTotal }));
+        Assert.That(EncodedReceiptCount(), Is.EqualTo(legacyFirst ? 0 : 1));
+        db.Remove(block.Hash!.Bytes);
+
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { replacement.GasUsedTotal }));
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { replacement.GasUsedTotal }));
+    }
+
+    private static readonly string[] EncodedReceiptMutations = ["Insert", "Migration", "RemoveBlock", "RemoveNumber", "Range", "Ranges", "Clear"];
+
+    [Test]
+    public void Encoded_receipts_are_invalidated_including_an_inflight_refill(
+        [ValueSource(nameof(EncodedReceiptMutations))] string mutation, [Values] bool duringRead)
+    {
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        TestMemDb db = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        void Mutate()
+        {
+            switch (mutation)
+            {
+                case "Insert": _storage.Insert(block, [replacement], ensureCanonical: false); break;
+                case "Migration": ((IReceiptMigrationStore)_storage).InsertForMigration(block, [replacement]); break;
+                case "RemoveBlock": _storage.RemoveReceipts(block); break;
+                case "RemoveNumber": _storage.RemoveReceipts(block.Number, block.Hash!); break;
+                case "Range": _storage.RemoveReceiptsRange(block.Number, block.Number + 1); break;
+                case "Ranges": _storage.RemoveReceiptsRanges([(block.Number, block.Number + 1)]); break;
+                case "Clear": db.Clear(); _storage.ClearCache(); break;
+            }
+            EvictDecodedReceipts();
+        }
+        if (duringRead)
+        {
+            byte[] before = ReadStoredReceipts(block);
+            db.ReadFunc = key =>
+            {
+                if (key.Length != 40) return null!;
+                db.ReadFunc = null;
+                Mutate();
+                return before;
+            };
+        }
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        if (!duringRead) Mutate();
+
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(mutation is "Insert" or "Migration" ? new[] { replacement.GasUsedTotal } : Array.Empty<ulong>()));
+    }
+
+    [Test]
+    public void Encoded_iterator_constructor_failure_releases_its_input_and_never_caches_it([Values] bool legacy, [Values] bool native)
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(native);
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        byte[] malformed = [ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes, 0x01];
+        if (legacy)
+        {
+            db.Clear();
+            db.Set(block.Hash!.Bytes, malformed);
+            CreateStorage();
+        }
+        else WriteStoredReceipts(block, malformed);
+
+        Assert.Throws<RlpException>(() => ReadIteratorGas(block));
+        Assert.Throws<RlpException>(() => ReadIteratorGas(block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Releases, Is.EqualTo(2));
+            Assert.That(db.Outstanding, Is.Zero);
+            Assert.That(EncodedReceiptCount(), Is.Zero);
+        }
+        if (legacy) db.Remove(block.Hash!.Bytes);
+        WriteStoredReceipts(block, _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Encoded_iterator_publication_failure_releases_its_constructed_iterator([Values] bool native)
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(native);
+        (Block block, TxReceipt[] _) = PrepareEncodedIteratorInput();
+        EncodedRlpCache<(ValueHash256 Hash, ulong Number)> cache = ReceiptRlpCache();
+        db.ReadFunc = key =>
+        {
+            db.ReadFunc = null;
+            typeof(EncodedRlpCache<(ValueHash256 Hash, ulong Number)>).GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(cache, null);
+            return ReadStoredReceipts(block);
+        };
+
+        Assert.Throws<NullReferenceException>(() => ReadIteratorGas(block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Releases, Is.EqualTo(1));
+            Assert.That(db.Outstanding, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Encoded_iterator_hits_do_not_override_migration_gate_or_decoded_receipts()
+    {
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+        _storage.MigratedBlockNumber = block.Number + 1;
+        Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator unavailable), Is.False);
+        unavailable.Dispose();
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        DecodedReceiptCache().Set(block.Hash!, [replacement]);
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { replacement.GasUsedTotal }));
+        EvictDecodedReceipts();
+        _storage.MigratedBlockNumber = 0;
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        ((TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRead(StoredReceiptsKey(block), times: 1);
+    }
+
+    [Test]
+    public void Encoded_cache_is_not_used_by_other_receipt_reads()
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(true);
+        (Block block, TxReceipt[] _) = PrepareEncodedIteratorInput();
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+
+        Assert.That(_storage.Get(block, recover: false), Has.Length.EqualTo(1));
+        Assert.That(((IReceiptMigrationStore)_storage).GetForMigration(block.Number, block.Hash!), Has.Length.EqualTo(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            db.KeyWasRead(StoredReceiptsKey(block), times: 3);
+            Assert.That(db.Releases, Is.EqualTo(3));
+            Assert.That(db.Outstanding, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Encoded_iterators_do_not_cache_missing_or_empty_rows([Values] bool empty)
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(true);
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        if (empty) WriteStoredReceipts(block, []);
+        else db.Remove(StoredReceiptsKey(block));
+        Assert.That(ReadIteratorGas(block), Is.Empty);
+        Assert.That(ReadIteratorGas(block), Is.Empty);
+        Assert.That(EncodedReceiptCount(), Is.Zero);
+        Assert.That(db.Releases, Is.EqualTo(empty ? 2 : 0));
+        Assert.That(db.Outstanding, Is.Zero);
+        db.KeyWasRead(StoredReceiptsKey(block), times: 2);
+
+        WriteStoredReceipts(block, _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Encoded_iterator_hits_still_validate_receipts_when_consumed([Values] bool truncated, [Values] bool legacy)
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb(true);
+        (Block block, TxReceipt[] _) = PrepareEncodedIteratorInput();
+        byte[] malformed = truncated ? [0xc1] : [0xc1, 0x01];
+        if (legacy)
+        {
+            db.Clear();
+            db.Set(block.Hash!.Bytes, malformed);
+            CreateStorage();
+        }
+        else WriteStoredReceipts(block, malformed);
+
+        Assert.Catch(() => ReadIteratorGas(block));
+        Assert.Catch(() => ReadIteratorGas(block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            bool cached = !truncated && !legacy;
+            db.KeyWasRead(legacy ? block.Hash!.BytesToArray() : StoredReceiptsKey(block), cached ? 1 : 2);
+            Assert.That(EncodedReceiptCount(), Is.EqualTo(cached ? 1 : 0));
+            Assert.That(db.Releases, Is.EqualTo(cached ? 1 : 2));
+            Assert.That(db.Outstanding, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Encoded_receipt_cache_respects_count_and_byte_bounds([Values("Entries", "Bytes", "Oversize")] string limit)
+    {
+        (Block first, TxReceipt[] firstReceipts) = PrepareEncodedIteratorInput();
+        EncodedRlpCache<(ValueHash256 Hash, ulong Number)> cache = ReceiptRlpCache();
+        Type cacheType = cache.GetType();
+        const BindingFlags fields = BindingFlags.NonPublic | BindingFlags.Instance;
+        Assert.That(cache.ByteCapacity, Is.EqualTo(32 * 1024 * 1024));
+        Assert.That(cacheType.GetField("_capacity", fields)!.GetValue(cache), Is.EqualTo(8192));
+        int maxLength = _decoder.EncodeAsBytes(firstReceipts, RlpBehaviors.Storage).Length;
+        if (limit == "Oversize")
+        {
+            cacheType.GetField("_byteCapacity", fields)!.SetValue(cache, maxLength - 1);
+            Assert.That(ReadIteratorGas(first), Has.Length.EqualTo(1));
+            Assert.That(ReadIteratorGas(first), Has.Length.EqualTo(1));
+            Assert.That(EncodedReceiptCount(), Is.Zero);
+            ((TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRead(StoredReceiptsKey(first), times: 2);
+            return;
+        }
+        List<Block> blocks = [first];
+        for (ulong number = 2; number <= 3; number++)
+        {
+            (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block.WithNumber(number)
+                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).WithReceiptsRoot(TestItem.KeccakA).TestObject);
+            _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts, false);
+            byte[] encoded = _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+            maxLength = Math.Max(maxLength, encoded.Length);
+            WriteStoredReceipts(block, encoded);
+            blocks.Add(block);
+        }
+        if (limit == "Entries") cacheType.GetField("_capacity", fields)!.SetValue(cache, 2);
+        else cacheType.GetField("_byteCapacity", fields)!.SetValue(cache, maxLength * 2);
+        foreach (int index in new[] { 0, 1, 0, 2, 0, 1 }) Assert.That(ReadIteratorGas(blocks[index]), Has.Length.EqualTo(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EncodedReceiptCount(), Is.EqualTo(2));
+            Assert.That((int)cacheType.GetField("_bytes", fields)!.GetValue(cache)!, Is.LessThanOrEqualTo(cache.ByteCapacity));
+            TestMemDb db = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            db.KeyWasRead(StoredReceiptsKey(blocks[0]), times: 1);
+            db.KeyWasRead(StoredReceiptsKey(blocks[1]), times: 2);
+        }
+    }
+
+    [Test]
+    public void A_reader_cannot_refill_encoded_receipts_across_a_writer()
+    {
+        BorrowedReceiptDb db = UseBorrowedReceiptDb();
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim resume = new();
+        db.AfterRead = () =>
+        {
+            db.AfterRead = null;
+            entered.Set();
+            if (!resume.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+        };
+        Task<ulong[]> reader = Task.Run(() => ReadIteratorGas(block));
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            _storage.Insert(block, [replacement], ensureCanonical: false);
+            EvictDecodedReceipts();
+        }
+        finally
+        {
+            resume.Set();
+            Assert.That(reader.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        }
+
+        Assert.That(reader.Result, Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { replacement.GasUsedTotal }));
+    }
+
+    [Test]
+    public void Retained_body_writes_and_evictions_invalidate_encoded_receipts([Values] bool persist)
+    {
+        (Block block, TxReceipt[] receipts) = PrepareEncodedIteratorInput();
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        Assert.That(ReadIteratorGas(block), Has.Length.EqualTo(1));
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        _storage.InsertDeferred(block, [replacement], _specProvider.GetSpec(block.Header));
+        EvictDecodedReceipts();
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { receipts[0].GasUsedTotal }));
+        Assert.That(_storage.RetainedBodyCount, Is.EqualTo(1));
+
+        if (persist)
+        {
+            _captureStatus.CaptureHealthy.Returns(false);
+            _captureStatus.CaptureDisabled += Raise.Event<Action>();
+        }
+        else _captureStatus.WatermarkAdvanced += Raise.Event<Action<ulong>>(block.Number);
+
+        Assert.That(EncodedReceiptCount(), Is.Zero);
+        Assert.That(_storage.RetainedBodyCount, Is.Zero);
+        Assert.That(ReadIteratorGas(block), Is.EqualTo(new[] { persist ? replacement.GasUsedTotal : receipts[0].GasUsedTotal }));
+    }
+
+    private (Block Block, TxReceipt[] Receipts) PrepareEncodedIteratorInput(bool storedHashes = true)
+    {
+        _receiptConfig.CompactReceiptStore = false;
+        CreateStorage();
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts, false);
+        if (!storedHashes) receipts[0].TxHash = null;
+        WriteStoredReceipts(block, _decoder.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        return (block, receipts);
+    }
+
+    private ulong[] ReadIteratorGas(Block block, ulong? number = null) => ReadIteratorGas(_storage, number ?? block.Number, block.Hash!);
+
+    private static ulong[] ReadIteratorGas(PersistentReceiptStorage storage, ulong number, Hash256 hash)
+    {
+        bool found = storage.TryGetReceiptsIterator(number, hash, out ReceiptsIterator iterator);
+        try
+        {
+            Assert.That(found, Is.True);
+            List<ulong> gas = [];
+            while (iterator.TryGetNext(out TxReceiptStructRef receipt)) gas.Add(receipt.GasUsedTotal);
+            return gas.ToArray();
+        }
+        finally { iterator.Dispose(); }
+    }
+
+    private LruCache<ValueHash256, TxReceipt[]> DecodedReceiptCache() =>
+        (LruCache<ValueHash256, TxReceipt[]>)typeof(PersistentReceiptStorage).GetField("_receiptsCache", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_storage)!;
+
+    private void EvictDecodedReceipts() => DecodedReceiptCache().Clear();
+
+    private EncodedRlpCache<(ValueHash256 Hash, ulong Number)> ReceiptRlpCache() =>
+        (EncodedRlpCache<(ValueHash256 Hash, ulong Number)>)typeof(PersistentReceiptStorage).GetField("_encodedReceiptCache", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_storage)!;
+
+    private int EncodedReceiptCount() => ((System.Collections.IDictionary)typeof(EncodedRlpCache<(ValueHash256 Hash, ulong Number)>)
+        .GetField("_entries", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(ReceiptRlpCache())!).Count;
+
+    private BorrowedReceiptDb UseBorrowedReceiptDb(bool native = false)
+    {
+        BorrowedReceiptDb db = new(native);
+        _borrowedReceiptDb = db;
+        IDictionary<ReceiptsColumns, TestMemDb> columns = (IDictionary<ReceiptsColumns, TestMemDb>)typeof(TestMemColumnsDb<ReceiptsColumns>)
+            .GetField("_columnDbs", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_receiptsDb)!;
+        columns[ReceiptsColumns.Blocks] = db;
+        return db;
+    }
+
+    private sealed class BorrowedReceiptDb(bool native) : TestMemDb, IReadOnlyKeyValueStore, IDisposable
+    {
+        private readonly List<byte[]> _leases = [];
+        private readonly List<NativeMemoryList<byte>> _nativeLeases = [];
+        public Action? AfterRead { get; set; }
+        public int Releases { get; private set; }
+        public int Outstanding => _leases.Count + _nativeLeases.Count;
+
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            byte[]? data = Get(key, flags);
+            if (data is null) return default;
+            Span<byte> span;
+            if (native && data.Length > 0)
+            {
+                NativeMemoryList<byte> lease = new(data.AsSpan());
+                _nativeLeases.Add(lease);
+                span = lease.AsSpan();
+            }
+            else
+            {
+                byte[] lease = (byte[])data.Clone();
+                _leases.Add(lease);
+                span = lease;
+            }
+            try
+            {
+                AfterRead?.Invoke();
+                return span;
+            }
+            catch
+            {
+                Release(span);
+                throw;
+            }
+        }
+
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => Release(span);
+
+        private void Release(ReadOnlySpan<byte> span)
+        {
+            for (int i = 0; i < _nativeLeases.Count; i++)
+            {
+                if (!span.Overlaps(_nativeLeases[i].AsSpan())) continue;
+                _nativeLeases[i].AsSpan().Fill(0);
+                _nativeLeases[i].Dispose();
+                _nativeLeases.RemoveAt(i);
+                Releases++;
+                return;
+            }
+            for (int i = 0; i < _leases.Count; i++)
+            {
+                if (!span.Overlaps(_leases[i]) && !(span.IsEmpty && _leases[i].Length == 0)) continue;
+                _leases[i].AsSpan().Fill(0);
+                _leases.RemoveAt(i);
+                Releases++;
+                return;
+            }
+            throw new InvalidOperationException("The database does not own this input, or it was already released.");
+        }
+
+        public new void Dispose()
+        {
+            foreach (NativeMemoryList<byte> lease in _nativeLeases) lease.Dispose();
+            _nativeLeases.Clear();
+            _leases.Clear();
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

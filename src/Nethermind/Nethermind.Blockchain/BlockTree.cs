@@ -601,10 +601,28 @@ namespace Nethermind.Blockchain
             }
 
             BlockHeader? header = _headerStore.GetIfBloomMatches(blockInfo.BlockHash, blockNumber, bloomMatches, out found);
+            if (!found) return null;
+
             if (header is not null)
             {
                 header.Hash ??= blockInfo.BlockHash;
-                SetTotalDifficultyFromBlockInfo(header, blockInfo);
+                if (header.Number != blockNumber || !header.Hash.Equals(blockInfo.BlockHash))
+                {
+                    found = false;
+                    return null;
+                }
+            }
+
+            ChainLevelInfo? currentLevel = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
+            if (currentLevel?.MainChainBlock?.BlockHash.Equals(blockInfo.BlockHash) != true)
+            {
+                found = false;
+                return null;
+            }
+
+            if (header is not null)
+            {
+                SetTotalDifficultyFromBlockInfo(header, currentLevel.MainChainBlock!);
                 if (shouldCache)
                 {
                     _headerStore.Cache(header);

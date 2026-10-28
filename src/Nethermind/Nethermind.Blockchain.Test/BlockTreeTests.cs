@@ -932,7 +932,72 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void FindCanonicalHeaderIfBloomMatches_does_not_cache_a_historical_level()
+    public void FindCanonicalHeaderIfBloomMatches_revalidates_after_a_reorg([Values] bool historical, [Values] bool bloomMatches)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(historical ? BlockStore.CacheSize + 8 : 3);
+        BlockTree blockTree = builder.TestObject;
+        Block parent = blockTree.FindBlock(0, BlockTreeLookupOptions.None)!;
+        Block replacement = Build.A.Block.WithParent(parent).WithExtraData([0x42]).TestObject;
+        blockTree.SuggestBlock(replacement);
+
+        BlockHeader? actual = blockTree.FindCanonicalHeaderIfBloomMatches(1, _ =>
+        {
+            Assert.That(blockTree.TryUpdateMainChain(replacement.Header, true, forceUpdateHeadBlock: true, replacement), Is.True);
+            return bloomMatches;
+        }, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.Null);
+            Assert.That(found, Is.False, "a header removed from the canonical chain is not a bloom rejection");
+            Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out _)?.Hash, Is.EqualTo(replacement.Hash));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_revalidates_after_a_deletion([Values] bool bloomMatches, [Values] bool invalidBlockDeletion)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        Block deleted = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+
+        BlockHeader? actual = blockTree.FindCanonicalHeaderIfBloomMatches(4, _ =>
+        {
+            if (invalidBlockDeletion) blockTree.DeleteInvalidBlock(deleted);
+            else Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
+            return bloomMatches;
+        }, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.Null);
+            Assert.That(found, Is.False);
+            Assert.That(blockTree.FindHeader(4, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(4, static _ => true, out _), Is.Null);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_rejects_inconsistent_header_identity([Values] bool wrongNumber)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader original = blockTree.FindHeader(1, BlockTreeLookupOptions.RequireCanonical)!;
+        BlockHeader inconsistent = Build.A.BlockHeader.WithNumber(wrongNumber ? 2UL : 1UL).WithExtraData([0x42]).TestObject;
+        builder.HeadersDb.Set(original.Number, original.Hash!, Rlp.Encode(inconsistent).Bytes);
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+
+        BlockHeader? actual = blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.Null);
+            Assert.That(found, Is.False);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_does_not_share_decoded_historical_levels()
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
         BlockTree blockTree = builder.TestObject;
@@ -940,12 +1005,12 @@ public class BlockTreeTests
         MemDb blockInfoDb = (MemDb)builder.BlockInfoDb;
 
         long readsBefore = blockInfoDb.ReadsCount;
-        for (int i = 0; i < 2; i++)
-        {
-            Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out _), Is.Not.Null);
-        }
+        Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out _), Is.Not.Null);
+        ChainLevelInfo level = builder.ChainLevelInfoRepository.LoadLevelWithoutCaching(1)!;
+        level.HasBlockOnMainChain = false;
 
-        Assert.That(blockInfoDb.ReadsCount - readsBefore, Is.EqualTo(2));
+        Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out _), Is.Not.Null);
+        Assert.That(blockInfoDb.ReadsCount - readsBefore, Is.EqualTo(1));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

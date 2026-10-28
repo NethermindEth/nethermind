@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
@@ -37,16 +39,19 @@ public class DeferredHeaderStoreTests
     private static BlockHeader HeaderNumbered(ulong number) => Build.A.BlockHeader.WithNumber(number).TestObject;
 
     [Test]
-    public void Deferred_insert_is_visible_before_its_write()
+    public void Deferred_insert_is_visible_before_its_write([Values] bool bloomMatches)
     {
         BlockHeader header = HeaderNumbered(7);
         _store.InsertDeferred(header);
+        BlockHeader? matching = _store.GetIfBloomMatches(header.Hash!, header.Number, _ => bloomMatches, out bool found);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_store.Get(header.Hash!, shouldCache: false), Is.SameAs(header));
             Assert.That(_store.Get(header.Hash!, shouldCache: false, blockNumber: header.Number), Is.SameAs(header));
             Assert.That(_store.GetBlockNumber(header.Hash!), Is.EqualTo(header.Number));
+            Assert.That(found, Is.True);
+            Assert.That(matching, bloomMatches ? Is.SameAs(header) : Is.Null);
             Assert.That(Reopen().Get(header.Hash!, shouldCache: false), Is.Null, "precondition: nothing is written yet");
         }
     }
@@ -68,9 +73,62 @@ public class DeferredHeaderStoreTests
     }
 
     [Test]
-    public void Deleted_header_is_not_resurrected_by_its_queued_write()
+    public void Encoded_header_replacement_is_visible_while_pending_and_after_flush([Values] bool replaceDuringRead)
     {
         BlockHeader header = HeaderNumbered(7);
+        _store.Insert(header);
+        BlockHeader replacement = header.Clone();
+        replacement.GasUsed = 7;
+        if (replaceDuringRead)
+        {
+            byte[] beforeReplacement = new HeaderDecoder().Encode(header).Bytes;
+            _headerDb.ReadFunc = _ =>
+            {
+                _headerDb.ReadFunc = null;
+                _store.InsertDeferred(replacement);
+                return beforeReplacement;
+            };
+        }
+
+        Assert.That(_store.Get(header.Hash!, blockNumber: header.Number)?.GasUsed, Is.EqualTo(header.GasUsed));
+        if (!replaceDuringRead) _store.InsertDeferred(replacement);
+        Assert.That(_store.Get(header.Hash!, blockNumber: header.Number), Is.SameAs(replacement));
+
+        _writer.Pump();
+
+        Assert.That(_store.Get(header.Hash!, blockNumber: header.Number)?.GasUsed, Is.EqualTo(7));
+        long reads = _headerDb.ReadsCount;
+        Assert.That(_store.Get(header.Hash!, blockNumber: header.Number)?.GasUsed, Is.EqualTo(7));
+        Assert.That(_headerDb.ReadsCount, Is.EqualTo(reads));
+    }
+
+    [Test]
+    public void Deferred_write_invalidates_encoded_headers_that_survived_pending_publication()
+    {
+        BlockHeader header = HeaderNumbered(7);
+        _store.Insert(header);
+        Assert.That(_store.Get(header.Hash!, blockNumber: header.Number), Is.Not.Null);
+        BlockHeader replacement = header.Clone();
+        replacement.GasUsed = 7;
+
+        // Reproduce the state of an old read refilling after pending publication but before the queued write.
+        DeferredWriteOverlay<BlockHeader> pending = (DeferredWriteOverlay<BlockHeader>)typeof(HeaderStore)
+            .GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_store)!;
+        pending.Publish(header.Number, header.Hash!, replacement);
+        _writer.Pump();
+
+        Assert.That(_store.Get(header.Hash!, blockNumber: header.Number)?.GasUsed, Is.EqualTo(7));
+    }
+
+    [Test]
+    public void Deleted_header_is_not_resurrected_by_its_queued_write([Values] bool warm)
+    {
+        BlockHeader header = HeaderNumbered(7);
+        if (warm)
+        {
+            _store.Insert(header);
+            Assert.That(_store.Get(header.Hash!, blockNumber: header.Number), Is.Not.Null);
+        }
         _store.InsertDeferred(header);
         _store.Delete(header.Hash!);
 

@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using System;
@@ -20,6 +21,16 @@ namespace Nethermind.Serialization.Rlp
     public class HeaderDecoder : RlpDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
+
+        private const int MaxMemoizedHeaderLength = 1024;
+        private static readonly Lazy<AssociativeCache<ValueHash256, MemoizedHeaderHash>> HeaderHashes =
+            new(() => new(8192));
+
+        private sealed class MemoizedHeaderHash(byte[] rlp, ValueHash256 hash)
+        {
+            public readonly byte[] Rlp = rlp;
+            public readonly ValueHash256 Hash = hash;
+        }
 
         private readonly ISpecProvider? _specProvider;
 
@@ -69,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.ReceiptsRoot = receiptsRoot;
             blockHeader.Bloom = bloom;
             blockHeader.GasUsed = gasUsed;
-            blockHeader.Hash = Keccak.Compute(headerRlp);
+            blockHeader.Hash = GetHeaderHash(headerRlp, rlpBehaviors);
 
             position = decoderContext.Position;
 
@@ -91,6 +102,23 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return blockHeader;
+        }
+
+        private static Hash256 GetHeaderHash(ReadOnlySpan<byte> headerRlp, RlpBehaviors behaviors)
+        {
+            if ((behaviors & RlpBehaviors.MemoizeHeaderHash) == 0 ||
+                headerRlp.Length is < Hash256.Size or > MaxMemoizedHeaderLength)
+                return Keccak.Compute(headerRlp);
+
+            ValueHash256 fingerprint = new(headerRlp[..Hash256.Size]);
+            AssociativeCache<ValueHash256, MemoizedHeaderHash> hashes = HeaderHashes.Value;
+            // Sibling headers can have the same fingerprint; only identical RLP can reuse a digest.
+            if (hashes.Get(in fingerprint) is { } cached && headerRlp.SequenceEqual(cached.Rlp))
+                return new Hash256(cached.Hash);
+
+            Hash256 hash = Keccak.Compute(headerRlp);
+            hashes.Set(in fingerprint, new MemoizedHeaderHash(headerRlp.ToArray(), hash.ValueHash256));
+            return hash;
         }
 
         /// <summary>

@@ -172,7 +172,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext);
+            BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors & RlpBehaviors.MemoizeHeaderHash);
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);

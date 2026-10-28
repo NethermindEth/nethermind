@@ -403,26 +403,27 @@ namespace Nethermind.Facade.Find
                 }
             }
 
-            void RecoverReceiptsData(Hash256 hash, TxReceipt[] receipts)
+            bool RecoverReceiptsData(Hash256 hash, TxReceipt[] receipts)
             {
-                if (_receiptsRecovery.NeedRecover(receipts))
+                if (!_receiptsRecovery.NeedRecover(receipts)) return true;
+
+                Block block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (block is null) return false;
+
+                ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, receipts);
+                if (result == ReceiptsRecoveryResult.NeedReinsert)
                 {
-                    Block block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (block is not null)
-                    {
-                        if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
-                        {
-                            _receiptStorage.Insert(block, receipts);
-                        }
-                    }
+                    _receiptStorage.Insert(block, receipts);
                 }
+
+                return result != ReceiptsRecoveryResult.Fail;
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             TxReceipt[] receipts = GetReceipts(blockHash, blockNumber);
+            bool recovered = false;
             long logIndexInBlock = 0;
-            bool receiptsRecovered = false;
             if (receipts is not null)
             {
                 for (int i = 0; i < receipts.Length; i++)
@@ -441,12 +442,7 @@ namespace Nethermind.Facade.Find
                             LogEntry log = receipt.Logs[j];
                             if (filter.Accepts(log))
                             {
-                                if (!receiptsRecovered)
-                                {
-                                    RecoverReceiptsData(blockHash, receipts);
-                                    receiptsRecovered = true;
-                                }
-
+                                if (!recovered) recovered = RecoverReceiptsData(blockHash, receipts);
                                 yield return new FilterLog(logIndexInBlock, receipt, log, blockTimestamp);
                             }
 

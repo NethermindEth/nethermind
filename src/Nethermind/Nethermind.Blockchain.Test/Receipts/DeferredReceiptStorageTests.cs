@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -91,6 +93,64 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
 
         TxReceipt[] receipts = [Build.A.Receipt.WithCalculatedBloom().TestObject];
         return (block, receipts);
+    }
+
+    [Test]
+    public void Encoded_iterators_follow_pending_commit_and_remove(
+        [Values] bool finishReadAfterCommit, [Values] bool removeRange)
+    {
+        _receiptConfig.CompactReceiptStore = false;
+        _storage = CreateStorage(_writer, _barrier);
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        _storage.Insert(block, receipts, ensureCanonical: false);
+        _storage.ClearCache();
+        TestMemDb db = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+        TxReceipt replacement = new(receipts[0]) { GasUsedTotal = receipts[0].GasUsedTotal + 1 };
+        void Publish() => _storage.InsertDeferred(block, [replacement], _specProvider.GetSpec(block.Header));
+        void EvictDecoded() => ((LruCache<ValueHash256, TxReceipt[]>)typeof(PersistentReceiptStorage)
+            .GetField("_receiptsCache", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_storage)!).Clear();
+        if (finishReadAfterCommit)
+        {
+            byte[] key = new byte[40];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash!, key);
+            byte[] before = db.Get(key)!;
+            db.ReadFunc = readKey =>
+            {
+                if (readKey.Length != 40) return null!;
+                db.ReadFunc = null;
+                Publish();
+                _writer.Pump();
+                EvictDecoded();
+                return before;
+            };
+        }
+        Assert.That(ReadFirstIteratorGas(block), Is.EqualTo(receipts[0].GasUsedTotal));
+        if (!finishReadAfterCommit)
+        {
+            Publish();
+            EvictDecoded();
+            Assert.That(ReadFirstIteratorGas(block), Is.EqualTo(replacement.GasUsedTotal));
+            _writer.Pump();
+            EvictDecoded();
+        }
+
+        Assert.That(ReadFirstIteratorGas(block), Is.EqualTo(replacement.GasUsedTotal));
+        Assert.That(ReadFirstIteratorGas(block), Is.EqualTo(replacement.GasUsedTotal));
+        if (removeRange) _storage.RemoveReceiptsRange(block.Number, block.Number + 1);
+        else _storage.RemoveReceipts(block);
+        EvictDecoded();
+        Assert.That(ReadFirstIteratorGas(block), Is.Null);
+    }
+
+    private ulong? ReadFirstIteratorGas(Block block)
+    {
+        bool found = _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator);
+        try
+        {
+            Assert.That(found, Is.True);
+            return iterator.TryGetNext(out TxReceiptStructRef receipt) ? receipt.GasUsedTotal : null;
+        }
+        finally { iterator.Dispose(); }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

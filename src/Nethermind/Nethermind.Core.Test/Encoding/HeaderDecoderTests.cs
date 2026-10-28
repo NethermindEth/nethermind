@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -19,6 +20,64 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class HeaderDecoderTests
 {
+    private const RlpBehaviors MemoizeHeaderHash = (RlpBehaviors)2048;
+
+    [Test]
+    public void Header_hash_reuse_preserves_input_and_result_ownership(
+        [Values(RlpBehaviors.None, MemoizeHeaderHash)] RlpBehaviors behaviors,
+        [Values(0, 128, 2048)] int extraDataLength)
+    {
+        HeaderDecoder decoder = new();
+        BlockHeader header = Build.A.BlockHeader.WithExtraData(new byte[extraDataLength]).TestObject;
+        byte[] encoded = decoder.Encode(header).Bytes;
+        byte[] original = (byte[])encoded.Clone();
+        Hash256 expected = Keccak.Compute(original);
+        BlockHeader first = decoder.Decode(encoded, behaviors)!;
+        first.Hash!.ValueHash256.BytesAsSpan[0] ^= 1;
+        encoded[^1] ^= 1;
+        Hash256 changedExpected = Keccak.Compute(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoder.Decode(original, behaviors)!.Hash, Is.EqualTo(expected));
+            Assert.That(decoder.Decode(encoded, behaviors)!.Hash, Is.EqualTo(changedExpected));
+            Assert.That(decoder.Decode(original, behaviors)!.Hash, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Header_hash_reuse_checks_all_bytes_on_fingerprint_collision(
+        [Values(RlpBehaviors.None, MemoizeHeaderHash)] RlpBehaviors behaviors)
+    {
+        HeaderDecoder decoder = new();
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        byte[] first = decoder.Encode(header).Bytes;
+        header.Nonce++;
+        byte[] second = decoder.Encode(header).Bytes;
+        Assert.That(first.AsSpan(0, Hash256.Size).SequenceEqual(second.AsSpan(0, Hash256.Size)), Is.True);
+        Assert.That(first.AsSpan().SequenceEqual(second), Is.False);
+
+        for (int i = 0; i < 4; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoder.Decode(first, behaviors)!.Hash, Is.EqualTo(Keccak.Compute(first)));
+                Assert.That(decoder.Decode(second, behaviors)!.Hash, Is.EqualTo(Keccak.Compute(second)));
+            }
+        }
+    }
+
+    [Test]
+    public void Header_hash_reuse_is_safe_across_concurrent_decoders(
+        [Values(RlpBehaviors.None, MemoizeHeaderHash)] RlpBehaviors behaviors) =>
+        Parallel.For(0, 256, i =>
+        {
+            HeaderDecoder decoder = new();
+            BlockHeader header = Build.A.BlockHeader.WithNonce((ulong)i).TestObject;
+            byte[] encoded = decoder.Encode(header).Bytes;
+            Assert.That(decoder.Decode(encoded, behaviors)!.Hash, Is.EqualTo(Keccak.Compute(encoded)));
+        });
+
     private const int BloomFieldIndex = 6;
     private const int MixHashFieldIndex = 13;
     private const int WithdrawalsRootFieldIndex = 16;

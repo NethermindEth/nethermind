@@ -28,6 +28,8 @@ public class HeaderStore : IHeaderStore, IClearableCache
     private readonly IDb _blockNumberDb;
     private readonly IHeaderDecoder _headerDecoder;
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+    // Null identifies the legacy key, not a wildcard for a numbered row.
+    private readonly EncodedRlpCache<(ValueHash256 Hash, ulong? Number)> _encodedRlp = new(8192, 8 * 1024 * 1024);
     // Headers written off the engine API path, as the bodies they belong to are; null when deferral is off. The block
     // data the persistence barrier makes durable before a block's state includes them, so on a restart from persisted
     // state no header it needs is missing.
@@ -69,28 +71,37 @@ public class HeaderStore : IHeaderStore, IClearableCache
         }
 
         _pending.Publish(header.Number, header.Hash!, header);
+        lock (_encodedRlp.SyncRoot) _encodedRlp.Invalidate((header.Hash!.ValueHash256, header.Number));
     }
 
     private void WriteHeader(ulong blockNumber, Hash256 blockHash, BlockHeader header)
     {
         using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
-        _headerDb.Set(blockNumber, blockHash, rlp);
-        InsertBlockNumber(blockHash, blockNumber);
+        lock (_encodedRlp.SyncRoot)
+        {
+            _encodedRlp.Invalidate((blockHash.ValueHash256, blockNumber));
+            _headerDb.Set(blockNumber, blockHash, rlp);
+            InsertBlockNumber(blockHash, blockNumber);
+        }
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
     {
-        using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
-        using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
-
-        Span<byte> blockNumberSpan = stackalloc byte[8];
-        foreach (BlockHeader header in headers)
+        lock (_encodedRlp.SyncRoot)
         {
-            using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
-            headerWriteBatch.Set(header.Number, header.Hash!, rlp);
+            using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
+            using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
 
-            header.Number.WriteBigEndian(blockNumberSpan);
-            blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+            Span<byte> blockNumberSpan = stackalloc byte[8];
+            foreach (BlockHeader header in headers)
+            {
+                _encodedRlp.Invalidate((header.Hash!.ValueHash256, header.Number));
+                using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
+                headerWriteBatch.Set(header.Number, header.Hash!, rlp);
+
+                header.Number.WriteBigEndian(blockNumberSpan);
+                blockNumberWriteBatch.Set(header.Hash, blockNumberSpan);
+            }
         }
     }
 
@@ -104,9 +115,11 @@ public class HeaderStore : IHeaderStore, IClearableCache
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerCache.Get(in blockHash.ValueHash256) ?? ReadHeader(blockHash, blockNumber, null, out _);
         }
-        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        header ??= _headerCache.Get(in blockHash.ValueHash256) ?? ReadHeader(blockHash, null, null, out _);
+        if (shouldCache && header is not null) _headerCache.Set(in blockHash.ValueHash256, header);
+        return header;
     }
 
     /// <inheritdoc/>
@@ -121,14 +134,22 @@ public class HeaderStore : IHeaderStore, IClearableCache
             return bloomMatches(header.Bloom!.Bytes) ? header : null;
         }
 
-        Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
-        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
-        header = ReadIfBloomMatches(key, bloomMatches, out found);
-        return found ? header : ReadIfBloomMatches(blockHash.Bytes, bloomMatches, out found);
+        header = ReadHeader(blockHash, blockNumber, bloomMatches, out found);
+        return found ? header : ReadHeader(blockHash, null, bloomMatches, out found);
     }
 
-    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    private BlockHeader? ReadHeader(Hash256 hash, ulong? number, Func<ReadOnlySpan<byte>, bool>? bloomMatches, out bool found)
     {
+        (ValueHash256 Hash, ulong? Number) cacheKey = (hash.ValueHash256, number);
+        _encodedRlp.TryGet(cacheKey, out byte[]? cachedRlp, out long generation);
+        if (cachedRlp is not null)
+        {
+            return DecodeHeader((byte[])cachedRlp.Clone(), bloomMatches, out found);
+        }
+
+        Span<byte> prefixedKey = stackalloc byte[NumberPrefixedKeyLength];
+        if (number is not null) KeyValueStoreExtensions.GetBlockNumPrefixedKey(number.Value, hash, prefixedKey);
+        ReadOnlySpan<byte> key = number is not null ? prefixedKey : hash.Bytes;
         if (_headerDb is IReadOnlyNativeKeyValueStore native)
         {
             ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
@@ -140,7 +161,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
             try
             {
-                return DecodeIfBloomMatches(slice, bloomMatches, out found);
+                return DecodeAndCache(slice, cacheKey, generation, bloomMatches, out found);
             }
             finally
             {
@@ -157,12 +178,35 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
         try
         {
-            return DecodeIfBloomMatches(data, bloomMatches, out found);
+            return DecodeAndCache(data, cacheKey, generation, bloomMatches, out found);
         }
         finally
         {
             _headerDb.DangerousReleaseMemory(data);
         }
+    }
+
+    private BlockHeader? DecodeAndCache(ReadOnlySpan<byte> rlp, (ValueHash256 Hash, ulong? Number) cacheKey,
+        long generation, Func<ReadOnlySpan<byte>, bool>? bloomMatches, out bool found)
+    {
+        BlockHeader? header = DecodeHeader(rlp, bloomMatches, out found);
+        if (header is not null && rlp.Length <= _encodedRlp.ByteCapacity)
+        {
+            _encodedRlp.Publish(cacheKey, rlp.ToArray(), generation);
+        }
+        return header;
+    }
+
+    private BlockHeader? DecodeHeader(ReadOnlySpan<byte> rlp, Func<ReadOnlySpan<byte>, bool>? bloomMatches, out bool found)
+    {
+        if (bloomMatches is not null) return DecodeIfBloomMatches(rlp, bloomMatches, out found);
+
+        found = false;
+        if (rlp.Length == 0) return null;
+        RlpReader reader = new(rlp);
+        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.MemoizeHeaderHash);
+        found = header is not null;
+        return header;
     }
 
     private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
@@ -175,7 +219,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         if (bloomTested && !bloomMatches(bloom)) return null;
 
         RlpReader reader = new(rlp);
-        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
+        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.MemoizeHeaderHash);
         found = header is not null;
         return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
     }
@@ -190,7 +234,15 @@ public class HeaderStore : IHeaderStore, IClearableCache
         return bloom.Length == Bloom.ByteLength;
     }
 
-    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
+    public void Cache(BlockHeader header)
+    {
+        lock (_encodedRlp.SyncRoot)
+        {
+            _encodedRlp.Invalidate((header.Hash.ValueHash256, header.Number));
+            _encodedRlp.Invalidate((header.Hash.ValueHash256, null));
+            _headerCache.Set(in header.Hash.ValueHash256, header);
+        }
+    }
 
     public void Delete(Hash256 blockHash)
     {
@@ -208,10 +260,15 @@ public class HeaderStore : IHeaderStore, IClearableCache
     private void DeleteFromDb(Hash256 blockHash)
     {
         ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
-        _blockNumberDb.Delete(blockHash);
-        _headerDb.Delete(blockHash);
-        _headerCache.Delete(in blockHash.ValueHash256);
+        lock (_encodedRlp.SyncRoot)
+        {
+            _encodedRlp.Invalidate((blockHash.ValueHash256, blockNumber));
+            _encodedRlp.Invalidate((blockHash.ValueHash256, null));
+            if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
+            _blockNumberDb.Delete(blockHash);
+            _headerDb.Delete(blockHash);
+            _headerCache.Delete(in blockHash.ValueHash256);
+        }
     }
 
     public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber)
@@ -304,5 +361,12 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     BlockHeader? IHeaderFinder.Get(Hash256 blockHash, ulong? blockNumber) => Get(blockHash, true, blockNumber);
 
-    void IClearableCache.ClearCache() => _headerCache.Clear();
+    void IClearableCache.ClearCache()
+    {
+        lock (_encodedRlp.SyncRoot)
+        {
+            _encodedRlp.Clear();
+            _headerCache.Clear();
+        }
+    }
 }

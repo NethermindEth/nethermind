@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -107,6 +108,89 @@ public class DeferredBlockStoreTests
 
         Assert.That(Reopen().Get(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
         Assert.That(Reopen().GetRlp(block.Number, block.Hash!), Is.EqualTo(pendingRlp));
+    }
+
+    [Test]
+    public void Recovery_rlp_replacement_is_visible_while_pending_and_after_flush([Values] bool replaceDuringRead)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        _store.Insert(block);
+        Block replacement = new(block.Header, [], []);
+        if (replaceDuringRead)
+        {
+            byte[] beforeReplacement = new BlockDecoder().Encode(block).Bytes;
+            _db.ReadFunc = _ =>
+            {
+                _db.ReadFunc = null;
+                _store.InsertDeferred(replacement);
+                return beforeReplacement;
+            };
+        }
+
+        AssertRecoveryTransactionCount(block, 1);
+        if (!replaceDuringRead) _store.InsertDeferred(replacement);
+        AssertRecoveryTransactionCount(replacement, 0);
+
+        _writer.Pump();
+
+        AssertRecoveryTransactionCount(replacement, 0);
+        long reads = _db.ReadsCount;
+        AssertRecoveryTransactionCount(replacement, 0);
+        Assert.That(_db.ReadsCount, Is.EqualTo(reads));
+        Assert.That(Reopen().Get(replacement.Number, replacement.Hash!)!.Transactions, Is.Empty);
+    }
+
+    [Test]
+    public void Deferred_write_invalidates_recovery_rlp_that_survived_pending_publication()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        _store.Insert(block);
+        AssertRecoveryTransactionCount(block, 1);
+        Block replacement = new(block.Header, [], []);
+
+        // A read that missed pending publication can refill old RLP before the queued write. Preserve that state.
+        DeferredWriteOverlay<Block> pending = (DeferredWriteOverlay<Block>)typeof(BlockStore)
+            .GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(_store)!;
+        pending.Publish(block.Number, block.Hash!, replacement);
+        AssertRecoveryTransactionCount(replacement, 0);
+
+        _writer.Pump();
+
+        AssertRecoveryTransactionCount(replacement, 0);
+    }
+
+    [Test]
+    public void Pending_deletion_drops_recovery_rlp_and_queued_writes([Values] bool range)
+    {
+        Block block = BlockNumbered(1);
+        _store.Insert(block);
+        AssertRecoveryTransactionCount(block, 0);
+        _store.InsertDeferred(block);
+
+        if (range) _store.DeleteRange(block.Number, block.Number + 1);
+        else _store.Delete(block.Number, block.Hash!);
+        _writer.Pump();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
+            Assert.That(_store.HasBlock(block.Number, block.Hash!), Is.False);
+        }
+    }
+
+    private void AssertRecoveryTransactionCount(Block block, int count)
+    {
+        ReceiptRecoveryBlock? result = _store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
+        Assert.That(result, Is.Not.Null);
+        ReceiptRecoveryBlock recovery = result!.Value;
+        try
+        {
+            Assert.That(recovery.TransactionCount, Is.EqualTo(count));
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
     }
 
     [Test]

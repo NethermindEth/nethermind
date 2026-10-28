@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -266,7 +269,7 @@ public class ChainLevelInfoRepositoryTests
         long readsBefore = db.ReadsCount;
         AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), level);
         AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), level);
-        Assert.That(db.ReadsCount - readsBefore, Is.EqualTo(2));
+        Assert.That(db.ReadsCount - readsBefore, Is.EqualTo(1));
 
         ChainLevelInfo cached = repository.LoadLevel(1)!;
         readsBefore = db.ReadsCount;
@@ -293,10 +296,12 @@ public class ChainLevelInfoRepositoryTests
         Func<ChainLevelInfo> load = withoutCaching ? () => repository.LoadLevelWithoutCaching(1) : () => repository.LoadLevel(1);
         Assert.That(load(), Is.SameAs(persisted));
         Assert.That(load(), Is.SameAs(persisted));
+        EvictDecodedLevels(repository);
+        AssertChainLevelInfo(load(), persisted);
     }
 
     [Test]
-    public void LoadLevel_does_not_cache_a_level_deleted_while_the_load_read_the_db()
+    public void LoadLevel_does_not_cache_a_level_deleted_while_the_load_read_the_db([Values] bool withoutCaching)
     {
         TestMemDb db = new();
         using IContainer container = CreateContainer(db);
@@ -310,8 +315,8 @@ public class ChainLevelInfoRepositoryTests
             return deletedRlp;
         };
 
-        Assert.That(repository.LoadLevel(1), Is.Not.Null);
-        Assert.That(repository.LoadLevel(1), Is.Null);
+        Assert.That(LoadLevel(repository, withoutCaching), Is.Not.Null);
+        Assert.That(LoadLevel(repository, withoutCaching), Is.Null);
     }
 
     [Test]
@@ -362,6 +367,352 @@ public class ChainLevelInfoRepositoryTests
 
         ((IClearableCache)repository).ClearCache();
         AssertChainLevelInfo(repository.LoadLevel(1), replacement);
+    }
+
+    [Test]
+    public void Encoded_levels_are_reused_without_sharing_mutable_results([Values] bool withoutCaching, [Values] bool native)
+    {
+        TestMemDb db = native ? new NativeTestMemDb() : new TestMemDb();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo expected = CreateBatchLevel(1);
+        byte[] encoded = PersistUncached(repository, db, expected);
+        long reads = db.ReadsCount;
+        ChainLevelInfo first = LoadLevel(repository, withoutCaching)!;
+        if (withoutCaching) Assert.That(CacheCount(repository, "_blockInfoCache"), Is.Zero);
+        EvictDecodedLevels(repository);
+        first.HasBlockOnMainChain = false;
+        first.BlockInfos[0].TotalDifficulty = 999;
+        first.BlockInfos[0].BlockHash.Bytes[0] ^= 1;
+        first.BlockInfos = [];
+        Assert.That(encoded, Is.EqualTo(Rlp.Encode(expected).Bytes), "returned objects must not alias the database input");
+        Array.Fill(encoded, (byte)0);
+
+        ChainLevelInfo second = LoadLevel(repository, withoutCaching)!;
+
+        AssertChainLevelInfo(second, expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(db.ReadsCount - reads, Is.EqualTo(1));
+            if (withoutCaching) Assert.That(CacheCount(repository, "_blockInfoCache"), Is.Zero);
+            else Assert.That(repository.LoadLevelWithoutCaching(1), Is.SameAs(second));
+        }
+    }
+
+    [Test]
+    public void Encoded_levels_are_invalidated_by_persist_or_delete([Values] bool delete, [Values] bool batched)
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        PersistUncached(repository, db, CreateBatchLevel(1));
+        Assert.That(repository.LoadLevelWithoutCaching(1), Is.Not.Null);
+        ChainLevelInfo replacement = CreateBatchLevel(2);
+        using (BatchWrite batch = batched ? repository.StartBatch() : null)
+        {
+            if (delete) repository.Delete(1, batch);
+            else repository.PersistLevel(1, replacement, batch);
+        }
+        EvictDecodedLevels(repository);
+
+        AssertBatchLevel(repository.LoadLevelWithoutCaching(1), delete ? null : replacement);
+    }
+
+    [Test]
+    public void ClearCache_invalidates_encoded_levels()
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        PersistUncached(repository, db, CreateBatchLevel(1));
+        Assert.That(repository.LoadLevelWithoutCaching(1), Is.Not.Null);
+        db.Clear();
+
+        ((IClearableCache)repository).ClearCache();
+
+        Assert.That(repository.LoadLevelWithoutCaching(1), Is.Null);
+    }
+
+    [Test]
+    public void Encoded_levels_do_not_refill_after_decoder_mutation([Values] bool clear, [Values] bool warm, [Values] bool withoutCaching)
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        PersistUncached(repository, db, CreateBatchLevel(1));
+        if (warm) Assert.That(repository.LoadLevelWithoutCaching(1), Is.Not.Null);
+        bool mutated = false;
+        MutatingLevelDecoder decoder = new(() =>
+        {
+            if (mutated) return;
+            mutated = true;
+            if (clear)
+            {
+                db.Clear();
+                ((IClearableCache)repository).ClearCache();
+            }
+            else repository.Delete(1);
+        });
+        typeof(ChainLevelInfoRepository).GetField("_decoder", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(repository, decoder);
+
+        Assert.That(LoadLevel(repository, withoutCaching), Is.Not.Null);
+        EvictDecodedLevels(repository);
+
+        Assert.That(LoadLevel(repository, withoutCaching), Is.Null);
+        Assert.That(decoder.LastBehaviors, Is.EqualTo(RlpBehaviors.AllowExtraBytes));
+    }
+
+    [Test]
+    public void Active_batch_reads_cannot_publish_precommit_rows(
+        [Values] bool otherThread, [Values] bool flush, [Values] bool delete, [Values] bool withoutCaching)
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo original = CreateBatchLevel(1);
+        ChainLevelInfo replacement = CreateBatchLevel(2);
+        PersistUncached(repository, db, original);
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), original);
+        using BatchWrite batch = repository.StartBatch();
+        if (delete) repository.Delete(1, batch);
+        else repository.PersistLevel(1, replacement, batch);
+        EvictDecodedLevels(repository);
+        long reads = db.ReadsCount;
+
+        AssertChainLevelInfo(ReadWhileBatchOwnsLock(repository, batch, withoutCaching, otherThread), original);
+        Assert.That(db.ReadsCount - reads, Is.EqualTo(1), "an active batch must not admit an encoded-cache hit");
+        EvictDecodedLevels(repository);
+        if (flush)
+        {
+            batch.Flush();
+            AssertBatchLevel(ReadWhileBatchOwnsLock(repository, batch, withoutCaching, otherThread), delete ? null : replacement);
+            EvictDecodedLevels(repository);
+        }
+        batch.Dispose();
+
+        AssertBatchLevel(LoadLevel(repository, withoutCaching), delete ? null : replacement);
+    }
+
+    [Test]
+    public void Active_batch_bypasses_preexisting_encoded_hits([Values] bool otherThread)
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo original = CreateBatchLevel(1);
+        PersistUncached(repository, db, original);
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), original);
+        using BatchWrite batch = repository.StartBatch();
+        repository.PersistLevel(2, CreateBatchLevel(2), batch);
+        long reads = db.ReadsCount;
+
+        AssertChainLevelInfo(ReadWhileBatchOwnsLock(repository, batch, withoutCaching: true, otherThread), original);
+        Assert.That(db.ReadsCount - reads, Is.EqualTo(1));
+        batch.Dispose();
+        reads = db.ReadsCount;
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), original);
+        Assert.That(db.ReadsCount, Is.EqualTo(reads));
+    }
+
+    [Test]
+    public void A_writer_started_during_a_read_prevents_publication_without_blocking([Values] bool withoutCaching)
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo original = CreateBatchLevel(1);
+        ChainLevelInfo replacement = CreateBatchLevel(2);
+        byte[] stale = PersistUncached(repository, db, original);
+        using ManualResetEventSlim reading = new();
+        using ManualResetEventSlim resume = new();
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            reading.Set();
+            if (!resume.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("Reader was not resumed.");
+            return stale;
+        };
+        Task<ChainLevelInfo> read = Task.Run(() => LoadLevel(repository, withoutCaching));
+        try
+        {
+            Assert.That(reading.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            using BatchWrite batch = repository.StartBatch();
+            repository.PersistLevel(1, replacement, batch);
+            EvictDecodedLevels(repository);
+            resume.Set();
+
+            AssertChainLevelInfo(read.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult(), original);
+            batch.Dispose();
+            EvictDecodedLevels(repository);
+            AssertChainLevelInfo(LoadLevel(repository, withoutCaching), replacement);
+        }
+        finally
+        {
+            resume.Set();
+            read.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        }
+    }
+
+    [Test]
+    public void Encoded_level_cache_has_bounded_entries()
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        byte[] encoded = Rlp.Encode(CreateBatchLevel(1)).Bytes;
+        db.ReadFunc = _ => encoded;
+
+        for (ulong number = 1; number <= 16384; number++) repository.LoadLevelWithoutCaching(number);
+
+        Assert.That(CacheCount(repository, "_encodedLevelCache"), Is.InRange(1, 8192));
+        ((IClearableCache)repository).ClearCache();
+        Assert.That(CacheCount(repository, "_encodedLevelCache"), Is.Zero);
+    }
+
+    [Test]
+    public void Oversize_encoded_levels_are_not_retained()
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        BlockInfo[] blocks = new BlockInfo[40];
+        for (int i = 0; i < blocks.Length; i++) blocks[i] = new BlockInfo(TestItem.KeccakA, (UInt256)i);
+        ChainLevelInfo large = new(true, blocks);
+        byte[] encoded = PersistUncached(repository, db, large);
+        Assert.That(encoded.Length, Is.GreaterThan(1024));
+        long reads = db.ReadsCount;
+
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), large);
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), large);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.ReadsCount - reads, Is.EqualTo(2));
+            Assert.That(CacheCount(repository, "_encodedLevelCache"), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Encoded_levels_do_not_cache_missing_or_empty_rows([Values] bool empty)
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ReadOnlySpan<byte> key = 1UL.ToBigEndianSpanWithoutLeadingZeros(out _);
+        if (empty) db.Set(key, []);
+        Assert.That(repository.LoadLevelWithoutCaching(1), Is.Null);
+        ChainLevelInfo expected = CreateBatchLevel(1);
+        db.Set(key, Rlp.Encode(expected).Bytes);
+
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), expected);
+    }
+
+    [Test]
+    public void Encoded_levels_release_borrowed_memory_and_own_their_snapshots([Values] bool native, [Values] bool malformed)
+    {
+        BorrowedLevelDb db = native ? new NativeBorrowedLevelDb() : new BorrowedLevelDb();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo expected = CreateBatchLevel(1);
+        byte[] encoded = PersistUncached(repository, db, expected);
+        if (malformed)
+        {
+            db.Set(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), [0x01]);
+            Assert.Throws<RlpException>(() => repository.LoadLevelWithoutCaching(1));
+            Assert.That(db.Releases, Is.EqualTo(1));
+            db.Set(1UL.ToBigEndianSpanWithoutLeadingZeros(out _), encoded);
+        }
+
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), expected);
+        AssertChainLevelInfo(repository.LoadLevelWithoutCaching(1), expected);
+
+        Assert.That(db.Releases, Is.EqualTo(malformed ? 2 : 1));
+    }
+
+    private static ChainLevelInfo LoadLevel(IChainLevelInfoRepository repository, bool withoutCaching) =>
+        withoutCaching ? repository.LoadLevelWithoutCaching(1) : repository.LoadLevel(1);
+
+    private static ChainLevelInfo ReadWhileBatchOwnsLock(IChainLevelInfoRepository repository, BatchWrite batch, bool withoutCaching, bool otherThread)
+    {
+        if (!otherThread) return LoadLevel(repository, withoutCaching);
+        Task<ChainLevelInfo> read = Task.Run(() => LoadLevel(repository, withoutCaching));
+        try
+        {
+            return read.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            batch.Dispose();
+            read.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            throw;
+        }
+    }
+
+    private static object Cache(IChainLevelInfoRepository repository, string name) =>
+        typeof(ChainLevelInfoRepository).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(repository)!;
+
+    private static void EvictDecodedLevels(IChainLevelInfoRepository repository)
+    {
+        object cache = Cache(repository, "_blockInfoCache");
+        cache.GetType().GetMethod("Clear")!.Invoke(cache, [true]);
+    }
+
+    private static int CacheCount(IChainLevelInfoRepository repository, string name)
+    {
+        object cache = Cache(repository, name);
+        return (int)cache.GetType().GetProperty("Count")!.GetValue(cache)!;
+    }
+
+    private class BorrowedLevelDb : TestMemDb, IReadOnlyKeyValueStore
+    {
+        private byte[] _borrowed;
+        public int Releases { get; private set; }
+
+        public Span<byte> Borrow(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            byte[] bytes = Get(key, flags);
+            _borrowed = bytes is null ? null : (byte[])bytes.Clone();
+            return _borrowed;
+        }
+
+        public void Release()
+        {
+            Releases++;
+            _borrowed.AsSpan().Fill(0);
+            _borrowed = null;
+        }
+
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => Borrow(key, flags);
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => Release();
+    }
+
+    private sealed class NativeBorrowedLevelDb : BorrowedLevelDb, IReadOnlyNativeKeyValueStore
+    {
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags)
+        {
+            handle = 0;
+            return Borrow(key, flags);
+        }
+        public void DangerousReleaseHandle(nint handle) => Release();
+    }
+
+    private sealed class MutatingLevelDecoder(Action afterDecode) : RlpDecoder<ChainLevelInfo>
+    {
+        private readonly ChainLevelDecoder _inner = new();
+        public RlpBehaviors LastBehaviors { get; private set; }
+
+        public override int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => _inner.GetLength(item, rlpBehaviors);
+        public override void Encode<TWriter>(ref TWriter writer, ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+            _inner.Encode(ref writer, item, rlpBehaviors);
+
+        protected override ChainLevelInfo DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            LastBehaviors = rlpBehaviors;
+            ChainLevelInfo level = _inner.Decode(ref decoderContext, rlpBehaviors);
+            afterDecode();
+            return level;
+        }
     }
 
     private static IContainer CreateContainer(IDb blockInfosDb) => new ContainerBuilder()

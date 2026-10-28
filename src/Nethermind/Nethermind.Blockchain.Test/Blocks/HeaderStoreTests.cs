@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Reflection;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -123,10 +124,10 @@ public class HeaderStoreTests
 
         for (int i = 0; i < 2; i++)
         {
-            int expectedReads = i == 1 && shouldCache ? 0 : 1;
+            int expectedNumberReads = i == 1 && shouldCache ? 0 : 1;
             context.AssertReads(() => Assert.That(
                 context.Store.Get(context.Header.Hash!, shouldCache)?.Hash, Is.EqualTo(context.Header.Hash)),
-                numberReads: expectedReads, headerReads: expectedReads);
+                numberReads: expectedNumberReads, headerReads: i == 0 ? 1 : 0);
         }
     }
 
@@ -215,14 +216,292 @@ public class HeaderStoreTests
         }
     }
 
+    [Test]
+    public void Encoded_header_reads_reuse_bytes_without_sharing_mutable_headers([Values] bool firstBloom, [Values] bool secondBloom)
+    {
+        TestMemDb db = new();
+        CountingHeaderDecoder decoder = new();
+        HeaderStore store = new(db, new MemDb(), decoder);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithExtraData([1, 2, 3]).TestObject;
+        store.Insert(header);
+        Hash256 lookup = new(header.Hash!.ValueHash256);
+
+        BlockHeader first = ReadHeader(store, lookup, header.Number, firstBloom)!;
+        long reads = db.ReadsCount;
+        first.Number = 999;
+        first.ExtraData[0] = 99;
+        first.Hash!.Bytes[0] ^= 1;
+        lookup.Bytes[0] ^= 1;
+        BlockHeader second = ReadHeader(store, header.Hash!, header.Number, secondBloom)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second, Is.EqualTo(header).UsingBlockHeaderComparer());
+            Assert.That(db.ReadsCount, Is.EqualTo(reads));
+            Assert.That(decoder.Decodes, Is.EqualTo(2), "encoded hits must still decode and validate");
+            Assert.That(decoder.LastBehaviors, Is.EqualTo(RlpBehaviors.AllowExtraBytes | RlpBehaviors.MemoizeHeaderHash));
+        }
+    }
+
+    [Test]
+    public void Encoded_header_key_preserves_number_hints_and_legacy_fallback([Values] bool legacy, [Values] bool bloom)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        if (legacy) db.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+        else store.Insert(header);
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(header.Hash));
+
+        Assert.That(ReadHeader(store, header.Hash!, 999, bloom)?.Hash, Is.EqualTo(legacy ? header.Hash : null));
+        store.InsertBlockNumber(header.Hash!, 999);
+        Assert.That(store.Get(header.Hash!)?.Hash, Is.EqualTo(legacy ? header.Hash : null));
+        store.InsertBlockNumber(header.Hash!, header.Number);
+        Assert.That(store.Get(header.Hash!)?.Hash, Is.EqualTo(header.Hash));
+    }
+
+    [Test]
+    public void Encoded_headers_do_not_cache_missing_or_malformed_rows([Values] bool bloom)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom), Is.Null);
+        db.Set(header.Number, header.Hash!, new byte[] { 0xf8, 0xff });
+        Assert.Throws(bloom ? typeof(IndexOutOfRangeException) : typeof(RlpException), () => ReadHeader(store, header.Hash!, header.Number, bloom));
+        db.Set(header.Number, header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(header.Hash));
+    }
+
+    [Test]
+    public void Encoded_header_hits_preserve_key_value_mismatch_and_extra_bytes([Values] bool bloom)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader different = Build.A.BlockHeader.WithNumber(100).WithExtraData([9]).TestObject;
+        byte[] encoded = new HeaderDecoder().Encode(different).Bytes;
+        byte[] withExtra = new byte[encoded.Length + 1];
+        encoded.CopyTo(withExtra, 0);
+        withExtra[^1] = 0xff;
+        db.Set(header.Number, header.Hash!, withExtra);
+
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(different.Hash));
+        }
+        Assert.That(db.ReadsCount, Is.EqualTo(1));
+    }
+
+    private static readonly string[] EncodedHeaderMutations = ["Insert", "BulkInsert", "Delete", "ClearCache", "Cache"];
+
+    [Test]
+    public void Encoded_headers_are_invalidated_by_mutation([ValueSource(nameof(EncodedHeaderMutations))] string mutation)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        store.Insert(header);
+        Assert.That(store.Get(header.Hash!, blockNumber: header.Number), Is.Not.Null);
+        BlockHeader replacement = header.Clone();
+        replacement.GasUsed = 7;
+
+        MutateHeader(store, db, header, replacement, mutation);
+
+        BlockHeader? result = store.Get(header.Hash!, blockNumber: header.Number);
+        Assert.That(result?.GasUsed, Is.EqualTo(mutation is "Delete" or "ClearCache" ? (ulong?)null : 7UL));
+    }
+
+    [Test]
+    public void Encoded_headers_do_not_refill_after_a_decoder_mutates_the_store(
+        [ValueSource(nameof(EncodedHeaderMutations))] string mutation)
+    {
+        TestMemDb db = new();
+        CountingHeaderDecoder decoder = new();
+        HeaderStore store = new(db, new MemDb(), decoder);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        store.Insert(header);
+        BlockHeader replacement = header.Clone();
+        replacement.GasUsed = 7;
+        decoder.AfterDecode = () =>
+        {
+            decoder.AfterDecode = null;
+            MutateHeader(store, db, header, replacement, mutation);
+        };
+
+        Assert.That(store.Get(header.Hash!, blockNumber: header.Number)?.GasUsed, Is.EqualTo(header.GasUsed));
+
+        BlockHeader? result = store.Get(header.Hash!, blockNumber: header.Number);
+        Assert.That(result?.GasUsed, Is.EqualTo(mutation is "Delete" or "ClearCache" ? (ulong?)null : 7UL));
+    }
+
+    [Test]
+    public void Encoded_headers_do_not_refill_after_a_bloom_callback_deletes_the_header([Values] bool warm)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        store.Insert(header);
+        if (warm) Assert.That(store.Get(header.Hash!, blockNumber: header.Number), Is.Not.Null);
+
+        BlockHeader? result = store.GetIfBloomMatches(header.Hash!, header.Number, _ =>
+        {
+            store.Delete(header.Hash!);
+            return true;
+        }, out bool found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(result?.Hash, Is.EqualTo(header.Hash));
+            Assert.That(store.Get(header.Hash!, blockNumber: header.Number), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Encoded_header_reads_release_borrowed_memory_and_keep_owned_bytes(
+        [Values] bool native, [Values] bool bloom, [Values] bool decoderThrows)
+    {
+        BorrowedHeaderDb db = native ? new NativeBorrowedHeaderDb() : new BorrowedHeaderDb();
+        CountingHeaderDecoder decoder = new();
+        HeaderStore store = new(db, new MemDb(), decoder);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        store.Insert(header);
+        if (decoderThrows)
+        {
+            decoder.AfterDecode = () => throw new InvalidDataException("Decoder failed.");
+            Assert.Throws<InvalidDataException>(() => ReadHeader(store, header.Hash!, header.Number, bloom));
+            Assert.That(db.Releases, Is.EqualTo(1));
+            decoder.AfterDecode = null;
+        }
+
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(header.Hash));
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(header.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Releases, Is.EqualTo(decoderThrows ? 2 : 1));
+            Assert.That(db.ReadsCount, Is.EqualTo(decoderThrows ? 2 : 1));
+        }
+    }
+
+    [Test]
+    public void Header_writes_hold_the_encoded_cache_lock_through_batch_commit([Values] bool bulk)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        EncodedRlpCache<(ValueHash256 Hash, ulong? Number)> cache =
+            (EncodedRlpCache<(ValueHash256 Hash, ulong? Number)>)typeof(HeaderStore)
+                .GetField("_encodedRlp", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(store)!;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        int writes = 0;
+        db.WriteFunc = (_, _) =>
+        {
+            Assert.That(cache.SyncRoot.IsHeldByCurrentThread, Is.True);
+            writes++;
+            return true;
+        };
+
+        if (bulk) store.BulkInsert([header]);
+        else store.Insert(header);
+
+        Assert.That(writes, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Encoded_header_reads_release_empty_or_malformed_borrowed_memory(
+        [Values] bool native, [Values] bool bloom, [Values] bool empty)
+    {
+        BorrowedHeaderDb db = native ? new NativeBorrowedHeaderDb() : new BorrowedHeaderDb();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        db.ReadFunc = _ => empty ? [] : [0xf8, 0xff];
+
+        if (empty) Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom), Is.Null);
+        else Assert.Throws(bloom ? typeof(IndexOutOfRangeException) : typeof(RlpException), () => ReadHeader(store, header.Hash!, header.Number, bloom));
+
+        Assert.That(db.Releases, Is.EqualTo(empty ? 2 : 1));
+    }
+
+    [Test]
+    public void Empty_prefixed_headers_still_fall_back_to_legacy_rows([Values] bool bloom)
+    {
+        TestMemDb db = new();
+        HeaderStore store = new(db, new MemDb());
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        db.Set(header.Number, header.Hash!, Array.Empty<byte>());
+        db.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(header.Hash));
+        Assert.That(ReadHeader(store, header.Hash!, header.Number, bloom)?.Hash, Is.EqualTo(header.Hash));
+        Assert.That(db.ReadsCount, Is.EqualTo(3));
+    }
+
+    private static BlockHeader? ReadHeader(HeaderStore store, Hash256 hash, ulong number, bool bloom) =>
+        bloom ? store.GetIfBloomMatches(hash, number, static _ => true, out _) : store.Get(hash, blockNumber: number);
+
+    private static void MutateHeader(HeaderStore store, TestMemDb db, BlockHeader header, BlockHeader replacement, string mutation)
+    {
+        switch (mutation)
+        {
+            case "Insert": store.Insert(replacement); break;
+            case "BulkInsert": store.BulkInsert([replacement]); break;
+            case "Delete": store.Delete(header.Hash!); break;
+            case "ClearCache":
+                db.Clear();
+                ((IClearableCache)store).ClearCache();
+                break;
+            case "Cache": store.Cache(replacement); break;
+        }
+    }
+
+    private class BorrowedHeaderDb : TestMemDb, IReadOnlyKeyValueStore
+    {
+        private byte[]? _borrowed;
+        public int Releases { get; private set; }
+
+        public Span<byte> Borrow(scoped ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            byte[]? bytes = Get(key, flags);
+            _borrowed = bytes is null ? null : (byte[])bytes.Clone();
+            return _borrowed;
+        }
+
+        public void Release()
+        {
+            Releases++;
+            _borrowed!.AsSpan().Fill(0);
+            _borrowed = null;
+        }
+
+        Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => Borrow(key, flags);
+        void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => Release();
+    }
+
+    private sealed class NativeBorrowedHeaderDb : BorrowedHeaderDb, IReadOnlyNativeKeyValueStore
+    {
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags)
+        {
+            handle = 0;
+            return Borrow(key, flags);
+        }
+        public void DangerousReleaseHandle(nint handle) => Release();
+    }
+
     private sealed class CountingHeaderDecoder : HeaderDecoder
     {
         public int Decodes { get; private set; }
+        public RlpBehaviors LastBehaviors { get; private set; }
+        public Action? AfterDecode { get; set; }
 
         protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Decodes++;
-            return base.DecodeInternal(ref decoderContext, rlpBehaviors);
+            LastBehaviors = rlpBehaviors;
+            BlockHeader? header = base.DecodeInternal(ref decoderContext, rlpBehaviors);
+            AfterDecode?.Invoke();
+            return header;
         }
     }
 

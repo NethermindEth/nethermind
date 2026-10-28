@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public ref struct ReceiptsIterator
     {
-        private readonly IDb _blocksDb;
+        private readonly IDb? _blocksDb;
         private readonly int _length;
         private RlpReader _reader;
         private readonly int _startingPosition;
@@ -53,9 +53,9 @@ namespace Nethermind.Blockchain.Receipts
             _length = receiptsData.Length == 0 ? 0 : _reader.ReadSequenceLength() + _reader.Position;
         }
 
-        internal ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, IReceiptRefDecoder receiptRefDecoder,
+        internal ReceiptsIterator(scoped in Span<byte> receiptsData, IDb? blocksDb, IReceiptRefDecoder receiptRefDecoder,
             IReceiptsRecovery.IDeferredLogRecoveryContext recoveryContext, Hash256? blockHash = null, ulong blockNumber = 0)
-            : this(receiptsData, blocksDb, null, receiptRefDecoder)
+            : this(receiptsData, blocksDb!, null, receiptRefDecoder)
         {
             _deferredRecoveryContext = recoveryContext;
             _selectiveLogRecoveryContext = recoveryContext;

@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -168,6 +172,344 @@ public class BlockStoreTests
         {
             block.Transactions[i].Data = Array.Empty<byte>();
             Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
+        }
+    }
+
+    [Test]
+    public void Recovery_rlp_reads_are_reused_with_independent_mutable_results([Values] bool warm, [Values] bool legacyKey)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithExtraData([7, 8])
+            .WithTransactions(
+                Build.A.Transaction.WithNonce(1).WithData([1, 2, 3]).SignedAndResolved().TestObject,
+                Build.A.Transaction.WithNonce(2).WithData([4, 5, 6]).SignedAndResolved().TestObject)
+            .TestObject;
+        if (legacyKey) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        else store.Insert(block);
+        if (warm) AssertRecovery(store, block);
+
+        ReceiptRecoveryBlock first = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        long reads = db.ReadsCount;
+        ReceiptRecoveryBlock second = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        try
+        {
+            Assert.That(db.ReadsCount, Is.EqualTo(reads), "the second cursor must reuse the encoded body");
+            Assert.That(second.Header, Is.Not.SameAs(first.Header));
+            Transaction transaction = first.GetNextTransaction();
+            MemoryMarshal.AsMemory(transaction.Data).Span[0] = 99;
+            first.Header.Number = 99;
+            first.Header.ExtraData[0] = 99;
+
+            Assert.That(second.GetNextTransaction().Data.ToArray(), Is.EqualTo(block.Transactions[0].Data.ToArray()));
+            Assert.That(first.GetNextTransactionHash(), Is.EqualTo(block.Transactions[1].Hash));
+            Assert.That(second.GetNextTransactionHash(), Is.EqualTo(block.Transactions[1].Hash));
+            AssertRecovery(store, block);
+            Assert.That(db.ReadsCount, Is.EqualTo(reads), "cache hits must not acquire another database lease");
+        }
+        finally
+        {
+            first.Dispose();
+            second.Dispose();
+        }
+    }
+
+    [Test]
+    public void Recovery_rlp_is_invalidated_by_replacement([Values] bool deferred)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        store.Insert(block);
+        AssertRecovery(store, block);
+        Block replacement = new(block.Header, [], []);
+
+        if (deferred) store.InsertDeferred(replacement);
+        else store.Insert(replacement);
+
+        AssertRecovery(store, replacement);
+    }
+
+    [Test]
+    public void Cache_takes_precedence_and_invalidates_recovery_rlp()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        store.Insert(block);
+        AssertRecovery(store, block);
+        Block replacement = new(block.Header, [], []);
+
+        store.Cache(replacement);
+
+        AssertRecovery(store, replacement);
+        Assert.That(PrivateField<System.Collections.IDictionary>(store, "_entries").Count, Is.Zero);
+    }
+
+    private static readonly string[] RecoveryInvalidations =
+    [
+        nameof(BlockStore.Delete), nameof(BlockStore.DeleteRange), nameof(BlockStore.DeleteRanges), nameof(IClearableCache.ClearCache)
+    ];
+
+    [Test]
+    public void Recovery_rlp_is_invalidated_by_removal([ValueSource(nameof(RecoveryInvalidations))] string invalidation)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+        AssertRecovery(store, block);
+
+        InvalidateRecovery(store, db, block, invalidation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
+            Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+        }
+    }
+
+    [Test]
+    public void Recovery_rlp_does_not_refill_after_removal_during_a_read([ValueSource(nameof(RecoveryInvalidations))] string invalidation)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+        byte[] beforeRemoval = new BlockDecoder().Encode(block).Bytes;
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            InvalidateRecovery(store, db, block, invalidation);
+            return beforeRemoval;
+        };
+
+        AssertRecovery(store, block);
+
+        Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
+    }
+
+    [Test]
+    public void Recovery_rlp_does_not_refill_after_replacement_during_a_read()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        store.Insert(block);
+        Block replacement = new(block.Header, [], []);
+        byte[] beforeReplacement = new BlockDecoder().Encode(block).Bytes;
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            store.Insert(replacement);
+            return beforeReplacement;
+        };
+
+        AssertRecovery(store, block);
+
+        AssertRecovery(store, replacement);
+    }
+
+    [Test]
+    public void Recovery_rlp_evicts_the_least_recently_used_entry([Values] bool byteBound)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block[] blocks = [Build.A.Block.WithNumber(1).TestObject, Build.A.Block.WithNumber(2).TestObject, Build.A.Block.WithNumber(3).TestObject];
+        foreach (Block block in blocks) store.Insert(block);
+        int byteCapacity = 2 * new BlockDecoder().Encode(blocks[0]).Bytes.Length;
+        SetPrivateField(store, byteBound ? "_byteCapacity" : "_capacity", byteBound ? byteCapacity : 2);
+        AssertRecovery(store, blocks[0]);
+        AssertRecovery(store, blocks[1]);
+        AssertRecovery(store, blocks[0]);
+        AssertRecovery(store, blocks[2]);
+        long reads = db.ReadsCount;
+
+        AssertRecovery(store, blocks[0]);
+        Assert.That(db.ReadsCount, Is.EqualTo(reads));
+        AssertRecovery(store, blocks[1]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.ReadsCount, Is.EqualTo(reads + 1));
+            Assert.That(PrivateField<System.Collections.IDictionary>(store, "_entries").Count, Is.EqualTo(2));
+            if (byteBound) Assert.That(PrivateField<int>(store, "_bytes"), Is.LessThanOrEqualTo(byteCapacity));
+        }
+    }
+
+    [Test]
+    public void Oversize_recovery_rlp_is_not_cached()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+        SetPrivateField(store, "_byteCapacity", new BlockDecoder().Encode(block).Bytes.Length - 1);
+
+        AssertRecovery(store, block);
+        AssertRecovery(store, block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.ReadsCount, Is.EqualTo(2));
+            Assert.That(PrivateField<System.Collections.IDictionary>(store, "_entries").Count, Is.Zero);
+            Assert.That(PrivateField<int>(store, "_bytes"), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Recovery_rlp_cache_never_reports_an_unstored_body_as_present()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+        AssertRecovery(store, block);
+        db.Clear();
+
+        AssertRecovery(store, block);
+        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+    }
+
+    [Test]
+    public void Recovery_rlp_miss_transfers_the_owner_but_hits_do_not_acquire_one()
+    {
+        RecoveryMemoryDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+        ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
+        try
+        {
+            Assert.That(db.DisposedOwners, Is.Zero);
+            AssertRecovery(store, block);
+            Assert.That(db.CreatedOwners, Is.EqualTo(1));
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+
+        Assert.That(db.DisposedOwners, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Recovery_rlp_releases_the_owner_when_decoding_does_not_return_a_block([Values] bool emptyList)
+    {
+        RecoveryMemoryDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        db.ReadFunc = _ => emptyList ? [Rlp.EmptyListByte] : [0xf8, 0xff];
+
+        for (int i = 0; i < 2; i++)
+        {
+            if (emptyList) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
+            else Assert.Throws<RlpException>(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.CreatedOwners, Is.EqualTo(2));
+            Assert.That(db.DisposedOwners, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Recovery_rlp_releases_the_owner_when_snapshot_copy_throws_after_decoding()
+    {
+        RecoveryMemoryDb db = new() { FailSnapshot = true };
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+
+        Assert.Throws<InvalidOperationException>(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.CreatedOwners, Is.EqualTo(1));
+            Assert.That(db.DisposedOwners, Is.EqualTo(1));
+        }
+    }
+
+    private static void AssertRecovery(BlockStore store, Block expected)
+    {
+        ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(expected.Number, expected.Hash!);
+        Assert.That(result, Is.Not.Null);
+        ReceiptRecoveryBlock recovery = result!.Value;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recovery.Header, Is.EqualTo(expected.Header).UsingBlockHeaderComparer());
+                Assert.That(recovery.TransactionCount, Is.EqualTo(expected.Transactions.Length));
+            }
+            foreach (Transaction transaction in expected.Transactions)
+            {
+                Assert.That(recovery.GetNextTransactionHash(), Is.EqualTo(transaction.Hash));
+            }
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    private static void InvalidateRecovery(BlockStore store, TestMemDb db, Block block, string invalidation)
+    {
+        switch (invalidation)
+        {
+            case nameof(BlockStore.Delete):
+                store.Delete(block.Number, block.Hash!);
+                break;
+            case nameof(BlockStore.DeleteRange):
+                store.DeleteRange(block.Number, block.Number + 1);
+                break;
+            case nameof(BlockStore.DeleteRanges):
+                store.DeleteRanges([(block.Number, block.Number + 1)]);
+                break;
+            case nameof(IClearableCache.ClearCache):
+                db.Clear();
+                ((IClearableCache)store).ClearCache();
+                break;
+        }
+    }
+
+    private static EncodedRlpCache<ValueHash256> RecoveryCache(BlockStore store) =>
+        (EncodedRlpCache<ValueHash256>)typeof(BlockStore).GetField("_recoveryRlp", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(store)!;
+
+    private static T PrivateField<T>(BlockStore store, string name) =>
+        (T)typeof(EncodedRlpCache<ValueHash256>).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(RecoveryCache(store))!;
+
+    private static void SetPrivateField(BlockStore store, string name, int value) =>
+        typeof(EncodedRlpCache<ValueHash256>).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(RecoveryCache(store), value);
+
+    private sealed class RecoveryMemoryDb : TestMemDb, IReadOnlyKeyValueStore
+    {
+        public int CreatedOwners { get; private set; }
+        public int DisposedOwners { get; private set; }
+        public bool FailSnapshot { get; init; }
+
+        MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
+        {
+            byte[]? bytes = Get(key, flags);
+            if (bytes is null) return null;
+            CreatedOwners++;
+            return new Owner((byte[])bytes.Clone(), this);
+        }
+
+        private sealed class Owner(byte[] bytes, RecoveryMemoryDb db) : MemoryManager<byte>
+        {
+            private int _reads;
+
+            public override Span<byte> GetSpan()
+            {
+                // Memory creation and decoding each access the owner before the snapshot copy does.
+                if (++_reads == 3 && db.FailSnapshot) throw new InvalidOperationException("Snapshot copy failed.");
+                return bytes;
+            }
+
+            public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+            public override void Unpin() { }
+            protected override void Dispose(bool disposing) => db.DisposedOwners++;
         }
     }
 

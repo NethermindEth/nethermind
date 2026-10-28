@@ -25,6 +25,8 @@ namespace Nethermind.State.Repositories
         private readonly object _writeLock = new();
         private long _deletions;
         private readonly AssociativeCache<LevelNumber, ChainLevelInfo> _blockInfoCache = new(CacheSize);
+        private readonly AssociativeCache<LevelNumber, EncodedLevel> _encodedLevelCache = new(8192);
+        private long _encodedLevelGeneration;
         private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>()
             ?? throw new InvalidOperationException($"No RLP decoder is registered for {nameof(ChainLevelInfo)}.");
 
@@ -37,6 +39,7 @@ namespace Nethermind.State.Repositories
             {
                 lock (_writeLock)
                 {
+                    InvalidateEncodedLevel(in key);
                     _blockInfoCache.Delete(in key);
                     _blockInfoDb.Delete(number);
                     Interlocked.Increment(ref _deletions);
@@ -46,6 +49,7 @@ namespace Nethermind.State.Repositories
             }
             else
             {
+                InvalidateEncodedLevel(in key);
                 Interlocked.Increment(ref _deletions);
                 _blockInfoCache.Delete(in key);
                 batch.WriteBatch.Delete(number);
@@ -56,6 +60,7 @@ namespace Nethermind.State.Repositories
         {
             void LocalPersistLevel()
             {
+                InvalidateEncodedLevel(new LevelNumber(number));
                 _blockInfoCache.Set(new LevelNumber(number), level);
                 using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
                 _blockInfoDb.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
@@ -70,6 +75,7 @@ namespace Nethermind.State.Repositories
             }
             else
             {
+                InvalidateEncodedLevel(new LevelNumber(number));
                 _blockInfoCache.Set(new LevelNumber(number), level);
                 using ArrayPoolSpan<byte> rlp = _decoder.EncodeToArrayPoolSpan(level);
                 batch.WriteBatch.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
@@ -84,7 +90,7 @@ namespace Nethermind.State.Repositories
             if (_blockInfoCache.TryGet(in key, out ChainLevelInfo? level)) return level;
 
             long deletions = Volatile.Read(ref _deletions);
-            level = _blockInfoDb.Get(number, _decoder);
+            level = ReadLevel(number, in key);
             if (level is null) return null;
 
             if (_blockInfoCache.TryAdd(in key, level))
@@ -110,9 +116,85 @@ namespace Nethermind.State.Repositories
             LevelNumber key = new(number);
             if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? level)) return level;
 
-            level = _blockInfoDb.Get(number, _decoder);
+            level = ReadLevel(number, in key);
             // A level persisted while this load ran is newer than the one read.
             return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached) ? cached : level;
+        }
+
+        private ChainLevelInfo? ReadLevel(ulong number, in LevelNumber key)
+        {
+            bool canPublish = false;
+            long generation = 0;
+            byte[]? cachedRlp = null;
+            // A batch holds the write lock through commit; reads admitted during it must not cache pre-commit rows.
+            if (!Monitor.IsEntered(_writeLock) && Monitor.TryEnter(_writeLock))
+            {
+                try
+                {
+                    canPublish = true;
+                    generation = _encodedLevelGeneration;
+                    if (_encodedLevelCache.TryGet(in key, out EncodedLevel? cached)) cachedRlp = cached!.Rlp;
+                }
+                finally
+                {
+                    Monitor.Exit(_writeLock);
+                }
+            }
+
+            if (cachedRlp is not null) return new LevelDecoder(_decoder).Decode((byte[])cachedRlp.Clone());
+
+            ReadOnlySpan<byte> dbKey = number.ToBigEndianSpanWithoutLeadingZeros(out _);
+            if (_blockInfoDb is IReadOnlyNativeKeyValueStore native)
+            {
+                ReadOnlySpan<byte> data = native.GetNativeSlice(dbKey, out nint handle);
+                if (data.IsNull()) return null;
+                try
+                {
+                    return DecodeAndCacheLevel(data, in key, canPublish, generation);
+                }
+                finally
+                {
+                    native.DangerousReleaseHandle(handle);
+                }
+            }
+
+            Span<byte> span = _blockInfoDb.GetSpan(dbKey);
+            if (span.IsNull()) return null;
+            try
+            {
+                return DecodeAndCacheLevel(span, in key, canPublish, generation);
+            }
+            finally
+            {
+                _blockInfoDb.DangerousReleaseMemory(span);
+            }
+        }
+
+        private ChainLevelInfo? DecodeAndCacheLevel(ReadOnlySpan<byte> rlp, in LevelNumber key, bool canPublish, long generation)
+        {
+            ChainLevelInfo? level = new LevelDecoder(_decoder).Decode(rlp);
+            if (level is not null && canPublish && rlp.Length <= 1024)
+            {
+                byte[] snapshot = rlp.ToArray();
+                if (!Monitor.IsEntered(_writeLock) && Monitor.TryEnter(_writeLock))
+                {
+                    try
+                    {
+                        if (generation == _encodedLevelGeneration) _encodedLevelCache.Set(in key, new EncodedLevel(snapshot));
+                    }
+                    finally
+                    {
+                        Monitor.Exit(_writeLock);
+                    }
+                }
+            }
+            return level;
+        }
+
+        private void InvalidateEncodedLevel(in LevelNumber key)
+        {
+            _encodedLevelGeneration++;
+            _encodedLevelCache.Delete(in key);
         }
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
@@ -193,7 +275,20 @@ namespace Nethermind.State.Repositories
             }
         }
 
-        void IClearableCache.ClearCache() => _blockInfoCache.Clear();
+        void IClearableCache.ClearCache()
+        {
+            lock (_writeLock)
+            {
+                _encodedLevelGeneration++;
+                _encodedLevelCache.Clear();
+                _blockInfoCache.Clear();
+            }
+        }
+
+        private sealed class EncodedLevel(byte[] rlp)
+        {
+            public readonly byte[] Rlp = rlp;
+        }
 
         private readonly struct LevelDecoder(IRlpDecoder<ChainLevelInfo> decoder) : IValueDecoder<ChainLevelInfo?>
         {

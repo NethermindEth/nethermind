@@ -48,5 +48,11 @@ public enum RlpBehaviors
     /// the receipt message decoder accepts a zero-length bloom and the compact storage decoder sets
     /// <c>Bloom.ZeroLength</c> instead of computing the bloom.
     /// </summary>
-    Eip7668Receipts = 1024
+    Eip7668Receipts = 1024,
+
+    /// <summary>
+    /// Reuses a computed header hash only when the complete encoded header matches a bounded, owned cache entry.
+    /// Header decoding and validation are unchanged.
+    /// </summary>
+    MemoizeHeaderHash = 2048
 }
