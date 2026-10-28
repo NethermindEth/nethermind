@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
@@ -346,6 +347,8 @@ internal static unsafe class GuestWord
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReverseHalves(ulong x, ulong m8, ulong m16)
     {
+        if (ZkEvmBitOperations.HasByteReverse) return BitOperations.RotateLeft(BinaryPrimitives.ReverseEndianness(x), 32);
+
         x = ((x & m8) << 8) + ((x >> 8) & m8);
         return ((x & m16) << 16) + ((x >> 16) & m16);
     }
