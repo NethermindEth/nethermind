@@ -162,22 +162,21 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Finds a record by pointer in the group record buffer or among the groups warmed for the current block.</summary>
     public bool TryLocate(ulong pointer, out PbtGroupRecord record) => CacheableGroupRecordBuffer.TryLocate(pointer, out record);
 
-    /// <summary>Loads a group the fold reaches by no pointer, by its path, as <see cref="IPbtStore.TryLoad"/> does.</summary>
+    /// <summary>Loads a group the fold reaches by no pointer, by its path, as <see cref="IPbtStore.TryLoad{TArg}"/> does.</summary>
     /// <remarks>
-    /// Hands over the payload warmed for this block at the path in place, as the transient resource keeps it readable for the
-    /// block, otherwise the payload in the persisted snapshots or persistence.
+    /// Hands over the record warmed for this block at the path, otherwise the payload in the persisted snapshots or persistence.
     /// The groups of this bundle's changes and of every in-memory snapshot are in the buffer, which their pins keep readable,
     /// so this source only fetches groups the buffer reaches by no pointer.
     /// </remarks>
-    /// <returns>False when no layer holds a group at <paramref name="path"/>.</returns>
-    public bool TryLoadNodeGroup(in PbtStorageNodePath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+    /// <returns>False, without calling <paramref name="action"/>, when no layer holds a group at <paramref name="path"/>.</returns>
+    public bool TryLoadNodeGroup<TArg>(in PbtStorageNodePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
         if (!_transientResource.WarmedGroupBuffer.TryGet(path, out PbtGroupRecord record))
-            return readOnlyBundle.TryLoadPersistedNodeGroup(path, loaded, out payload);
+            return readOnlyBundle.TryLoadPersistedNodeGroup(path, action, arg);
 
-        payload = record.Payload;
+        action(record.Span, arg);
         return true;
     }
 

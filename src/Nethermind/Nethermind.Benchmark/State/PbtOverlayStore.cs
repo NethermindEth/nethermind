@@ -4,51 +4,41 @@
 #nullable enable
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+using System.Buffers;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.NodeBuffer;
 
 namespace Nethermind.Benchmarks.State;
 
-/// <summary>An in-memory store whose writes land in an overlay above fixed base groups, so the base tree can be reused.</summary>
+/// <summary>An in-memory store whose writes land in an overlay above a fixed base tree, so the base tree can be reused.</summary>
 /// <remarks>
-/// Parallel folds read and publish from several threads, each group from one, so the overlay is a concurrent map; the base is read-only once built.
-/// Groups are kept as managed record bytes, so a borrowed payload stays valid after its group is replaced.
+/// Until the first <see cref="ResetOverlay"/> the writes build the base tree. Every group of a tree is reached by pointer from
+/// its root, so the store loads nothing by path.
 /// </remarks>
-internal sealed class PbtOverlayStore : IPbtStore
+internal sealed class PbtOverlayStore : IPbtStore, IDisposable
 {
-    private readonly Dictionary<PbtStorageNodePath, byte[]> _base = [];
-    private readonly ConcurrentDictionary<PbtStorageNodePath, byte[]> _overlay = new();
+    private readonly PbtPrivateGroupRecordBuffer _base = new(64 << 20);
+    private PbtOverlayGroupRecordBuffer? _overlay;
 
-    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
+    private IPbtGroupRecordBuffer Buffer => (IPbtGroupRecordBuffer?)_overlay ?? _base;
 
-    public bool TryLocate(ulong pointer, out PbtGroupRecord record)
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => Buffer.StartWriteBatch(alignedTotalLength);
+
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record) => Buffer.TryLocate(pointer, out record);
+
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+
+    /// <summary>Discards the previous overlay's writes, keeping the base tree.</summary>
+    public void ResetOverlay()
     {
-        record = default;
-        return false;
+        _overlay?.Dispose();
+        _overlay = new PbtOverlayGroupRecordBuffer(_base);
     }
 
-    public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+    public void Dispose()
     {
-        PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
-        if (!_overlay.TryGetValue(key, out byte[]? bytes) && !_base.TryGetValue(key, out bytes))
-        {
-            payload = default;
-            return false;
-        }
-
-        payload = new PbtGroupRecord(bytes, 0).Payload;
-        return true;
+        _overlay?.Dispose();
+        _base.Dispose();
     }
-
-    private void SetNodeGroup(PbtGroupRecord record) => _overlay[record.Path] = record.Span.ToArray();
-
-    public void CommitOverlay()
-    {
-        foreach ((PbtStorageNodePath key, byte[] bytes) in _overlay) _base[key] = bytes;
-        _overlay.Clear();
-    }
-
-    public void ResetOverlay() => _overlay.Clear();
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -584,8 +585,8 @@ public class PbtNodeGroupTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         internal int Fetches => _fetches;
         internal int Loads => _loads;
@@ -962,8 +963,8 @@ public class PbtNodeGroupTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         internal List<PbtStorageNodePath> Reads { get; } = [];
 

@@ -13,7 +13,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
@@ -190,7 +189,7 @@ public class ColumnsDbTests
     }
 
     [Test]
-    public void Snapshot_column_lends_the_snapshot_version_pinned([Values] bool viaTryGet, [Values] bool flush)
+    public void Snapshot_column_lends_the_snapshot_version_pinned([Values] bool flush)
     {
         IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
         byte[] key = [1, 2, 3];
@@ -208,25 +207,9 @@ public class ColumnsDbTests
 
         byte[]? Read(byte[] readKey)
         {
-            if (viaTryGet)
-            {
-                StrongBox<byte[]?> value = new();
-                reader.TryGet(readKey, static (span, value) => value.Value = span.ToArray(), value);
-                return value.Value;
-            }
-
-            IReadOnlyNativeKeyValueStore native = (IReadOnlyNativeKeyValueStore)reader;
-            ReadOnlySpan<byte> slice = native.GetNativeSlice(readKey, out nint handle);
-            if (slice.IsNull()) return null;
-
-            try
-            {
-                return slice.ToArray();
-            }
-            finally
-            {
-                native.DangerousReleaseHandle(handle);
-            }
+            StrongBox<byte[]?> value = new();
+            reader.TryGet(readKey, static (span, value) => value.Value = span.ToArray(), value);
+            return value.Value;
         }
     }
 

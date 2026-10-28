@@ -651,11 +651,11 @@ public class ParallelUpdateRootTests
             return false;
         }
 
-        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Interlocked.Increment(ref _storeReads);
             if (FailDescendantReads && path.BitDepth != 0) throw new InvalidDataException("Configured descendant read failure.");
-            return PbtNodeGroupStore.TryLoadPayload(_persisted?.GetNodeGroup(path), out payload);
+            return PbtNodeGroupStore.TryLoadPayload(_persisted?.GetNodeGroup(path), action, arg);
         }
 
         public ValueHash256 Fold((byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut, ulong? rootOverride = null)
@@ -770,14 +770,14 @@ public class ParallelUpdateRootTests
 
     private sealed class GroupRecordingStore : IPbtStore, IDisposable
     {
-        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _store.StartWriteBatch(alignedTotalLength, SetNodeGroup);
         public bool TryLocate(ulong pointer, out PbtGroupRecord record)
         {
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         private readonly PbtNodeGroupStore _store = new();
         internal List<PbtStorageNodePath> Reads { get; } = [];
@@ -842,14 +842,14 @@ public class ParallelUpdateRootTests
 
     private sealed class CoordinatedStore : IPbtStore, IDisposable
     {
-        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => Inner.StartWriteBatch(alignedTotalLength, SetNodeGroup);
         public bool TryLocate(ulong pointer, out PbtGroupRecord record)
         {
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         private readonly Barrier _barrier = new(2);
         private readonly HashSet<PbtStorageNodePath> _writtenGroups = [];
@@ -913,8 +913,8 @@ public class ParallelUpdateRootTests
             record = default;
             return false;
         }
-        public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) =>
-            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), out payload);
+        public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            PbtNodeGroupStore.TryLoadPayload(GetNodeGroup(path), action, arg);
 
         private const int BucketGroupBitDepth = 12;
         private readonly Barrier _barrier = new(2);

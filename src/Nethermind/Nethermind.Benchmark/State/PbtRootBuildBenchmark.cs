@@ -99,6 +99,9 @@ public class PbtRootBuildBenchmark
     [Benchmark]
     public ValueHash256 BuildRoot() => Compute(Method);
 
+    [GlobalCleanup]
+    public void GlobalCleanup() => _store.Dispose();
+
     private ValueHash256 Compute(Variant variant)
     {
         _store.ResetOverlay();

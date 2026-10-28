@@ -28,7 +28,7 @@ public class PbtTrieUpdaterBenchmark
 
     private PbtOverlayStore _store = null!;
     private ConcurrencyController _foldQuota = null!;
-    private ValueHash256 _root;
+    private (ValueHash256 Hash, ulong Pointer) _root;
     private Batch[] _batches = null!;
     private int _next;
 
@@ -57,7 +57,6 @@ public class PbtTrieUpdaterBenchmark
             Array.Sort(operations, OperationComparer.Instance);
             _root = Fold(operations, ShardTable<PbtPath>(operations, ZoneShardNibbleIndex));
         }
-        _store.CommitOverlay();
 
         _batches = new Batch[BatchVariants];
         for (int variant = 0; variant < BatchVariants; variant++) _batches[variant] = CreateBatch(random, keys);
@@ -68,16 +67,19 @@ public class PbtTrieUpdaterBenchmark
     {
         _store.ResetOverlay();
         Batch batch = _batches[_next++ % BatchVariants];
-        return Fold(batch.Sharded, batch.ZoneTable);
+        return Fold(batch.Sharded, batch.ZoneTable).Hash;
     }
 
-    private ValueHash256 Fold(PbtWriteOperation<PbtPath>[] sharded, int[] zoneTable)
+    [GlobalCleanup]
+    public void GlobalCleanup() => _store.Dispose();
+
+    private (ValueHash256 Hash, ulong Pointer) Fold(PbtWriteOperation<PbtPath>[] sharded, int[] zoneTable)
     {
         using PbtPartitionBatches batches = new()
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(sharded), new ArrayPoolList<int>(zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, (_root, 0), batches, _foldQuota, FoldFanOut.Default, null, null).Hash;
+        return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, null, null);
     }
 
     /// <summary>A batch of about 70% updates, 20% inserts and 10% deletes over distinct keys.</summary>

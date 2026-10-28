@@ -20,21 +20,20 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>
     where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly ReadOnlyMemory<byte> _payload;
-    private readonly PbtGroupLinks _links;
+    private readonly PbtGroupRecord _record;
     private readonly int _offsetTable;
     private readonly uint _stored;
 
-    /// <summary>Borrows the payload of a group at <paramref name="bitDepth"/>, which must stay readable throughout this frame.</summary>
-    /// <param name="links">The group's boundary links, a record's, or none for a group loaded by its path.</param>
-    public GroupFrameReader(ReadOnlyMemory<byte> payload, int bitDepth, in PbtGroupLinks links)
+    /// <summary>Borrows a buffer record whose operation lease remains alive throughout this frame.</summary>
+    public GroupFrameReader(PbtGroupRecord record)
     {
-        BitDepth = bitDepth;
-        _payload = payload;
-        _links = links;
-        ReadOnlySpan<byte> payloadSpan = _payload.Span;
-        uint availability = PbtNodeGroupCodec.ReadAvailability(payloadSpan);
+        BitDepth = record.Path.BitDepth;
+        _payload = record.Payload;
+        _record = record;
+        ReadOnlySpan<byte> payload = _payload.Span;
+        uint availability = PbtNodeGroupCodec.ReadAvailability(payload);
         Debug.Assert(BitDepth == 0 || (availability & (1u << PbtThreeLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
-        _offsetTable = payloadSpan.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payloadSpan);
+        _offsetTable = payload.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
         _stored = availability;
     }
 
@@ -55,7 +54,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>
     public readonly ushort DescendantMask => PbtNodeGroupCodec.ReadDescendantMask(_payload.Span);
 
     /// <inheritdoc/>
-    public readonly ulong DescendantPointer(int slot) => (DescendantMask & (1 << slot)) == 0 ? 0 : _links[slot];
+    public readonly ulong DescendantPointer(int slot) => (DescendantMask & (1 << slot)) == 0 ? 0 : _record.GetLink(slot);
 
     /// <inheritdoc/>
     public readonly ReadOnlyMemory<byte> GetEncoding(int position)

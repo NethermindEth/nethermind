@@ -5,7 +5,6 @@ using System.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 
@@ -36,15 +35,6 @@ public interface IPbtPersistence
         /// <returns>Whether the group was found.</returns>
         bool TryLoadNodeGroup<TPath, TArg>(in TPath groupKey, ReadOnlySpanAction<byte, TArg> action, TArg arg)
             where TPath : struct, IPbtNodePath<TPath> where TArg : allows ref struct;
-
-        /// <summary>Loads the complete group identified by <paramref name="groupKey"/>, readable until <paramref name="loaded"/> is cleared.</summary>
-        /// <remarks>Copies the group into <paramref name="loaded"/>, unless the reader lends it in place.</remarks>
-        /// <returns>Whether the group was found.</returns>
-        bool TryLoadNodeGroup<TPath>(in TPath groupKey, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) where TPath : struct, IPbtNodePath<TPath>
-        {
-            payload = default;
-            return TryLoadNodeGroup(groupKey, PbtLoadedRecordBuffer.Copy, new PbtLoadedRecordBuffer.CopyTarget(loaded, ref payload));
-        }
     }
 
     public interface IWriteBatch : IDisposable

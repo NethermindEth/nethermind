@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
@@ -213,14 +212,6 @@ public class PbtRocksDbPersistence(
             PbtColumns column = NodeGroupColumn(groupKey);
             // A group was validated as it was written.
             return GetNodeGroupColumn(column).TryGet(NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]), action, arg);
-        }
-
-        /// <inheritdoc/>
-        /// <remarks>A group read from RocksDB stays pinned in <paramref name="loaded"/> rather than copied.</remarks>
-        public bool TryLoadNodeGroup<TPath>(in TPath groupKey, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload) where TPath : struct, IPbtNodePath<TPath>
-        {
-            PbtColumns column = NodeGroupColumn(groupKey);
-            return loaded.TryRead(GetNodeGroupColumn(column), NodeGroupStorageKey(column, groupKey, stackalloc byte[PbtNodeGroupKey.MaxLength]), out payload);
         }
 
         private IReadOnlyKeyValueStore GetNodeGroupColumn(PbtColumns column) => column switch

@@ -8,15 +8,20 @@ using System.IO;
 using System.Linq;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
+using Nethermind.State.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by three-level ownership boundaries.</summary>
-/// <remarks>Groups are kept as managed record bytes, so a borrowed record or payload stays valid after its group is replaced.</remarks>
+/// <remarks>Groups are kept as managed record bytes, so a borrowed record stays valid after its group is replaced.</remarks>
 public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
 {
-    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new PbtRecordCallbackWriteBatch(SetNodeGroup, alignedTotalLength);
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => StartWriteBatch(alignedTotalLength, SetNodeGroup);
 
+    /// <summary>Reserves from this store's buffer a batch whose records go to <paramref name="onRecord"/>, for stores that wrap this one.</summary>
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength, Action<PbtGroupRecord> onRecord) => new PbtRecordingWriteBatch(_buffer, alignedTotalLength, onRecord);
+
+    private readonly PbtPrivateGroupRecordBuffer _buffer = new(1 << 20);
     private readonly System.Threading.Lock _groupLock = new();
     private Dictionary<PbtStorageNodePath, byte[]> _groups = [];
     private bool _disposed;
@@ -48,18 +53,14 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         return false;
     }
 
-    public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? record))
-            {
-                payload = default;
-                return false;
-            }
+            if (!_groups.TryGetValue(path.ToPath<PbtStorageNodePath>(), out byte[]? record)) return false;
 
-            payload = new PbtGroupRecord(record, 0).Payload;
+            action(record, arg);
             return true;
         }
     }
@@ -70,7 +71,7 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
         using PbtLoadedRecordBuffer loaded = new();
-        return TryLoad(groupKey, loaded, out ReadOnlyMemory<byte> payload) ? payload.ToArray() : null;
+        return loaded.TryLoad(this, groupKey, out PbtGroupRecord record) ? record.Payload.ToArray() : null;
     }
 
     /// <summary>Drops every group the tree from the root group no longer reaches, or every group of an empty tree.</summary>
@@ -118,12 +119,14 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         }
     }
 
-    /// <summary>Hands out a test store's group payload as a load does.</summary>
+    /// <summary>Hands a test store's group payload to <paramref name="action"/>.</summary>
     /// <returns>False for a null payload, which stands for a missing group.</returns>
-    public static bool TryLoadPayload(byte[]? payload, out ReadOnlyMemory<byte> loadedPayload)
+    public static bool TryLoadPayload<TArg>(byte[]? payload, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
-        loadedPayload = payload;
-        return payload is not null;
+        if (payload is null) return false;
+
+        action(payload, arg);
+        return true;
     }
 
     private static byte[] Record(in PbtStorageNodePath path, ReadOnlySpan<byte> payload)
@@ -160,6 +163,7 @@ public sealed class PbtNodeGroupStore : IPbtStore, IDisposable
         if (_disposed) return;
         _disposed = true;
         _groups.Clear();
+        _buffer.Dispose();
     }
 }
 

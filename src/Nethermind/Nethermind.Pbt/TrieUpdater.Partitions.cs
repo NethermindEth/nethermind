@@ -83,10 +83,9 @@ public static partial class TrieUpdater
                 AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
                 return FoldRoot(context, ref emptyRoot, default, touchedSlots, foldSlot);
             }
-            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader;
-            if (store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord)) rootReader = new(rootRecord.Payload, 0, rootRecord.Links);
-            else if (store.TryLoad(rootPath, workingState.Loaded, out ReadOnlyMemory<byte> payload)) rootReader = new(payload, 0, default);
-            else throw new InvalidDataException("A referenced PBT node group is missing.");
+            if (!store.TryLocate(currentRoot.Pointer, out PbtGroupRecord rootRecord) && !workingState.Loaded.TryLoad(store, rootPath, out rootRecord))
+                throw new InvalidDataException("A referenced PBT node group is missing.");
+            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootRecord);
             return FoldRoot(context, ref rootReader, rootReader.TakeRoot(currentRoot.Hash), touchedSlots, foldSlot);
         }
         finally

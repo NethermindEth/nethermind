@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
@@ -51,13 +52,12 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
     private ulong CopyRootRecord()
     {
         using PbtLoadedRecordBuffer loaded = new();
-        PbtTraversalPath rootPath = new(Span<byte>.Empty);
-        if (!TryLoad(rootPath, loaded, out ReadOnlyMemory<byte> loadedPayload))
+        if (!loaded.TryLoad(this, new PbtTraversalPath(Span<byte>.Empty), out PbtGroupRecord record))
             throw new InvalidDataException("A referenced PBT node group is missing.");
 
-        ReadOnlySpan<byte> payload = loadedPayload.Span;
+        ReadOnlySpan<byte> payload = record.Payload.Span;
         using IPbtGroupRecordWriteBatch batch = StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(payload.Length)));
-        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, rootPath.ToPath<PbtStorageNodePath>(), default, payload.Length));
+        payload.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, record.Path, default, payload.Length));
         return batch.BasePointer;
     }
 
@@ -65,13 +65,13 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
     public bool TryLocate(ulong pointer, out PbtGroupRecord record) => bundle.TryLocate(pointer, out record);
 
     /// <inheritdoc/>
-    public bool TryLoad(scoped in PbtTraversalPath path, PbtLoadedRecordBuffer loaded, out ReadOnlyMemory<byte> payload)
+    public bool TryLoad<TArg>(scoped in PbtTraversalPath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         PbtStorageNodePath storagePath = path.ToPath<PbtStorageNodePath>();
-        if (!_recordReadTimes) return bundle.TryLoadNodeGroup(storagePath, loaded, out payload);
+        if (!_recordReadTimes) return bundle.TryLoadNodeGroup(storagePath, action, arg);
 
         long start = Stopwatch.GetTimestamp();
-        bool found = bundle.TryLoadNodeGroup(storagePath, loaded, out payload);
+        bool found = bundle.TryLoadNodeGroup(storagePath, action, arg);
         Metrics.PbtTrieUpdaterNodeGroupReadTimes.Observe(
             Stopwatch.GetTimestamp() - start,
             (found ? _foundLabels : _nullLabels)[ReadLabelIndex(storagePath)]);
