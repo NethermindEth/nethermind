@@ -2179,6 +2179,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         gas -= (nuint)(cost);
                         head--;
+                        if (TryReadWordKeccakMemo(ref data, length, ref lengthLimbs))
+                        {
+                            sp = ref Moved(ref sp, -1);
+                            ip = ref Unsafe.Add(ref ip, 1);
+                            nint memoized = AlignedTable(handlers)[PairAt(ref ip)];
+                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
+                        }
+
                         KeccakCache.ComputeTo(MemoryMarshal.CreateReadOnlySpan(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         // Reloaded rather than held across the call, where each would take a callee-saved register.
                         handlers = state.OpcodeHandlers;
@@ -2194,6 +2202,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
+                        WriteWordKeccakMemo(ref state.Memory.GetActiveInitializedRange(offset, length), length, ref hash);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
@@ -2203,6 +2212,71 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = Entry(&ExecuteOpcode<KeccakOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>The bits of the index of an entry of <see cref="s_wordKeccakMemo"/>.</summary>
+        private const int WordKeccakMemoBits = 12;
+
+        /// <summary>The longs of an entry of <see cref="s_wordKeccakMemo"/>: the input, at most 64 bytes, its digest in limb layout, and its length.</summary>
+        private const int WordKeccakMemoEntryLongs = 16;
+
+        /// <summary>
+        /// The digests of 32- and 64-byte KECCAK256 inputs, keyed by the input, held in the limb layout of the stack slot they
+        /// land in; a length of zero marks an empty entry.
+        /// </summary>
+        /// <remarks>
+        /// Contracts hash the same storage keys - a mapping's key and slot, an array's slot - again and again. Finding the
+        /// digest here takes a mix of four input words, a compare of the input and a copy, where the general memo also
+        /// reverses the digest's bytes for the slot on every hit.
+        /// </remarks>
+        private static ulong* s_wordKeccakMemo;
+
+        /// <summary>Copies the memoized digest of the <paramref name="length"/> bytes at <paramref name="data"/> to <paramref name="slot"/> when there is one.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryReadWordKeccakMemo(ref byte data, ulong length, ref ulong slot)
+        {
+            ulong* memo = s_wordKeccakMemo;
+            if (memo is null || (length != 32 && length != 64) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
+                return false;
+
+            ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
+            ulong* entry = WordKeccakMemoEntry(memo, ref key, length);
+            if (entry[12] != length) return false;
+            ulong difference = (entry[0] ^ key) | (entry[1] ^ Unsafe.Add(ref key, 1)) | (entry[2] ^ Unsafe.Add(ref key, 2)) | (entry[3] ^ Unsafe.Add(ref key, 3));
+            if (length == 64)
+                difference |= (entry[4] ^ Unsafe.Add(ref key, 4)) | (entry[5] ^ Unsafe.Add(ref key, 5)) | (entry[6] ^ Unsafe.Add(ref key, 6)) | (entry[7] ^ Unsafe.Add(ref key, 7));
+            if (difference != 0) return false;
+
+            slot = entry[8];
+            Unsafe.Add(ref slot, 1) = entry[9];
+            Unsafe.Add(ref slot, 2) = entry[10];
+            Unsafe.Add(ref slot, 3) = entry[11];
+            return true;
+        }
+
+        /// <summary>Memoizes <paramref name="digest"/>, in limb layout, as the digest of the <paramref name="length"/> bytes at <paramref name="data"/>.</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void WriteWordKeccakMemo(ref byte data, ulong length, ref ulong digest)
+        {
+            if ((length != 32 && length != 64) || Unsafe.IsNullRef(ref data) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
+                return;
+
+            ulong* memo = s_wordKeccakMemo;
+            if (memo is null)
+                s_wordKeccakMemo = memo = (ulong*)NativeMemory.AllocZeroed((nuint)((1 << WordKeccakMemoBits) * WordKeccakMemoEntryLongs * sizeof(ulong)));
+            ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
+            ulong* entry = WordKeccakMemoEntry(memo, ref key, length);
+            for (int i = 0; i < (int)(length >> 3); i++) entry[i] = Unsafe.Add(ref key, i);
+            for (int i = 0; i < 4; i++) entry[8 + i] = Unsafe.Add(ref digest, i);
+            entry[12] = length;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong* WordKeccakMemoEntry(ulong* memo, ref ulong key, ulong length)
+        {
+            ulong mix = key ^ Unsafe.Add(ref key, 1) ^ Unsafe.Add(ref key, (nint)(length >> 3) - 2) ^ Unsafe.Add(ref key, (nint)(length >> 3) - 1);
+            uint index = ((uint)mix ^ (uint)(mix >> 32)) * 0x9E3779B1u >> (32 - WordKeccakMemoBits);
+            return memo + index * WordKeccakMemoEntryLongs;
         }
 
         /// <summary>SHL with the shift in line; an amount of 256 or more clears the word.</summary>
