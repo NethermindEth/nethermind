@@ -24,6 +24,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private readonly long _scopeToken;
     // Must remain mutable: readonly would run scope transitions and disposal on defensive copies.
     private HistoryReader.ReadScopeState _readScope;
+    private bool _disposed;
 
     // Non-null only below the general floor, where per-address slices are all that remains.
     private readonly ScopeFloor[]? _sliceScopes;
@@ -102,8 +103,10 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {_block.BlockNumber} is unavailable", null, TreePath.Empty, _block.StateRoot.ToCommitment(), inner);
 
+    // The gate counts scopes rather than recording them, so a second exit would release a scope still open.
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, true)) return;
         _readScope.Dispose();
         _scopeGate.ExitScope(_scopeToken);
     }

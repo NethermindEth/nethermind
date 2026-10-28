@@ -133,6 +133,20 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     [Test]
+    public void Dispose_Twice_DoesNotReleaseAnotherOpenScope()
+    {
+        HistoryScopeGate gate = new();
+        HistoryBackedPersistenceReader first = Reader(10, gate);
+        using HistoryBackedPersistenceReader second = Reader(10, gate);
+
+        first.Dispose();
+        first.Dispose();
+
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.False,
+            "the second reader is still open, so a repeated dispose of the first must not count it closed");
+    }
+
+    [Test]
     public void Constructor_ForANonCanonicalStateRoot_ThrowsMissingTrieNode_AndReleasesTheScope()
     {
         HistoryScopeGate gate = new();
