@@ -61,7 +61,7 @@ namespace Nethermind.Db.Test.LogIndex
         public void Posting_enumerator_respects_direction_and_range(
             [Values("empty", "forward", "backward", "mixed", "compressed")] string layout, [Values] bool backwards)
         {
-            using IDb db = _dbFactory.CreateDb(new DbSettings("ReversePostings", "reverse-postings"));
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             int[] blocks = SeedPostingChunks(db, layout);
             (int From, int To)[] ranges = [(-1, int.MaxValue), (0, 0), (1, 1), (2, 2), (3, 5), (5, 15), (6, 14), (9, 11), (0, 5), (0, 7), (0, 9), (0, 11), (0, 13), (0, 15), (16, 18), (19, int.MaxValue), (int.MaxValue, int.MaxValue)];
             foreach ((int from, int to) in ranges)
@@ -78,7 +78,7 @@ namespace Nethermind.Db.Test.LogIndex
         [Test]
         public void Posting_enumerator_rejects_inverted_range([Values] bool backwards)
         {
-            using IDb db = _dbFactory.CreateDb(new DbSettings("ReversePostings", "reverse-postings"));
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             Assert.Throws<ArgumentException>(() => CreatePostingEnumerator(db, 2, 1, backwards));
         }
 
@@ -86,7 +86,7 @@ namespace Nethermind.Db.Test.LogIndex
         public void Posting_enumerator_retains_one_view_when_chunks_are_replaced(
             [Values("mixed", "compressed")] string layout, [Values] bool backwards)
         {
-            using IDb db = _dbFactory.CreateDb(new DbSettings("ReversePostings", "reverse-postings"));
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
             int[] blocks = SeedPostingChunks(db, layout);
             using IEnumerator<int> enumerator = CreatePostingEnumerator(db, 0, int.MaxValue, backwards);
             Assert.That(enumerator.MoveNext(), Is.True);
