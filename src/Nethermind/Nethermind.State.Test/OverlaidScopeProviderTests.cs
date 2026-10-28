@@ -186,6 +186,51 @@ public class OverlaidScopeProviderTests
     }
 
     [Test]
+    public void AWithheldOverlay_LeavesReadsToTheCache_UntilRestored()
+    {
+        BlockReadCache cache = new();
+        FixedOverlay overlay = new();
+        _slot.Arm(overlay, Substitute.For<IDisposable>(), cache);
+        _slot.Withhold();
+
+        Account withheld = _scope.Get(TestItem.AddressA);
+        _scope.CreateStorageTree(TestItem.AddressA).Get(1, out UInt256 slotWithheld);
+        IStateReadOverlay restored = _slot.Restore();
+        Account overlaid = _scope.Get(TestItem.AddressA);
+        _scope.CreateStorageTree(TestItem.AddressA).Get(1, out UInt256 slotOverlaid);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withheld, Is.SameAs(Underlying), "what runs ahead of the transactions reads the parent state");
+            Assert.That(slotWithheld, Is.EqualTo((UInt256)99));
+            Assert.That(cache.TryGetAccount(TestItem.AddressA, out Account cached) && cached == Underlying, Is.True, "and reads it through the cache");
+            Assert.That(restored, Is.SameAs(overlay));
+            Assert.That(overlaid, Is.SameAs(Overlaid), "the transactions read through the overlay again");
+            Assert.That(slotOverlaid, Is.EqualTo((UInt256)7));
+            Assert.That(_slot.Restore(), Is.Null, "an overlay is restored once");
+            _inner.Received(1).Get(TestItem.AddressA);
+        }
+    }
+
+    [Test]
+    public void Disarming_DropsAWithheldOverlay_AndReleasesTheLease()
+    {
+        IDisposable lease = Substitute.For<IDisposable>();
+        _slot.Arm(new FixedOverlay(), lease, new BlockReadCache());
+        _slot.Withhold();
+
+        _slot.Disarm();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_slot.Restore(), Is.Null);
+            Assert.That(_slot.Current, Is.Null);
+            Assert.That(_slot.Cache, Is.Null);
+            lease.Received(1).Dispose();
+        }
+    }
+
+    [Test]
     public void AStorageSlot_IsReadFromTheTreeOnceForTheBlock([Values(4, 14)] int cacheBits)
     {
         BlockReadCache cache = new(storageSetsBits: cacheBits);

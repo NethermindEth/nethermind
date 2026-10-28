@@ -8,6 +8,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -58,11 +59,33 @@ public sealed class TransactionTraceExecutor(
     /// <inheritdoc />
     public void ClearTransactionProcessedEvents() => inner.ClearTransactionProcessedEvents();
 
+    /// <summary>Arms the seed of the traced transaction ahead of the block's opening system calls, with its overlay
+    /// withheld until the transactions start: the calls read the parent state, as in the replay, and read it through
+    /// the block's read cache, which every transaction environment of the block would otherwise read again.</summary>
+    internal void PrepareSeed(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+    {
+        if (readOverlay is null) return;
+
+        readOverlay.Disarm();
+        if (Seedable(blockTracer, options) is { Seeds: { } seeds } boundary
+            && boundary.IndexOf(block) is >= 0 and int target
+            && seeds.TrySeed(block, target, readOverlay))
+        {
+            readOverlay.Withhold();
+        }
+    }
+
+    private TransactionTraceBoundary? Seedable(IBlockTracer tracer, ProcessingOptions options) =>
+        TransactionTraceBoundary.Get(tracer, options) is { } boundary
+        && !balManager.ForceConstructGeneratedBlockAccessList
+        && (!boundary.IsTracingRewards || boundary.SkipsTransactions)
+            ? boundary
+            : null;
+
     /// <inheritdoc />
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
-        TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);
-        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
+        if (Seedable(tracer.OtherTracer, options) is not { } boundary)
             return inner.ProcessTransactions(block, options, tracer, token);
 
         inner.SetupTxTimingMetrics(block);
@@ -76,10 +99,10 @@ public sealed class TransactionTraceExecutor(
         {
             int first = 0;
             int target = -1;
-            if (boundary.Seeds is { } seeds && readOverlay is not null)
+            if (boundary.Seeds is not null && readOverlay is not null)
             {
                 target = boundary.IndexOf(block);
-                if (target >= 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
+                if (readOverlay.Restore() is { } overlay)
                 {
                     if (state.TryApplyAccountOverlay(overlay)) first = target;
                     else readOverlay.Disarm();

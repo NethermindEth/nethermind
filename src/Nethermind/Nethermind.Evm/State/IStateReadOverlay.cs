@@ -57,6 +57,7 @@ public interface IStateReadOverlay : IStorageReadOverlay
 public sealed class StateReadOverlaySlot
 {
     private IStateReadOverlay? _current;
+    private IStateReadOverlay? _withheld;
     private IDisposable? _lease;
     private BlockReadCache? _cache;
     private IStorageReadOverlay? _parentState;
@@ -85,10 +86,30 @@ public sealed class StateReadOverlaySlot
         _parentState = parentState;
     }
 
+    /// <summary>Takes the armed overlay out of the read path until <see cref="Restore"/>, keeping <see cref="Cache"/>
+    /// and <see cref="ParentState"/>: what runs ahead of the transactions the overlay describes reads the state
+    /// underneath it, and reads that state through the cache.</summary>
+    public void Withhold()
+    {
+        _withheld ??= _current;
+        _current = null;
+    }
+
+    /// <summary>Puts a withheld overlay back in the read path; null when none is withheld.</summary>
+    public IStateReadOverlay? Restore()
+    {
+        IStateReadOverlay? overlay = _withheld;
+        if (overlay is null) return null;
+        _withheld = null;
+        _current = overlay;
+        return overlay;
+    }
+
     /// <summary>Clears the overlay and releases its lease. Repeated calls are harmless.</summary>
     public void Disarm()
     {
         _current = null;
+        _withheld = null;
         _cache = null;
         _parentState = null;
         _lease?.Dispose();

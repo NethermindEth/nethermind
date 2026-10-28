@@ -41,6 +41,12 @@ public sealed class TransactionTraceBlockProcessor(
         return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
 
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
+    {
+        executor.PrepareSeed(block, blockTracer, options);
+        return base.ProcessBlock(block, blockTracer, options, spec, token);
+    }
+
     /// <inheritdoc/>
     /// <remarks>Intentionally empty: the suggested block is the canonical instance and a replay never writes its artifacts back onto it.</remarks>
     protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
