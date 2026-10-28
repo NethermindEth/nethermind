@@ -82,8 +82,11 @@ public class JwtAuthenticationTests
             log.Contains(secretPath) && log.Contains("automatically created"));
 
         Assert.That(secret, Has.Length.EqualTo(64));
-        Assert.That(secret, Does.Match("^[0-9a-fA-F]{64}$"));
-        Assert.That(hasCreatedLog, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secret, Does.Match("^[0-9a-fA-F]{64}$"));
+            Assert.That(hasCreatedLog, Is.True);
+        }
     }
 
     [Test]

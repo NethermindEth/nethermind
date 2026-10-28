@@ -38,8 +38,12 @@ public class T8nExecutorTests
 
         T8nExecutionResult result = T8nExecutor.Execute(arguments);
 
+#pragma warning disable NUnit2045 // The account lookup output must remain available to the following balance check.
         Assert.That(result.PostState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+#pragma warning restore NUnit2045
+#pragma warning disable NUnit2045 // The account must exist before checking its balance.
         Assert.That(result.Accounts.TryGetValue(TestItem.AddressA, out AccountState? account), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(account!.Balance, Is.EqualTo(AllocatedBalance));
     }
 

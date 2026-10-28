@@ -18,7 +18,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -361,11 +360,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             // Caller-supplied params and exception messages can contain credentials.
             if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName}: {e.GetType().Name}");
-            string? reason = GetSafePublicMessage(e);
+            string? reason = GetSafePublicMessage(e, out bool omitArgumentPosition);
             string message = e switch
             {
-                // Geth compares data with input inside the call rather than while decoding, so its text has no argument prefix.
-                InvalidArgumentException { InnerException: DataAndInputDifferException conflict } => conflict.Message,
+                InvalidArgumentException when omitArgumentPosition => reason!,
                 InvalidArgumentException { Index: int index } when reason is not null => $"invalid argument {index}: {reason}",
                 InvalidArgumentException { Index: int index } => $"invalid argument {index}",
                 _ => reason ?? "Invalid params"
@@ -1068,13 +1066,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         public int Index { get; } = index;
     }
 
-    private static string? GetSafePublicMessage(Exception e)
+    private static string? GetSafePublicMessage(Exception e, out bool omitArgumentPosition)
     {
         for (Exception? ex = e; ex is not null; ex = ex.InnerException)
         {
-            if (ex is IExceptionWithSafePublicMessage)
+            if (ex is IExceptionWithSafePublicMessage safe)
+            {
+                omitArgumentPosition = safe.OmitArgumentPosition;
                 return ex.Message;
+            }
         }
+
+        omitArgumentPosition = false;
         return null;
     }
 

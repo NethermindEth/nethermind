@@ -475,7 +475,9 @@ public class EthereumRunnerTests
 
         Assert.Throws<InvalidOperationException>(() => stats.UpdateStats(blocks, null, 1_000));
 
+#pragma warning disable NUnit2045 // Check pending reports before starting the drain operation.
         Assert.That(warmMetrics.PendingReports, Is.Zero);
+#pragma warning restore NUnit2045
         Assert.That(warmMetrics.DrainAsync().IsCompletedSuccessfully, Is.True);
     }
 

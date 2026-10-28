@@ -95,11 +95,11 @@ internal class MinGasPriceFilterTests
     {
         MinGasPriceFilter filter = CreateFilter();
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(gasPrice).WithTo(BlockSigner).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(gasPrice).WithTo(Randomize).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
-        });
+        }
     }
 
     [Test]

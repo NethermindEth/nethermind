@@ -114,8 +114,11 @@ public class McpActivityContentsTests
             await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
             Assert.That(++pages, Is.LessThan(80), "the merged cursor must make progress");
         } while (cursor is not null);
-        Assert.That(actual, Is.EqualTo(expectedLogs.SelectMany(static log => log)), "receipt reference: no duplicates, gaps, operator-only events or lost self transfers");
-        Assert.That(undecodable, Is.EqualTo(1), "the malformed two-topic Transfer must be reported once across pages");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expectedLogs.SelectMany(static log => log)), "receipt reference: no duplicates, gaps, operator-only events or lost self transfers");
+            Assert.That(undecodable, Is.EqualTo(1), "the malformed two-topic Transfer must be reported once across pages");
+        }
     }
 
     [Test]
@@ -165,9 +168,12 @@ public class McpActivityContentsTests
             await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
             Assert.That(++pages, Is.LessThanOrEqualTo(5), "empty windows must not consume pages before the dense multi-block range");
         } while (cursor is not null);
-        Assert.That(actual, Is.EqualTo(expected.SelectMany(static log => log)));
-        Assert.That(multiBlockReads, Is.GreaterThan(1), "capped multi-block windows must narrow and recover");
-        Assert.That(coveredPage, Is.True, "pages wholly inside the index must say indexed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected.SelectMany(static log => log)));
+            Assert.That(multiBlockReads, Is.GreaterThan(1), "capped multi-block windows must narrow and recover");
+            Assert.That(coveredPage, Is.True, "pages wholly inside the index must say indexed");
+        }
     }
 
     [Test]
@@ -186,11 +192,14 @@ public class McpActivityContentsTests
             BigInteger amount = BigInteger.Parse(movement.GetProperty("amount").GetString()!);
             expected += movement.GetProperty("direction").GetString() switch { "in" => amount, "out" => -amount, _ => 0 };
         }
-        Assert.That(flows.EnumerateArray().Single(f => f.GetProperty("token").GetString()!.Equals(Mixed.ToString(), StringComparison.OrdinalIgnoreCase))
-            .GetProperty("change").GetString(), Is.EqualTo(expected.ToString()), "NFT ids must not be added to fungible balances");
-        Assert.That(result.TryGetProperty("pageNetFlows", out _), Is.True);
-        Assert.That(result.GetProperty("pageTransactions").GetInt32(), Is.EqualTo(2));
-        Assert.That(result.GetProperty("note").GetString(), Does.Contain("could not be decoded"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flows.EnumerateArray().Single(f => f.GetProperty("token").GetString()!.Equals(Mixed.ToString(), StringComparison.OrdinalIgnoreCase))
+                .GetProperty("change").GetString(), Is.EqualTo(expected.ToString()), "NFT ids must not be added to fungible balances");
+            Assert.That(result.TryGetProperty("pageNetFlows", out _), Is.True);
+            Assert.That(result.GetProperty("pageTransactions").GetInt32(), Is.EqualTo(2));
+            Assert.That(result.GetProperty("note").GetString(), Does.Contain("could not be decoded"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -226,8 +235,11 @@ public class McpActivityContentsTests
             CallToolResult call = await McpToolCalls.Call(client, "address_activity", [.. args]);
             JsonElement result = McpAssert.Success(call);
             JsonElement movements = result.GetProperty("movements");
-            Assert.That(Encoding.UTF8.GetByteCount(movements.GetRawText()), Is.LessThanOrEqualTo(65_536));
-            Assert.That(movements.GetArrayLength() % 50, Is.Zero, "a TransferBatch must remain on one page");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Encoding.UTF8.GetByteCount(movements.GetRawText()), Is.LessThanOrEqualTo(65_536));
+                Assert.That(movements.GetArrayLength() % 50, Is.Zero, "a TransferBatch must remain on one page");
+            }
             count += movements.GetArrayLength();
             cursor = result.GetProperty("truncated").GetBoolean() ? result.GetProperty("nextCursor").GetString() : null;
             if (cursor is not null) Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("byte_budget"));
@@ -247,9 +259,12 @@ public class McpActivityContentsTests
             [.. Args(block, 50, "desc"), ("token", Mixed.ToString()), ("maxBytes", 1024)]);
         Assert.That(call.IsError, Is.Not.True, "an accepted log with no rows still advances the cursor");
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("undecodableLogs").GetInt32(), Is.EqualTo(1));
-        Assert.That(result.GetProperty("movements").GetArrayLength(), Is.Zero);
-        Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("byte_budget"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("undecodableLogs").GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("movements").GetArrayLength(), Is.Zero);
+            Assert.That(result.GetProperty("truncationReason").GetString(), Is.EqualTo("byte_budget"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -271,9 +286,12 @@ public class McpActivityContentsTests
         await using McpClient client = await node.CreateClient();
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", [.. Args(block), ("maxBytes", 1024), ("includeUsd", true)]);
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("movements").EnumerateArray().All(row => row.GetProperty("token").GetString()!.Equals(Mixed.ToString(), StringComparison.OrdinalIgnoreCase)), Is.True);
-        Assert.That(priceReads, Is.Zero, "the wrapped-token rows were trimmed before valuation");
-        Assert.That(result.TryGetProperty("usdNotes", out _), Is.False, "discarded assets cannot add price notes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("movements").EnumerateArray().All(row => row.GetProperty("token").GetString()!.Equals(Mixed.ToString(), StringComparison.OrdinalIgnoreCase)), Is.True);
+            Assert.That(priceReads, Is.Zero, "the wrapped-token rows were trimmed before valuation");
+            Assert.That(result.TryGetProperty("usdNotes", out _), Is.False, "discarded assets cannot add price notes");
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 
@@ -288,10 +306,13 @@ public class McpActivityContentsTests
         int budget = Math.Max(1024, Encoding.UTF8.GetByteCount(plain.GetProperty("movements").GetRawText()) + 1);
         CallToolResult call = await McpToolCalls.Call(client, "address_activity", [.. args, ("includeUsd", true), ("maxBytes", budget)]);
         JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(plain.GetProperty("movements").GetArrayLength()),
-            "optional fields must not evict accepted movement rows");
-        Assert.That(Encoding.UTF8.GetByteCount(result.GetProperty("movements").GetRawText()), Is.LessThanOrEqualTo(budget));
-        Assert.That(result.GetProperty("usdNotes").GetRawText(), Does.Contain("byte budget"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("movements").GetArrayLength(), Is.EqualTo(plain.GetProperty("movements").GetArrayLength()),
+                "optional fields must not evict accepted movement rows");
+            Assert.That(Encoding.UTF8.GetByteCount(result.GetProperty("movements").GetRawText()), Is.LessThanOrEqualTo(budget));
+            Assert.That(result.GetProperty("usdNotes").GetRawText(), Does.Contain("byte budget"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
     }
 

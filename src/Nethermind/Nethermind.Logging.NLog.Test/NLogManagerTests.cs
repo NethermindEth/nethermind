@@ -133,8 +133,11 @@ namespace Nethermind.Logging.NLog.Test
             logger.Warn($"Peer {GetEndpoint():hide}");
             logger.Error($"Peer {GetEndpoint():hide}");
 
-            Assert.That(evaluated, Is.Zero);
-            Assert.That(target.Logs, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(evaluated, Is.Zero);
+                Assert.That(target.Logs, Is.Empty);
+            }
 
             string GetEndpoint()
             {

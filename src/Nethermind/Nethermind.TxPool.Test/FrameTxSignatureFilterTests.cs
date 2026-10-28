@@ -107,8 +107,11 @@ internal class FrameTxSignatureFilterTests
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).TestObject;
 
-        Assert.That(Accept(tx, out bool verified), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(verified, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Accept(tx, out bool verified), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(verified, Is.True);
+        }
     }
 
     [TestCase(TxHandlingOptions.None, false, true, false)]

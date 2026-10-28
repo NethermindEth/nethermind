@@ -55,6 +55,20 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
+    [Test]
+    public void Safe_public_message_exception_preserves_single_string_constructor()
+    {
+        ConstructorInfo? constructor = typeof(SafePublicMessageFormatException).GetConstructor([typeof(string)]);
+        Assert.That(constructor, Is.Not.Null);
+
+        SafePublicMessageFormatException exception = (SafePublicMessageFormatException)constructor!.Invoke(["invalid input"]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Is.EqualTo("invalid input"));
+            Assert.That(exception.OmitArgumentPosition, Is.False);
+        }
+    }
+
     [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
     [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
     [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]
@@ -170,7 +184,7 @@ public class JsonRpcServiceTests
         yield return new TestCaseData(
             nameof(IEthRpcModule.eth_getBalance),
             """["cf1dc766fc2c62bef0b67a8de666c8e67acf35f6","0x1036640"]""",
-            "invalid argument 0: hex string without 0x prefix",
+            "invalid argument 0: json: cannot unmarshal hex string without 0x prefix into Go value of type common.Address",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("Address without 0x prefix");
         yield return new TestCaseData(
@@ -209,6 +223,73 @@ public class JsonRpcServiceTests
             "invalid argument 1: cannot specify both BlockHash and BlockNumber, choose one or the other",
             (Action<IEthRpcModule>)(static module => module.DidNotReceive().eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>())))
             .SetName("EIP-1898 mutually exclusive block fields");
+    }
+
+    private static IEnumerable<TestCaseData> MalformedArgumentCases()
+    {
+        const string shortHash = "0x96cfa0fb5e50b0a3f6cc76f3299cfbf48f17e8b41798d1394474e67ec8a97e";
+        const string fullHash = shortHash + "9f";
+        const string shortAddress = "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35";
+        const string address = "0xcf1dc766fc2c62bef0b67a8de666c8e67acf35f6";
+        yield return new TestCaseData("eth_getBlockByNumber", """["0x10","full"]""",
+            "invalid argument 1: json: cannot unmarshal string into Go value of type bool").SetName("Non-boolean full transactions flag");
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{shortHash}",false]""",
+            "invalid argument 0: hex string has length 62, want 64 for common.Hash").SetName("Short block hash");
+        yield return new TestCaseData("eth_getTransactionReceipt", $"""["{shortHash}"]""",
+            "invalid argument 0: hex string has length 62, want 64 for common.Hash").SetName("Short transaction hash");
+        yield return new TestCaseData("eth_getBlockTransactionCountByNumber", $"""["{shortHash}"]""",
+            "invalid argument 0: hex number > 64 bits").SetName("Block number above 64 bits");
+        foreach ((string method, string block) in new[]
+        {
+            ("eth_getTransactionByBlockNumberAndIndex", "0x10"),
+            ("eth_getTransactionByBlockHashAndIndex", fullHash),
+            ("eth_getRawTransactionByBlockNumberAndIndex", "0x10"),
+            ("eth_getRawTransactionByBlockHashAndIndex", fullHash),
+            ("eth_getUncleByBlockNumberAndIndex", "0x10"),
+            ("eth_getUncleByBlockHashAndIndex", fullHash),
+        })
+        {
+            yield return new TestCaseData(method, $"""["{block}","0xzz"]""",
+                "invalid argument 1: json: cannot unmarshal invalid hex string into Go value of type hexutil.Uint").SetName($"Non-hex position index in {method}");
+        }
+        foreach ((string flag, string kind) in new[] { ("1", "number"), ("{}", "object"), ("[]", "array") })
+        {
+            yield return new TestCaseData("eth_getBlockByNumber", $"""["0x10",{flag}]""",
+                $"invalid argument 1: json: cannot unmarshal {kind} into Go value of type bool").SetName($"Full transactions flag as {kind}");
+        }
+        foreach ((string index, string reason) in new[] { ("5", "non-string"), ("\"0x\"", "hex string \"0x\""), ("\"zz\"", "hex string without 0x prefix") })
+        {
+            yield return new TestCaseData("eth_getTransactionByBlockNumberAndIndex", $"""["0x10",{index}]""",
+                $"invalid argument 1: json: cannot unmarshal {reason} into Go value of type hexutil.Uint").SetName($"Position index rejected as {reason}");
+        }
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{fullHash[..^1]}",false]""",
+            "invalid argument 0: json: cannot unmarshal hex string of odd length into Go value of type common.Hash").SetName("Odd-length block hash");
+        yield return new TestCaseData("eth_getBlockByNumber", $"""["0x{new string('1', 65)}",false]""",
+            "invalid argument 0: hex number > 64 bits").SetName("Block number of 65 digits");
+        yield return new TestCaseData("eth_getLogs", """[{"fromBlock":"0x1","toBlock":"0x2","address":[null]}]""",
+            "invalid argument 0: non-string address at index 0").SetName("Non-string log filter address");
+        yield return new TestCaseData("eth_getLogs", """[{"fromBlock":"0x1","toBlock":"0x2","topics":[[true]]}]""",
+            "invalid argument 0: invalid topic(s)").SetName("Non-string log filter topic");
+        yield return new TestCaseData("eth_getBlockByHash", $"""["{fullHash}","full"]""",
+            "invalid argument 1: json: cannot unmarshal string into Go value of type bool").SetName("Non-boolean full transactions flag by hash");
+        yield return new TestCaseData("eth_getBalance", $"""["{shortAddress}","latest"]""",
+            "invalid argument 0: hex string has length 38, want 40 for common.Address").SetName("Short address");
+        yield return new TestCaseData("eth_call", $$"""[{"from":"{{address}}","to":"{{shortAddress}}","data":"0x12"},"latest"]""",
+            "invalid argument 0: hex string has length 38, want 40 for common.Address").SetName("Short call target");
+        yield return new TestCaseData("eth_getLogs", $$"""[{"fromBlock":"0x1","toBlock":"0x2","address":"{{shortAddress}}"}]""",
+            "invalid argument 0: invalid address: hex has invalid length 19 after decoding; expected 20 for address").SetName("Short log filter address");
+        yield return new TestCaseData("eth_getLogs", $$"""[{"fromBlock":"0x1","toBlock":"0x2","address":["{{address}}","{{shortAddress}}"]}]""",
+            "invalid argument 0: invalid address at index 1: hex has invalid length 19 after decoding; expected 20 for address").SetName("Short log filter address in list");
+        yield return new TestCaseData("eth_getLogs", $$"""[{"fromBlock":"0x1","toBlock":"0x2","topics":["{{shortHash}}"]}]""",
+            "invalid argument 0: hex has invalid length 31 after decoding; expected 32 for topic").SetName("Short log filter topic");
+        yield return new TestCaseData("eth_feeHistory", """["0xzz","0x10",[25,75]]""",
+            "invalid argument 0: invalid hex or decimal integer \"0xzz\"").SetName("Non-integer block count");
+        yield return new TestCaseData("eth_getStorageAt", $"""["{address}","0x1zz","latest"]""",
+            "invalid hex in storage key: \"0x1zz\"").SetName("Non-hex storage slot");
+        yield return new TestCaseData("eth_getProof", $"""["{address}",["0x1zz"],"0x10"]""",
+            "invalid hex in storage key: \"0x1zz\"").SetName("Non-hex proof storage key");
+        yield return new TestCaseData("eth_getStorageAt", $"""["{address}","0x{new string('1', 65)}","latest"]""",
+            $"storage key too long (want at most 32 bytes): \"0x{new string('1', 65)}\"").SetName("Storage slot above 32 bytes");
     }
 
     private static IEnumerable<TestCaseData> RuntimePolymorphicPayloadCases()
@@ -336,9 +417,12 @@ public class JsonRpcServiceTests
 
         ResultWrapper<HexBytes> response = AssertWrapperResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
 
-        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ExecutionError));
-        Assert.That(response.Result.Error, Is.EqualTo("out of gas"));
-        Assert.That(response.HasErrorData, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ExecutionError));
+            Assert.That(response.Result.Error, Is.EqualTo("out of gas"));
+            Assert.That(response.HasErrorData, Is.False);
+        }
     }
 
     [Test]
@@ -355,14 +439,17 @@ public class JsonRpcServiceTests
     [Test]
     public void Payload_type_shape_classifies_runtime_polymorphic_types()
     {
-        Assert.That(RpcPayloadTypeShape<int>.CanHaveDerivedRuntimeType, Is.False);
-        Assert.That(RpcPayloadTypeShape<SealedPayload>.CanHaveDerivedRuntimeType, Is.False);
-        Assert.That(RpcPayloadTypeShape<object>.CanHaveDerivedRuntimeType, Is.True);
-        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanHaveDerivedRuntimeType, Is.True);
-        Assert.That(RpcPayloadTypeShape<SealedPayload[]>.CanHaveDerivedRuntimeType, Is.False);
-        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload[]>.CanHaveDerivedRuntimeType, Is.True);
-        Assert.That(RpcPayloadTypeShape<SealedPayload>.CanBeStreamable, Is.False);
-        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcPayloadTypeShape<int>.CanHaveDerivedRuntimeType, Is.False);
+            Assert.That(RpcPayloadTypeShape<SealedPayload>.CanHaveDerivedRuntimeType, Is.False);
+            Assert.That(RpcPayloadTypeShape<object>.CanHaveDerivedRuntimeType, Is.True);
+            Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanHaveDerivedRuntimeType, Is.True);
+            Assert.That(RpcPayloadTypeShape<SealedPayload[]>.CanHaveDerivedRuntimeType, Is.False);
+            Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload[]>.CanHaveDerivedRuntimeType, Is.True);
+            Assert.That(RpcPayloadTypeShape<SealedPayload>.CanBeStreamable, Is.False);
+            Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
+        }
     }
 
     [TestCaseSource(nameof(RuntimePolymorphicPayloadCases))]
@@ -374,8 +461,11 @@ public class JsonRpcServiceTests
 
         using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement payload = getPayload(document.RootElement);
-        Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
-        Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+            Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        }
     }
 
     [Test]
@@ -443,7 +533,9 @@ public class JsonRpcServiceTests
 
         JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getBlockReceipts", "0x1b4");
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
+#pragma warning restore NUnit2045
         Assert.That(((JsonRpcErrorResponse)response).Error?.Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }
 
@@ -452,8 +544,11 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
-        Assert.That(TestRequest(ethRpcModule, "eth_chainID"), Is.InstanceOf<JsonRpcErrorResponse>());
-        Assert.That(TestRequest(ethRpcModule, "eth_chainId"), Is.InstanceOf<ResultWrapper<ulong>>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestRequest(ethRpcModule, "eth_chainID"), Is.InstanceOf<JsonRpcErrorResponse>());
+            Assert.That(TestRequest(ethRpcModule, "eth_chainId"), Is.InstanceOf<ResultWrapper<ulong>>());
+        }
     }
 
     [Test]
@@ -1265,6 +1360,21 @@ public class JsonRpcServiceTests
         assertNotInvoked(ethRpcModule);
     }
 
+    [TestCaseSource(nameof(MalformedArgumentCases))]
+    public void Malformed_argument_returns_reason_with_argument_position(string method, string rawParameters, string expectedMessage)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        using JsonDocument parameters = JsonDocument.Parse(rawParameters);
+        JsonRpcRequest elementRequest = new() { JsonRpc = "2.0", Method = method, Params = parameters.RootElement, Id = 67 };
+
+        using JsonRpcResponse rawResponse = TestRawRequest(ethRpcModule, method, rawParameters);
+        using JsonRpcResponse elementResponse = SendRequestWithPool(new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true), elementRequest);
+
+        AssertInvalidParamsWithoutData(rawResponse, expectedMessage);
+        AssertInvalidParamsWithoutData(elementResponse, expectedMessage);
+        Assert.That(ethRpcModule.ReceivedCalls(), Is.Empty);
+    }
+
     [Test]
     public void IncorrectMethodNameTest() =>
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
@@ -1295,11 +1405,17 @@ public class JsonRpcServiceTests
         secondRequest.Id = 2;
         ResultWrapper<string> secondResponse = AssertWrapperResponse<string>(SendRequestWithPool(pool, secondRequest));
 
-        Assert.That(firstResponse, Is.SameAs(cached));
-        Assert.That(secondResponse, Is.Not.SameAs(cached));
-        Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
-        Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
-        Assert.That(secondResponse.StreamedResultObservation, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResponse, Is.SameAs(cached));
+            Assert.That(secondResponse, Is.Not.SameAs(cached));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
+            Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
+            Assert.That(secondResponse.StreamedResultObservation, Is.Null);
+        }
     }
 
     [Test]
@@ -1324,8 +1440,11 @@ public class JsonRpcServiceTests
 
         string result = RpcTest.AssertSuccess<string>(TestRequest(metadataTestRpcModule, "test_string", new { a = 1 }));
 
-        Assert.That(result, Is.EqualTo("ok"));
-        Assert.That(captured, Is.EqualTo("""{"a":1}"""));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("ok"));
+            Assert.That(captured, Is.EqualTo("""{"a":1}"""));
+        }
     }
 
     [Test]
@@ -1341,8 +1460,11 @@ public class JsonRpcServiceTests
 
         int result = RpcTest.AssertSuccess<int>(TestRequest(metadataTestRpcModule, "test_byte_arrays", "[]"));
 
-        Assert.That(result, Is.EqualTo(0));
-        Assert.That(captured, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(0));
+            Assert.That(captured, Is.Empty);
+        }
     }
 
     [TestCaseSource(nameof(BlockForRpcTestSource))]
@@ -1351,13 +1473,19 @@ public class JsonRpcServiceTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         BlockForRpc rpcBlock = new(block, false, specProvider);
 
-        Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(block.WithdrawalsRoot));
-        Assert.That(rpcBlock.Withdrawals, Is.EqualTo(block.Withdrawals));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(block.WithdrawalsRoot));
+            Assert.That(rpcBlock.Withdrawals, Is.EqualTo(block.Withdrawals));
+        }
 
         string json = new EthereumJsonSerializer().Serialize(rpcBlock);
 
-        Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(expected));
-        Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(expected));
+            Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(expected));
+        }
     }
 
     private static IEnumerable<TestCaseData> BlockForRpcTestSource()
@@ -1410,7 +1538,7 @@ public class JsonRpcServiceTests
     private static void AssertErrorDataWithoutStackTrace(JsonRpcErrorResponse response, Type? expectedType = null, string? expectedMessage = null)
     {
         string data = response.Error!.Data?.ToString() ?? string.Empty;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // Still actionable: the caller learns what went wrong.
             if (expectedType is not null) Assert.That(data, Does.Contain(expectedType.FullName!), data);
@@ -1419,7 +1547,7 @@ public class JsonRpcServiceTests
             Assert.That(data, Does.Not.Contain("   at "), data);
             Assert.That(data, Does.Not.Contain(".cs:line"), data);
             Assert.That(data, Does.Not.Contain("Nethermind.JsonRpc.JsonRpcService"), data);
-        });
+        }
     }
 
     private static IEnumerable<TestCaseData> OutOfMemoryPools()
@@ -1601,8 +1729,11 @@ public class JsonRpcServiceTests
 
             using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
             string warning = logger.LogList.Single(static line => line.Contains("Missing trie node during eth_getLogs"));
-            Assert.That(warning.Contains(TestItem.KeccakA.ToString()), Is.EqualTo(!maskSensitiveData));
-            Assert.That(warning, Does.Not.Contain("Node missing"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warning.Contains(TestItem.KeccakA.ToString()), Is.EqualTo(!maskSensitiveData));
+                Assert.That(warning, Does.Not.Contain("Node missing"));
+            }
         }
         finally
         {

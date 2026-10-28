@@ -58,8 +58,11 @@ public class ConfigFileLocatorTests
     {
         string message = ConfigFileLocator.NotFoundMessage(config);
 
-        Assert.That(message, Does.StartWith("Configuration file not found.").And.Not.Contain(config));
-        Assert.That(message.Contains("Did you mean '--config mainnet'?"), Is.EqualTo(suggests));
-        Assert.That(message, Does.Contain("Built-in configurations:").And.Contain("mainnet"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.StartWith("Configuration file not found.").And.Not.Contain(config));
+            Assert.That(message.Contains("Did you mean '--config mainnet'?"), Is.EqualTo(suggests));
+            Assert.That(message, Does.Contain("Built-in configurations:").And.Contain("mainnet"));
+        }
     }
 }
