@@ -85,7 +85,7 @@ public class BeaconApiRootsProviderTests
     [TestCase("0xaabbccdd0000000000000000000000000000000000000000000000000000000000")]
     public async Task GetBeaconRoots_WhenHeadersRootHasWrongLength_ReturnsNull(string root)
     {
-        using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, $$"""{"data":{"root":"{{root}}"}}"""));
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, $$$"""{"data":{"root":"{{{root}}}"}}"""));
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
