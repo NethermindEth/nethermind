@@ -3,8 +3,11 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,7 +57,8 @@ public class TransactionTraceExecutorTests
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             Substitute.For<ITransactionProcessorAdapter>(),
             state,
-            Substitute.For<IBlockAccessListManager>());
+            Substitute.For<IBlockAccessListManager>(),
+            CreateSenderRecovery());
 
         using (Assert.EnterMultipleScope())
         {
@@ -68,7 +72,11 @@ public class TransactionTraceExecutorTests
         Substitute.For<ITransactionProcessorAdapter>(),
         state,
         balManager,
+        CreateSenderRecovery(),
         readOverlay: new StateReadOverlaySlot());
+
+    private static RecoverSignatures CreateSenderRecovery() =>
+        new(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance);
 
     private sealed class CountingOverlayState(bool accepts) : WorldStateDecorator(Substitute.For<IWorldState>())
     {

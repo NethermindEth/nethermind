@@ -20,14 +20,18 @@ namespace Nethermind.Consensus.Tracing;
 public sealed class BlockchainProcessorFacade(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
-    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps
+    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
+    TransactionTraceExecutor? traceExecutor = null
 )
 {
     public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
+        // The trace executor recovers the senders of the transactions it runs, which a bounded replay limits.
+        bool executorRecoversSenders = traceExecutor is not null && TransactionTraceBoundary.Get(tracer, options) is not null;
         for (int i = 0; i < preprocessorSteps.Count; i++)
         {
-            preprocessorSteps[i].RecoverData(block);
+            if (executorRecoversSenders) preprocessorSteps[i].RecoverDataForTransactionTrace(block);
+            else preprocessorSteps[i].RecoverData(block);
         }
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);

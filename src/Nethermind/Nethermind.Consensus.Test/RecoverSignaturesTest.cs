@@ -60,6 +60,51 @@ public class RecoverSignaturesTest
         Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
     }
 
+    [TestCase(0, 0)]
+    [TestCase(0, 1)]
+    [TestCase(2, 7)]
+    [TestCase(3, 10)]
+    public void RecoverData_with_a_range_recovers_only_the_transactions_in_it(int start, int end)
+    {
+        Transaction[] txs = SignedTransactions(10);
+        Block block = Build.A.Block.WithTransactions(txs).TestObject;
+
+        CreateRangeSut().RecoverData(block, start, end);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < txs.Length; i++)
+            {
+                Assert.That(txs[i].SenderAddress, i >= start && i < end ? Is.EqualTo(TestItem.AddressA) : Is.Null, $"transaction {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void RecoverDataForTransactionTrace_leaves_the_block_senders_and_recovers_the_inclusion_list()
+    {
+        Transaction[] txs = SignedTransactions(5);
+        Transaction included = Signed(TestItem.PrivateKeyB, 0);
+        Block block = Build.A.Block.WithTransactions(txs).TestObject;
+        block.InclusionListTransactions = [included];
+
+        CreateRangeSut().RecoverDataForTransactionTrace(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.Null);
+            Assert.That(included.SenderAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    private static RecoverSignatures CreateRangeSut()
+    {
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        return new RecoverSignatures(_ecdsa, specProvider, Substitute.For<ILogManager>());
+    }
+
     [Test]
     public void RecoverData_FrameTxOnlyBlock_RecoversSecp256k1Signer()
     {
