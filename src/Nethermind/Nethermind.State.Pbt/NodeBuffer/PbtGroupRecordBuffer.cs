@@ -234,7 +234,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
         Span<long> pathKeyHashes = stackalloc long[BloomBatchSize];
         int count = 0;
         ulong generation = 0;
-        using ArrayPoolListRef<ulong> pending = new(PbtThreeLevelGroupGeometry.BoundarySlots);
+        using ArrayPoolListRef<ulong> pending = new(PbtTwoLevelGroupGeometry.BoundarySlots);
         pending.Add(rootPointer);
         while (pending.Count > 0)
         {
@@ -250,7 +250,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             }
 
             pathKeyHashes[count++] = (long)MemoryMarshal.AsRef<PbtGroupRecordHeader>(record.Span).PathKeyHash;
-            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++) pending.Add(record.GetLink(slot));
+            for (int slot = 0; slot < PbtTwoLevelGroupGeometry.BoundarySlots; slot++) pending.Add(record.GetLink(slot));
         }
 
         FindBloom(generation << OffsetBits)?.Add(pathKeyHashes[..count]);

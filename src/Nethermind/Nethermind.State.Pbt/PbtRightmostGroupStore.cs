@@ -46,7 +46,7 @@ public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) 
         for (ulong pointer = rootPointer; pointer != 0;)
         {
             PbtGroupRecord record = Locate(pointer);
-            int spineSlot = PbtThreeLevelGroupGeometry.BoundarySlots - 1;
+            int spineSlot = PbtTwoLevelGroupGeometry.BoundarySlots - 1;
             while (spineSlot >= 0 && record.GetLink(spineSlot) == 0) spineSlot--;
             spine.Add((record.Span.ToArray(), spineSlot));
             pointer = spineSlot < 0 ? 0 : record.GetLink(spineSlot);
@@ -81,7 +81,7 @@ public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) 
     {
         PbtGroupRecord record = Locate(pointer);
         writeThrough(record);
-        for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtTwoLevelGroupGeometry.BoundarySlots; slot++)
         {
             ulong link = record.GetLink(slot);
             if (link > _retainedBoundary) WriteThrough(link);

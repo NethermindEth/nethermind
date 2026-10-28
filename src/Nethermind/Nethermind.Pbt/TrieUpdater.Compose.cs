@@ -40,7 +40,7 @@ public static partial class TrieUpdater<TKey, TPath>
         ValueHash256 rightHash = stored.RightHash;
         if (node.ChildHashesPending)
         {
-            int width = PbtThreeLevelGroupGeometry.WidthOf(childPosition);
+            int width = PbtTwoLevelGroupGeometry.WidthOf(childPosition);
             hashes.GetChildHashesPaired(ref reader, childPosition - width, childPosition - 1, out leftHash, out rightHash);
         }
         CompressedPrefix prefix = stored.Prefix;
@@ -86,7 +86,7 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>Records a rise from <paramref name="childPosition"/> over an empty sibling, with the node on <paramref name="side"/>, which <see cref="Land"/> applies.</summary>
         public ComposedNode Rise(int childPosition, int side)
         {
-            Debug.Assert(RiseBitCount < PbtThreeLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
+            Debug.Assert(RiseBitCount < PbtTwoLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
             return this with
             {
                 EntryPosition = RiseBitCount == 0 ? childPosition : EntryPosition,
