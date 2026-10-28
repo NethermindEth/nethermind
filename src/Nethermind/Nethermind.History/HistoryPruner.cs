@@ -137,7 +137,10 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
-        _compactBlocksOnPrune = historyConfig.CompactBlocksOnPrune;
+        // Armed only under fixed barriers: Rolling keeps advancing the cutoff, so retained bodies re-pin fresh blob
+        // files and the one run's benefit decays while its done-marker would wrongly block any re-run (see remarks on
+        // CompactBlocksReclaimingBlobFiles). Under a fixed barrier a single run suffices.
+        _compactBlocksOnPrune = historyConfig.CompactBlocksOnPrune && historyConfig.Pruning == PruningModes.UseAncientBarriers;
         _balPruningOnly = !_enabled
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
@@ -162,6 +165,8 @@ public class HistoryPruner : IHistoryPruner
 
         if (_enabled)
         {
+            if (historyConfig.CompactBlocksOnPrune && historyConfig.Pruning != PruningModes.UseAncientBarriers && _logger.IsWarn)
+                _logger.Warn("History.CompactBlocksOnPrune applies only to UseAncientBarriers pruning and is ignored under Rolling.");
             if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
             {
                 _ancientBarrier = ulong.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
@@ -635,7 +640,10 @@ public class HistoryPruner : IHistoryPruner
             // schedules resuming a cycle, not starting one: a completed cycle clears the cursor, and the next is
             // still started incidentally by the access-list clause above, which is rolling in every mode.
             || _txIndexSweepCursor is not null
-            || SliceCleanupTarget() > ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber);
+            || SliceCleanupTarget() > ulong.Max(_sliceCleanupCursor, _minDeletableBlockNumber)
+            // An owed one-shot blob compaction (e.g. aborted by a process exit) keeps the pass re-entrant so it is
+            // retried after a restart, even on a quiescent node where none of the clauses above has any work left.
+            || IsBlobCompactionOwed();
     }
 
     private bool PruningIntervalHasElapsed()
@@ -686,10 +694,10 @@ public class HistoryPruner : IHistoryPruner
         ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
         if (start >= limit)
         {
-            // The reclaim cursor has already caught up to the boundary, so the loop below never runs and no later
-            // pass would re-enter it. The one-shot blob compaction still owes a run if it never completed - e.g. a
-            // process exit aborted it after the cursor had reached here - so it is evaluated on this path too, not
-            // only after a pass that reclaimed.
+            // The reclaim cursor has already caught up to the boundary, so the loop below never runs. The one-shot
+            // blob compaction still owes a run if a reclaim has happened but it never completed - e.g. a process exit
+            // aborted it after the cursor had reached here - so it is evaluated on this path too, not only after a
+            // pass that reclaimed. This is where a restart-triggered retry lands, once ShouldPruneHistory re-enters.
             TryCompactBlocksReclaimingBlobFiles();
             return;
         }
@@ -747,9 +755,18 @@ public class HistoryPruner : IHistoryPruner
         TryCompactBlocksReclaimingBlobFiles();
     }
 
+    /// <summary>Whether the one-shot blob-file compaction still owes a run: the feature is armed (enabled and under
+    /// fixed barriers), a reclaim has removed history from the blocks database behind the published boundary, and the
+    /// completion marker is unset.</summary>
+    /// <remarks>The reclaim signal is the persisted reclaim cursor having advanced past the first deletable block, not
+    /// an in-memory flag, so a run a process exit aborted mid-way is still owed after a restart - the marker stays
+    /// unset and the cursor is reloaded from disk - even on a quiescent, fully-reclaimed node.</remarks>
+    private bool IsBlobCompactionOwed() =>
+        _compactBlocksOnPrune && !_blobCompactionDone && _blocksReclaimCursor > _minDeletableBlockNumber;
+
     private void TryCompactBlocksReclaimingBlobFiles()
     {
-        if (!_compactBlocksOnPrune || _blobCompactionDone || _processExitSource.Token.IsCancellationRequested) return;
+        if (!IsBlobCompactionOwed() || _processExitSource.Token.IsCancellationRequested) return;
         CompactBlocksReclaimingBlobFiles();
     }
 

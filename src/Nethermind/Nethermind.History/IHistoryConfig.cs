@@ -35,7 +35,7 @@ public interface IHistoryConfig : IConfig
     uint PruningTimeoutSeconds { get; set; }
 
     [ConfigItem(
-        Description = "Whether to run a one-time, store-wide compaction of the blocks database after any enabled pruning mode reclaims history, reclaiming stale RocksDB blob files that pruning alone leaves behind. Expensive: heavy I/O that can take hours on a large database, so it runs only once.",
+        Description = "Whether to run a one-time, store-wide compaction of the blocks database after pruning reclaims history, reclaiming stale RocksDB blob files that pruning alone leaves behind. Applies only to 'UseAncientBarriers' pruning and is ignored under 'Rolling', whose advancing cutoff re-pins fresh blob files. Expensive: heavy I/O that can take hours on a large database, so it runs only once.",
         DefaultValue = "false")]
     bool CompactBlocksOnPrune { get; set; }
 
