@@ -34,8 +34,11 @@ namespace Nethermind.Network.Test.Stats
 
             timer.Elapsed += Raise.Event();
 
-            Assert.That(manager.GetCurrentReputation(removedNode), Is.EqualTo(0));
-            Assert.That(nodes.Select(n => manager.GetCurrentReputation(n)), Does.Not.Contain(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(manager.GetCurrentReputation(removedNode), Is.EqualTo(0));
+                Assert.That(nodes.Select(n => manager.GetCurrentReputation(n)), Does.Not.Contain(0));
+            }
         }
     }
 }

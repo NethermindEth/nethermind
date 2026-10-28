@@ -30,8 +30,11 @@ public class BeaconApiRootsProviderTests
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Value.BeaconBlockRoot.ToByteArray()[0], Is.EqualTo(0xaa));
-        Assert.That(result.Value.StateRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result!.Value.BeaconBlockRoot.ToByteArray()[0], Is.EqualTo(0xaa));
+            Assert.That(result.Value.StateRoot.ToByteArray()[0], Is.EqualTo(0x11));
+        }
     }
 
     [Test]
