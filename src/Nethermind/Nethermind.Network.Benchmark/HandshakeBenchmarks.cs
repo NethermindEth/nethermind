@@ -65,6 +65,11 @@ namespace Nethermind.Network.Benchmarks
 
             public int NextInt(int max) => max / 2;
 
+            /// <summary>
+            /// Restarts the sequence, so that each handshake gets the responses in the order listed.
+            /// </summary>
+            public void Reset() => _i = -1;
+
             public void Dispose()
             {
 
@@ -75,7 +80,7 @@ namespace Nethermind.Network.Benchmarks
 
         private IMessageSerializationService _messageSerializationService;
 
-        private ICryptoRandom _testRandom;
+        private BenchmarkTestRandom _testRandom;
 
         private ICryptoRandom _trueCryptoRandom;
 
@@ -93,6 +98,7 @@ namespace Nethermind.Network.Benchmarks
 
         private void Auth()
         {
+            _testRandom.Reset();
             _initiatorHandshake = new EncryptionHandshake(); // 80B
             _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake); // 64B
         }
