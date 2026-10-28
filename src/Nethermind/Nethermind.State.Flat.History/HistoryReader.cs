@@ -114,7 +114,12 @@ public sealed class HistoryReader
         if (_accounts.TryGetValue(in key, out Account? cached)) return cached;
 
         Account? account = ReadAccount(block, address, out AccountStruct value, scope) ? value.ToAccount() : null;
-        if (IsSettled(block, records)) _accounts.Set(in key, account);
+        if (IsSettled(block, records))
+        {
+            _accounts.Set(in key, account);
+            DropIfRestartedDuring(records);
+        }
+
         return account;
     }
 
@@ -178,7 +183,12 @@ public sealed class HistoryReader
         }
 
         bool exists = ReadStorage(block, address, index, out value, clearsCache, scope);
-        if (IsSettled(block, records)) _slots.Set(in key, new CachedSlot(exists, value));
+        if (IsSettled(block, records))
+        {
+            _slots.Set(in key, new CachedSlot(exists, value));
+            DropIfRestartedDuring(records);
+        }
+
         return exists;
     }
 
@@ -328,6 +338,16 @@ public sealed class HistoryReader
     /// <summary>Only a covered block's answer is final, and only if no restart removed the records it was read from.</summary>
     private bool IsSettled(ulong block, long records) =>
         _availability.IsCovered(block) && _availability.RecordsGeneration == records;
+
+    /// <summary>A restart between the settle check and the store can clear the cache first, so the store is checked
+    /// again afterwards.</summary>
+    private void DropIfRestartedDuring(long records)
+    {
+        if (_availability.RecordsGeneration == records) return;
+
+        _accounts.Clear();
+        _slots.Clear();
+    }
 
     // The cache indexes sets with low and high hash bits, so the block is spread over all of them.
     private static long MixBlock(long hash, ulong block) =>
