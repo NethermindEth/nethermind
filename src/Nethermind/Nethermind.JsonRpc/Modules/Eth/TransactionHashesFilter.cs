@@ -14,8 +14,10 @@ public class TransactionHashesFilter : IJsonRpcParam
 
     public void ReadJson(JsonElement jsonValue, JsonSerializerOptions options)
     {
+        // An empty list leaves the filter unset so every receipt is delivered, as geth does.
         if (jsonValue.TryGetProperty("transactionHashes", out JsonElement hashesElement) &&
-            hashesElement.ValueKind == JsonValueKind.Array)
+            hashesElement.ValueKind == JsonValueKind.Array &&
+            hashesElement.GetArrayLength() > 0)
         {
             // Validate max 200 hashes BEFORE allocating anything
             if (hashesElement.GetArrayLength() > 200)

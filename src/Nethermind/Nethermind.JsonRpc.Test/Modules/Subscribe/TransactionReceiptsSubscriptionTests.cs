@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
@@ -127,8 +128,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         }
 
         [Test]
-        public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts()
+        public void TransactionReceiptsSubscription_on_receipts_inserted_no_filter_returns_all_receipts([Values(null, "{}", """{"transactionHashes":[]}""")] string? filterJson)
         {
+            TransactionHashesFilter? filter = null;
+            if (filterJson is not null)
+            {
+                using JsonDocument filterDocument = JsonDocument.Parse(filterJson);
+                filter = new();
+                filter.ReadJson(filterDocument.RootElement, EthereumJsonSerializer.JsonOptions);
+            }
+
             ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
 
@@ -138,7 +147,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt[] receipts = [receipt1, receipt2];
             ReceiptsEventArgs eventArgs = CreateReceiptsEventArgs(blockHeader, receipts);
 
-            string? serialized = GetTransactionReceiptsSubscriptionResult(null, eventArgs, out string subscriptionId);
+            string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out string subscriptionId);
 
             using (Assert.EnterMultipleScope())
             {
