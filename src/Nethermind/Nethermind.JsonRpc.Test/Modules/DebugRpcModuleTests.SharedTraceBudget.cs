@@ -176,6 +176,7 @@ public partial class DebugRpcModuleTests
     {
         private long _timestamp;
         internal bool Enabled;
+        internal bool FailTimerChange;
         internal bool Prefix;
         internal ulong Target;
         internal string Expiry = "reset";
@@ -186,7 +187,7 @@ public partial class DebugRpcModuleTests
         public override long GetTimestamp() => _timestamp;
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            ExecutionTimer timer = new(callback, state);
+            ExecutionTimer timer = new(callback, state, FailTimerChange);
             Timers.Add(timer);
             return timer;
         }
@@ -198,10 +199,11 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private sealed class ExecutionTimer(TimerCallback callback, object? state) : ITimer
+    private sealed class ExecutionTimer(TimerCallback callback, object? state, bool failChange = false) : ITimer
     {
         internal bool Disposed { get; private set; }
-        public bool Change(TimeSpan dueTime, TimeSpan period) => !Disposed;
+        public bool Change(TimeSpan dueTime, TimeSpan period) => failChange
+            ? throw new InvalidOperationException("timer change failure") : !Disposed;
         internal void Fire() { if (!Disposed) callback(state); }
         public void Dispose() => Disposed = true;
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
