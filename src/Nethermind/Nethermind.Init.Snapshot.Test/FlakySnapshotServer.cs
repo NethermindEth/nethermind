@@ -72,6 +72,7 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public void Dispose()
     {
+        // First: HandleAsync treats InvalidOperationException as benign only once this is cancelled.
         _hangCts.Cancel();
         _listener.Stop();
         _listener.Close();

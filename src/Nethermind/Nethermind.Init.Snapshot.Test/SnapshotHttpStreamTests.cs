@@ -205,10 +205,12 @@ public class SnapshotHttpStreamTests
     public async Task ServerDispose_HandlerFailsAfterShutdownBegan_DoesNotReportFailure()
     {
         TaskCompletionSource handlerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource handlerFailing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         FlakySnapshotServer server = CreateServerWithFailingHandler(async shutdown =>
         {
             handlerStarted.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, shutdown).ContinueWith(static _ => { }, TaskScheduler.Default);
+            handlerFailing.SetResult();
         });
         using HttpClient client = new();
         _ = client.GetAsync(server.Url);
@@ -216,6 +218,7 @@ public class SnapshotHttpStreamTests
 
         Assert.That(server.Dispose, Throws.Nothing,
             "closing the listener races in-flight handlers, so their failures during shutdown must not fail the test");
+        await handlerFailing.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Test]
@@ -258,7 +261,7 @@ public class SnapshotHttpStreamTests
         BeforeResponse = async shutdown =>
         {
             await beforeFailure(shutdown);
-            throw new InvalidOperationException("Cannot be changed after headers are sent.");
+            throw new InvalidOperationException("This operation cannot be performed after the response has been submitted.");
         },
     };
 
