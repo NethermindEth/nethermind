@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -96,7 +97,9 @@ public class LongFinalityIntegrationTests
         });
 
         tier.ConvertToPersistedBase(snap).Dispose();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
         Assert.That(stateResult, Is.EqualTo(stateRlp));
@@ -185,7 +188,9 @@ public class LongFinalityIntegrationTests
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier2.Repository;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
+#pragma warning restore NUnit2045
 
             // s0→s1 carries paths1[] + AddressA; s1→s2 carries paths2[] + AddressB. Every
             // state node round-trips intact — a stray BlobArenaManager.TryResetOrphanedFrontier
@@ -196,27 +201,40 @@ public class LongFinalityIntegrationTests
             Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snap1), Is.True);
             foreach (TreePath p in paths1)
             {
-                Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
-                Assert.That(r, Is.EqualTo(rlp1), $"snap1 state node at {p} read back corrupted");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snap1!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap1 missing {p}");
+                    Assert.That(r, Is.EqualTo(rlp1), $"snap1 state node at {p} read back corrupted");
+                }
             }
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(snap1!.TryGetAccount(TestItem.AddressA, out Account? a1), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(snap1.TryGetAccount(TestItem.AddressB, out Account? snap1MissB), Is.False);
             snap1.Dispose();
 
             Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? snap2), Is.True);
             foreach (TreePath p in paths2)
             {
-                Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
-                Assert.That(r, Is.EqualTo(rlp2), $"snap2 state node at {p} read back corrupted");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(snap2!.TryLoadStateNodeRlp(p, out byte[]? r), Is.True, $"snap2 missing {p}");
+                    Assert.That(r, Is.EqualTo(rlp2), $"snap2 state node at {p} read back corrupted");
+                }
             }
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(snap2!.TryGetAccount(TestItem.AddressB, out Account? a2), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(snap2.TryGetAccount(TestItem.AddressA, out Account? snap2MissA), Is.False);
             snap2.Dispose();
 
-            Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
-            Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
-            Assert.That(snap1MissB, Is.Null);
-            Assert.That(snap2MissA, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
+                Assert.That(snap1MissB, Is.Null);
+                Assert.That(snap2MissA, Is.Null);
+            }
         }
     }
 
@@ -255,15 +273,18 @@ public class LongFinalityIntegrationTests
         using PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged);
 
         // State node should have newer value
-        Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
-        Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x80 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
+            Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x80 }));
 
-        // Storage node from older should be preserved
-        Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlpResult), Is.True);
-        Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+            // Storage node from older should be preserved
+            Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlpResult), Is.True);
+            Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
 
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
+            Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
+            Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
+        }
     }
 
     [Test]
@@ -364,6 +385,79 @@ public class LongFinalityIntegrationTests
         }
     }
 
+    // Regression for #12764: a large compaction is clamped to the persisted block, so recompacting it after a
+    // restart (the re-executed tail, with RocksDB further along) yields a different depth at the same To. The
+    // replaced snapshot's catalog row must not survive it: the next restart reloaded its reclaimed (zeroed)
+    // region, and the empty bloom rebuilt from it was shared across its range, hiding every snapshot inside.
+    [Test]
+    public void Large_recompaction_after_restart_keeps_persisted_tier_readable([Values] bool upgradeFromLegacyCatalog)
+    {
+        const ulong largeBoundary = 256;
+        MemDb catalogDb = new();
+        CatalogEntry[] LargeCompactedRowsAtBoundary() => [.. new SnapshotCatalog(catalogDb).Load()
+            .Where(e => e.To == BlockState(largeBoundary) && e.Tier == SnapshotTier.PersistedLargeCompacted)];
+
+        using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
+            ConvertAndCompact(session, 65, largeBoundary, persistedBlock: 64);
+        CatalogEntry replaced = LargeCompactedRowsAtBoundary().Single();
+
+        using (FlatTestContainer session = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb))
+        {
+            session.Repository.RemovePersistedStatesUntil(97);
+            ConvertAndCompact(session, 97, largeBoundary, persistedBlock: 96);
+            session.Repository.RemovePersistedStatesUntil(129);
+        }
+
+        Assert.That(LargeCompactedRowsAtBoundary().Select(e => e.From), Is.EqualTo(new[] { BlockState(96) }));
+
+        if (upgradeFromLegacyCatalog)
+        {
+            // The depth-keyed catalog once the replacement is pruned: the replaced snapshot's row is the only one
+            // left at its To, while the other snapshots keep its arena file alive.
+            CatalogEntry[] rows = [.. new SnapshotCatalog(catalogDb).Load().Except(LargeCompactedRowsAtBoundary())];
+            catalogDb.Clear();
+            foreach (CatalogEntry row in rows.Append(replaced))
+                FlatTestHelpers.PutLegacyCatalogRow(catalogDb, row);
+        }
+
+        // Which row the load keeps is order-dependent, so the reads below catch a stray row only some of the time.
+        using FlatTestContainer restarted = new(new FlatDbConfig { CompactSize = 32, CompactionOffset = 0 }, baseDbPath: _testDir, catalogDb: catalogDb);
+        for (ulong block = 129; block <= largeBoundary; block++)
+        {
+            AssembledSnapshotResult assembled = restarted.Repository.AssembleSnapshots(BlockState(block), BlockState(128), estimatedSize: 16);
+            assembled.InMemory.Dispose();
+            using PersistedSnapshotStack stack = new(assembled.Persisted, recordDetailedMetrics: false);
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
+            Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? account), Is.True, $"block {block}");
+#pragma warning restore NUnit2045
+            Assert.That(account!.Nonce, Is.EqualTo(block), $"block {block}");
+        }
+    }
+
+    private static StateId BlockState(ulong block) => new(block, Keccak.Compute(block.ToString()));
+
+    // Converts each block like PersistenceManager and compacts it like PersistedSnapshotCompactor's batch worker.
+    private void ConvertAndCompact(FlatTestContainer session, ulong firstBlock, ulong lastBlock, ulong persistedBlock)
+    {
+        ICompactionSchedule schedule = session.Resolve<ICompactionSchedule>();
+        for (ulong block = firstBlock; block <= lastBlock; block++)
+        {
+            using (Snapshot snapshot = CreateSnapshot(BlockState(block - 1), BlockState(block), c =>
+            {
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithNonce(block).TestObject;
+                // Filler so a reclaimed compaction spans whole pages, which is what a hole punch actually zeroes.
+                for (int i = 0; i < 40; i++)
+                    c.Accounts[new Address(Keccak.Compute($"{block}_{i}"))] = Build.An.Account.WithBalance(block).TestObject;
+            }))
+                session.ConvertToPersistedBase(snapshot).Dispose();
+
+            if (schedule.IsCompactSizeBoundary(block) || schedule.IsLargeCompactionBoundary(block))
+                session.Compactor.DoCompactCompactSized(BlockState(block));
+            if (!schedule.IsCompactSizeBoundary(block))
+                session.Compactor.DoCompactSnapshot(BlockState(block), persistedBlock);
+        }
+    }
+
     [Test]
     public void EmptySnapshot_PersistsAndLoads()
     {
@@ -376,7 +470,9 @@ public class LongFinalityIntegrationTests
         Snapshot empty = CreateSnapshot(s0, s1, _ => { });
         tier.ConvertToPersistedBase(empty).Dispose();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
         Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
         persisted.Dispose();
@@ -538,10 +634,13 @@ public class LongFinalityIntegrationTests
     public void Configuration_DefaultValues()
     {
         FlatDbConfig config = new();
-        Assert.That(config.EnableLongFinality, Is.True);
-        Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
-        Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
-        Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.EnableLongFinality, Is.True);
+            Assert.That(config.MaxReorgDepth, Is.EqualTo(256));
+            Assert.That(config.LongFinalityMaxReorgDepth, Is.EqualTo(90000));
+            Assert.That(config.ArenaFileSizeBytes, Is.EqualTo(1L * 1024 * 1024 * 1024));
+        }
     }
 
     [Test]
@@ -554,9 +653,12 @@ public class LongFinalityIntegrationTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
-        Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
-        Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
+            Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+        }
 
         // The Null loader/catalog keep the tier inert: loading is a no-op and nothing is ever recorded.
         container.Resolve<IPersistedSnapshotLoader>().Load();

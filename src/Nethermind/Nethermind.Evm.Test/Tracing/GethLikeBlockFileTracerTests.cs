@@ -49,8 +49,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Transaction transaction = Build.A.Transaction.WithNonce(nonce + (ulong)nonceDelta).WithValue(1)
             .WithCode(Prepare.EvmCode.STOP().Done).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block bad = new(canonical.Header.Clone(), [transaction], canonical.Uncles, canonical.Withdrawals);
-        Assert.That(canonical.Transactions, Is.Empty);
-        Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(canonical.Transactions, Is.Empty);
+            Assert.That(bad.Hash, Is.EqualTo(canonical.Hash));
+        }
         chain.Container.Resolve<IBadBlockStore>().Insert(bad);
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
@@ -66,7 +69,9 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             if (nonceDelta == 0)
             {
                 string[] files = tracer.TraceBadBlockToFile(bad.Hash!, GethTraceOptions.Default, CancellationToken.None).ToArray();
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
                 Assert.That(files, Has.Length.EqualTo(1), "the empty canonical body must not replace the full bad-store body");
+#pragma warning restore NUnit2045
                 Assert.That(fileSystem.File.ReadAllText(files[0]), Does.Contain("\"opName\":\"STOP\""));
             }
             else
@@ -115,13 +120,15 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void File_summary_preserves_output_larger_than_stack_buffer()
+    public void File_summary_preserves_output_at_buffer_boundaries([Values(127, 128, 257, 1023, 1024)] int outputLength)
     {
-        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(257, 0).Done;
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(outputLength, 0).Done;
         string file = TraceFile(code);
         string summary = file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1];
         using JsonDocument json = JsonDocument.Parse(summary);
-        Assert.That(json.RootElement.GetProperty("output").GetString(), Is.EqualTo(new string('0', 62) + "2a" + new string('0', 450)));
+        Assert.That(json.RootElement.GetProperty("output").GetString(),
+            Is.EqualTo(new string('0', 62) + "2a" + new string('0', (outputLength - 32) * 2)),
+            "the file summary must retain every output byte without adding a prefix or trimming leading zeros");
     }
 
     [TestCase("negative", 0)]
@@ -246,8 +253,11 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         JsonElement[] opcodes = trace.RootElement.EnumerateArray().Where(record => record.TryGetProperty("opName", out _)).ToArray();
         int firstReturnData = Array.FindIndex(opcodes, record => record.GetProperty("opName").GetString() == "RETURNDATASIZE");
         int lastReturnData = Array.FindLastIndex(opcodes, record => record.GetProperty("opName").GetString() == "CALL");
-        Assert.That(firstReturnData, Is.GreaterThan(0));
-        Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturnData, Is.GreaterThan(0));
+            Assert.That(lastReturnData, Is.GreaterThan(firstReturnData));
+        }
 
         using (Assert.EnterMultipleScope())
         {

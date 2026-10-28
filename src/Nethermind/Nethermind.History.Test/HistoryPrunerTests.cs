@@ -626,6 +626,27 @@ public class HistoryPrunerTests
             logManager ?? LimboLogs.Instance);
     }
 
+    [TestCase(null, true, true)]
+    [TestCase(100u, true, false)]
+    [TestCase(uint.MaxValue, true, false)]
+    [TestCase(null, false, false)]
+    public void Bal_only_default_retention_is_logged_before_pruning(uint? retentionEpochs, bool chainHasAccessLists, bool logs)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryPruner>().Returns(wrappedLogger);
+
+        CreatePruner(
+            Substitute.For<IBlockTree>(),
+            new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = 100 }),
+            new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = retentionEpochs },
+            logManager);
+
+        logger.Received(logs ? 1 : 0).Info("Pruning block access lists older than 100 epochs. Set History.BalRetentionEpochs to 4294967295 to keep all of them.");
+    }
+
     // No pointer is persisted until the first pass, so a node switching to Rolling falls back to the oldest stored block.
     [TestCase(3_000_000UL, 0UL, true, TestName = "Rolling_default_warns_about_a_backlog_when_no_pointer_is_persisted")]
     [TestCase(2_000_000UL, 0UL, false, TestName = "Rolling_default_does_not_warn_about_less_than_a_window")]
@@ -1113,7 +1134,9 @@ public class HistoryPrunerTests
         IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
         byte[] cursor = metadataDb.Get(MetadataDbKeys.HistoryPruningReclaimCursor);
 
+#pragma warning disable NUnit2045 // The cursor must exist before it is decoded.
         Assert.That(cursor, Is.Not.Null, "without this write the boundary is durable and the reclaim behind it is not");
+#pragma warning restore NUnit2045
         Assert.That(new RlpReader(cursor).DecodeULong(), Is.EqualTo(36UL));
     }
 

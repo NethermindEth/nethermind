@@ -36,13 +36,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
-        internal sealed class SubscriptionSyncingResult
-        {
-            public ulong? StartingBlock { get; set; }
-            public ulong? CurrentBlock { get; set; }
-            public ulong? HighestBlock { get; set; }
-        }
-
         private void OnConditionsChange(object? sender, BlockEventArgs e) => ScheduleAction(async () =>
         {
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
@@ -58,14 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             _lastIsSyncing = isSyncing;
 
-            using (JsonRpcResult result = !isSyncing
-                       ? CreateSubscriptionMessage(false)
-                       : CreateSubscriptionMessage(new SubscriptionSyncingResult()
-                       {
-                           StartingBlock = syncingResult.StartingBlock,
-                           CurrentBlock = syncingResult.CurrentBlock,
-                           HighestBlock = syncingResult.HighestBlock
-                       }))
+            using (JsonRpcResult result = CreateSubscriptionMessage(syncingResult))
             {
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
             }

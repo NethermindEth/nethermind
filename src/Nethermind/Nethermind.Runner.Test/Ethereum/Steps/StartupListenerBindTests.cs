@@ -8,10 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Init;
 using Nethermind.Init.Steps;
@@ -83,9 +83,8 @@ public class StartupListenerBindTests
         api.LogManager.Returns(TestLogManager.Instance);
         api.EthereumJsonSerializer.Returns(new EthereumJsonSerializer());
 
-        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
-        StartRpc step = new(api, [], new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), gcKeeper,
-            new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("pipeline warmup is disabled")));
+        StartRpc step = new(api, new Lazy<IJsonRpcServiceConfigurer[]>([]), new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), new Lazy<IJsonRpcService>(Substitute.For<IJsonRpcService>()),
+            new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("pipeline warmup is disabled")), []);
 
         Assert.That(() => step.Execute(CancellationToken.None),
             Throws.TypeOf(portInUse ? typeof(PortInUseException) : typeof(ListenerBindException)));

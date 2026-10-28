@@ -248,6 +248,12 @@ public class SnapshotBundleWarmerTests
 
         bool found = cache.TryGet(cacheAddress, in path, hash, out TrieNode? cached);
 
+        // A later bundle with nothing persisted can warm the node only from the shared cache.
+        using SnapshotBundle nextBundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+        TrieNode warmedFromCache = storage
+            ? nextBundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
+            : nextBundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(live.NodeType, Is.EqualTo(NodeType.Leaf));
@@ -256,6 +262,7 @@ public class SnapshotBundleWarmerTests
             Assert.That(found, Is.True);
             Assert.That(cached, Is.Not.SameAs(live));
             Assert.That(cached!.FullRlp.UnderlyingArray, Is.SameAs(live.FullRlp.UnderlyingArray));
+            Assert.That(warmedFromCache, Is.SameAs(cached));
         }
     }
 
@@ -298,8 +305,8 @@ public class SnapshotBundleWarmerTests
             Assert.That(addCompletedWhileRead, Is.False, "retirement scanned the transient under an in-flight warmer read");
             Assert.That(add.Wait(BailOutTimeout), Is.True, "retirement did not resume after the warmer read released its lease");
             Assert.That(warmerRead.Wait(BailOutTimeout), Is.True);
-            Assert.That(warmerRead.Result.NodeType, Is.EqualTo(NodeType.Unknown));
         }
+        Assert.That(warmerRead.Result.NodeType, Is.EqualTo(NodeType.Unknown));
 
         retired!.ReleaseLease();
     }

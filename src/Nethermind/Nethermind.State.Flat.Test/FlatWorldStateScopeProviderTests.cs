@@ -88,12 +88,16 @@ public class FlatWorldStateScopeProviderTests
 
         foreach (IWorldStateScopeProvider provider in providers)
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(provider.HasStateForTargetBlock(target), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
             scope!.Dispose();
         }
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(manager.GlobalWorldState.HasStateForTargetBlock(sameParentDifferentTimestamp), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(manager.GlobalWorldState.TryBeginScopeAtTarget(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
         secondScope!.Dispose();
 
@@ -142,7 +146,9 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
             .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(readerDisposed, Is.False);
 
         scope!.Dispose();
@@ -164,7 +170,9 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
             .Returns(_ => throw CreateStateUnavailableException());
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out _), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(local.ToString(), Is.EqualTo("Leases: 1"));
         overridable.Dispose();
     }
@@ -441,8 +449,11 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify written items shadow everything else
         Account? resultAccount = scope.Get(testAddress);
-        Assert.That(resultAccount!.Balance, Is.EqualTo(testAccount.Balance));
-        Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultAccount!.Balance, Is.EqualTo(testAccount.Balance));
+            Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        }
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
         storageTree.Get(slotIndex, out UInt256 slotRead248);
@@ -617,8 +628,11 @@ public class FlatWorldStateScopeProviderTests
         // Verify in snapshot
         Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
         ctx.LastCommittedSnapshot!.TryGetAccount(testAddress, out Account? committedAccount);
-        Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
-        Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
+            Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        }
 
         ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out UInt256? committedSlot);
         Assert.That(committedSlot!.Value.ToMinimalBigEndian(), Is.EqualTo(slotValue));
@@ -1144,8 +1158,11 @@ public class FlatWorldStateScopeProviderTests
         (HashSet<string> nodesAtCommit, Hash256[] rootsAtCommit) = CommitStorageSlots(deferStorageTrieCommit: true, contractCount, clearInSecondBatch);
 
         Assert.That(nodesAtCommit, Is.Not.Empty);
-        Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
-        Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
+            Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+        }
     }
 
     [Test]
@@ -1472,8 +1489,11 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(2);
 
         // Verify scope Sees both
-        Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
-        Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
+            Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
+        }
     }
 
     #endregion
@@ -1700,8 +1720,11 @@ public class FlatWorldStateScopeProviderTests
             disposeCompleted = true;
         });
 
-        Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
-        Assert.That(disposeCompleted, Is.False, "Dispose should still be blocking");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
+            Assert.That(disposeCompleted, Is.False, "Dispose should still be blocking");
+        }
 
         // Simulate the warmup completing — Dispose should now unblock.
         scope.DecrementOutstandingWarmups();
@@ -1892,8 +1915,11 @@ public class FlatWorldStateScopeProviderTests
         Task disposeTask = Task.Run(() => scope.Dispose());
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
-        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
+            Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+        }
 
         reader.ResumeReads.Set();
 
@@ -1912,13 +1938,19 @@ public class FlatWorldStateScopeProviderTests
 
         storageTree.HintSet((UInt256)1);
 
-        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
-        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+            Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        }
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
         storageTree.HintSet((UInt256)1);
-        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
-        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+            Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        }
 
         // An accepted push must have incremented the outstanding-warmup counter (and a dropped one must not):
         // after balancing accepted pushes, Dispose should not enter the wait loop.
@@ -1962,14 +1994,24 @@ public class FlatWorldStateScopeProviderTests
 
         public List<Address> Accounts { get; } = [];
         public List<StorageCell> Slots { get; } = [];
+        public List<Address> AccountSamples { get; } = [];
+        public List<StorageCell> SlotSamples { get; } = [];
         public bool SupportsPrefetch { get; init; } = true;
+        public IPersistence.PrefetchColumns Plan { get; init; } = IPersistence.PrefetchColumns.All;
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+        {
+            AccountSamples.AddRange(accountSamples);
+            SlotSamples.AddRange(slotSamples);
+            return Plan;
+        }
+
+        public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
             lock (Accounts)
             {
-                Accounts.AddRange(accounts);
-                Slots.AddRange(slots);
+                if ((columns & IPersistence.PrefetchColumns.Accounts) != 0) Accounts.AddRange(accounts);
+                if ((columns & IPersistence.PrefetchColumns.Slots) != 0) Slots.AddRange(slots);
             }
         }
 
@@ -2025,8 +2067,11 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
 
-        Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+        }
     }
 
     [Test]
@@ -2106,6 +2151,94 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(scope.SupportsPrefetch, Is.False, "the scope reports the store's prefetch support");
             Assert.That(reader.Accounts, Is.Empty);
             Assert.That(reader.Slots, Is.Empty);
+        }
+    }
+
+    // The plan sees samples spread over the access list; only the columns it chooses are collected and sent.
+    [Test]
+    public async Task HintBal_CollectsOnlyThePlannedColumns([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts,
+        IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        PrefetchRecordingReader reader = new() { Plan = plan };
+        using TestContext ctx = new(persistenceReader: reader);
+
+        await ctx.Scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage), ReadOnlyAccount(TestItem.AddressB)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(reader.SlotSamples, Is.EquivalentTo(new[] { new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1) }));
+            Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+            Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+        }
+    }
+
+    // The address warmer's prefetch plans on samples of its keys and sends only the columns the plan chose.
+    [Test]
+    public void Prefetch_SendsOnlyThePlannedColumns([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts,
+        IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        PrefetchRecordingReader reader = new() { Plan = plan };
+        using TestContext ctx = new(persistenceReader: reader);
+
+        ctx.Scope.Prefetch([TestItem.AddressA, TestItem.AddressB], [new StorageCell(TestItem.AddressA, 1)], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, Has.Count.EqualTo(2));
+            Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+            Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(1) : Is.Empty);
+        }
+    }
+
+    // Planning may read sampled keys from disk, so a cancelled prefetch neither plans nor sends.
+    [Test]
+    public void Prefetch_CancelledBeforeItStarts_PlansAndSendsNothing([Values] bool cancelled)
+    {
+        PrefetchRecordingReader reader = new();
+        using TestContext ctx = new(persistenceReader: reader);
+        Address[] accounts = [TestItem.AddressA, TestItem.AddressB];
+        StorageCell[] slots = [new(TestItem.AddressA, 1)];
+
+        ctx.Scope.Prefetch(accounts, slots, new CancellationToken(cancelled));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, cancelled ? Is.Empty : Has.Count.EqualTo(2));
+            Assert.That(reader.Accounts, cancelled ? Is.Empty : Has.Count.EqualTo(2));
+            Assert.That(reader.Slots, cancelled ? Is.Empty : Has.Count.EqualTo(1));
+        }
+    }
+
+    // Slot samples are the cells at the evenly spread ordinals of the collection order: per account, writes then reads.
+    [Test]
+    public void SampleBalSlots_TakesTheSpreadOrdinalsInCollectionOrder()
+    {
+        ReadOnlyAccountChanges first = new(TestItem.AddressA,
+            [new ReadOnlySlotChanges((UInt256)100, [new StorageChange(0, default)]), new ReadOnlySlotChanges((UInt256)101, [new StorageChange(0, default)])],
+            [(UInt256)102], [], [], []);
+        ReadOnlyAccountChanges empty = new(TestItem.AddressB, [], [], [], [], []);
+        UInt256[] reads = new UInt256[13];
+        for (int i = 0; i < reads.Length; i++) reads[i] = (UInt256)(200 + i);
+        ReadOnlyAccountChanges second = new(TestItem.AddressC, [], reads, [], [], []);
+        ReadOnlyAccountChanges[] changes = [first, empty, second];
+        StorageCell[] samples = new StorageCell[BasePersistence.PrefetchSamples];
+
+        int count = FlatWorldStateScope.SampleBalSlots(changes, 16, samples);
+
+        // 16 slots, 8 samples: ordinals 0, 2, 4, ..., 14; 0-2 are the first account's, 3-15 the third account's reads.
+        StorageCell[] expected = new StorageCell[8];
+        for (int k = 0; k < 8; k++)
+        {
+            int ordinal = 2 * k;
+            expected[k] = ordinal < 3
+                ? new StorageCell(TestItem.AddressA, (UInt256)(100 + ordinal))
+                : new StorageCell(TestItem.AddressC, (UInt256)(200 + ordinal - 3));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(8));
+            Assert.That(samples, Is.EqualTo(expected));
         }
     }
 

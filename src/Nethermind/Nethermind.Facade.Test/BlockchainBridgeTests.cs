@@ -90,16 +90,22 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     // regression test - was throwing NRE before
@@ -151,12 +157,12 @@ public class BlockchainBridgeTests
         }
         _receiptStorage.Get(block).Returns(receipts);
         Assert.That(_blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result), Is.True);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((ulong)index));
             Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
             Assert.That(result.Value.Transaction.SenderAddress, Is.EqualTo(TestItem.Addresses[index]));
-        });
+        }
         Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
@@ -200,7 +206,9 @@ public class BlockchainBridgeTests
 
         chain.LookUpFullBlocks(true);
         (TxReceipt? fullReceipt, ulong fullTimestamp, TxGasInfo? fullGasInfo, int fullLogIndexStart) = chain.Bridge.GetTxReceiptInfo(tx.Hash!);
+#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
         Assert.That(fullReceipt, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(chain.Bridge.TryGetTransaction(tx.Hash!, out TransactionLookupResult? full, checkTxnPool: false), Is.True);
         chain.BlockTree.Received().FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
 
@@ -480,7 +488,7 @@ public class BlockchainBridgeTests
                 bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, cancellationToken: CancellationToken.None);
                 break;
             case OverrideCall.EstimateFrameGas:
-                bridge.EstimateFrameGas(header, tx, [], [], 0, 1, stateOverride, blockOverride, CancellationToken.None, out _);
+                bridge.EstimateFrameGas(header, tx, [], [], 0, 1, null, stateOverride, blockOverride, CancellationToken.None, out _);
                 break;
         }
 
@@ -659,6 +667,37 @@ public class BlockchainBridgeTests
             Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
     }
 
+    [Test]
+    public void Frame_blob_call_with_a_max_fee_runs_at_the_header_blob_base_fee([Values] bool capOmitted)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        const ulong excessBlobGas = 10_000_000;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        UInt256? maxFeePerBlobGas = capOmitted ? null : UInt256.Zero;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            GasLimit = Transaction.BaseTxGasCost,
+            MaxFee = 1,
+            MaxFeePerBlobGas = maxFeePerBlobGas,
+            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
+        };
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, _specProvider.GetSpec(header).BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee);
+        ValueHash256 expectedBlobBaseFee = blobBaseFee.ToValueHash();
+
+        _blockchainBridge.Call(header, tx);
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(maxFeePerBlobGas));
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFee));
+    }
+
     [Test, Combinatorial]
     public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
     {
@@ -722,23 +761,24 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys([Values] bool optimize)
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys()
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
-            optimize,
             [PrecompiledAddresses.ECRecover, TestItem.AddressC],
             [new StorageCell(TestItem.AddressC, UInt256.One)]);
 
         Assert.That(callOutput.AccessList, Is.Not.Null);
-        Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
-        Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
+            Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
     public void CreateAccessList_keeps_precompile_address_when_storage_key_is_present()
     {
         CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
-            optimize: false,
             [PrecompiledAddresses.ECRecover],
             [new StorageCell(PrecompiledAddresses.ECRecover, UInt256.One)]);
 
@@ -777,7 +817,6 @@ public class BlockchainBridgeTests
     }
 
     private CallOutput InvokeCreateAccessListWithMockedAccess(
-        bool optimize,
         Address[] accessedAddresses,
         StorageCell[] accessedCells)
     {
@@ -796,7 +835,7 @@ public class BlockchainBridgeTests
                 return TransactionResult.Ok;
             });
 
-        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, cancellationToken: default);
+        return _blockchainBridge.CreateAccessList(header, tx, null, false, null, cancellationToken: default);
     }
 
     [Test]
@@ -1668,8 +1707,11 @@ public class BlockchainBridgeTests
         if (expectRejected)
         {
             TransactionResult reason = Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason;
-            Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
-            Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+                Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+            }
         }
         else
         {

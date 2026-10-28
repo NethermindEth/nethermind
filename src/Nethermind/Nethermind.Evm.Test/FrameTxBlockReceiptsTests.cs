@@ -109,7 +109,6 @@ public class FrameTxBlockReceiptsTests
         {
             Type = TxType.FrameTx,
             BlobVersionedHashes = [new byte[32]],
-            MaxFeePerBlobGas = 1,
             DecodedMaxFeePerGas = 1,
         };
         TxGasInfo blobInfo = blobFrameTx.GetGasInfo(spec, header);
@@ -159,7 +158,7 @@ public class FrameTxBlockReceiptsTests
             ],
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
         Block block = Build.A.Block.WithNumber(1)
@@ -174,8 +173,11 @@ public class FrameTxBlockReceiptsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(1));
+        }
 
         return (receiptsTracer.TxReceipts[0], block, spec);
     }
@@ -304,7 +306,7 @@ public class FrameTxBlockReceiptsTests
             ],
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 
         Block block = Build.A.Block.WithNumber(1)

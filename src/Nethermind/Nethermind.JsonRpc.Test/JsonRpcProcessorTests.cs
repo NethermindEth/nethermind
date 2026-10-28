@@ -21,6 +21,8 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,8 +69,14 @@ public class JsonRpcProcessorTests
     private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null, bool returnErrors = false) =>
         CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
-    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
-        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
+    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null)
+    {
+        config ??= new JsonRpcConfig();
+        return new(service, config, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource, BatchConcurrencyStrategies(config));
+    }
+
+    private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
+        [new EthCallBatchConcurrency(), new DebugTraceCallBatchConcurrency(config)];
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
@@ -76,7 +84,7 @@ public class JsonRpcProcessorTests
         new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
 
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
-        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null, BatchConcurrencyStrategies(new JsonRpcConfig()));
 
     // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
     // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
@@ -248,13 +256,19 @@ public class JsonRpcProcessorTests
         string? knownMethodName = TryGetKnownMethodName(methodName);
         if (expectedCached)
         {
-            Assert.That(knownMethodName, Is.Not.Null);
-            Assert.That(capturedMethod, Is.SameAs(knownMethodName));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(knownMethodName, Is.Not.Null);
+                Assert.That(capturedMethod, Is.SameAs(knownMethodName));
+            }
         }
         else
         {
-            Assert.That(knownMethodName, Is.Null);
-            Assert.That(capturedMethod, Is.Not.SameAs(methodName));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(knownMethodName, Is.Null);
+                Assert.That(capturedMethod, Is.Not.SameAs(methodName));
+            }
         }
     }
 
@@ -264,7 +278,9 @@ public class JsonRpcProcessorTests
         ReadOnlySequence<byte> methodSequence = CreateSequence("\"engine_", "newPayloadV4\"");
         Utf8JsonReader reader = new(methodSequence);
 
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
         Assert.That(reader.HasValueSequence, Is.True);
 
@@ -452,6 +468,62 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Batch_executes_trace_calls_concurrently_only_with_a_native_tracer()
+    {
+        List<string> events = [];
+        TaskCompletionSource bothNativeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int nativeStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is "1" or "2")
+            {
+                if (Interlocked.Increment(ref nativeStartedCount) == 2) bothNativeStarted.SetResult();
+                await bothNativeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"callTracer"}]"""),
+                CreateRequest("3", "debug_traceCall", """[{},"latest"]"""),
+                CreateRequest("4", "debug_traceCall", """[{},"latest",{"tracer":"{result:function(){return 1},fault:function(){}}"}]"""),
+                CreateRequest("5", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("6", "debug_traceCall", """[{},"latest",{"tracer":"\uD800"}]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 6).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5", "6" }));
+            Assert.That(events.IndexOf("start 2"), Is.LessThan(events.IndexOf("end 1")), "native traced calls overlap");
+            Assert.That(events.IndexOf("start 3"), Is.GreaterThan(new[] { "end 1", "end 2" }.Max(events.IndexOf)), "a struct log trace may stream, so it runs alone");
+            Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
+            Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
+            Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
+        }
+    }
+
+    [Test]
+    public async Task Batch_keeps_answering_after_a_trace_call_with_an_unreadable_option_name()
+    {
+        IJsonRpcService service = CreateEchoService();
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"callTracer","\uD800":null}]"""),
+                CreateRequest("2", "eth_call")),
+            CreateHttpContext());
+
+        Assert.That(AssertBatchResponse(responses, 2).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2" }));
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
     public async Task Batch_answers_concurrent_calls_after_stop_with_limit_error()
     {
         IJsonRpcService service = CreateEchoService();
@@ -636,12 +708,15 @@ public class JsonRpcProcessorTests
 
         JsonRpcEnvelope elementEnvelope = JsonRpcEnvelopeReader.Read(document.RootElement, out JsonElement paramsElement);
 
-        Assert.That(elementEnvelope.JsonRpc, Is.EqualTo(envelope.JsonRpc));
-        Assert.That(elementEnvelope.Id, Is.EqualTo(envelope.Id));
-        Assert.That(elementEnvelope.Method, Is.SameAs(envelope.Method));
-        Assert.That(elementEnvelope.HasParams, Is.EqualTo(envelope.HasParams));
-        Assert.That(elementEnvelope.ParamsKind, Is.EqualTo(envelope.ParamsKind));
-        Assert.That(paramsElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(elementEnvelope.JsonRpc, Is.EqualTo(envelope.JsonRpc));
+            Assert.That(elementEnvelope.Id, Is.EqualTo(envelope.Id));
+            Assert.That(elementEnvelope.Method, Is.SameAs(envelope.Method));
+            Assert.That(elementEnvelope.HasParams, Is.EqualTo(envelope.HasParams));
+            Assert.That(elementEnvelope.ParamsKind, Is.EqualTo(envelope.ParamsKind));
+            Assert.That(paramsElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        }
     }
 
     [Test]
@@ -649,10 +724,13 @@ public class JsonRpcProcessorTests
     {
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":12345678901234567890,\"method\":\"eth_unknown\"}", out _);
 
-        Assert.That(envelope.Id, Is.EqualTo(new JsonRpcId(decimal.Parse("12345678901234567890"))));
-        Assert.That(envelope.Method, Is.EqualTo("eth_unknown"));
-        Assert.That(envelope.HasParams, Is.False);
-        Assert.That(envelope.ParamsKind, Is.EqualTo(JsonValueKind.Undefined));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.Id, Is.EqualTo(new JsonRpcId(decimal.Parse("12345678901234567890"))));
+            Assert.That(envelope.Method, Is.EqualTo("eth_unknown"));
+            Assert.That(envelope.HasParams, Is.False);
+            Assert.That(envelope.ParamsKind, Is.EqualTo(JsonValueKind.Undefined));
+        }
     }
 
     [Test]
@@ -680,8 +758,11 @@ public class JsonRpcProcessorTests
     {
         JsonRpcEnvelope envelope = ReadEnvelope("{\"id\":1e2,\"method\":\"eth_blockNumber\"}", out _);
 
-        Assert.That(envelope.Id.TryGetDecimal(out decimal id), Is.True);
-        Assert.That(id, Is.EqualTo(100m));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.Id.TryGetDecimal(out decimal id), Is.True);
+            Assert.That(id, Is.EqualTo(100m));
+        }
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {
@@ -695,8 +776,11 @@ public class JsonRpcProcessorTests
     public void JsonRpcEnvelopeReader_returns_false_for_non_object_root()
     {
         JsonRpcEnvelopeReader reader = new(Encoding.UTF8.GetBytes("[{\"id\":1}]"));
-        Assert.That(reader.TryRead(out JsonRpcEnvelope envelope), Is.False);
-        Assert.That(envelope, Is.EqualTo(default(JsonRpcEnvelope)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryRead(out JsonRpcEnvelope envelope), Is.False);
+            Assert.That(envelope, Is.EqualTo(default(JsonRpcEnvelope)));
+        }
     }
 
     [Test]
@@ -795,8 +879,11 @@ public class JsonRpcProcessorTests
 
         await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), CreateHttpContext(), sink);
 
-        Assert.That(disposedDuringWrite, Is.False);
-        Assert.That(disposed, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposedDuringWrite, Is.False);
+            Assert.That(disposed, Is.True);
+        }
     }
 
     private static IJsonRpcService CreateAsyncService(Func<JsonRpcRequest, Task<JsonRpcResponse>> responseFactory)
@@ -864,8 +951,11 @@ public class JsonRpcProcessorTests
 
     private CollectedJsonRpcResult AssertBatchResponse(CollectedJsonRpcResult result, int expectedCount, bool returnErrors = false)
     {
-        Assert.That(result.Response, Is.Null);
-        Assert.That(result.BatchItems, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Response, Is.Null);
+            Assert.That(result.BatchItems, Is.Not.Null);
+        }
         Assert.That(result.BatchItems, Has.Count.EqualTo(expectedCount));
         if (expectedCount != 0)
         {
@@ -887,9 +977,12 @@ public class JsonRpcProcessorTests
 
     private CollectedJsonRpcResult AssertSingleResponse(CollectedJsonRpcResult result, bool shouldBeParseError = false)
     {
-        Assert.That(result.Response, Is.Not.Null);
-        Assert.That(result.BatchItems, Is.Null);
-        Assert.That(ReferenceEquals(result.Response, _errorResponse), Is.EqualTo(shouldBeParseError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Response, Is.Not.Null);
+            Assert.That(result.BatchItems, Is.Null);
+            Assert.That(ReferenceEquals(result.Response, _errorResponse), Is.EqualTo(shouldBeParseError));
+        }
         return result;
     }
 
@@ -1003,9 +1096,12 @@ public class JsonRpcProcessorTests
 
         List<JsonRpcResponse> responses = AssertOnlyResult(result).BatchItems!;
         Assert.That(responses, Has.Count.EqualTo(3));
-        Assert.That(responses[0], Is.TypeOf<JsonRpcSuccessResponse>());
-        Assert.That(responses[1], Is.TypeOf<JsonRpcErrorResponse>());
-        Assert.That(responses[2], Is.TypeOf<JsonRpcErrorResponse>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responses[0], Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(responses[1], Is.TypeOf<JsonRpcErrorResponse>());
+            Assert.That(responses[2], Is.TypeOf<JsonRpcErrorResponse>());
+        }
         JsonRpcErrorResponse invalidRequest = (JsonRpcErrorResponse)responses[1];
         JsonRpcErrorResponse limitExceeded = (JsonRpcErrorResponse)responses[2];
         using (Assert.EnterMultipleScope())
@@ -1034,8 +1130,11 @@ public class JsonRpcProcessorTests
             context);
 
         CollectedJsonRpcResult response = AssertOnlyResult(result);
-        Assert.That(response.Response, Is.TypeOf<JsonRpcErrorResponse>());
-        Assert.That(response.BatchItems, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Response, Is.TypeOf<JsonRpcErrorResponse>());
+            Assert.That(response.BatchItems, Is.Null);
+        }
         JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
         Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
         await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
@@ -1227,8 +1326,11 @@ public class JsonRpcProcessorTests
         {
             Assert.That(response.Response, Is.TypeOf<JsonRpcErrorResponse>());
             JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response.Response!;
-            Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
-            Assert.That(response.BatchItems, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+                Assert.That(response.BatchItems, Is.Null);
+            }
             await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
             return;
         }
@@ -1236,8 +1338,11 @@ public class JsonRpcProcessorTests
         Assert.That(response.Response, Is.Null);
         List<JsonRpcResponse> batchItems = response.BatchItems!;
         Assert.That(batchItems, Has.Count.EqualTo(2));
-        Assert.That(batchItems[0].Id, Is.EqualTo(new JsonRpcId(67)));
-        Assert.That(batchItems[1].Id, Is.EqualTo(new JsonRpcId(67)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchItems[0].Id, Is.EqualTo(new JsonRpcId(67)));
+            Assert.That(batchItems[1].Id, Is.EqualTo(new JsonRpcId(67)));
+        }
         await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
 
@@ -1251,11 +1356,17 @@ public class JsonRpcProcessorTests
             CreateHttpContext(),
             sink);
         CollectedJsonRpcResult response = AssertOnlyResult(result);
-        Assert.That(response.IsCollection, Is.True);
-        Assert.That(response.BatchItems, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.IsCollection, Is.True);
+            Assert.That(response.BatchItems, Is.Not.Null);
+        }
         IReadOnlyList<JsonRpcResponse> batchItems = response.BatchItems!;
-        Assert.That(batchItems[0], Is.TypeOf(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
-        Assert.That(batchItems[1], Is.TypeOf(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchItems[0], Is.TypeOf(returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
+            Assert.That(batchItems[1], Is.TypeOf(limit || returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse)));
+        }
     }
 
     [TestCase("invalid", true, null, TestName = "Invalid JSON")]
@@ -1330,7 +1441,9 @@ public class JsonRpcProcessorTests
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport);
 
         CollectedJsonRpcResult only = AssertOnlyResult(result);
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(only.BatchItems, Is.Null, "a malformed single request must produce a single framed error, not a batch");
+#pragma warning restore NUnit2045
         Assert.That(only.Response, Is.TypeOf<JsonRpcErrorResponse>());
         Assert.That(((JsonRpcErrorResponse)only.Response!).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
         Assert.That(dispatched, Is.False, "a request that cannot be decoded must never reach the service");
@@ -1376,8 +1489,11 @@ public class JsonRpcProcessorTests
         using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, transport);
 
         CollectedJsonRpcResult only = AssertOnlyResult(result);
-        Assert.That(only.Response, Is.Null, "a syntactically valid JSON array must be answered with a batch response");
-        Assert.That(only.BatchItems, Has.Count.EqualTo(expectedItems));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(only.Response, Is.Null, "a syntactically valid JSON array must be answered with a batch response");
+            Assert.That(only.BatchItems, Has.Count.EqualTo(expectedItems));
+        }
         for (int i = 0; i < expectedItems; i++)
         {
             JsonRpcResponse item = only.BatchItems![i];
@@ -1388,7 +1504,9 @@ public class JsonRpcProcessorTests
                 continue;
             }
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
             Assert.That(item, Is.TypeOf<JsonRpcErrorResponse>(), $"item {i} is not a request object");
+#pragma warning restore NUnit2045
             Assert.That(((JsonRpcErrorResponse)item).Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
         }
 
@@ -1420,7 +1538,9 @@ public class JsonRpcProcessorTests
             sink);
 
         IReadOnlyList<JsonRpcResponse> batchItems = AssertOnlyResult(result).BatchItems!;
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(batchItems, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
         Assert.That(((JsonRpcErrorResponse)batchItems[0]).Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
         Assert.That(batchItems[1], Is.TypeOf<JsonRpcErrorResponse>(), "the element after the limit was reached must not be dispatched");
         Assert.That(((JsonRpcErrorResponse)batchItems[1]).Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
@@ -1700,7 +1820,9 @@ public class JsonRpcProcessorTests
         using CollectedJsonRpcResponses results = await ProcessAsync(processor, request, CreateHttpContext());
 
         JsonRpcResponse response = AssertSingleResponse(results).Response!;
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+#pragma warning restore NUnit2045
         Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
         await service.DidNotReceive().SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
     }
@@ -1786,8 +1908,11 @@ public class JsonRpcProcessorTests
 
         RpcReport? report = AssertOnlyResult(result).Report;
         Assert.That(report, Is.Not.Null);
-        Assert.That(report!.Value.Method, Is.EqualTo(expectedReportMethod));
-        Assert.That(report!.Value.Success, Is.EqualTo(expectedSuccess));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report!.Value.Method, Is.EqualTo(expectedReportMethod));
+            Assert.That(report!.Value.Success, Is.EqualTo(expectedSuccess));
+        }
     }
 
     [Test]
@@ -1821,8 +1946,11 @@ public class JsonRpcProcessorTests
             capturedMethod = request.Method;
 
             JsonElement paramsArr = request.Params;
-            Assert.That(paramsArr.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(paramsArr.GetArrayLength(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(paramsArr.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(paramsArr.GetArrayLength(), Is.EqualTo(1));
+            }
 
             observedDepth = 1;
             JsonElement node = paramsArr[0];
@@ -1831,8 +1959,11 @@ public class JsonRpcProcessorTests
                 node = node[0];
                 observedDepth++;
             }
-            Assert.That(node.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(node.GetArrayLength(), Is.EqualTo(0), "innermost array of the constructed chain is empty");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(node.GetArrayLength(), Is.EqualTo(0), "innermost array of the constructed chain is empty");
+            }
 
             return new JsonRpcSuccessResponse { Id = request.Id };
         }, _errorResponse);
@@ -1852,10 +1983,13 @@ public class JsonRpcProcessorTests
         }
 
         Assert.That(response.Response, Is.TypeOf<JsonRpcSuccessResponse>());
-        Assert.That(response.Response!.Id, Is.EqualTo(new JsonRpcId(1)));
-        Assert.That(requestCaptured, Is.True);
-        Assert.That(capturedMethod, Is.EqualTo("eth_getTransactionCount"));
-        Assert.That(observedDepth, Is.EqualTo(paramNestingDepth));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Response!.Id, Is.EqualTo(new JsonRpcId(1)));
+            Assert.That(requestCaptured, Is.True);
+            Assert.That(capturedMethod, Is.EqualTo("eth_getTransactionCount"));
+            Assert.That(observedDepth, Is.EqualTo(paramNestingDepth));
+        }
     }
 
     private static string BuildNestedArrayParams(int depth) => new string('[', depth) + new string(']', depth);

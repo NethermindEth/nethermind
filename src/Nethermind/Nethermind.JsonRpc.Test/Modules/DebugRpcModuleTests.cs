@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -194,12 +196,18 @@ public partial class DebugRpcModuleTests
         Transaction transfer = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + 1).WithGasPrice(1_000_000_000)
             .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(create, transfer);
-        Assert.That(block.Transactions, Has.Length.EqualTo(2));
-        Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(2));
+            Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        }
         Address contract = ContractAddress.From(TestItem.AddressB, nonce);
         TxReceipt receipt = chain.ReceiptStorage.Get(block)[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        }
         byte[] probe = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
             .PushData(1).Op(Instruction.SLOAD).PushData(32).Op(Instruction.MSTORE)
             .Op(Instruction.NUMBER).PushData(64).Op(Instruction.MSTORE)
@@ -433,6 +441,76 @@ public partial class DebugRpcModuleTests
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
 
+    [Test]
+    public async Task Debug_traceCall_stops_after_the_call([Values("prestateTracer", "callTracer", null)] string? tracer)
+    {
+        int requestsProcessed = 0;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddDecorator<IExecutionRequestsProcessor>((_, inner) => new CountingExecutionRequestsProcessor(inner, () => requestsProcessed++)));
+        requestsProcessed = 0;
+
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), value = "0x1", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That(json["result"], Is.Not.Null, response);
+            Assert.That(requestsProcessed, Is.Zero, "nothing after the call reaches the trace, so the block must not be finalized");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_state_override_is_not_replaced_by_the_block_system_calls([Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        Block block = await chain.AddBlock();
+        UInt256 parentNumber = (UInt256)(block.Number - 1);
+        UInt256 slot = (UInt256)((block.Number - 1) % Eip2935Constants.RingBufferSize);
+        Hash256 overridden = TestItem.KeccakA;
+
+        object call = new
+        {
+            from = TestItem.AddressA.ToString(),
+            to = Eip2935Constants.BlockHashHistoryAddress.ToString(),
+            gas = "0x186a0",
+            input = parentNumber.ToBigEndian().ToHexString(true)
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new
+        {
+            tracer = "callTracer",
+            stateOverrides = new Dictionary<string, object>
+            {
+                [Eip2935Constants.BlockHashHistoryAddress.ToString()] = new
+                {
+                    stateDiff = new Dictionary<string, string> { [slot.ToBigEndian().ToHexString(true)] = overridden.ToString() }
+                }
+            }
+        });
+
+        // The block's EIP-2935 system call writes this slot before the call runs; as in eth_call, the override wins.
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"]?["output"], Is.EqualTo(overridden.ToString()), response);
+        }
+    }
+
+    private sealed class CountingExecutionRequestsProcessor(IExecutionRequestsProcessor inner, Action onProcess) : IExecutionRequestsProcessor
+    {
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        {
+            onProcess();
+            inner.ProcessExecutionRequests(block, state, receipts, spec);
+        }
+    }
+
     private class Context : IDisposable
     {
         public IDebugRpcModule DebugRpcModule { get; }
@@ -464,10 +542,13 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
-        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
-        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
-        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+            Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+            Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+            Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        }
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -505,6 +586,8 @@ public partial class DebugRpcModuleTests
             ("overlap", "602a601f536002601f2000", """{"0x71378d9bd65a614e4926f9fa621eae99b3f2a1cf19e8c22e41594dc15c16dd33":"0x2a00"}""", 100_000),
             ("offset", "600160202000", """{"0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
             ("duplicate", "6000600020600060002000", """{"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470":"0x"}""", 100_000),
+            ("duplicate_before_memory_overwrite", "602a600053600160002050600160002050602b60005300", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
+            ("distinct_before_memory_overwrite", "602a6000536001600020506000600053600160002050602b60005300", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a","0xbc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a":"0x00"}""", 100_000),
             ("revert", "602a600053600160002060006000fd", """{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""", 100_000),
             ("empty_stack", "20", """{}""", 100_000),
             ("short_stack", "600020", """{}""", 100_000),
@@ -1748,9 +1831,12 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(result["failed"]?.Value<bool>(), Is.True);
-        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
-        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.True);
+            Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+            Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        }
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -1811,8 +1897,11 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
-        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        }
     }
 
     private static IEnumerable<TestCaseData> PrestateFieldOptionCases =>
@@ -2025,13 +2114,13 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a revert is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CALL"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That((string?)frame["revertReason"], Is.EqualTo("user error"));
             Assert.That((string?)frame["output"], Is.EqualTo("0x" + RevertPayload));
-        });
+        }
     }
 
     [Test]
@@ -2048,12 +2137,12 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a failed deployment is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
-        });
+        }
     }
 
     private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter

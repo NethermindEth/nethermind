@@ -11,11 +11,10 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
-using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Network;
 using NUnit.Framework;
@@ -45,8 +44,11 @@ public class MonitoringServiceTests
             }
         }
 
-        Assert.That(container, Is.Not.Null, "metrics server did not start");
-        Assert.That(await ServesMetrics(port), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container, Is.Not.Null, "metrics server did not start");
+            Assert.That(await ServesMetrics(port), Is.True);
+        }
         await container.DisposeAsync();
 
         using TcpListener reboundListener = new(IPAddress.Loopback, port);
@@ -84,7 +86,7 @@ public class MonitoringServiceTests
             InitializeStaticLabels = false
         };
         return new ContainerBuilder()
-            .AddModule(new MonitoringModule(config))
+            .AddModule(new MonitoringModule())
             .AddSingleton<IMetricsConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMetricsController, MetricsController>()
@@ -119,7 +121,10 @@ public class MonitoringServiceTests
     {
         AuthenticationHeaderValue header = MonitoringService.CreateBasicAuthHeader(username, password);
 
-        Assert.That(header.Scheme, Is.EqualTo("Basic"));
-        Assert.That(header.Parameter, Is.EqualTo(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.Scheme, Is.EqualTo("Basic"));
+            Assert.That(header.Parameter, Is.EqualTo(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))));
+        }
     }
 }

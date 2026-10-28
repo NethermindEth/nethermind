@@ -170,9 +170,12 @@ public class GethGenesisLoaderTests
 
         // Null/empty preconditions must fail fast — subsequent asserts deref these and would NRE
         // if they were inside the same EnterMultipleScope (which records failure but keeps going).
-        Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis, Is.Not.Null);
+            Assert.That(chainSpec.Allocations, Is.Not.Empty);
+            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -208,9 +211,12 @@ public class GethGenesisLoaderTests
         ChainSpec chainSpec = LoadChainSpec(
             Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/plataberget.json"));
 
-        Assert.That(chainSpec.Genesis, Is.Not.Null);
-        Assert.That(chainSpec.Allocations, Is.Not.Empty);
-        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Genesis, Is.Not.Null);
+            Assert.That(chainSpec.Allocations, Is.Not.Empty);
+            Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -390,6 +396,17 @@ public class GethGenesisLoaderTests
         ChainSpec chainSpec = LoadStandardGethGenesis(genesisExtra: genesisExtra);
 
         Assert.That(chainSpec.Bootnodes, Is.Empty);
+    }
+
+    [Test]
+    public void Maps_zero_nonce_storage_accounts()
+    {
+        Address[] accounts = [new("0x00000000000000000000000000000000000000a1"), new("0x00000000000000000000000000000000000000b2")];
+        string list = string.Join(", ", accounts.Select(static a => $"\"{a}\""));
+
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"zeroNonceStorageAccounts\": [{list}]");
+
+        Assert.That(chainSpec.Parameters.ZeroNonceStorageAccounts, Is.EqualTo(accounts));
     }
 
     [Test]
@@ -969,7 +986,8 @@ public class GethGenesisLoaderTests
     [Test]
     public void LoadParameters_maps_all_fork_eips()
     {
-        List<ForkActivationInfo> forks = DiscoverGethForks();
+        static bool SharesNoEipWithAnotherLabel(ForkActivationInfo fork) => fork.Fork is not BogotaDevnet2;
+        List<ForkActivationInfo> forks = [.. DiscoverGethForks().Where(SharesNoEipWithAnotherLabel)];
         Assert.That(forks, Is.Not.Empty);
 
         // Build genesis with distinct activation values — bypass LoadStandardGethGenesis
@@ -1028,6 +1046,32 @@ public class GethGenesisLoaderTests
         Assert.That(mismatches, Is.Empty, "GethGenesisLoader.LoadParameters must map every EIP from Fork classes.\n" +
             "If a new EIP was added to a Fork class, update LoadParameters to set its transition timestamp.\n" +
             string.Join("\n", mismatches));
+    }
+
+    [Test]
+    public void BogotaDevnet2Time_schedules_the_eips_bogota_devnet_2_adds()
+    {
+        ChainSpec chainSpec = LoadFromString("""
+            {
+              "config": {
+                "chainId": 1,
+                "bogotaDevnet2Time": 26,
+                "terminalTotalDifficulty": "0x0"
+              },
+              "difficulty": "0x1",
+              "gasLimit": "0x8000000",
+              "alloc": {}
+            }
+            """);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8253TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip4758TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip8298TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip8151TransitionTimestamp, Is.EqualTo(26));
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+        }
     }
 
     public static IEnumerable<TestCaseData> HoodiEip7949Activations

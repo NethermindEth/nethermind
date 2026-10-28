@@ -110,6 +110,24 @@ public sealed partial class KeccakHash
         }
     }
 
+    /// <summary>Computes the Keccak-256 digest of the <paramref name="length"/> bytes at <paramref name="input"/> into <paramref name="hash"/>.</summary>
+    /// <param name="length">A constant, so the sponge folds to that length's path.</param>
+    /// <remarks>Written through a reference rather than returned: a returned digest goes through a stack temporary
+    /// before it reaches memory elsewhere.</remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static unsafe void ComputeHash256Fixed(ref byte input, nuint length, out ValueHash256 hash)
+    {
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        fixed (byte* data = &input)
+        {
+            Sponge(ref lane, StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0 ? AlignedDown(data) : data, length);
+        }
+
+        hash = Unsafe.As<ulong, ValueHash256>(ref lane);
+    }
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ValueHash256 ComputeHash256(byte* data, nuint length)
@@ -490,8 +508,10 @@ public sealed partial class KeccakHash
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         ref ulong first = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
 
-        fixed (byte* data = node)
+        fixed (byte* pinned = node)
         {
+            // An array's elements start on a word boundary; rounding says so to the JIT.
+            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
             // The later states are addressed off the first rather than held: the keying loop has no registers to keep them in.
             ZeroCapacity(ref first);
             AbsorbBlock(ref first, data, intoZeroState: true);
@@ -790,11 +810,12 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Absorbs a whole rate block of <paramref name="data"/>.</summary>
-    /// <param name="intoZeroState">Whether the state's rate lanes are still zero, so the block is written rather than XORed.</param>
+    /// <param name="intoZeroState">Whether the state's rate lanes are uninitialized, so the block is written rather than XORed.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
-        if (intoZeroState)
+        // SP1 has no DMA: there the copy is a call into memcpy, dearer than the seventeen lane writes.
+        if (intoZeroState && !Sp1Flag.IsActive)
         {
             // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
             // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
@@ -803,7 +824,7 @@ public sealed partial class KeccakHash
             return;
         }
 
-        if (CanXorin(data))
+        if (!intoZeroState && CanXorin(data))
         {
             Xorin(ref lane, data, HASH_DATA_AREA);
             return;
@@ -934,11 +955,21 @@ public sealed partial class KeccakHash
     /// <see cref="XorVectors"/> is compiled for the host as well; this file is not, and riscv64 has no
     /// vector width, so on the only target that reaches here the gate would be a constant.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
+    private static unsafe void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
     {
         if (block.Length != HASH_DATA_AREA)
         {
             XorVectors(state, block);
+            return;
+        }
+
+        if (Sp1Flag.IsActive)
+        {
+            fixed (byte* data = block)
+            {
+                AbsorbBlock(ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(state)), data, intoZeroState: true);
+            }
+
             return;
         }
 

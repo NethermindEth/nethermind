@@ -212,12 +212,22 @@ public class HistoryBackedPersistenceReaderTests
             "a scope that reads no storage must not build the per-account clears memos");
     }
 
+    /// <remarks>
+    /// Takes the minimum over several calls: one call can also pay one-off runtime costs
+    /// (lazy thread-local or static initialization) that do not belong to the code under test.
+    /// </remarks>
     private static long MeasureAllocatedBytes(Action action)
     {
         action();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        action();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        long min = long.MaxValue;
+        for (int i = 0; i < 5; i++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            action();
+            min = Math.Min(min, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return min;
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
@@ -292,8 +302,11 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         UInt256 value = default;
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
-        Assert.That(found, Is.True);
-        Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
+        }
     }
 
     [Test]
