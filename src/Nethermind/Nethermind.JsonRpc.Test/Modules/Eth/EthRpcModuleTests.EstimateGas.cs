@@ -441,7 +441,9 @@ public partial class EthRpcModuleTests
         request.MaxPriorityFeePerGas = 1_000_000;
         request.MaxFeePerBlobGas = 100;
         request.BlobVersionedHashes = [Bytes.FromHexString("0x0100000000000000000000000000000000000000000000000000000000000000")];
-        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"0xf00000"},"{{{request.Frames![1].Target}}}":{"code":"0x612ee05b600190038060035700"}}""")!;
+        const string loopOf312kGas = "0x612ee05b600190038060035700";
+        const string balanceCoveringOnlyTheCallBudget = "0xf00000";
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.From}}}":{"balance":"{{{balanceCoveringOnlyTheCallBudget}}}"},"{{{request.Frames![1].Target}}}":{"code":"{{{loopOf312kGas}}}"}}""")!;
         object blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x0","blobBaseFee":"0x1"}""")!;
 
         string response = await ctx.Test.TestEthRpc(method, request, "latest", overrides, blockOverride);
