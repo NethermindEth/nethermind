@@ -17,7 +17,8 @@ namespace Nethermind.JsonRpc.TraceStore.Ots;
 
 /// <summary>Serves the account-history OTS subset without requiring historical state.</summary>
 /// <remarks>
-/// Searches scan stored traces one block at a time and can time out. Missing history never
+/// Searches scan stored traces one block at a time outside certified address-index coverage.
+/// Sparse searches outside coverage can time out. Missing history never
 /// becomes an empty page or a claim that the end of an address's history has been reached.
 /// </remarks>
 public sealed class OtsRpcModule(
@@ -27,7 +28,8 @@ public sealed class OtsRpcModule(
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     ITraceStoreConfig traceStoreConfig,
-    IJsonRpcConfig rpcConfig) : IOtsRpcModule
+    IJsonRpcConfig rpcConfig,
+    TraceAddressIndex? addressIndex = null) : IOtsRpcModule
 {
     private const int MaxPageSize = 25;
     private const string ChainChanged = "Canonical chain changed during OTS search; retry the request.";
@@ -61,27 +63,67 @@ public sealed class OtsRpcModule(
         Block? previous = null;
         Block? highestScanned = null;
 
+        // Each certified candidate has a match, so pageSize + 1 blocks suffice including lookahead.
+        TraceAddressIndex.Candidates? candidates = number == 0 ? null : addressIndex?.FindCandidates(address,
+            backwards ? 1 : number, backwards ? number : head.Number, backwards, pageSize + 1, ct);
+        int nextCandidate = 0;
+        bool crossedCoverage = false;
         while (number > 0 && number <= head.Number)
         {
             ct.ThrowIfCancellationRequested();
+            Hash256? indexedHash = null;
+            if (candidates is not null && number >= (ulong)candidates.Coverage.From && number <= (ulong)candidates.Coverage.To)
+            {
+                if (!crossedCoverage && previous is not null && (backwards
+                    ? previous.ParentHash != candidates.Coverage.Hash
+                    : previous.Hash != candidates.FirstParent))
+                    return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+                crossedCoverage = true;
+                if (nextCandidate == candidates.Blocks.Length)
+                {
+                    number = backwards ? (ulong)candidates.Coverage.From - 1 : (ulong)candidates.Coverage.To + 1;
+                    continue;
+                }
+                number = (ulong)candidates.Blocks[nextCandidate];
+                indexedHash = candidates.Hashes[nextCandidate++];
+            }
             Block? block = blockFinder.FindBlock(number);
             if (block is null)
                 return ResultWrapper<OtsSearchResult>.Fail($"Block {number} is unavailable.", ErrorCodes.ResourceUnavailable);
+            if (indexedHash is not null && block.Hash != indexedHash)
+                return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            if (crossedCoverage && candidates is not null && (backwards
+                ? number == (ulong)candidates.Coverage.From - 1 && block.Hash != candidates.FirstParent
+                : number == (ulong)candidates.Coverage.To + 1 && block.ParentHash != candidates.Coverage.Hash))
+                return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
 
-            if (!blockFinder.IsMainChain(block.Header) || (previous is not null && (backwards
-                ? previous.ParentHash != block.Hash : block.ParentHash != previous.Hash)))
+            bool adjacent = previous is not null && (backwards ? previous.Number == block.Number + 1 : block.Number == previous.Number + 1);
+            if (!blockFinder.IsMainChain(block.Header) || (previous is not null && (adjacent
+                ? backwards ? previous.ParentHash != block.Hash : block.ParentHash != previous.Hash
+                : !blockFinder.IsMainChain(previous.Header))))
                 return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
             previous = block;
             if (highestScanned is null || block.Number > highestScanned.Number) highestScanned = block;
 
+            bool indexed = indexedHash is not null;
+            if (indexed && block.Transactions.Length == 0)
+                return ResultWrapper<OtsSearchResult>.Fail("Trace address index references an empty block; reset the index.", ErrorCodes.ResourceUnavailable);
             if (block.Transactions.Length != 0)
             {
-                SearchResult<List<ParityLikeTxTrace>> stored = ReadTraces(block.Header);
-                if (stored.IsError) return ResultWrapper<OtsSearchResult>.Fail(stored);
-                SearchResult<bool[]> matches = MatchTransactions(block, stored.Object!, address, ct);
+                SearchResult<bool[]> matches;
+                if (indexed && addressIndex!.TryMatchPositions(block, address, ct) is { } positions)
+                    matches = positions;
+                else
+                {
+                    SearchResult<List<ParityLikeTxTrace>> stored = ReadTraces(block.Header);
+                    if (stored.IsError) return ResultWrapper<OtsSearchResult>.Fail(stored);
+                    matches = MatchTransactions(block, stored.Object!, address, ct);
+                }
                 if (matches.IsError) return ResultWrapper<OtsSearchResult>.Fail(matches);
 
                 bool found = Array.IndexOf(matches.Object!, true) >= 0;
+                if (!found && indexed)
+                    return ResultWrapper<OtsSearchResult>.Fail("Trace address index candidate does not match stored traces; reset the index.", ErrorCodes.ResourceUnavailable);
                 if (found)
                 {
                     // OTS needs one further matching block to distinguish a full terminal page from a middle page.
@@ -102,7 +144,8 @@ public sealed class OtsRpcModule(
         }
 
         ct.ThrowIfCancellationRequested();
-        if (!blockFinder.IsMainChain(head.Header) || (highestScanned is not null && !blockFinder.IsMainChain(highestScanned.Header)))
+        if (!blockFinder.IsMainChain(head.Header) || (highestScanned is not null && !blockFinder.IsMainChain(highestScanned.Header))
+            || (candidates is not null && !addressIndex!.IsCanonical(candidates.Coverage)))
             return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
 
         foreach (TransactionForRpc transaction in result.Txs)
@@ -254,4 +297,5 @@ public sealed class OtsRpcModule(
 
     private SearchResult<List<ParityLikeTxTrace>> ReadTraces(BlockHeader header) =>
         OtsTraceReader.Read(traceStore, serializer, traceStoreConfig, header);
+
 }

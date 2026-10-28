@@ -21,6 +21,22 @@ A further matching block is read to determine whether another page exists. `firs
 
 Transaction traces are depth-first call-tree entries, including creations and selfdestructs but excluding precompile entries. Reverted calls are included. `STATICCALL` and `DELEGATECALL` have a null value; creation output contains deployed code.
 
-Searches scan blocks and deserialize stored traces without an address index. Sparse or long-range searches can exceed `JsonRpc.Timeout`; there is no guarantee that an arbitrary historical search completes within that timeout.
+By default, searches scan blocks and deserialize stored traces without an address index. Sparse or long-range searches can exceed `JsonRpc.Timeout`; there is no guarantee that an arbitrary historical search completes within that timeout.
 
 Missing or inconsistent traces, blocks or required receipts produce errors rather than incomplete pages or a false end-of-history indication. Empty blocks do not require stored transaction traces. Canonical-chain changes detected during a request also produce an error; retry the request. An unknown transaction produces a not-found error.
+
+## Optional address index
+
+`TraceStore.AddressIndexEnabled` defaults to `false`. Enabling it requires `TraceStore.BlocksToKeep = 0` and `TraceStore.TraceTypes` including `Trace`. A background builder reads existing stored traces into a separate `traceAddressIndex` database; it does not backfill missing traces or change the trace store or event-log index.
+
+`TraceStore.AddressIndexFromBlock` is inclusive and defaults to `1`; it must be positive. `TraceStore.AddressIndexLag` is measured in blocks behind the head, defaults to `64`, and must be nonnegative. This lag is not a finality guarantee. Missing or inconsistent source history pauses construction without certifying that block. Earlier history, the recent tail and other history outside certified coverage use the stored-trace scan. Covered candidate blocks still require their canonical bodies, authoritative traces and receipts. Covered negative routing trusts the certified postings; it does not reread unselected trace blobs to detect later mutations.
+
+A changed canonical checkpoint, repaired database, or missing or inconsistent checkpoint disables indexing and falls back to scanning. A chain change detected during a request returns an error rather than a mixed page. To rebuild an invalid index, restart once with `TraceStore.AddressIndexReset = true`, then set it back to `false`. Reset clears only the separate address-index database, not stored traces. Changing the configured start also requires rebuilding the index.
+
+## Experimental position sidecar
+
+The AppContext switch `Nethermind.Experimental.OtsPositionSidecarP1` defaults to off. It enables bounded transaction-position proofs in the address-index metadata namespace; it is experimental, not a stable TraceStore configuration option. It requires the address index and the built-in `ParityLikeTraceSerializer`. It cannot be enabled together with `TraceStore.AddressIndexReset = true`; disable the switch when resetting the address index, then clear the reset flag before enabling it again.
+
+The namespace fingerprint includes record versions, genesis, the configured start and maximum trace depth, assembly module identities and the runtime version. An incompatible fingerprint or orphan namespace disables sidecar use rather than overwriting it. A runtime JSON-options identity change also disables proof use. Missing or unsupported proofs fall back to authoritative stored-trace matching. Blocks exceeding the sidecar's construction limits receive no proof and use the same fallback. Selected malformed proofs or mismatched trace blobs and transaction identities return errors rather than silently omitting matches. The sidecar does not change negative address-index routing or the existing requirements for receipts and canonical bodies.
+
+The additional AppContext switch `Nethermind.Experimental.OtsPositionSidecarBulkBuild` also defaults to off and is experimental. With the sidecar enabled, it lets the builder yield between bounded work groups instead of waiting one second after each productive group; idle or paused construction still waits. Neither switch is a stable public configuration knob.
