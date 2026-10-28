@@ -528,6 +528,48 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(expected.Hash));
     }
 
+    /// <summary>
+    /// The parent's prefetch publishing after the child's prefetch cleared the array leaves the parent's ancestors in
+    /// place; the child must not read them.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Ignores_ancestors_prefetched_for_previous_block([Values(2ul, 3ul, 256ul)] ulong depth)
+    {
+        const int chainLength = 300;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
+        BlockTree tree = blockTreeBuilder.TestObject;
+        BlockHeader parent = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
+        BlockHeader current = Build.A.Block.WithParent(parent).TestObject.Header;
+        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
+
+        await provider.Prefetch(parent, CancellationToken.None);
+
+        ulong number = current.Number - depth;
+        Hash256? result = provider.GetBlockhash(current, number, Frontier.Instance);
+        Assert.That(result, Is.EqualTo(tree.FindHeader(number, BlockTreeLookupOptions.None)!.Hash));
+    }
+
+    /// <summary>
+    /// Ancestors prefetched for a sibling start at the same parent, so they still answer where the cache cannot.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Serves_ancestors_prefetched_for_sibling()
+    {
+        IBlockhashCache blockhashCache = Substitute.For<IBlockhashCache>();
+        blockhashCache.Prefetch(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<Hash256[]?>([TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC]));
+        blockhashCache.GetHash(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns((Hash256?)null);
+        BlockhashProvider provider = new(blockhashCache, LimboLogs.Instance);
+        BlockHeader sibling = Build.A.BlockHeader.WithNumber(3).WithParentHash(TestItem.KeccakA).WithHash(TestItem.KeccakD).TestObject;
+        BlockHeader current = Build.A.BlockHeader.WithNumber(3).WithParentHash(TestItem.KeccakA).WithHash(TestItem.KeccakE).TestObject;
+
+        await provider.Prefetch(sibling, CancellationToken.None);
+
+        Assert.That(provider.GetBlockhash(current, 1, Frontier.Instance), Is.EqualTo(TestItem.KeccakB));
+    }
+
     /// <summary>Reads a hash straight out of the EIP-2935 ring buffer.</summary>
     private static Hash256? ReadRingBuffer(IWorldState worldState, ulong blockNumber, IReleaseSpec spec)
     {

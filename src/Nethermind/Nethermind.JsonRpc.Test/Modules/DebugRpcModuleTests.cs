@@ -973,9 +973,9 @@ public partial class DebugRpcModuleTests
     {
         (string Json, string? Error, int? Code)[] cases =
         [
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
-            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidInput),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.BeaconRootNotSupported, ErrorCodes.InvalidInput),
             ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
         foreach ((string json, string? error, int? code) in cases)
@@ -1625,18 +1625,21 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming, [Values] bool movePrecompile)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals", "pending-with-withdrawals", "missing-with-withdrawals", "unavailable-parent-with-withdrawals")] string selection,
+        [Values] bool streaming, [Values] bool movePrecompile)
     {
+        bool withWithdrawals = selection.EndsWith("-with-withdrawals", StringComparison.Ordinal);
+        string blockSelection = withWithdrawals ? selection[..^"-with-withdrawals".Length] : selection;
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
-        if (selection == "unavailable-parent")
+        if (blockSelection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (blockSelection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
             await chain.AddBlock();
             parent.Header.StateRoot = TestItem.KeccakA;
         }
-        string selector = selection switch
+        string selector = blockSelection switch
         {
             "pending" => "pending",
             "missing" => TestItem.KeccakA.ToString(),
@@ -1646,8 +1649,8 @@ public partial class DebugRpcModuleTests
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, selector,
             new
             {
-                txIndex = selection == "unavailable-parent" ? "0x0" : null,
-                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
+                txIndex = blockSelection == "unavailable-parent" ? "0x0" : null,
+                blockOverrides = withWithdrawals ? new { withdrawals = Array.Empty<object>() } : null,
                 stateOverrides = new Dictionary<string, object>
                 {
                     [TestItem.AddressC.ToString()] = new
@@ -1658,9 +1661,8 @@ public partial class DebugRpcModuleTests
                     }
                 }
             });
-        (int code, string message) = selection switch
+        (int code, string message) = blockSelection switch
         {
-            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")

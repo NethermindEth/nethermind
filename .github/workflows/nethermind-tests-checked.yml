@@ -97,6 +97,7 @@ jobs:
             list: >-
               Ethereum.Difficulty.Test
               Nethermind.Db.Test
+              Nethermind.State.Flat.Test
               Nethermind.State.Test
               Nethermind.State.Test.Runner.Test
               Nethermind.Wallet.Test

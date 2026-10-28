@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 
@@ -59,6 +60,8 @@ public partial class EthRpcModule
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(blockOverride) is { } overrideError)
+            return Result<FrameForRpc[]>.Fail(overrideError);
         IReleaseSpec spec = _specProvider.GetSpec(blockOverride?.ApplyTo(header) ?? header);
         Result<Transaction> converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
