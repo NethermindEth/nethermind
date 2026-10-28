@@ -75,7 +75,6 @@ jobs:
               Nethermind.Abi.Test
               Nethermind.AuRa.Test
               Nethermind.Ethash.Test
-              Nethermind.Experimental.Abi.Test
               Nethermind.SendPolicy.Plugin.Test
               Nethermind.Specs.Test
               Nethermind.State.Test

@@ -31,7 +31,6 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
@@ -125,17 +124,14 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("*")]
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
-    [TestCase("mainnet archive", 4096000000UL)]
-    [TestCase("mainnet ^archive", 1024000000UL)]
-    [TestCase("volta archive", 768000000UL)]
-    [TestCase("volta ^archive", 768000000UL)]
-    [TestCase("gnosis archive", 1024000000UL)]
-    [TestCase("gnosis ^archive", 768000000UL)]
-    [TestCase("poacore archive", 1024000000UL)]
-    [TestCase("poacore ^archive", 768000000UL)]
-    [TestCase("spaceneth.json", 64000000UL)]
-    [TestCase("spaceneth_persistent.json", 128000000UL)]
-    public void Memory_hint_values_are_correct(string configWildcard, ulong expectedValue) => Test<IInitConfig, ulong?>(configWildcard, static c => c.MemoryHint, expectedValue);
+    [TestCase("mainnet archive", 2147483648UL, 536870912UL)]
+    [TestCase("op-mainnet_archive.json", 1073741824UL, 268435456UL)]
+    [TestCase("^archive", 536870912UL, 134217728UL)]
+    public void Db_cache_values_are_correct(string configWildcard, ulong sharedBlockCacheSize, ulong stateDbRowCacheSize)
+    {
+        Test<IDbConfig, ulong>(configWildcard, static c => c.SharedBlockCacheSize, sharedBlockCacheSize);
+        Test<IDbConfig, ulong?>(configWildcard, static c => c.StateDbRowCacheSize, stateDbRowCacheSize);
+    }
 
     [TestCase("*")]
     public void Metrics_disabled_by_default(string configWildcard)
@@ -211,7 +207,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         foreach (NetworkNode bootnode in chainSpec.Bootnodes)
         {
+#pragma warning disable NUnit2045 // The bootnode must be an ENR before decoding its ENR payload.
             Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
+#pragma warning restore NUnit2045
             Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
         }
     }
@@ -231,8 +229,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .Build();
 
-        Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
-        Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<INetworkConfig>().Bootnodes.Select(static node => node.ToString()), Does.Contain(bootnode));
+            Assert.That(logger.LogList, Has.Some.Contains("Discovery.Bootnodes is deprecated"));
+        }
     }
 
     [TestCase("sepolia.json", 5)]
@@ -425,6 +426,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    [TestCase("chiado_archive.json")]
+    public void Config_file_contains_only_known_settings(string configFile)
+    {
+        (string errorMsg, IList<(IConfigSource Source, string Category, string Name)> errors) = GetConfigProvider(configFile).FindIncorrectSettings();
+        Assert.That(errors, Is.Empty, errorMsg);
+    }
+
     [Test]
     public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
     {
@@ -480,11 +488,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         ISyncConfig syncConfig = GetConfigFromFile<ISyncConfig>("xdc_archive.json");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(syncConfig.FastSync, Is.True);
             Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
-        });
+        }
     }
 
     // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
@@ -527,18 +535,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         AcceptTxResult result = new MinGasPriceTxFilter(GetConfigFromFile<IBlocksConfig>(configFile))
             .IsAllowed(tx, parent, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "EIP-1559 must be active for this to be meaningful");
             Assert.That((bool)result, Is.True, result.ToString());
-        });
+        }
     }
 
     [TestCase("*")]
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
 
     [TestCase("*")]
-    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, -1);
+    public void Arena_order_is_default(string configWildcard) => Test<INetworkConfig, int>(configWildcard, static c => c.NettyArenaOrder, INetworkConfig.DefaultNettyArenaOrder);
 
     [TestCase("chiado", 17_000_000UL, 5UL, 3000)]
     [TestCase("gnosis", 17_000_000UL, 5UL, 3000)]
@@ -580,22 +588,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
                 char nextChar = content.ElementAt(commaIndex + 1);
                 Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {name}");
             }
-        }
-    }
-
-    [TestCase("*")]
-    public void Memory_hint_is_enough(string configWildcard)
-    {
-        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
-        {
-            MemoryHintMan memoryHintMan = new(LimboLogs.Instance);
-            memoryHintMan.SetMemoryAllowances(
-                configProvider.GetConfig<IDbConfig>(),
-                configProvider.GetConfig<IInitConfig>(),
-                configProvider.GetConfig<INetworkConfig>(),
-                configProvider.GetConfig<ISyncConfig>(),
-                configProvider.GetConfig<ITxPoolConfig>(),
-                (uint)Environment.ProcessorCount);
         }
     }
 

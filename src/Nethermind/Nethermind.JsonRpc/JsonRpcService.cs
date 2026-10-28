@@ -18,7 +18,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -365,11 +364,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
             // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
             if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string? reason = GetSafePublicMessage(e);
+            string? reason = GetSafePublicMessage(e, out bool omitArgumentPosition);
             string message = e switch
             {
-                // Geth compares data with input inside the call rather than while decoding, so its text has no argument prefix.
-                InvalidArgumentException { InnerException: DataAndInputDifferException conflict } => conflict.Message,
+                InvalidArgumentException when omitArgumentPosition => reason!,
                 InvalidArgumentException { Index: int index } when reason is not null => $"invalid argument {index}: {reason}",
                 InvalidArgumentException { Index: int index } => $"invalid argument {index}",
                 _ => reason ?? "Invalid params"
@@ -1097,13 +1095,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         public int Index { get; } = index;
     }
 
-    private static string? GetSafePublicMessage(Exception e)
+    private static string? GetSafePublicMessage(Exception e, out bool omitArgumentPosition)
     {
         for (Exception? ex = e; ex is not null; ex = ex.InnerException)
         {
-            if (ex is IExceptionWithSafePublicMessage)
+            if (ex is IExceptionWithSafePublicMessage safe)
+            {
+                omitArgumentPosition = safe.OmitArgumentPosition;
                 return ex.Message;
+            }
         }
+
+        omitArgumentPosition = false;
         return null;
     }
 
@@ -1212,10 +1215,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         /// <summary>The outcome of the error that replaced a failed deferred result, if any.</summary>
         internal JsonRpcResponseWriteOutcome? Replacement { get; set; }
 
-        /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
+        /// <summary>Maps a deferred error to its JSON-RPC response.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
-        internal JsonRpcErrorResponse MapException(Exception exception) =>
-            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+        internal JsonRpcErrorResponse MapException(Exception exception)
+        {
+            if (methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction)
+                && exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException)
+                return service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null);
+
+            return service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+        }
 
         /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
         /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>

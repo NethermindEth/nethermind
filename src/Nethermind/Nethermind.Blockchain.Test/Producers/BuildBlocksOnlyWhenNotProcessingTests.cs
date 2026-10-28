@@ -23,8 +23,11 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         Context context = new();
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block block = (await context.MainBlockProductionTrigger.BuildBlock())!;
-        Assert.That(block, Is.EqualTo(context.DefaultBlock));
-        Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+            Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -38,8 +41,11 @@ public class BuildBlocksOnlyWhenNotProcessingTests
 
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block? block = await buildTask;
-        Assert.That(block, Is.EqualTo(context.DefaultBlock));
-        Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block, Is.EqualTo(context.DefaultBlock));
+            Assert.That(context.TriggeredCount, Is.EqualTo(1));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

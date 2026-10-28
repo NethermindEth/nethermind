@@ -135,11 +135,15 @@ public class GuestJumpDestinationTests
         byte stackMemory = 0;
         EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
         enabled.UseCallDestinations();
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
         Assert.That(enabled.IsJumpDestination(dataJumpDest), Is.False, "PUSH data");
+#pragma warning restore NUnit2045
         Assert.That(enabled.AnalyzeJumpDestination(dataJumpDest, ref code[0]), Is.False, "PUSH data, jump handler");
 
         EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
         Assert.That(disabled.IsKnownJumpDestination(2), Is.False, "the misses left the plain bitmap unanalyzed");
+#pragma warning restore NUnit2045
         Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
     }
 
@@ -251,7 +255,9 @@ public class GuestJumpDestinationTests
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, code, codeInfo);
 
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
         Assert.That(stack.IsKnownJumpDestination(3), Is.False, "not scanned yet");
+#pragma warning restore NUnit2045
         Assert.That(stack.IsJumpDestination(3), Is.True);
 
         using (Assert.EnterMultipleScope())
@@ -319,7 +325,9 @@ public class GuestJumpDestinationTests
         {
             bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
             bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i, ref code[0]);
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
             Assert.That(jumpHandler, Is.EqualTo(isJumpDestination), $"jump handler {i}");
+#pragma warning restore NUnit2045
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {i}");
             Assert.That(codeInfo.AnalyzeJump(i, bitmap, code), Is.EqualTo(isJumpDestination), $"analyze {i}");
         }
@@ -341,7 +349,9 @@ public class GuestJumpDestinationTests
         foreach (int i in order)
         {
             bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
+#pragma warning disable NUnit2045 // Each query observes or advances the scan state used by the next query.
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {orderName} {i}");
+#pragma warning restore NUnit2045
             Assert.That(incremental.AnalyzeJump(i, incrementalBitmap, code), Is.EqualTo(isJumpDestination), $"{orderName} {i}");
         }
     }
