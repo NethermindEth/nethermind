@@ -374,6 +374,25 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Each destination has the bits of a JUMPDEST below 2^32 and a set bit above, which a 32-bit guest must not drop.
+    /// </remarks>
+    [TestCase("640100000007565B00", TestName = "JUMP")]
+    [TestCase("6001640100000009575B00", TestName = "JUMPI")]
+    [TestCase("64010000000A600090565B00", TestName = "SWAP1 JUMP")]
+    [TestCase("64010000000A600050565B00", TestName = "POP JUMP")]
+    public void Jumps_to_a_destination_above_32_bits_fault_in_every_table(string hex)
+    {
+        CodeInfo codeInfo = new(Convert.FromHexString(hex));
+        Outcome traced = Run(100_000, [], 0, codeInfo, Table.Traced, ReleaseSpec);
+        Outcome untraced = Run(100_000, [], 0, codeInfo, Table.Untraced, ReleaseSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced.Exception, Is.EqualTo(EvmExceptionType.InvalidJumpDestination));
+            Assert.That(Matches(untraced, traced), Is.True, $"untraced {untraced}\n traced   {traced}");
+        }
+    }
+
+    /// <remarks>
     /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
     /// stored to memory, and the gas each program leaves tells a charge that differs.
     /// </remarks>

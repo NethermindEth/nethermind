@@ -226,6 +226,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return (word | Unsafe.Add(ref word, 1) | Unsafe.Add(ref word, 2) | Unsafe.Add(ref word, 3)) == 0;
         }
 
+        /// <summary>Whether the word at <paramref name="word"/>, in limb layout, fits a native word, so <c>(nuint)word</c> is all of it.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool FitsNativeWord(ref ulong word)
+        {
+            ulong above = Unsafe.Add(ref word, 1) | Unsafe.Add(ref word, 2) | Unsafe.Add(ref word, 3);
+            if (IntPtr.Size == sizeof(uint)) above |= word >> 32;
+            return above == 0;
+        }
+
         /// <summary>The slot at <paramref name="index"/>, counted up from <paramref name="bottom"/>, for callers that have bounded the index.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref AlignedSlot(ref bottom), index * EvmStack.WordSize);
@@ -2561,7 +2570,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 nuint target = (nuint)destination;
-                if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
+                if (FitsNativeWord(ref destination) &&
                     target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
@@ -2620,7 +2629,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 nuint target = (nuint)destination;
                 if (gas >= jumpIAndJumpDestGas &&
-                    (Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
+                    FitsNativeWord(ref destination) &&
                     target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))

@@ -500,7 +500,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The second word becomes the top for the JUMP either way.
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
                 nuint target = (nuint)destination;
-                if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
+                if (FitsNativeWord(ref destination) &&
                     target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
