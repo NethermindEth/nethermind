@@ -41,7 +41,7 @@ void Contains(string value, params string[] fragments) { foreach (var fragment i
 }
 tests.Case("campaign checkpoint selection outputs reach the driver", () =>
 {
-    var (code, values, log) = Resolve(("DISPATCH_PAYLOAD_SET", "fusaka"), ("DISPATCH_STATE_LAYOUT", "flat"));
+    var (code, values, log) = Resolve(("DISPATCH_STATE_LAYOUT", "flat"));
     Require(code == 0 && values["state_layout"] == "flat", log);
     var step = text.Split("      - name: Run sequential EXPB campaign\n", StringSplitOptions.None)[1];
     var settings = step[..step.IndexOf("        run: |\n", StringComparison.Ordinal)];
