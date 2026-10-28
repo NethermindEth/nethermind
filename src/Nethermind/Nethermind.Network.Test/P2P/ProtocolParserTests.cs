@@ -24,8 +24,11 @@ public class ProtocolParserTests
         byte[] protocolBytes = Encoding.UTF8.GetBytes(input);
         bool result = ProtocolParser.TryGetProtocolCode(protocolBytes, out string? protocol);
 
-        Assert.That(result, Is.True);
-        Assert.That(protocol, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(protocol, Is.EqualTo(expected));
+        }
     }
 
     [TestCase("", Description = "Empty")]
@@ -44,8 +47,11 @@ public class ProtocolParserTests
         byte[] protocolBytes = Encoding.UTF8.GetBytes(input);
         bool result = ProtocolParser.TryGetProtocolCode(protocolBytes, out string? protocol);
 
-        Assert.That(result, Is.False);
-        Assert.That(protocol, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(protocol, Is.Null);
+        }
     }
 
     [Test]
@@ -54,8 +60,11 @@ public class ProtocolParserTests
         ReadOnlySpan<byte> emptySpan = ReadOnlySpan<byte>.Empty;
         bool result = ProtocolParser.TryGetProtocolCode(emptySpan, out string? protocol);
 
-        Assert.That(result, Is.False);
-        Assert.That(protocol, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(protocol, Is.Null);
+        }
     }
 
     [TestCase("eth", Protocol.Eth)]
@@ -66,8 +75,11 @@ public class ProtocolParserTests
         ReadOnlySpan<byte> protocolSpan = Encoding.UTF8.GetBytes(input);
         bool result = ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocol);
 
-        Assert.That(result, Is.True);
-        Assert.That(protocol, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(protocol, Is.EqualTo(expected));
+        }
     }
 
     [TestCase("eth", 0x687465u)]

@@ -275,7 +275,9 @@ public class FrameTransactionForRpcTests
         Transaction tx = rpc.ToTransaction(spec: withSpec ? FramesSpec : null).Data!;
 
         // Priced over max_gas, which includes intrinsic gas, as the processor checks it.
+#pragma warning disable NUnit2045 // Gas calculation must succeed and its output remains in scope for subsequent checks.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, FramesSpec, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(maxGas, Is.GreaterThan(tx.GasLimit));
         UInt256 expected = (UInt256)(3 * (withSpec ? maxGas : tx.GasLimit)) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
         using (Assert.EnterMultipleScope())
@@ -502,9 +504,12 @@ public class FrameTransactionForRpcTests
             Signatures = Secp256k1Signatures(1),
         };
 
-        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
-        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
-        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+            // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+            Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
+        }
     }
 
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)

@@ -29,9 +29,12 @@ public class AuthResponseEip8MessageSerializerTests
         byte[] data = _serializer.Serialize(before);
         AckEip8Message after = _serializer.Deserialize(data);
 
-        Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
-        Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
-        Assert.That(after.Version, Is.EqualTo(0x04));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.EphemeralPublicKey, Is.EqualTo(before.EphemeralPublicKey));
+            Assert.That(Bytes.AreEqual(before.Nonce, after.Nonce), Is.True);
+            Assert.That(after.Version, Is.EqualTo(0x04));
+        }
     }
 
     [Test]

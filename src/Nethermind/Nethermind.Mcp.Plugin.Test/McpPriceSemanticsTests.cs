@@ -61,8 +61,11 @@ public class McpPriceSemanticsTests
 
         Assert.That(found, Is.EqualTo(valid));
         if (!valid) return;
-        Assert.That(quote!.AgeSeconds, Is.EqualTo(Math.Max(0, age)));
-        Assert.That(quote.Stale, Is.EqualTo(stale));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(quote!.AgeSeconds, Is.EqualTo(Math.Max(0, age)));
+            Assert.That(quote.Stale, Is.EqualTo(stale));
+        }
     }
 
     [TestCase("3700000000000000", "0.0037")]
@@ -105,8 +108,11 @@ public class McpPriceSemanticsTests
             "explain_transaction" => result.GetProperty("fees"),
             _ => result.GetProperty("movements")[0]
         };
-        Assert.That(price.TryGetProperty("pricedVia", out JsonElement via) ? via.GetString() : null, Is.EqualTo("ETH/USD"));
-        Assert.That(price.GetProperty("priceUpdatedAt").GetUInt64(), Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(price.TryGetProperty("pricedVia", out JsonElement via) ? via.GetString() : null, Is.EqualTo("ETH/USD"));
+            Assert.That(price.GetProperty("priceUpdatedAt").GetUInt64(), Is.GreaterThan(0));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, tool, call);
     }
 
@@ -133,8 +139,11 @@ public class McpPriceSemanticsTests
             [("owner", TestItem.AddressB.ToString()), ("tokens", Array.Empty<string>()), ("block", "0"), ("includeUsd", true)]);
 
         JsonElement native = McpAssert.Success(call).GetProperty("native");
-        Assert.That(native.TryGetProperty("valueUsd", out _), Is.True, "the quote was fresh at genesis, even though it is stale now");
-        Assert.That(native.GetProperty("priceUpdatedAt").GetUInt64(), Is.EqualTo(node.Chain.BlockTree.Genesis!.Timestamp - 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(native.TryGetProperty("valueUsd", out _), Is.True, "the quote was fresh at genesis, even though it is stale now");
+            Assert.That(native.GetProperty("priceUpdatedAt").GetUInt64(), Is.EqualTo(node.Chain.BlockTree.Genesis!.Timestamp - 10));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "token_balances", call);
     }
 
@@ -153,8 +162,11 @@ public class McpPriceSemanticsTests
 
         JsonElement result = McpAssert.Success(call);
         JsonElement value = result.GetProperty(tool == "token_balances" ? "tokens" : "movements")[0];
-        Assert.That(value.TryGetProperty("valueUsd", out _), Is.False);
-        Assert.That(result.TryGetProperty("usdNotes", out JsonElement notes) ? notes.ToString() : "", Does.Contain("decimals"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value.TryGetProperty("valueUsd", out _), Is.False);
+            Assert.That(result.TryGetProperty("usdNotes", out JsonElement notes) ? notes.ToString() : "", Does.Contain("decimals"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, tool, call);
     }
 
@@ -173,8 +185,11 @@ public class McpPriceSemanticsTests
 
         foreach (JsonElement entry in new[] { McpAssert.Success(balances).GetProperty("tokens")[0], McpAssert.Success(activity).GetProperty("movements")[0] })
         {
-            Assert.That(entry.GetProperty("symbol").GetString(), Is.EqualTo("USDC"));
-            Assert.That(entry.TryGetProperty("valueUsd", out _), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.GetProperty("symbol").GetString(), Is.EqualTo("USDC"));
+                Assert.That(entry.TryGetProperty("valueUsd", out _), Is.False);
+            }
         }
         McpAssert.Error(price, McpAssert.Unavailable);
         await McpToolCalls.AssertConformsToOutputSchema(client, "token_balances", balances);
@@ -209,7 +224,9 @@ public class McpPriceSemanticsTests
     {
         IEthRpcModule eth = PriceModule((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10);
         McpPriceReader reader = new(Profile(chain), LimboLogs.Instance);
+#pragma warning disable NUnit2045 // A price quote must exist before its fields are read.
         Assert.That(reader.TryRead(eth, asset, BlockParameter.Latest, null, out McpPriceQuote? quote, out _), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(quote!.PricedVia, Is.EqualTo(expected));
     }
 

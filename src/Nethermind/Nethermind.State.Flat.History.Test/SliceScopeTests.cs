@@ -86,8 +86,11 @@ public class SliceScopeTests
         availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), scopeFloor);
 
         ScopeFloor resolved = availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress));
-        Assert.That(resolved.IsGeneral, Is.False);
-        Assert.That(resolved.Floor, Is.EqualTo(scopeFloor));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved.IsGeneral, Is.False);
+            Assert.That(resolved.Floor, Is.EqualTo(scopeFloor));
+        }
     }
 
     [Test]
@@ -98,8 +101,11 @@ public class SliceScopeTests
         availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), floor: 0);
 
         ScopeFloor resolved = availability.ResolveScope(HistoryColumnsWriter.ScopeKeyOf(NonSlicedAddress));
-        Assert.That(resolved.IsGeneral, Is.True);
-        Assert.That(resolved.Floor, Is.EqualTo(100UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved.IsGeneral, Is.True);
+            Assert.That(resolved.Floor, Is.EqualTo(100UL));
+        }
     }
 
     [Test]
@@ -246,9 +252,12 @@ public class SliceScopeTests
 
         pruner.ReconcileSliceScopes();
 
-        Assert.That(availability.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
-        Assert.That(sliceFloor, Is.EqualTo(12UL),
-            "nothing was captured below the since-block floor, so a restricted read below it must fail closed on the scope floor too");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), out ulong sliceFloor), Is.True);
+            Assert.That(sliceFloor, Is.EqualTo(12UL),
+                "nothing was captured below the since-block floor, so a restricted read below it must fail closed on the scope floor too");
+        }
     }
 
     [Test]
