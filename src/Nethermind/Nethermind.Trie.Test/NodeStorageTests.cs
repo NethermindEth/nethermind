@@ -23,8 +23,11 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
 
         Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.False);
         nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
-        Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
-        Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA), Is.True);
+        }
 
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
@@ -44,8 +47,11 @@ public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
 
         Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.False);
         nodeStorage.Set(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
-        Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
-        Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA), Is.True);
+        }
 
         if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {

@@ -37,8 +37,11 @@ public class WarmUpPathForDeleteTests
         tree.Set(KeyA, []);
         tree.UpdateRootHash();
 
-        Assert.That(db.Reads - readsBeforeDelete, Is.Zero, "the delete read a node the warm-up should have loaded");
-        Assert.That(tree.RootHash, Is.EqualTo(Commit(KeyB, KeyC).Root));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Reads - readsBeforeDelete, Is.Zero, "the delete read a node the warm-up should have loaded");
+            Assert.That(tree.RootHash, Is.EqualTo(Commit(KeyB, KeyC).Root));
+        }
     }
 
     [Test]
@@ -53,8 +56,11 @@ public class WarmUpPathForDeleteTests
         tree.UpdateRootHash();
 
         // The branch collapses into B's leaf, which is off A's path.
-        Assert.That(db.Reads - readsBeforeDelete, Is.EqualTo(1));
-        Assert.That(tree.RootHash, Is.EqualTo(Commit(KeyB, KeyC).Root));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Reads - readsBeforeDelete, Is.EqualTo(1));
+            Assert.That(tree.RootHash, Is.EqualTo(Commit(KeyB, KeyC).Root));
+        }
     }
 
     [Test]
@@ -75,8 +81,11 @@ public class WarmUpPathForDeleteTests
         before = db.Reads;
         forDelete.Set(KeyA, []);
         forDelete.UpdateRootHash();
-        Assert.That(db.Reads - before, Is.Zero);
-        Assert.That(forDelete.RootHash, Is.EqualTo(Commit(KeyB, KeyC, KeyD).Root));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.Reads - before, Is.Zero);
+            Assert.That(forDelete.RootHash, Is.EqualTo(Commit(KeyB, KeyC, KeyD).Root));
+        }
     }
 
     [Test]

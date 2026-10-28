@@ -97,8 +97,11 @@ internal class PenaltyTests
         XdcBlockHeader headerBeforeThirdEpochSwitch = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch * 3 - 1UL)!;
         XdcBlockHeader headerAfterSecondEpochSwitch = (XdcBlockHeader)chain.BlockTree.FindHeader(spec.SwitchBlock + epoch * 2 + 1UL)!;
 
-        Assert.That(penaltyHandler.GetPenalties(headerBeforeThirdEpochSwitch), Has.Length.EqualTo(1));
-        Assert.That(penaltyHandler.GetPenalties(headerAfterSecondEpochSwitch), Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(penaltyHandler.GetPenalties(headerBeforeThirdEpochSwitch), Has.Length.EqualTo(1));
+            Assert.That(penaltyHandler.GetPenalties(headerAfterSecondEpochSwitch), Has.Length.EqualTo(1));
+        }
     }
 
     [Test]

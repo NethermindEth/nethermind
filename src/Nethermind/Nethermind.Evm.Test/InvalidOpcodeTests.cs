@@ -187,8 +187,11 @@ namespace Nethermind.Evm.Test
                 }
                 else
                 {
-                    Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
-                    Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
+                        Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
+                    }
                 }
             }
         }

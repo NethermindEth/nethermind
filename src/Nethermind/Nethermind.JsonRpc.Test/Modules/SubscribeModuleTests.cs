@@ -410,7 +410,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
             manualResetEvent.Reset();
             blockTree.ForceMainChainForTest(new Block[] { block1B, block2B });
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(5));
             Assert.That(blockTree.Head, Is.EqualTo(block2B));
@@ -463,7 +465,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             // genesis without re-moving it, so move exactly the supplied blocks to fire all 21 events.
             blockTree.ForceMainChainForTest(blocks);
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
             Assert.That(manualResetEvent.WaitOne(AllDeliveriesTimeout), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(jsonRpcResult.Count, Is.EqualTo(21));
             Assert.That(blockTree.Head, Is.EqualTo(blocks[20]));
@@ -555,7 +559,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(22222).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(33333).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x8235\""));
         }
 
@@ -569,7 +575,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 1,
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\"").And.Contain("\"removed\":false"));
         }
 
@@ -582,7 +590,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject, removed: true),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"removed\":true"));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"removed\":false"));
         }
@@ -614,7 +624,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(sibling),
                 MatchingLogEvent(wanted));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain($"\"blockHash\":\"{wanted.Hash}\""));
         }
 
@@ -629,7 +641,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x64\""));
         }
@@ -646,7 +660,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).WithExtraData([1]).TestObject),
                 MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject));
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+#pragma warning restore NUnit2045
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x64\""));
             Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x65\""));
         }

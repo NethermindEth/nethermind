@@ -1669,10 +1669,13 @@ public partial class EthRpcModuleTests
         JObject result = (JObject)JToken.Parse(serialized)["result"]!;
 
         // Body-level fields must NOT appear in header response (Geth's RPCMarshalHeader excludes them).
-        Assert.That(result.ContainsKey("size"), Is.False);
-        Assert.That(result.ContainsKey("transactions"), Is.False);
-        Assert.That(result.ContainsKey("uncles"), Is.False);
-        Assert.That(result.ContainsKey("totalDifficulty"), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ContainsKey("size"), Is.False);
+            Assert.That(result.ContainsKey("transactions"), Is.False);
+            Assert.That(result.ContainsKey("uncles"), Is.False);
+            Assert.That(result.ContainsKey("totalDifficulty"), Is.False);
+        }
 
         // Core header fields must be present.
         foreach (string field in new[] { "number", "hash", "parentHash", "nonce", "stateRoot", "transactionsRoot", "receiptsRoot", "logsBloom" })
@@ -1713,11 +1716,14 @@ public partial class EthRpcModuleTests
         JObject result = (JObject)JToken.Parse(serialized)["result"]!;
 
         // AuRa-specific fields must be present (proves the AuRa branch fired).
-        Assert.That(result.ContainsKey("signature"), Is.True);
-        Assert.That(result.ContainsKey("step"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ContainsKey("signature"), Is.True);
+            Assert.That(result.ContainsKey("step"), Is.True);
 
-        // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
-        Assert.That(result["nonce"]!.Type, Is.EqualTo(JTokenType.Null));
+            // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
+            Assert.That(result["nonce"]!.Type, Is.EqualTo(JTokenType.Null));
+        }
 
         // PoW mixHash uses default null-omit semantics — absent or null, not a non-null value.
         JToken? mixHashToken = result["mixHash"];
@@ -1844,14 +1850,14 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getProof", "0x000000000000000000000000000000000000dead", "[]", "0x2");
 
         JObject result = (JObject)JToken.Parse(serialized)["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)result["address"], Is.EqualTo("0x000000000000000000000000000000000000dead"));
             Assert.That((string?)result["balance"], Is.EqualTo("0x0"));
             Assert.That((string?)result["nonce"], Is.EqualTo("0x0"));
             Assert.That((string?)result["codeHash"], Is.EqualTo(Hash256.Zero.ToString()));
             Assert.That((string?)result["storageHash"], Is.EqualTo(Hash256.Zero.ToString()));
-        });
+        }
     }
 
     [Test]
@@ -2231,8 +2237,11 @@ public partial class EthRpcModuleTests
         using JsonRpcResponse secondResponse = ctx.Test.EthRpcModule.eth_chainId().WithResponseContext("client-id", null);
         string secondSerialized = RpcTest.SerializeResponse(secondResponse);
 
-        Assert.That(firstSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":67}}"));
-        Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":67}}"));
+            Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
+        }
         bridge.Received(1).GetChainId();
     }
 
@@ -2564,7 +2573,9 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", request);
 
+#pragma warning disable NUnit2045 // The sent transaction must exist before calculating its gas budget.
         Assert.That(sent, Is.Not.Null, serialized);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateGasBudget(sent!, Eip8141Prototype.Instance, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -2766,9 +2777,12 @@ public partial class EthRpcModuleTests
             """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
             stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"], Is.Null);
-        Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
-        Assert.That(gasUsed, Is.EqualTo(21_000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null);
+            Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
+            Assert.That(gasUsed, Is.EqualTo(21_000));
+        }
     }
 
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
@@ -2808,9 +2822,12 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
 
-        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("out of gas"));
-        Assert.That(gasUsed, Is.EqualTo(0x6A50));
-        Assert.That(result["accessList"]!.ToArray(), Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]!.Value<string>(), Is.EqualTo("out of gas"));
+            Assert.That(gasUsed, Is.EqualTo(0x6A50));
+            Assert.That(result["accessList"]!.ToArray(), Is.Not.Empty);
+        }
     }
 
     [Test]
@@ -2825,9 +2842,12 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"], Is.Null);
-        Assert.That(gasUsed, Is.EqualTo(21_000));
-        Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null);
+            Assert.That(gasUsed, Is.EqualTo(21_000));
+            Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+        }
     }
 
     private const string AccessListContract = "0xc200000000000000000000000000000000000000";
@@ -2986,17 +3006,23 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("execution reverted"));
-        Assert.That(gasUsed, Is.EqualTo(77496));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]!.Value<string>(), Is.EqualTo("execution reverted"));
+            Assert.That(gasUsed, Is.EqualTo(77496));
+        }
         // AL must contain the newly created contract address with storage key 0x81.
         // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]
         Address expectedContract = ContractAddress.From(new Address(CreateAccessListSender), UInt256.Zero);
         JToken[] accessList = result["accessList"]!.ToArray();
         Assert.That(accessList, Has.Length.EqualTo(1));
-        Assert.That(accessList[0]["address"]!.Value<string>(), Is.EqualTo(expectedContract.ToString().ToLowerInvariant()));
-        Assert.That(
-            accessList[0]["storageKeys"]!.ToArray().Count(static k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081"),
-            Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList[0]["address"]!.Value<string>(), Is.EqualTo(expectedContract.ToString().ToLowerInvariant()));
+            Assert.That(
+                accessList[0]["storageKeys"]!.ToArray().Count(static k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081"),
+                Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -3009,16 +3035,22 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
 
-        Assert.That(result["error"], Is.Null);
-        Assert.That(gasUsed, Is.EqualTo(27_805));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null);
+            Assert.That(gasUsed, Is.EqualTo(27_805));
+        }
         JToken[] accessList = result["accessList"]!.ToArray();
-        Assert.That(accessList.Any(e => e["address"]!.Value<string>() == CreateAccessListSender), Is.True);
-        // Contract with slot 1 must also appear.
-        Assert.That(accessList.Any(e =>
-            e["address"]!.Value<string>() == contractAddr &&
-            e["storageKeys"]!.ToArray().Any(
-                k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000001")),
-            Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Any(e => e["address"]!.Value<string>() == CreateAccessListSender), Is.True);
+            // Contract with slot 1 must also appear.
+            Assert.That(accessList.Any(e =>
+                e["address"]!.Value<string>() == contractAddr &&
+                e["storageKeys"]!.ToArray().Any(
+                    k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000001")),
+                Is.True);
+        }
     }
 
     [Test]
@@ -3284,9 +3316,12 @@ public partial class EthRpcModuleTests
 
         AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
 
-        Assert.That(result.YParity, Is.EqualTo(BadYparity), "Y parity should match the one in the transaction");
-        Assert.That((int)result.R, Is.EqualTo(BadR), "R should match the one in the transaction");
-        Assert.That((int)result.S, Is.EqualTo(BadS), "S should match the one in the transaction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.YParity, Is.EqualTo(BadYparity), "Y parity should match the one in the transaction");
+            Assert.That((int)result.R, Is.EqualTo(BadR), "R should match the one in the transaction");
+            Assert.That((int)result.S, Is.EqualTo(BadS), "S should match the one in the transaction");
+        }
     }
 
 

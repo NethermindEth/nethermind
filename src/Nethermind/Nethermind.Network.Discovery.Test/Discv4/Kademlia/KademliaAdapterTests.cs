@@ -364,7 +364,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
             ConfigureBondCallback();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(_receiver.Id));
             ecdsa.Received().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
             ecdsa.ClearReceivedCalls();
@@ -452,7 +454,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ConfigureBondCallback(onWirePing: ping => sourceAddresses.Add(ping.SourceAddress!));
 
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(sourceAddresses, Is.EqualTo(new[]
             {
@@ -719,7 +723,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await AssertNoPeerCandidate(token);
 
             Node droppedNode = nodes[^1];
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(droppedNode, token), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(droppedNode.Id));
         }
 

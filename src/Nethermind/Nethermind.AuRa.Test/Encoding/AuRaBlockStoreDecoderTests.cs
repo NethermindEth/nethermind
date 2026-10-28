@@ -30,7 +30,9 @@ public class AuRaBlockStoreDecoderTests
         Block? retrieved = store.Get(block.Number, block.Hash!);
 
         Assert.That(retrieved, Is.Not.Null);
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(retrieved!.Header, Is.InstanceOf<AuRaBlockHeader>());
+#pragma warning restore NUnit2045
         Assert.That(((AuRaBlockHeader)retrieved.Header).AuRaSignature, Is.EqualTo(new byte[65]));
     }
 
@@ -60,7 +62,9 @@ public class AuRaBlockStoreDecoderTests
 
         Block retrieved = store.GetAll().Single();
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(retrieved.Header, Is.InstanceOf<AuRaBlockHeader>());
+#pragma warning restore NUnit2045
         Assert.That(((AuRaBlockHeader)retrieved.Header).AuRaSignature, Is.EqualTo(new byte[65]));
         Assert.That(retrieved.Hash, Is.EqualTo(block.Hash));
     }

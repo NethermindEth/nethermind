@@ -305,8 +305,8 @@ public class SnapshotBundleWarmerTests
             Assert.That(addCompletedWhileRead, Is.False, "retirement scanned the transient under an in-flight warmer read");
             Assert.That(add.Wait(BailOutTimeout), Is.True, "retirement did not resume after the warmer read released its lease");
             Assert.That(warmerRead.Wait(BailOutTimeout), Is.True);
-            Assert.That(warmerRead.Result.NodeType, Is.EqualTo(NodeType.Unknown));
         }
+        Assert.That(warmerRead.Result.NodeType, Is.EqualTo(NodeType.Unknown));
 
         retired!.ReleaseLease();
     }

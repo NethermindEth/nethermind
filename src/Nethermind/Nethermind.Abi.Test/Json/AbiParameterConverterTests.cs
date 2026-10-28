@@ -90,9 +90,12 @@ namespace Nethermind.Abi.Test.Json
             try
             {
                 AbiParameter result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
-                Assert.That(expectedException, Is.Null);
-                Assert.That(result.Name, Is.EqualTo("theName"));
-                Assert.That(result.Type, Is.EqualTo(expectedType));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(expectedException, Is.Null);
+                    Assert.That(result.Name, Is.EqualTo("theName"));
+                    Assert.That(result.Type, Is.EqualTo(expectedType));
+                }
             }
             catch (Exception e)
             {

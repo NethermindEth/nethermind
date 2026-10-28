@@ -52,8 +52,11 @@ public class IpcSocketMessageStreamTests
             byte[] buffer = new byte[1024];
             (int read, ReceiveResult result) = await ReceiveUntilEndOfMessageAsync(stream, buffer, pair.Token);
 
-            Assert.That(result.EndOfMessage, Is.True, $"message {i}");
-            Assert.That(Encoding.UTF8.GetString(buffer, 0, read), Is.EqualTo(expectedMessages[i]), $"message {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.EndOfMessage, Is.True, $"message {i}");
+                Assert.That(Encoding.UTF8.GetString(buffer, 0, read), Is.EqualTo(expectedMessages[i]), $"message {i}");
+            }
         }
     }
 
@@ -184,8 +187,11 @@ public class IpcSocketMessageStreamTests
         {
             ReceiveResult result = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, offset, buffer.Length - offset), token);
 
-            Assert.That(result.EndOfMessage, Is.False);
-            Assert.That(result.Closed, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.EndOfMessage, Is.False);
+                Assert.That(result.Closed, Is.False);
+            }
 
             offset += result.Read;
         }
