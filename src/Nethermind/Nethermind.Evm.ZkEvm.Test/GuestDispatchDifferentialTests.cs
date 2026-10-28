@@ -393,6 +393,36 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// The guest charges the fixed cost of a plain stack opcode without testing it, and the next test of the gas halts
+    /// the frame. Every amount of gas up to the program's need ends the gas on each opcode before that test, which each
+    /// case makes a different one.
+    /// </remarks>
+    [TestCase("60016002016003025000", TestName = "STOP")]
+    [TestCase("60016002016008565B00", TestName = "JUMP")]
+    [TestCase("6001600201600957005B00", TestName = "JUMPI")]
+    [TestCase("600160020160005200", TestName = "MSTORE")]
+    [TestCase("60016002015A00", TestName = "GAS")]
+    [TestCase("600160020160006000F3", TestName = "RETURN")]
+    [TestCase("60018090505000", TestName = "DUP1 SWAP1 POP POP")]
+    public void Gas_shortfalls_of_untested_charges_halt_at_the_next_test(string hex)
+    {
+        byte[] code = Convert.FromHexString(hex);
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, ReleaseSpec).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, ReleaseSpec);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, ReleaseSpec);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
     /// stored to memory, and the gas each program leaves tells a charge that differs.
     /// </remarks>

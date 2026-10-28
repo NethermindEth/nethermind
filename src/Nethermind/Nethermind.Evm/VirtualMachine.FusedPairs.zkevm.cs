@@ -613,7 +613,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TFirst : struct, IStackStep
         {
             // The step and the MLOAD are charged in one test; an MLOAD that does not run here pays its share back.
-            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && TryCharge(ref gas, TFirst.GasCost + VeryLowGasCost.GasCost))
+            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && ChargeUntested(ref gas, TFirst.GasCost + VeryLowGasCost.GasCost))
             {
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 TFirst.Apply(ref end, ref ip);
@@ -656,7 +656,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+            if (head < EvmStack.MaxStackSize - 1 && ChargeUntested(ref gas, 2 * VeryLowGasCost.GasCost))
             {
                 ref byte source = ref state.Memory.GetActiveInitializedRange(Unsafe.Add(ref ip, 1), EvmStack.WordSize);
                 if (!Unsafe.IsNullRef(ref source))
@@ -861,7 +861,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if (Unsafe.Add(ref opcode, 8) == (byte)Instruction.AND)
                 {
                     // The three pushes go above the word the AND reads.
-                    if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 4) && TryCharge(ref gas, 6 * VeryLowGasCost.GasCost))
+                    if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 4) && ChargeUntested(ref gas, 6 * VeryLowGasCost.GasCost))
                     {
                         ref ulong word = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                         word &= LowBitsOfLimb(bits, 0);
@@ -873,7 +873,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, masked);
                     }
                 }
-                else if (head < EvmStack.MaxStackSize - 3 && TryCharge(ref gas, 5 * VeryLowGasCost.GasCost))
+                else if (head < EvmStack.MaxStackSize - 3 && ChargeUntested(ref gas, 5 * VeryLowGasCost.GasCost))
                 {
                     ref ulong mask = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                     mask = LowBitsOfLimb(bits, 0);
@@ -931,7 +931,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             Debug.Assert(TOpCount.Count is 4 or 20);
             // One unsigned test bounds the depth on both sides: the AND needs a word below the pushed one.
-            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && ChargeUntested(ref gas, 2 * VeryLowGasCost.GasCost))
             {
                 ref byte immediates = ref Unsafe.Add(ref ip, 1);
                 bool ones = TOpCount.Count == 4
@@ -982,7 +982,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TFirst : struct, IStackStep
             where TSecond : struct, IStackStep
         {
-            if (Fits<TFirst, TSecond>(head) && TryCharge(ref gas, TFirst.GasCost + TSecond.GasCost))
+            if (Fits<TFirst, TSecond>(head) && ChargeUntested(ref gas, TFirst.GasCost + TSecond.GasCost))
             {
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 if (typeof(TFirst) == typeof(Push1Step) && TSecond.TakesPushedByte)

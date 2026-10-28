@@ -188,17 +188,44 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// Tests the sign of the charged gas, which is exact for carried gas of at most <see cref="nint.MaxValue"/> (see
         /// <see cref="ChainGas"/>): the charge doubles as the test, one instruction fewer than comparing first, and only
-        /// the miss pays it back. On a 32-bit guest a cost past <see cref="int.MaxValue"/> exceeds any carried gas.
+        /// the miss pays it back. On a 32-bit guest a cost past <see cref="int.MaxValue"/> exceeds any carried gas. Gas
+        /// that <see cref="ChargeUntested"/> left negative fails the test as well.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool TryCharge(ref nuint gas, ulong cost)
         {
-            Debug.Assert(gas <= (nuint)nint.MaxValue, "The sign test is exact only for gas that fits a nint.");
             if (IntPtr.Size == sizeof(uint) && cost > int.MaxValue) return false;
             gas -= (nuint)cost;
             if ((nint)gas >= 0) return true;
             gas += (nuint)cost;
             return false;
+        }
+
+        /// <summary>Charges the fixed <paramref name="cost"/> of an opcode to <paramref name="gas"/> without testing that it covers it.</summary>
+        /// <returns>Always <see langword="true"/>, so it takes the place of <see cref="TryCharge"/> in a handler's guard.</returns>
+        /// <remarks>
+        /// Only for a handler that has no other use of the gas and whose effects stay in the frame. A shortfall leaves the
+        /// gas negative, and the next sign test halts the frame out of gas: <see cref="TryCharge"/>, <see cref="Covers"/>,
+        /// and the entry of the shared handlers. Every jump tests, so a loop cannot run on a shortfall, and straight-line
+        /// code ends at a shared handler: at the latest the STOP that pads the code. A frame that halts on an exception
+        /// consumes all its gas and drops its effects whichever opcode raised it, so halting a few opcodes later gives
+        /// the same result. The shortfall stays far below 2^31: a code holds fewer than 2^20 opcodes, and every fixed
+        /// cost charged this way is below 2^6.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ChargeUntested(ref nuint gas, ulong cost)
+        {
+            gas -= (nuint)cost;
+            return true;
+        }
+
+        /// <summary>Whether <paramref name="gas"/> covers <paramref name="cost"/>; negative gas, a shortfall <see cref="ChargeUntested"/> left, covers nothing.</summary>
+        /// <remarks>The comparison is signed, so <paramref name="cost"/> must be below 2^31.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool Covers(nuint gas, ulong cost)
+        {
+            Debug.Assert(cost <= int.MaxValue);
+            return (nint)gas >= (nint)cost;
         }
 
         /// <summary>Whether the word at <paramref name="word"/>, in limb layout, is zero.</summary>
@@ -629,7 +656,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
             where TOperation : struct, IStackBinaryOperation
         {
-            if (head > 1 && TryCharge(ref gas, TOperation.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, TOperation.GasCost))
             {
                 TOperation.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
                 head--;
@@ -925,7 +952,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 0 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 0 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 NotStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
@@ -955,7 +982,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
             where TOperation : struct, EvmInstructions.IOpMath3Param
         {
-            if (head > 2 && TryCharge(ref gas, MidGasCost.GasCost))
+            if (head > 2 && ChargeUntested(ref gas, MidGasCost.GasCost))
             {
                 // The result replaces the modulus, the deepest of the three.
                 ref ulong modulus = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 3));
@@ -1035,7 +1062,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, selector);
             }
 
-            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 DupStep<EvmInstructions.Op1>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 head++;
@@ -1119,7 +1146,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                if (TryCharge(ref gas, VeryLowGasCost.GasCost))
+                if (ChargeUntested(ref gas, VeryLowGasCost.GasCost))
                 {
                     ref ulong copy = ref Unsafe.Add(ref top, EvmStack.WordSize / sizeof(ulong));
                     copy = top;
@@ -1158,7 +1185,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TOpCount : struct, EvmInstructions.IOpCount
         {
             // One unsigned test bounds the depth on both sides: below the source the difference wraps past the limit.
-            if ((nuint)(head - TOpCount.Count) < (nuint)(EvmStack.MaxStackSize - 1 - TOpCount.Count) && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if ((nuint)(head - TOpCount.Count) < (nuint)(EvmStack.MaxStackSize - 1 - TOpCount.Count) && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 DupStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 head++;
@@ -1189,12 +1216,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 0 && TryCharge(ref gas, BaseGasCost.GasCost))
+            if (head > 0 && ChargeUntested(ref gas, BaseGasCost.GasCost))
             {
                 head--;
                 sp = ref Moved(ref sp, -1);
                 byte following = Unsafe.Add(ref ip, 1);
-                if (following == (byte)Instruction.POP && head > 0 && gas >= BaseGasCost.GasCost)
+                if (following == (byte)Instruction.POP && head > 0)
                 {
                     head--;
                     sp = ref Moved(ref sp, -1);
@@ -1232,7 +1259,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
             where TOpCount : struct, EvmInstructions.IOpCount
         {
-            if (head > TOpCount.Count && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > TOpCount.Count && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 SwapStep<TOpCount>.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
                 ip = ref Unsafe.Add(ref ip, 1);
@@ -1270,7 +1297,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head < EvmStack.MaxStackSize - 1 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 // Both read off the opcode's address, so the immediate's needs no add of its own.
                 ref byte opcode = ref ip;
@@ -1411,7 +1438,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
             where TOpCount : struct, EvmInstructions.IOpCount
         {
-            if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head < EvmStack.MaxStackSize - 1 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 ref byte immediates = ref Unsafe.Add(ref ip, 1);
@@ -1537,7 +1564,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
             }
 
-            if (!TryCharge(ref gas, pushGas))
+            if (!ChargeUntested(ref gas, pushGas))
                 goto Shared;
 
             SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), value);
@@ -1581,7 +1608,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
@@ -1677,7 +1704,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 StorageCell storageCell = new(frame.Env.ExecutingAccount, in slot);
                 // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
                 ulong cost = frame.AccessTracker.WarmUp(in storageCell) ? GasCostOf.ColdSLoad : GasCostOf.WarmStateRead;
-                if (gas < cost)
+                if (!Covers(gas, cost))
                     return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 1, EvmExceptionType.OutOfGas);
 
                 gas -= (nuint)(cost);
@@ -1716,7 +1743,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
             VmState<TGasPolicy> frame = vm.VmState;
-            if (head >= 2 && gas > GasCostOf.CallStipend && !frame.IsStatic && !vm.IsTracingRefunds && !vm.IsTracingOpLevelStorage)
+            if (head >= 2 && Covers(gas, GasCostOf.CallStipend + 1) && !frame.IsStatic && !vm.IsTracingRefunds && !vm.IsTracingOpLevelStorage)
             {
                 vm.MetricsCounters.IncrementSStore();
                 ref UInt256 key = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
@@ -1887,7 +1914,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong length = ref Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
                 ulong size = length;
                 ulong cost = VeryLowGasCost.GasCost + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
-                if ((Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) | (size >> 32)) == 0 && gas >= cost)
+                if ((Unsafe.Add(ref length, 1) | Unsafe.Add(ref length, 2) | Unsafe.Add(ref length, 3) | (size >> 32)) == 0 && Covers(gas, cost))
                 {
                     ReadOnlySpan<byte> source = TSource.Read(ref stack, ref state);
                     ulong from = offset;
@@ -1996,7 +2023,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
@@ -2039,7 +2066,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 0 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 0 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
@@ -2080,7 +2107,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 0 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 0 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 ulong offset = slot;
@@ -2134,7 +2161,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     ulong cost = GasCostOf.Sha3 + GasCostOf.Sha3Word * ((length + (EvmStack.WordSize - 1)) >> 5);
                     ref byte data = ref state.Memory.GetActiveInitializedRange(offset, length);
-                    if (gas >= cost && !Unsafe.IsNullRef(ref data))
+                    if (Covers(gas, cost) && !Unsafe.IsNullRef(ref data))
                     {
                         gas -= (nuint)(cost);
                         head--;
@@ -2178,7 +2205,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ShiftLeftStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
 
@@ -2207,7 +2234,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 1 && TryCharge(ref gas, VeryLowGasCost.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, VeryLowGasCost.GasCost))
             {
                 ShiftRightStep.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
 
@@ -2240,7 +2267,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 1 && TryCharge(ref gas, LowGasCost.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, LowGasCost.GasCost))
             {
                 if (GuestMulFlag.IsActive)
                 {
@@ -2466,7 +2493,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte code,
             ref byte sp)
         {
-            if (head > 1 && TryCharge(ref gas, LowGasCost.GasCost))
+            if (head > 1 && ChargeUntested(ref gas, LowGasCost.GasCost))
             {
                 // The dividend is the top word; the quotient replaces the divisor below it.
                 ref ulong quotient = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
@@ -2613,7 +2640,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
         {
             ulong jumpIAndJumpDestGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
-            if (head > 1 && gas >= JumpIGasCost.GasCost)
+            if (head > 1 && Covers(gas, JumpIGasCost.GasCost))
             {
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 ref ulong condition = ref Unsafe.Subtract(ref destination, EvmStack.WordSize / sizeof(ulong));
@@ -2628,7 +2655,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 nuint target = (nuint)destination;
-                if (gas >= jumpIAndJumpDestGas &&
+                if (Covers(gas, jumpIAndJumpDestGas) &&
                     FitsNativeWord(ref destination) &&
                     target < (nuint)AlignedStack(ref stack).CodeLength)
                 {

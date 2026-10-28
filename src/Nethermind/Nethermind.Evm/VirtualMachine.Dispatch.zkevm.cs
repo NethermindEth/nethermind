@@ -179,6 +179,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             // The chain carries the instruction's address; the shared bodies count in offsets.
             nint pc = (nint)Unsafe.ByteOffset(ref code, ref ip);
+            // A shortfall the guest's handlers left untested ends here, before a body reads the gas.
+            if ((nint)gas < 0)
+                return ExitChain(ref state, 0, pc, head, EvmExceptionType.OutOfGas);
             nint entryHead = head;
             // Only a traced run reads the opcode out of the bytecode, and the tracer reads the head from memory.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
@@ -353,6 +356,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
             nint pc = (nint)Unsafe.ByteOffset(ref code, ref ip);
+            if ((nint)gas < 0)
+                return ExitChain(ref state, 0, pc, head, EvmExceptionType.OutOfGas);
 
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
             {
