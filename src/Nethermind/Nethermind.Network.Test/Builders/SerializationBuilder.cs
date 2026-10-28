@@ -31,6 +31,12 @@ namespace Nethermind.Network.Test.Builders
             return this;
         }
 
+        public SerializationBuilder With<T>(IMessageSerializer<T> serializer) where T : MessageBase
+        {
+            _serializers.Add(SerializerInfo.Create(serializer));
+            return this;
+        }
+
         protected override void BeforeReturn() => TestObject = new MessageSerializationService(_serializers);
 
         public SerializationBuilder WithEncryptionHandshake() => With(new AuthMessageSerializer())
