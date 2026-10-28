@@ -70,6 +70,10 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     private ulong _oldestAllocated = 1;
     private ulong _oldestCompressed = 1;
     private ulong _compressedMemory;
+
+    // The next generation, allocated and faulted in the background, so a rotation on a writer only swaps it in.
+    private Generation? _standby;
+    private bool _preparingStandby;
     private bool _compacting;
 
     private const int RootSlots = 1024;
@@ -88,7 +92,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     {
         _generationBytes = generationBytes;
         _compressedMaxMemory = compressedMaxMemory;
-        _active = StartGeneration(1, generationBytes);
+        _active = StartGeneration(1, new Generation(generationBytes));
         UpdateMetrics();
     }
 
@@ -281,7 +285,8 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             EvictCompressed(id >= MaxGenerations ? id + 1 - MaxGenerations : 0);
             if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyPinned();
 
-            Volatile.Write(ref _active, StartGeneration(id, Math.Max(_generationBytes, length)));
+            Volatile.Write(ref _active, StartGeneration(id, TakeStandby(length) ?? new Generation(Math.Max(_generationBytes, length))));
+            PrepareStandby();
             DropOldGenerations();
         }
     }
@@ -294,12 +299,54 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
         return current + 1;
     }
 
-    private Generation StartGeneration(ulong id, int length)
+    private Generation StartGeneration(ulong id, Generation generation)
     {
-        Generation generation = new(id, length);
+        generation.Id = id;
         Volatile.Write(ref _generations[id & GenerationSlotMask], generation);
-        _inPlaceBytes += length;
+        _inPlaceBytes += generation.Data!.Length;
         return generation;
+    }
+
+    /// <returns>The standby generation when it fits a record of <paramref name="length"/> bytes, or null to allocate one inline.</returns>
+    private Generation? TakeStandby(int length)
+    {
+        Generation? standby = _standby;
+        if (standby is null || length > standby.Data!.Length) return null;
+
+        _standby = null;
+        return standby;
+    }
+
+    /// <remarks>Only buffers that rotate get a standby, so a buffer that never fills its first generation commits no second one.</remarks>
+    private void PrepareStandby()
+    {
+        if (_standby is not null || _preparingStandby || _disposed) return;
+
+        _preparingStandby = true;
+        ThreadPool.UnsafeQueueUserWorkItem(static buffer => buffer.AllocateStandby(), this, preferLocal: false);
+    }
+
+    private void AllocateStandby()
+    {
+        Generation? generation = null;
+        try
+        {
+            generation = new Generation(_generationBytes);
+            generation.Data!.Prefault();
+        }
+        catch
+        {
+            // A failed allocation leaves no standby, so the next rotation allocates inline and reports the failure to its writer.
+            generation?.Free();
+            generation = null;
+        }
+
+        lock (_lock)
+        {
+            _preparingStandby = false;
+            if (_disposed || generation is null) generation?.Free();
+            else _standby = generation;
+        }
     }
 
     private void DropOldGenerations()
@@ -521,8 +568,14 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
 
     private ref ulong RootSlot(in ValueHash256 root) => ref _rootIndex[MemoryMarshal.Read<ulong>(root.Bytes) & (RootSlots - 1)];
 
-    /// <remarks>Only storage of a generation no pin covers is retired, so no reader can still borrow it.</remarks>
-    private static void Retire(IDisposable? owner) => owner?.Dispose();
+    /// <remarks>
+    /// Only storage of a generation no pin covers is retired, so no reader can still borrow it. It is freed in the background, as
+    /// unmapping a generation is slow and the retiring thread, which holds the lock, is often a writer or the block thread.
+    /// </remarks>
+    private static void Retire(IDisposable? owner)
+    {
+        if (owner is not null) ThreadPool.UnsafeQueueUserWorkItem(static owner => owner.Dispose(), owner, preferLocal: false);
+    }
 
     private void ThrowIfUnavailable()
     {
@@ -547,16 +600,16 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     {
         if (!_disposed || _pinCount != 0 || _compacting) return;
 
+        // Freed at once, as nothing is left to stall.
         foreach (Generation? generation in _generations)
         {
             if (generation is null) continue;
-            Retire(generation.Data);
-            Retire(generation.Bloom);
-            Retire(generation.Compressed);
-            generation.Data = null;
-            generation.Bloom = null;
+            generation.Free();
+            generation.Compressed?.Dispose();
             generation.Compressed = null;
         }
+        _standby?.Free();
+        _standby = null;
         _inPlaceBytes = 0;
         _compressedMemory = 0;
         UpdateMetrics();
@@ -610,9 +663,9 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
 
     private sealed class Generation
     {
-        public Generation(ulong id, int length)
+        /// <remarks>The id is set when the generation becomes active.</remarks>
+        public Generation(int length)
         {
-            Id = id;
             Data = PbtNativeGroupBuffer.Allocate(length);
             try
             {
@@ -625,7 +678,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             }
         }
 
-        public readonly ulong Id;
+        public ulong Id;
         public BloomFilter? Bloom;
         public PbtNativeGroupBuffer? Data;
         public PbtCompressedGeneration? Compressed;
@@ -634,5 +687,13 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
         // The pins of a PbtGroupRecordBufferPin, which also keeps every later generation.
         public int HeadPinCount;
         public bool Dropping;
+
+        public void Free()
+        {
+            ((IDisposable?)Data)?.Dispose();
+            Bloom?.Dispose();
+            Data = null;
+            Bloom = null;
+        }
     }
 }

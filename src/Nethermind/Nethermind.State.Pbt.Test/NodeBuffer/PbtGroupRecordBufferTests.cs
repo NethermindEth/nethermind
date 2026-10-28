@@ -67,9 +67,10 @@ public class PbtGroupRecordBufferTests
     }
 
     [Test]
-    public void Native_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length)
+    public void Native_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length, [Values] bool prefault)
     {
         using PbtNativeGroupBuffer buffer = PbtNativeGroupBuffer.Allocate(length);
+        if (prefault) buffer.Prefault();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.Length, Is.EqualTo(length));
@@ -214,7 +215,7 @@ public class PbtGroupRecordBufferTests
         {
             Assert.That(() => IsFreed(laterRecord), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released generations are compacted");
             Assert.That(() => IsLocatable(buffer, pointer), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "and evicted over the budget");
-            Assert.That(() => record.Payload.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the released native owner is freed");
+            Assert.That(() => IsFreed(record), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the released native owner is freed");
         }
 
         void AdvanceTo(ulong generation)
