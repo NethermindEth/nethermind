@@ -77,28 +77,26 @@ public class GethStyleTracerTests
             {
                 clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(600));
             }
-            using (ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject))
+            using ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            Assert.That(clock.Timers, Has.Count.EqualTo(2));
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(clock.Timers, Has.Count.EqualTo(2));
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
-                    Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
-                }
-                Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
-                clock.Advance(TimeSpan.FromMilliseconds(400));
-                Assert.That(second.IsCancelled, Is.False);
-                if (cancelExternal) external.Cancel();
-                clock.Advance(TimeSpan.FromMilliseconds(600));
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
-                    Assert.That(second.IsCancelled, Is.True);
-                    Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
-                }
-                if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
-                else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
+                Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+                Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
             }
+            Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+            clock.Advance(TimeSpan.FromMilliseconds(400));
+            Assert.That(second.IsCancelled, Is.False);
+            if (cancelExternal) external.Cancel();
+            clock.Advance(TimeSpan.FromMilliseconds(600));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
+                Assert.That(second.IsCancelled, Is.True);
+                Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
+            }
+            if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
+            else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
         }
         using (Assert.EnterMultipleScope())
         {
