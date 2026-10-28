@@ -31,6 +31,7 @@ public partial class EezStatelessExecutorTests
     [TestCase(1, 200)]
     [TestCase(3, 30)]
     [TestCase(4, 30)]
+    [TestCase(6, 30)]
     [NonParallelizable]
     public void Execute_NativeUpstreamCapture_ReproducesEverySealedBlockWithoutChangingInputs(int version, int expectedBlocks)
     {
@@ -88,7 +89,7 @@ public partial class EezStatelessExecutorTests
 
     [Test]
     [NonParallelizable]
-    public void Execute_NativeCaptureWithoutL1Evidence_RejectsWithoutFallback([Values(1, 3, 4)] int version)
+    public void Execute_NativeCaptureWithoutL1Evidence_RejectsWithoutFallback([Values(1, 3, 4, 6)] int version)
     {
         string capture = NativeCaptureFor(version);
         List<ClientFrame> frames = ReadNativeFrames(capture);
@@ -111,7 +112,9 @@ public partial class EezStatelessExecutorTests
         byte[] bytes = File.ReadAllBytes(StatelessFixtures.PathOf(capture, "request.v2.protobuf"));
         Assert.That(ValueKeccak.Compute(bytes), Is.EqualTo(new ValueHash256(capture == NativeCapture
             ? "0xbda7e319d5b3b8bd30daea948249a8cff50c01248755be8023f0ee31faac5f83"
-            : capture == "rollupx/native-offline-v4"
+            : capture == "rollupx/native-offline-v6"
+                ? "0xb2e42e07bef03c231f66973cd43afad57f3c5720d6ce7eb9e391a0e391dd3278"
+                : capture == "rollupx/native-offline-v4"
                 ? "0x4fe2bd2df0167990164d7004a44e141768ecd70595db718dade3e18c054ff715"
                 : "0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")),
             "the upstream captured request remains byte-for-byte unchanged");
@@ -218,9 +221,17 @@ public partial class EezStatelessExecutorTests
 
     private sealed class NativeDecoderScope : IDisposable
     {
-        internal NativeDecoderScope(EezChainRules rules) => TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(rules));
+        internal NativeDecoderScope(EezChainRules rules)
+        {
+            TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(rules));
+            if (rules.UsesNativeContract) TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(rules.NativeFormat));
+        }
 
-        public void Dispose() => TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+        public void Dispose()
+        {
+            TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+            TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder());
+        }
     }
 
     private static NativeL1HeaderRules ReadNativeHeaderRules(string capture)

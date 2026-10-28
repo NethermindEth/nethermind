@@ -121,7 +121,9 @@ public sealed class EezChainRules
     /// The accounts whose balance RollupX zeroes before the first transaction of every block, after the EIP-2935
     /// history update: ether left on the execution manager or sent to the system address does not carry over.
     /// </summary>
-    public Address[] BurnedAtBlockStart => UsesNativeSystemTransactions ? NativeRollupXBurned : IsRollupX ? RollupXBurned : [];
+    public Address[] BurnedAtBlockStart => FinalizesProtocolBalances ? [] : ProtocolBalanceAccounts;
+    internal Address[] ProtocolBalanceAccounts => UsesNativeSystemTransactions ? NativeRollupXBurned : IsRollupX ? RollupXBurned : [];
+    internal bool FinalizesProtocolBalances => UsesNativeSystemTransactions && NativeFormat == NativeSystemTxFormat.ContractV6;
 
     /// <summary>The EIP-1559 denominator the chain uses instead of the fork's, if any.</summary>
     public ulong? BaseFeeMaxChangeDenominator => IsRollupX ? RollupXBaseFeeMaxChangeDenominator : null;

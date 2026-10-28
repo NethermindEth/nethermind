@@ -15,10 +15,11 @@ namespace Nethermind.Eez.Execution.Stateless;
 
 /// <summary>
 /// Records the state root at each selected position of a block: before its first transaction, once the pre-execution
-/// system calls are committed, and after each selected transaction. Post-execution changes are never included.
+/// system calls are committed, and after each selected transaction.
 /// </summary>
 /// <param name="positions">Ascending transaction indices, led by <see cref="EezTransactionCheckpoint.PreExecution"/> when selected.</param>
-internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, int[] positions, Action<BlockHeader, IWorldState>? validateEmptyPrefix = null)
+internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, int[] positions, Action<BlockHeader, IWorldState>? validateEmptyPrefix = null,
+    Func<IWorldState, IReleaseSpec, Hash256>? projectClosedRoot = null)
     : BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
 {
     private int _next;
@@ -47,9 +48,10 @@ internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, 
 
         IWorldState worldState = _worldState!;
         if (position == EezTransactionCheckpoint.PreExecution) validateEmptyPrefix?.Invoke(header, worldState);
-        worldState.Commit(specProvider.GetSpec(header), commitRoots: true);
+        IReleaseSpec spec = specProvider.GetSpec(header);
+        worldState.Commit(spec, commitRoots: true);
         worldState.RecalculateStateRoot();
-        StateRoots[_next++] = worldState.StateRoot;
+        StateRoots[_next++] = projectClosedRoot?.Invoke(worldState, spec) ?? worldState.StateRoot;
     }
 
     private sealed class PreExecutionRecorder(IBlockProcessor.IBlockTransactionsExecutor inner, TransactionCheckpointRecorder recorder)

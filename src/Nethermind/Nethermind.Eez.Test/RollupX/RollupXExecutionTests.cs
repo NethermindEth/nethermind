@@ -144,7 +144,7 @@ public class RollupXExecutionTests
         inner.When(static i => i.ProcessTransactions(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<BlockReceiptsTracer>(), Arg.Any<CancellationToken>()))
             .Do(_ => managerBalanceSeenByTransactions = _state.GetBalance(EezConstants.RollupXEezl2Address));
 
-        new BlockStartBurn(inner, _state, _specProvider, Rules)
+        new ProtocolBalanceCleanup(inner, _state, _specProvider, Rules)
             .ProcessTransactions(Build.A.Block.WithNumber(1).TestObject, ProcessingOptions.None, new BlockReceiptsTracer());
 
         Assert.That(managerBalanceSeenByTransactions, Is.EqualTo(UInt256.Zero), "the burn runs before the first transaction");
@@ -183,7 +183,7 @@ public class RollupXExecutionTests
 
         Assert.That(scope.Resolve<IBeaconBlockRootHandler>(), Is.SameAs(NoBeaconRootsCall.Instance), "RollupX never calls the beacon roots contract");
         Assert.That(scope.Resolve<ExecutionRequestsOptions>().ReadsRequests, Is.False, "RollupX blocks carry no requests");
-        Assert.That(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), Is.InstanceOf<BlockStartBurn>(), "every block starts with the burn");
+        Assert.That(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), Is.InstanceOf<ProtocolBalanceCleanup>(), "every block starts with the burn");
         Assert.That(scope.Resolve<ISpecProvider>().GetSpec(new ForkActivation(1)).BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)50));
         Assert.That(scope.Resolve<IHeaderValidator>(), Is.InstanceOf<RollupXHeaderValidator>(), "headers are held to RollupX's fixed profile");
     }

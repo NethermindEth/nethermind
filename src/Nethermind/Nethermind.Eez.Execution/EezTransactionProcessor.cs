@@ -149,7 +149,7 @@ public sealed class EezTransactionProcessor(
         {
             CurrentGroup(header).After(tx, out bool completes);
             if (completes)
-                foreach (Address address in rules.BurnedAtBlockStart)
+                foreach (Address address in rules.ProtocolBalanceAccounts)
                 {
                     UInt256 balance = WorldState.GetBalance(address);
                     if (!balance.IsZero) WorldState.SubtractFromBalance(address, in balance, spec);

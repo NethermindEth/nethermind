@@ -66,10 +66,14 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
         AssignSenders(block);
 
         NativeHistoryContext? native = rules.UsesNativeContract ? _nativeHistory : null;
+        NativeCheckpointProjection? projection = checkpoints.Length > 0 && rules.FinalizesProtocolBalances
+            ? new(rules.ProtocolBalanceAccounts, logManager) : null;
         TransactionCheckpointRecorder? recorder = checkpoints.Length > 0
-            ? new TransactionCheckpointRecorder(specProvider, checkpoints, native is null || checkpoints[0] != EezTransactionCheckpoint.PreExecution ? null : native.ValidateEmptyPrefix)
+            ? new TransactionCheckpointRecorder(specProvider, checkpoints, native is null || checkpoints[0] != EezTransactionCheckpoint.PreExecution ? null : native.ValidateEmptyPrefix,
+                projection is null ? null : projection.Project)
             : null;
-        StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, recorder, recorder is not null ? recorder.Wrap : null);
+        StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, _transactionProcessorFactory, recorder,
+            recorder is not null ? recorder.Wrap : null, projection);
         StatelessBlockProcessingResult result = env.Process(block);
         if (!result.IsValid)
         {
@@ -83,7 +87,6 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
     }
 
     /// <summary>An environment that executes blocks under the chain's EEZ rules over <paramref name="witness"/>.</summary>
-    /// <param name="transactionsExecutorDecorator">Wraps the transactions executor inside the chain's block-start burn.</param>
     public StatelessBlockProcessingEnv CreateEnvironment(Witness witness,
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null,
         Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator = null) =>
@@ -91,10 +94,12 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
 
     internal StatelessBlockProcessingEnv CreateEnvironment(Witness witness, ITransactionProcessorFactory processorFactory,
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed,
-        Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator) =>
+        Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator,
+        NativeCheckpointProjection? projection = null) =>
         new(witness, specProvider, Always.Valid, logManager)
         {
             TransactionProcessorFactory = processorFactory,
+            WorldStateScopeProviderFactory = projection is null ? null : projection.CreateProvider,
             TxValidator = CreateTxValidator(),
             BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) => new EezBlockValidator(txValidator,
                 rules.IsRollupX ? new RollupXHeaderValidator(headerValidator, rules) : headerValidator, unclesValidator, specProvider, logManager, rules),
@@ -109,7 +114,7 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
     {
         IBlockProcessor.IBlockTransactionsExecutor decorated = decorator?.Invoke(inner, worldState) ?? inner;
         decorated = _nativeHistory?.Wrap(decorated, worldState) ?? decorated;
-        return rules.BurnedAtBlockStart.Length == 0 ? decorated : new BlockStartBurn(decorated, worldState, specProvider, rules);
+        return rules.ProtocolBalanceAccounts.Length == 0 ? decorated : new ProtocolBalanceCleanup(decorated, worldState, specProvider, rules);
     }
 
     private static Block Decode(byte[] rlp)

@@ -63,9 +63,9 @@ public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
             builder.AddSingleton<IRewardCalculator>(NoBlockRewards.Instance);
         }
 
-        if (rules.BurnedAtBlockStart.Length != 0)
+        if (rules.ProtocolBalanceAccounts.Length != 0)
         {
-            builder.AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockStartBurn>();
+            builder.AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, ProtocolBalanceCleanup>();
         }
 
         if (rules.IsRollupX)

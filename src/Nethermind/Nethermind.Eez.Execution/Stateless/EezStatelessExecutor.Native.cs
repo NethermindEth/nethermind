@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -26,8 +27,16 @@ public sealed partial class EezStatelessExecutor
 
         internal void ValidateEmptyPrefix(BlockHeader header, IWorldState state)
         {
-            state.Get(new StorageCell(EezConstants.L1HistoryAddress, (UInt256)2), out UInt256 endpoint);
-            if (endpoint > ulong.MaxValue || header.MixHash?.ValueHash256 != evidence.At((ulong)endpoint).PrevRandao)
+            bool proxy = profile.Rules.NativeFormat == NativeSystemTxFormat.ContractV6;
+            state.Get(new StorageCell(EezConstants.L1HistoryAddress, proxy ? UInt256.One : (UInt256)2), out UInt256 endpoint);
+            if (endpoint > ulong.MaxValue) throw NativeL1Header.Invalid("history scalar exceeds uint64");
+            ulong number = (ulong)endpoint;
+            if (proxy)
+            {
+                state.Get(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(number)), out UInt256 hash);
+                number = NativeProxyHistory.ResolveState(number, hash.ToValueHash(), profile.Rules.Schedule!).Endpoint;
+            }
+            if (header.MixHash?.ValueHash256 != evidence.At(number).PrevRandao)
                 throw NativeL1Header.Invalid("empty prefix PREVRANDAO differs from inherited L1 origin");
         }
 

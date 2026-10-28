@@ -20,8 +20,8 @@ namespace Nethermind.Eez.Test;
 public partial class EezL2SystemCallsTests
 {
     [Test]
-    public void Execute_ContractV3Group_ClearsResidueAfterSuccessfulOrRevertedUser([Values] bool revert, [Values] bool existingSystem) =>
-        WithProcessor(ContractV3Rules(), (state, processor, header) =>
+    public void Execute_ContractV3Group_ClearsResidueAfterSuccessfulOrRevertedUser([Values] bool revert, [Values] bool existingSystem, [Values] bool version6) =>
+        WithProcessor(ContractV3Rules(version6 ? NativeSystemTxFormat.ContractV6 : NativeSystemTxFormat.ContractV3), (state, processor, header) =>
         {
             if (existingSystem) state.CreateAccount(Address.SystemUser, 17, 8);
             state.CreateAccount(EezConstants.RollupXEezl2Address, 5, 1);
@@ -51,8 +51,8 @@ public partial class EezL2SystemCallsTests
         });
 
     [Test]
-    public void Execute_ContractV3Inbound_CleansWithinItsOwnTransaction([Values] bool revert, [Values] bool existingSystem) =>
-        WithProcessor(ContractV3Rules(), (state, processor, _) =>
+    public void Execute_ContractV3Inbound_CleansWithinItsOwnTransaction([Values] bool revert, [Values] bool existingSystem, [Values] bool version6) =>
+        WithProcessor(ContractV3Rules(version6 ? NativeSystemTxFormat.ContractV6 : NativeSystemTxFormat.ContractV3), (state, processor, _) =>
         {
             if (existingSystem) state.CreateAccount(Address.SystemUser, 17, 8);
             state.CreateAccount(EezConstants.RollupXEezl2Address, 5, 1);
@@ -122,7 +122,8 @@ public partial class EezL2SystemCallsTests
                 "a rejected user must not consume the load's pending cleanup");
         });
 
-    private static EezChainRules ContractV3Rules() => EezChainRules.NativeRollupX(NativeSchedule(), TestItem.AddressD, NativeSystemTxFormat.ContractV3, 2);
+    private static EezChainRules ContractV3Rules(NativeSystemTxFormat format = NativeSystemTxFormat.ContractV3) =>
+        EezChainRules.NativeRollupX(NativeSchedule(), TestItem.AddressD, format, 2);
 
     private static Transaction GroupTransaction(uint selector, UInt256 value)
     {

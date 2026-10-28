@@ -1,0 +1,34 @@
+{
+  "repository": "https://github.com/eez-association/eez-rollupX",
+  "commit": "b832ad6a4764c9796eb61f86dcd6a29d85f72c77",
+  "files": {
+    "chain-config.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/chain-config.json",
+      "sha256": "6eba00de6a082ea343e7aba67c17e22bc536d4c6ea06f7f9c699d72886eb3d6c"
+    },
+    "l1-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/l1-genesis.json",
+      "sha256": "20985041185c974013aedf9277da89995cc80f37733a22d7fe0271ef0243058a"
+    },
+    "README.md": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/README.md",
+      "sha256": "cf4541b06c3e14ae8faee5cfbd1919215500095f4a333eaef3f747535265930c"
+    },
+    "identity.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/identity.json",
+      "sha256": "5190cf87bde6841fcd85bff8cfe0850e8928a007d4e88a65b94693045662f984"
+    },
+    "response.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/response.json",
+      "sha256": "0e979be9b44cfa8eec150a93a419d075010223c7e4ec509dd90a06cf33960810"
+    },
+    "request.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/request.v2.protobuf",
+      "sha256": "8e5bdbbfd8038647ff430333af1e46b86cf5e695f723dc9475d850e085e4f948"
+    },
+    "l2-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-offline-bidirectional/l2-genesis.json",
+      "sha256": "6cdcdafa83ab60ad22be2ad4473fe788efb72ba18f91c97bc0c0e8786c51cce2"
+    }
+  }
+}

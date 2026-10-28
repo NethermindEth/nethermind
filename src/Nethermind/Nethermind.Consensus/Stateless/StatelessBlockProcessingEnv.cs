@@ -24,6 +24,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
@@ -79,15 +80,19 @@ public partial class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
-        new WorldState(
-            new TrieStoreScopeProvider(
-                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
-                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
-            ),
-            logManager
-        )
-    );
+    public Func<ITrieStore, IKeyValueStoreWithBatching, IWorldStateScopeProvider>? WorldStateScopeProviderFactory { get; init; }
+
+    public IWorldState WorldState => _worldState ??= CreateWorldState();
+
+    private IWorldState CreateWorldState()
+    {
+        // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+        ITrieStore trieStore = new RawTrieStore(witness.CreateNodeStorage());
+        IKeyValueStoreWithBatching codeDb = witness.CreateCodeDb();
+        IWorldStateScopeProvider scopeProvider = WorldStateScopeProviderFactory?.Invoke(trieStore, codeDb)
+            ?? new TrieStoreScopeProvider(trieStore, codeDb, UnavailableStateHeaderProvider.Instance, logManager);
+        return RequireWitnessedBytecode(new WorldState(scopeProvider, logManager));
+    }
 
     /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
     private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
