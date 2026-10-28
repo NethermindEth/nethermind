@@ -494,8 +494,8 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <inheritdoc/>
         /// <remarks>
-        /// Serves cached and pending receipts, and compact receipts read from the database that store their
-        /// transaction hashes, which give the transaction index without hashing the block's transactions.
+        /// Serves cached and pending receipts, and compact receipts read from the database. Stored transaction
+        /// hashes give the transaction index; when absent, the block's transactions are hashed to locate it.
         /// </remarks>
         public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
         {
@@ -525,7 +525,24 @@ namespace Nethermind.Blockchain.Receipts
                 RlpReader reader = new(receiptsData);
                 if (!ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes)) return false;
 
-                int index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                int index = -1;
+                if (txHashes.IsEmpty)
+                {
+                    // Advance a copy so recovery starts at the first transaction; the caller owns its memory.
+                    ReceiptRecoveryBlock cursor = block;
+                    for (int i = 0; i < block.TransactionCount; i++)
+                    {
+                        if (cursor.GetNextTransactionValueHash() == txHash.ValueHash256)
+                        {
+                            index = i;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
+                }
                 if (index < 0) return false;
 
                 int end = reader.ReadSequenceLength() + reader.Position;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -675,14 +676,14 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void TryGetReceipt_matches_the_receipt_Get_recovers([Values] bool eip7668, [Values] bool eip8116, [Values] bool fromRlp)
+    public void TryGetReceipt_matches_the_receipt_Get_recovers([Values] bool eip7668, [Values] bool eip8116, [Values] bool fromRlp, [Values] bool storeTxHashes)
     {
         _specProvider.NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = eip7668, IsEip8116Enabled = eip8116 };
         CreateStorage();
         LogEntry log = new(TestItem.AddressA, [1, 2], [TestItem.KeccakA]);
         Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
-            Build.A.Transaction.WithNonce(1).WithTo(null).WithCode([0x00]).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).WithMaxFeePerGas(2).WithTo(null).WithCode([0x00]).SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(3).SignedAndResolved().TestObject).TestObject;
         PrepareBlock(block);
@@ -691,7 +692,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Build.A.Receipt.WithStatusCode(StatusCode.Failure).WithGasUsedTotal(80_000).TestObject,
             Build.A.Receipt.WithLogs(log).WithGasUsedTotal(110_000).TestObject,
             Build.A.Receipt.WithGasUsedTotal(131_000).TestObject);
-        _storage.Insert(block, receipts);
+        WriteStoredReceipts(block, receipts, storeTxHashes);
 
         ClearSendersAndCache();
         TxReceipt[] expected = _storage.Get(block);
@@ -699,7 +700,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         for (int i = 0; i < receipts.Length; i++)
         {
             ClearSendersAndCache();
-            bool served = _storage.TryGetReceipt(RecoveryBlock(block, fromRlp), block.Transactions[i].Hash!, out TxReceipt? receipt, out int txIndex, out int logIndexStart);
+            ReceiptRecoveryBlock recoveryBlock = RecoveryBlock(block, fromRlp);
+            bool served = _storage.TryGetReceipt(recoveryBlock, block.Transactions[i].Hash!, out TxReceipt? receipt, out int txIndex, out int logIndexStart);
+            Assert.That(recoveryBlock.GetNextTransactionValueHash(), Is.EqualTo(block.Transactions[0].Hash!.ValueHash256), "the caller's cursor must not advance");
 
             Assert.That(served, Is.EqualTo(useCompactReceipts));
             if (!served) continue;
@@ -727,7 +730,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test]
-    public void TryGetReceipt_falls_back_to_Get_on_a_repeat_lookup_in_interleaved_blocks()
+    public void TryGetReceipt_falls_back_to_Get_on_a_repeat_lookup_in_interleaved_blocks([Values] bool storeTxHashes)
     {
         CreateStorage();
         Block[] blocks = [InsertTwoTransactionBlock(1), InsertTwoTransactionBlock(2)];
@@ -749,13 +752,13 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
                 Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
                 Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
             PrepareBlock(block);
-            _storage.Insert(block, WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, Build.A.Receipt.WithGasUsedTotal(42_000).TestObject));
+            WriteStoredReceipts(block, WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, Build.A.Receipt.WithGasUsedTotal(42_000).TestObject), storeTxHashes);
             return block;
         }
     }
 
     [Test]
-    public void TryGetReceipt_falls_back_to_Get_when_stored_receipts_do_not_match_the_transactions([Values] bool emptyItem)
+    public void TryGetReceipt_falls_back_to_Get_when_stored_receipts_do_not_match_the_transactions([Values] bool emptyItem, [Values] bool storeTxHashes, [Values] bool fromRlp)
     {
         Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
@@ -764,25 +767,140 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         PrepareBlock(block);
         TxReceipt receipt = Build.A.Receipt.WithTransactionHash(block.Transactions[0].Hash).WithGasUsedTotal(21_000).TestObject;
         TxReceipt[] stored = emptyItem ? [receipt, null!, receipt] : [receipt, receipt];
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = _decoder.EncodeAsBytes(stored, RlpBehaviors.Storage);
+        WriteStoredReceipts(block, stored, storeTxHashes);
 
-        Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out _, out _, out _), Is.False);
+        Assert.That(_storage.TryGetReceipt(RecoveryBlock(block, fromRlp), block.Transactions[0].Hash!, out _, out _, out _), Is.False);
     }
 
     [Test]
-    public void TryGetReceipt_falls_back_to_Get_when_receipts_store_no_transaction_hashes()
+    public void TryGetReceipt_without_hash_prefix_recovers_unsigned_transactions(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values] bool fromRlp)
     {
-        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
-            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        Transaction[] transactions = new Transaction[3];
+        TxReceipt[] receipts = new TxReceipt[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce(i).WithType(type).WithMaxFeePerGas(2).TestObject;
+            transactions[i].Hash = transactions[i].CalculateHash();
+            receipts[i] = Build.A.Receipt.WithSender(TestItem.AddressA).WithGasUsedTotal((ulong)(21_000 * (i + 1))).TestObject;
+        }
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(transactions).TestObject;
         PrepareBlock(block);
-        TxReceipt[] stored = WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject);
-        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(stored, RlpBehaviors.Storage);
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            _storage.ClearCache();
+            bool served = _storage.TryGetReceipt(RecoveryBlock(block, fromRlp), transactions[i].Hash!, out TxReceipt? receipt, out int txIndex, out int logIndexStart);
+            Assert.That(served, Is.True);
+            TxReceipt[] expected = _storage.Get(block);
+            receipt.AssertEquivalentTo(expected[i]);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(txIndex, Is.EqualTo(i));
+                Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(i)));
+            }
+        }
+    }
+
+    [Test]
+    public void TryGetReceipt_without_hash_prefix_leaves_the_body_lease_owned_by_the_caller()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(
+            [Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, Build.A.Receipt.WithGasUsedTotal(42_000).TestObject], RlpBehaviors.Storage));
+        RecoveryMemory owner = new([.. TxDecoder.Instance.Encode(block.Transactions[0]).Bytes, .. TxDecoder.Instance.Encode(block.Transactions[1]).Bytes]);
+        ReceiptRecoveryBlock recoveryBlock = new(owner, block.Header, owner.Memory, 2);
+        try
+        {
+            Assert.That(_storage.TryGetReceipt(recoveryBlock, block.Transactions[1].Hash!, out _, out int index, out _), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(index, Is.EqualTo(1));
+                Assert.That(owner.DisposeCount, Is.Zero);
+                Assert.That(recoveryBlock.GetNextTransactionValueHash(), Is.EqualTo(block.Transactions[0].Hash!.ValueHash256));
+            }
+        }
+        finally
+        {
+            recoveryBlock.Dispose();
+        }
+        Assert.That(owner.DisposeCount, Is.EqualTo(1));
+    }
+
+    private sealed class RecoveryMemory(byte[] bytes) : MemoryManager<byte>
+    {
+        public int DisposeCount { get; private set; }
+        public override Span<byte> GetSpan() => bytes;
+        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+        public override void Unpin() { }
+        protected override void Dispose(bool disposing) => DisposeCount++;
+    }
+
+    [Test]
+    public void TryGetReceipt_does_not_scan_body_when_nonempty_hash_prefix_misses()
+    {
+        (Block block, _) = PrepareBlock();
+        TxReceipt[] receipts = [Build.A.Receipt.WithTransactionHash(TestItem.KeccakH).WithGasUsedTotal(21_000).TestObject];
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(receipts, RlpBehaviors.Storage));
 
         Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out _, out _, out _), Is.False);
     }
 
+    [TestCase("c0", false)]
+    [TestCase("8200c0", false)]
+    [TestCase("b80101", false)]
+    [TestCase("c0", true)]
+    [TestCase("8200c0", true)]
+    [TestCase("b80101", true)]
+    public void TryGetReceipt_without_hash_prefix_rejects_malformed_transaction_envelopes(string malformedHex, bool beforeTarget)
+    {
+        (Block block, _) = PrepareBlock();
+        byte[] malformed = Bytes.FromHexString(malformedHex);
+        byte[] transactions = beforeTarget ? [.. malformed, .. TxDecoder.Instance.Encode(block.Transactions[0]).Bytes] : malformed;
+        ReceiptRecoveryBlock recoveryBlock = new(null, block.Header, transactions, beforeTarget ? 2 : 1);
+        TxReceipt receipt = Build.A.Receipt.WithGasUsedTotal(21_000).TestObject;
+        TxReceipt[] receipts = beforeTarget ? [receipt, receipt] : [receipt];
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+
+        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, block.Transactions[0].Hash!, out _, out _, out _));
+    }
+
     [Test]
-    public void TryGetReceipt_skips_a_frame_receipt_before_the_requested_one()
+    public void TryGetReceipt_without_hash_prefix_still_decodes_the_target_transaction_fields()
+    {
+        (Block block, _) = PrepareBlock();
+        byte[] transaction = Rlp.Encode(
+            Rlp.Encode(0), Rlp.Encode(1), Rlp.Encode(21_000), Rlp.Encode(new byte[] { 1 }),
+            Rlp.Encode(0), Rlp.OfEmptyByteArray, Rlp.Encode(27), Rlp.Encode(1), Rlp.Encode(1)).Bytes;
+        ReceiptRecoveryBlock recoveryBlock = new(null, block.Header, transaction, 1);
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(
+            [Build.A.Receipt.WithGasUsedTotal(21_000).TestObject], RlpBehaviors.Storage));
+
+        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, Keccak.Compute(transaction), out _, out _, out _));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TryGetReceipt_without_hash_prefix_rejects_malformed_target_or_prior_receipt(bool beforeTarget)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        Rlp valid = CompactReceiptStorageDecoder.Instance.Encode(Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, RlpBehaviors.Storage);
+        Rlp malformed = Rlp.Encode(Rlp.Encode(new byte[33]), Rlp.OfEmptyByteArray, Rlp.Encode(21_000), Rlp.OfEmptyList);
+        Rlp receipts = beforeTarget ? Rlp.Encode(malformed, valid) : Rlp.Encode(valid, malformed);
+        WriteStoredReceipts(block, [(byte)ReceiptArrayStorageDecoder.CompactEncoding, .. receipts.Bytes]);
+
+        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(RecoveryBlock(block, true), block.Transactions[1].Hash!, out _, out _, out _));
+    }
+
+    [Test]
+    public void TryGetReceipt_skips_a_frame_receipt_before_the_requested_one([Values] bool storeTxHashes)
     {
         Transaction frameTx = new()
         {
@@ -800,7 +918,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         frameReceipt.TxType = TxType.FrameTx;
         frameReceipt.Payer = TestItem.AddressA;
         frameReceipt.FrameReceipts = [new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 50_000, 0, [log, log])];
-        _storage.Insert(block, WithTransactionHashes(block, frameReceipt, Build.A.Receipt.WithLogs(log).WithGasUsedTotal(71_000).TestObject));
+        WriteStoredReceipts(block, WithTransactionHashes(block, frameReceipt, Build.A.Receipt.WithLogs(log).WithGasUsedTotal(71_000).TestObject), storeTxHashes);
         _storage.ClearCache();
 
         bool served = _storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[1].Hash!, out TxReceipt? receipt, out _, out int logIndexStart);
@@ -811,6 +929,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         receipt.AssertEquivalentTo(expected[1]);
         Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(1)));
     }
+
+    private void WriteStoredReceipts(Block block, TxReceipt[] receipts, bool storeTxHashes) =>
+        WriteStoredReceipts(block, new ReceiptArrayStorageDecoder(useCompactReceipts, storeTxHashes).EncodeAsBytes(receipts, RlpBehaviors.Storage));
 
     private static TxReceipt[] WithTransactionHashes(Block block, params TxReceipt[] receipts)
     {
