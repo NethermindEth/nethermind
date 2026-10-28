@@ -308,11 +308,12 @@ namespace Nethermind.Facade
         /// <summary>
         /// Returns the blob base fee override <paramref name="tx"/> runs with: zero for a blob call without a positive blob
         /// fee cap, which then pays no blob fee, as in Geth's eth_call, and <paramref name="blobBaseFeeOverride"/> otherwise.
-        /// An omitted cap of such a call is set to zero on <paramref name="tx"/>.
+        /// An omitted cap of such a call is set to zero on <paramref name="tx"/>. A frame transaction is priced by its
+        /// <c>max_fee</c>, which covers its blob gas.
         /// </summary>
         private static UInt256? GetBlobBaseFeeOverride(Transaction tx, UInt256? blobBaseFeeOverride)
         {
-            if (!tx.CarriesBlobs || !(tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero)
+            if (!tx.CarriesBlobs || !(tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero || (tx.Type == TxType.FrameTx && !tx.MaxFee.IsZero))
                 return blobBaseFeeOverride;
 
             tx.MaxFeePerBlobGas = UInt256.Zero;
@@ -347,7 +348,8 @@ namespace Nethermind.Facade
         }
 
         public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted)
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken,
+            out bool executionReverted)
         {
             executionReverted = false;
             BlockHeader executionHeader = header.Clone();
@@ -360,14 +362,14 @@ namespace Nethermind.Facade
                 GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState);
                 scope.Component.RequestState.BlobBaseFeeOverride = blockOverride?.BlobBaseFee;
                 return estimator.EstimateFrameGas(tx, PrepareCall(scope.Component.WorldState, executionHeader, tx, blobBaseFeeOverride: blockOverride?.BlobBaseFee),
-                    fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
+                    fillExecution, fillState, gasCap, errorMargin, maxFeeAt, cancellationToken, out executionReverted);
             }
             if (!shareableTxProcessorSource.TryBuild(executionHeader, out IReadOnlyTxProcessingScope? shared))
                 return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
             using IDisposable __ = shared;
             GasEstimator sharedEstimator = new(shared.TransactionProcessor, shared.WorldState);
             return sharedEstimator.EstimateFrameGas(tx, PrepareCall(shared.WorldState, executionHeader, tx, blobBaseFeeOverride: null),
-                fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
+                fillExecution, fillState, gasCap, errorMargin, maxFeeAt, cancellationToken, out executionReverted);
         }
 
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
@@ -725,7 +727,7 @@ namespace Nethermind.Facade
             return filter.Id;
         }
 
-        public void UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
+        public bool UninstallFilter(int filterId) => filterStore.RemoveFilter(filterId);
         public ArrayPoolList<FilterLog> GetLogFilterChanges(int filterId) => filterManager.PollLogs(filterId);
         public ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId) => filterManager.PollBlockHashes(filterId);
 
@@ -981,10 +983,7 @@ namespace Nethermind.Facade
             {
                 try
                 {
-                    IReleaseSpec spec = specProvider.GetSpec(header).WithoutEip158();
-                    IWorldState worldState = scope.Component.WorldState;
-                    worldState.ApplyStateOverridesNoCommit(codeInfoRepository, stateOverride, spec);
-                    worldState.Commit(spec, commitRoots: false);
+                    scope.Component.WorldState.ApplyStateOverrides(codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number, merkleize: false);
                 }
                 catch
                 {

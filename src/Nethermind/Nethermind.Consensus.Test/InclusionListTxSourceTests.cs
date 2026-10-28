@@ -171,8 +171,8 @@ public class InclusionListTxSourceTests
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasPrice = 1.GWei,
+        MaxFee = (UInt256)100_000 * 30.GWei,
         DecodedMaxFeePerGas = 30.GWei,
-        MaxFeePerBlobGas = blobVersionedHashes is null ? null : 1,
         BlobVersionedHashes = blobVersionedHashes,
     };
 
