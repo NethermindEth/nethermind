@@ -54,8 +54,7 @@ public static class ConfigExtensions
     /// Defaults come from a freshly constructed instance of the implementing
     /// type, so initializers and constructors are honoured exactly as production
     /// wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
-    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> or <see cref="ObsoleteAttribute"/> are skipped;
-    /// see <see cref="GetObsoleteSettingWarnings"/> for the obsolete ones.
+    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> or <see cref="ObsoleteAttribute"/> are skipped.
     /// </remarks>
     /// <param name="configProvider">The provider to query.</param>
     /// <param name="onConfigError">
@@ -64,29 +63,7 @@ public static class ConfigExtensions
     /// remaining interfaces continues regardless. If <c>null</c>, failures are silent.
     /// </param>
     public static IEnumerable<NonDefaultConfigValue>
-        GetNonDefaultValues(this IConfigProvider configProvider, Action<Type, Exception>? onConfigError = null) =>
-        GetChangedProperties(configProvider, onConfigError, obsolete: false)
-            .Select(static x => new NonDefaultConfigValue(x.Category, x.Property.Name, x.CurrentValue, x.DefaultValue));
-
-    /// <summary>
-    /// Enumerates a warning for each <see cref="ObsoleteAttribute"/> configuration property
-    /// whose current value differs from the implementation's default.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="GetNonDefaultValues"/> skips these properties, so a set obsolete property is reported only here.
-    /// The warning gives the <see cref="ObsoleteAttribute.Message"/> of the property on the config interface.
-    /// </remarks>
-    public static IEnumerable<string> GetObsoleteSettingWarnings(this IConfigProvider configProvider) =>
-        GetChangedProperties(configProvider, onConfigError: null, obsolete: true)
-            .Select(static x =>
-            {
-                string name = x.Category is null ? x.Property.Name : $"{x.Category}.{x.Property.Name}";
-                string? message = x.Property.GetCustomAttribute<ObsoleteAttribute>()!.Message;
-                return string.IsNullOrEmpty(message) ? $"{name} is deprecated." : $"{name} is deprecated: {message}";
-            });
-
-    private static IEnumerable<(string? Category, PropertyInfo Property, object? CurrentValue, object? DefaultValue)>
-        GetChangedProperties(IConfigProvider configProvider, Action<Type, Exception>? onConfigError, bool obsolete)
+        GetNonDefaultValues(this IConfigProvider configProvider, Action<Type, Exception>? onConfigError = null)
     {
         ArgumentNullException.ThrowIfNull(configProvider);
 
@@ -113,7 +90,7 @@ public static class ConfigExtensions
             {
                 if (!property.CanRead) continue;
                 if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) continue;
-                if (property.IsDefined(typeof(ObsoleteAttribute)) != obsolete) continue;
+                if (property.IsDefined(typeof(ObsoleteAttribute))) continue;
 
                 object? actual;
                 object? defaultValue;
@@ -130,7 +107,7 @@ public static class ConfigExtensions
 
                 if (!StructuralComparisons.StructuralEqualityComparer.Equals(actual, defaultValue))
                 {
-                    yield return (category, property, actual, defaultValue);
+                    yield return new NonDefaultConfigValue(category, property.Name, actual, defaultValue);
                 }
             }
         }

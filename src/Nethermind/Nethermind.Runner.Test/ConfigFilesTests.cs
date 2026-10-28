@@ -140,7 +140,10 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Dictionary<string, string> variables = new()
         {
             { "NETHERMIND_INITCONFIG_MEMORYHINT", "2000000000" },
-            { "NETHERMIND_DBCONFIG_SKIPMEMORYHINTSETTING", "true" }
+            { "NETHERMIND_DBCONFIG_SKIPMEMORYHINTSETTING", "true" },
+            { "NETHERMIND_SYNCCONFIG_FASTBLOCKS", "true" },
+            // Changes the derived, obsolete Pruning.Enabled without setting it.
+            { "NETHERMIND_PRUNINGCONFIG_MODE", "None" }
         };
         IEnvironment environment = Substitute.For<IEnvironment>();
         environment.GetEnvironmentVariables().Returns(variables);
@@ -158,10 +161,20 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Assert.That(configProvider.GetObsoleteSettingWarnings(), Is.EquivalentTo(new[]
             {
                 "Init.MemoryHint is deprecated: Has no effect. Set Db.SharedBlockCacheSize to set the database cache size.",
-                "Db.SkipMemoryHintSetting is deprecated: Has no effect."
+                "Db.SkipMemoryHintSetting is deprecated: Has no effect.",
+                "Sync.FastBlocks is deprecated."
             }));
             Assert.That(configProvider.GetNonDefaultValues().Select(static v => v.Name),
                 Has.None.EqualTo("MemoryHint").And.None.EqualTo("SkipMemoryHintSetting"));
+        }
+    }
+
+    [TestCase("*")]
+    public void Built_in_configs_set_no_obsolete_settings(string configWildcard)
+    {
+        foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+        {
+            Assert.That(configProvider.GetObsoleteSettingWarnings(), Is.Empty, configProvider.FileName);
         }
     }
 
@@ -333,16 +346,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("energyweb.json", true)]
     [TestCase("volta.json", true)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.SnapSync, enabled);
-
-#pragma warning disable CS0612 // Type or member is obsolete
-    [TestCase("^aura ^sepolia ^hoodi ^mainnet", false)]
-    [TestCase("aura ^archive", true)]
-    [TestCase("^archive ^spaceneth", true)]
-    [TestCase("sepolia ^archive", true)]
-    [TestCase("hoodi ^archive", true)]
-    [TestCase("mainnet ^archive", true)]
-    public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync) => Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
-#pragma warning restore CS0612
 
     [TestCase("^spaceneth.json")]
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard) => Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
