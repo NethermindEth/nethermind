@@ -173,7 +173,7 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up .NET
-        uses: ./.github/actions/setup-dotnet
+        uses: actions/setup-dotnet@v6
 
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
@@ -425,7 +425,7 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up .NET
-        uses: ./.github/actions/setup-dotnet
+        uses: actions/setup-dotnet@v6
 
       - name: Download runner artifact
         uses: actions/download-artifact@v8

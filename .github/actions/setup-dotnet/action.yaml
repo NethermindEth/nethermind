@@ -75,11 +75,10 @@ runs:
 
         # As setup-dotnet, rollForward widens sdk.version to a channel. The CDN has no feature-band
         # channels, so latestPatch keeps the exact version, which global.json also accepts.
-        # Self-hosted runners can lack jq. The sed form takes the first match, so it needs "sdk" first.
+        # Self-hosted runners can lack jq, and jq rejects the comments that setup-dotnet accepts.
+        # The sed form takes the first match, so it needs "sdk" first.
         sdk_field() {
-          if command -v jq > /dev/null; then
-            jq -r ".sdk.$2 // empty" "$1"
-          else
+          if ! command -v jq > /dev/null || ! jq -r ".sdk.$2 // empty" "$1" 2> /dev/null; then
             sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" "$1" | head -n1
           fi
         }
@@ -87,6 +86,7 @@ runs:
         version_from_global_json() {
           local version roll
           version=$(sdk_field "$1" version)
+          [[ -n $version ]] || echo "::error::No usable sdk.version in '$1'." >&2
           roll=$(sdk_field "$1" rollForward)
           if [[ -n $roll && $version != *-* ]]; then
             case $roll in
