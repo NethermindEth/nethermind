@@ -74,6 +74,46 @@ public class PbtSnapshotCompactorTests
     }
 
     [Test]
+    public void Compactor_adds_a_base_snapshot_groups_to_the_blooms_once_and_sizes_it_by_its_pinned_range()
+    {
+        const int generationBytes = 4096;
+        using PbtGroupRecordBuffer buffer = new(1UL << 20, generationBytes, PbtGroupRecordBuffer.DefaultLiveGenerations);
+        byte[] inheritedBytes = [0x00];
+        byte[] writtenBytes = [0xe0];
+        PbtStorageNodePath inheritedPath = new(inheritedBytes, PbtThreeLevelGroupGeometry.LevelsPerGroup);
+        PbtStorageNodePath writtenPath = new(writtenBytes, PbtThreeLevelGroupGeometry.LevelsPerGroup);
+        ulong inherited = buffer.Append(inheritedPath, [1], default);
+        PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        content.BeginNodeGroupWrites(buffer);
+        ulong from = content.NodeGroupWriteBoundary!.Value;
+        while (buffer.WriteFrontier() >> 32 == from >> 32) buffer.Append(new PbtStorageNodePath([0x80], PbtThreeLevelGroupGeometry.LevelsPerGroup), new byte[1000], default);
+        ulong written = buffer.Append(writtenPath, [2], default);
+        PbtGroupLinks links = default;
+        links[TrieUpdater.BoundarySlot(inheritedBytes, 0)] = inherited;
+        links[TrieUpdater.BoundarySlot(writtenBytes, 0)] = written;
+        content.RootGroupPointer = buffer.Append(default, [0], links);
+
+        StateId head = new(1, default);
+        ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
+        schedule.GetCompactSize(head.BlockNumber).Returns(1UL);
+        using PbtSnapshotRepository repository = new(new Nethermind.Api.Monitoring.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
+        PbtSnapshot snapshot = new(StateId.PreGenesis, head, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        repository.TryAdd(snapshot);
+        PbtSnapshotCompactor compactor = new(_pool, schedule, repository, Config, LimboLogs.Instance);
+        compactor.DoCompactSnapshot(head);
+        compactor.DoCompactSnapshot(head);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written >> 32, Is.EqualTo(content.RootGroupPointer >> 32).And.GreaterThan(from >> 32), "the layer's tree is written past a generation boundary");
+            Assert.That(buffer.BloomCount(content.RootGroupPointer), Is.EqualTo(2), "only the reachable writes, once");
+            Assert.That(buffer.BloomCount(inherited), Is.Zero, "nothing below the pin");
+            Assert.That(content.EstimatePinnedNodeBytes(), Is.EqualTo(PbtGroupRecordBuffer.DefaultGenerationBytes + (uint)content.RootGroupPointer - (uint)from),
+                "from the pin to the root group, across a generation");
+            Assert.That(repository.InMemorySnapshotBytes, Is.EqualTo(snapshot.PayloadSize.Leaf + content.EstimatePinnedNodeBytes()));
+        }
+    }
+
+    [Test]
     public void Compact_keeps_original_records_and_descendant_references_pinned()
     {
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);

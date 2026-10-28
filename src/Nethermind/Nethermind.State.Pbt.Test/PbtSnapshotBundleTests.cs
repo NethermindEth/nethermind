@@ -338,35 +338,6 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotStore_ConcurrentBatchesCountTowardsTheLayerOnlyOncePublished([Values] bool emptied, [Values] bool published)
-    {
-        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
-        PbtStorageNodePath groupPath = new([], 0);
-        byte[] encoding = PbtNodeGroupEncoder.Encode(groupPath, [new PbtNodeRecord(groupPath, BranchEncoding(1))], default);
-
-        PbtSnapshotStore store = new(bundle, default);
-        System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
-        {
-            for (int write = 0; write < (emptied ? 0 : 2); write++)
-            {
-                using IPbtGroupRecordWriteBatch batch = store.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(encoding.Length)));
-                encoding.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, groupPath, default, encoding.Length));
-            }
-        });
-
-        byte[]? pending = bundle.GetNodeGroup(groupPath);
-        Assert.That(pending, Is.Null, "written groups stay invisible until a root links them");
-        if (published) store.Publish();
-
-        using PbtSnapshot snapshot = bundle.Collect(StateId.PreGenesis, new StateId(1, default), default);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(snapshot.RootGroupPointer, Is.Zero);
-            Assert.That(snapshot.Content.NodeGroupCount, Is.EqualTo(published && !emptied ? 2000 : 0), "every reserved group counts towards the layer's size bound");
-        }
-    }
-
-    [Test]
     public void SnapshotContent_ReplacedTreesStayReadableUntilReset([Values(1, 8)] int groupCount, [Values] bool removed)
     {
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);
@@ -395,7 +366,6 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(content.RootGroupPointer, Is.Zero);
-                Assert.That(content.NodeGroupCount, Is.Zero);
                 Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             }
         }
@@ -613,7 +583,7 @@ public class PbtSnapshotBundleTests
             Assert.That(store.ApplyCount, Is.Zero);
             Assert.That(snapshot.Content.HeaderStorages, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(new UInt256(originalLeafValue.Bytes, isBigEndian: true)));
-            Assert.That(snapshot.Content.NodeGroupCount, Is.Zero, "a failed fold publishes no groups");
+            Assert.That(snapshot.Content.EstimatePinnedNodeBytes(), Is.Zero, "a failed fold publishes no groups");
             Assert.That(snapshot.RootGroupPointer, Is.Zero);
         }
     }
@@ -993,7 +963,7 @@ public class PbtSnapshotBundleTests
     private static void PublishRoot(PbtSnapshotBundle bundle, byte[]? encoding)
     {
         ulong root = encoding is null ? 0 : bundle.GroupRecordBuffer.Append(default, encoding, default);
-        bundle.PublishTreeRoot((default, root), encoding is null ? 0 : 1, encoding?.Length ?? 0);
+        bundle.PublishTreeRoot((default, root));
     }
 
     private static byte[] BranchEncoding(byte marker)
@@ -1086,9 +1056,11 @@ public class PbtSnapshotBundleTests
             public Span<byte> Bytes => batch.Bytes;
             public void Dispose()
             {
-                PbtStorageNodePath path = MemoryMarshal.AsRef<PbtGroupRecordHeader>(Bytes).Path;
+                List<PbtStorageNodePath> paths = [];
+                for (int offset = 0; offset < Bytes.Length; offset += PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(Bytes[offset..])))
+                    paths.Add(MemoryMarshal.AsRef<PbtGroupRecordHeader>(Bytes[offset..]).Path);
                 batch.Dispose();
-                owner.Apply(path);
+                foreach (PbtStorageNodePath path in paths) owner.Apply(path);
             }
         }
     }

@@ -120,15 +120,12 @@ public sealed class PbtSnapshotBundle(
 
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
-    /// <summary>Makes the tree's final root readable from this bundle, including a change to empty, and accounts for the groups its folds wrote.</summary>
+    /// <summary>Makes the tree's final root readable from this bundle, including a change to empty.</summary>
     /// <param name="root">The new tree's root and its group's pointer, which is 0 only for the empty tree.</param>
-    /// <param name="count">The number of groups the folds wrote.</param>
-    /// <param name="bytes">Their record bytes.</param>
-    public void PublishTreeRoot(in (ValueHash256 Hash, ulong Pointer) root, int count, long bytes)
+    public void PublishTreeRoot(in (ValueHash256 Hash, ulong Pointer) root)
     {
         Debug.Assert(root.Pointer != 0 || root.Hash == default);
         WriteBuffer.RootGroupPointer = root.Pointer;
-        WriteBuffer.AddNodeGroups(count, bytes);
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a

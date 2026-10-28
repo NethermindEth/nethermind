@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
@@ -17,6 +18,7 @@ public class PbtSnapshot(
     PbtResourcePool.Usage usage) : RefCountingDisposable
 {
     private PbtSnapshotPayloadSize? _payloadSize;
+    private int _bloomPopulated;
 
     public StateId From { get; } = from;
     public StateId To { get; } = to;
@@ -28,6 +30,19 @@ public class PbtSnapshot(
     public PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();
 
     public bool TryLease() => TryAcquireLease();
+
+    /// <summary>Adds the path key hashes of the groups written within this snapshot's range to the blooms of their buffer generations, once.</summary>
+    /// <remarks>
+    /// Called as the compactor first takes in a base snapshot, keeping it off the commit path. A path key hash missing from its
+    /// bloom, of a snapshot not yet taken in or of a group no final root reaches, is fine: buffer compaction then keeps a superseded
+    /// record, which only makes the compacted generation unnecessarily bigger.
+    /// </remarks>
+    public void PopulateBloom()
+    {
+        if (Content is not { GroupRecordBuffer: PbtGroupRecordBuffer buffer, NodeGroupWriteBoundary: ulong lowerBound } || Interlocked.Exchange(ref _bloomPopulated, 1) != 0) return;
+
+        buffer.AddToBlooms(RootGroupPointer, lowerBound);
+    }
 
     protected override void CleanUp() => resourcePool.ReturnSnapshotContent(usage, Content);
 }

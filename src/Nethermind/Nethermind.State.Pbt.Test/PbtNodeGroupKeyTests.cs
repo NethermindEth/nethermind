@@ -60,7 +60,7 @@ public class PbtNodeGroupKeyTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ordered[0].Path, Is.EqualTo(default(PbtStorageNodePath)));
-            Assert.That(ordered, Has.Length.EqualTo(content.NodeGroupCount));
+            Assert.That(ordered.Select(static group => group.Path), Is.Unique.And.SupersetOf(paths));
             Assert.That(keys, Is.EqualTo(keys.Order(Comparer<byte[]>.Create(static (a, b) => a.AsSpan().SequenceCompareTo(b))).ToArray()));
         }
     }

@@ -453,6 +453,7 @@ public class PbtGroupRecordBufferTests
         buffer.SetRoot(Root(-1), kept.Pointer);
         AppendUniqueUntil(scenarioGeneration + 1);
         (ulong Pointer, byte[] Payload) rewrite = AppendRecord(PathOf(-2), Payload(-4, 8));
+        buffer.AddToBlooms(rewrite.Pointer, rewrite.Pointer);
         AppendUniqueUntil(scenarioGeneration + LiveGenerations);
 
         bool keeps = compressedBudget > 0;

@@ -22,14 +22,17 @@ public static class PbtPersistedSnapshotBuilder
 {
     private readonly record struct Entry(byte[] Key, object? Value);
 
+    private static readonly int MinGroupRecordLength = PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(PbtNodeGroupCodec.HeaderLength));
+
     public static long EstimateSize(PbtSnapshot snapshot)
     {
         PbtSnapshotContent c = snapshot.Content;
+        long nodeGroupBytes = EstimateTotalNodeGroupBytes(snapshot);
         long entries = c.Accounts.Count + c.HeaderStorages.Count + c.Storages.Count + c.Codes.Count
-            + c.SelfDestructedStorageAddresses.Count + c.NodeGroupCount;
+            + c.SelfDestructedStorageAddresses.Count + nodeGroupBytes / MinGroupRecordLength + 1;
         // Each inline record has at most 255 value bytes and 72 key bytes. Account for block/restart
         // overhead and ownership/chunk records conservatively rather than under-mapping the arena.
-        long bytes = snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
+        long bytes = snapshot.PayloadSize.Leaf + nodeGroupBytes;
         return checked(16384 + entries * 512 + (bytes / PbtPersistedFormat.ChunkSize + entries) * 512);
     }
 
@@ -37,9 +40,25 @@ public static class PbtPersistedSnapshotBuilder
     {
         // Page padding can at most double a short payload; large chunks have no page padding.
         // Include per-entity RLP headers even when payload sizing counted only logical bytes.
+        long nodeGroupBytes = EstimateTotalNodeGroupBytes(snapshot);
         long entries = (long)snapshot.Content.HeaderStorages.Count + snapshot.Content.Storages.Count
-            + snapshot.Content.Codes.Count + snapshot.Content.NodeGroupCount;
-        return checked(4096 + 2 * (snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node) + entries * 16);
+            + snapshot.Content.Codes.Count + nodeGroupBytes / MinGroupRecordLength + 1;
+        return checked(4096 + 2 * (snapshot.PayloadSize.Leaf + nodeGroupBytes) + entries * 16);
+    }
+
+    /// <summary>Estimates the group record bytes of the groups <see cref="Build"/> writes.</summary>
+    /// <remarks>
+    /// In practice this is only called on base snapshots. A base snapshot's groups are records between its pin and its root group,
+    /// which is published last, so those buffer bytes bound them without a traversal; the slack covers the root group record.
+    /// A compacted snapshot's range spans every block it merged, including the groups later blocks replaced, so its records are summed instead.
+    /// </remarks>
+    public static long EstimateTotalNodeGroupBytes(PbtSnapshot snapshot)
+    {
+        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber == 1) return snapshot.Content.EstimatePinnedNodeBytes() + 4096;
+
+        long size = 0;
+        foreach (PbtGroupRecord group in snapshot.Content.EnumerateNodeGroups()) size += PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(group.Payload.Length));
+        return size;
     }
 
     public static void Build<TWriter>(PbtSnapshot snapshot, ref TWriter writer, BlobArenaWriter blobs, BloomFilter bloom)

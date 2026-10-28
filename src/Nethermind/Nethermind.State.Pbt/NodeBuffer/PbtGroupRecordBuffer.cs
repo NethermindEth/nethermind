@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.NodeBuffer;
@@ -63,6 +64,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     private long _inPlaceBytes;
 
     private const int BloomBytesPerKey = 128;
+    private const int BloomBatchSize = 64;
     private const int InitialKeptCapacity = 1024;
 
     private readonly ulong _compressedMaxMemory;
@@ -220,20 +222,35 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     /// <inheritdoc/>
     public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => WriteBatch.Start(this, alignedTotalLength);
 
-    /// <summary>Adds the path key hashes of the records written to <paramref name="bytes"/> to the bloom of their generation.</summary>
-    private void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes)
+    /// <summary>Adds the path key hashes of the records reachable from <paramref name="rootPointer"/> at or past <paramref name="lowerBound"/> to the blooms of their generations.</summary>
+    /// <remarks>The caller must hold a pin on the generations of those records.</remarks>
+    public void AddToBlooms(ulong rootPointer, ulong lowerBound)
     {
-        BloomFilter? bloom = FindBloom(basePointer);
-        if (bloom is null) return;
-        for (int offset = 0; offset + PbtGroupRecordCodec.HeaderLength <= bytes.Length;)
+        if (_compressedMaxMemory == 0) return;
+
+        Span<long> pathKeyHashes = stackalloc long[BloomBatchSize];
+        int count = 0;
+        ulong generation = 0;
+        using ArrayPoolListRef<ulong> pending = new(PbtThreeLevelGroupGeometry.BoundarySlots);
+        pending.Add(rootPointer);
+        while (pending.Count > 0)
         {
-            ReadOnlySpan<byte> record = bytes[offset..];
-            int length = PbtGroupRecordCodec.Length(record);
-            // Past the last record a failed write leaves zeros, which read as a group record without a payload.
-            if (length == PbtGroupRecordCodec.HeaderLength) break;
-            bloom.Add(MemoryMarshal.AsRef<PbtGroupRecordHeader>(record).PathKeyHash);
-            offset += PbtGroupRecordCodec.AlignedLength(length);
+            ulong pointer = pending[^1];
+            pending.RemoveAt(pending.Count - 1);
+            if (pointer == 0 || pointer < lowerBound || !TryLocate(pointer, out PbtGroupRecord record)) continue;
+
+            if (count == BloomBatchSize || pointer >> OffsetBits != generation)
+            {
+                FindBloom(generation << OffsetBits)?.Add(pathKeyHashes[..count]);
+                count = 0;
+                generation = pointer >> OffsetBits;
+            }
+
+            pathKeyHashes[count++] = (long)MemoryMarshal.AsRef<PbtGroupRecordHeader>(record.Span).PathKeyHash;
+            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++) pending.Add(record.GetLink(slot));
         }
+
+        FindBloom(generation << OffsetBits)?.Add(pathKeyHashes[..count]);
     }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
@@ -579,8 +596,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
 
         public void Dispose()
         {
-            if (_buffer is not { } buffer) return;
-            buffer.CompleteWrite(BasePointer, Bytes);
+            if (_buffer is null) return;
             _buffer = null;
             _data = null;
             _cached = this;

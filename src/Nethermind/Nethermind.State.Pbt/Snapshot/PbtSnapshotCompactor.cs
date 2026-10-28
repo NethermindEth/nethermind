@@ -26,6 +26,11 @@ public class PbtSnapshotCompactor(
 
     public bool DoCompactSnapshot(in StateId stateId)
     {
+        if (repository.TryLeaseMemoryState(stateId, SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot))
+        {
+            using (snapshot) snapshot!.PopulateBloom();
+        }
+
         ulong width = schedule.GetCompactSize(stateId.BlockNumber);
         if (width <= 1) return false;
         if (width < (ulong)config.CompactSize && stateId.BlockNumber >= (ulong)config.CompactSize)

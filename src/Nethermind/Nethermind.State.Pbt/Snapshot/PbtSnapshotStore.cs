@@ -28,8 +28,6 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
 
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
-    private int _writtenGroups;
-    private long _writtenBytes;
     private bool _rootDirty;
     private IPbtGroupRecordBuffer Buffer => bundle.GroupRecordBuffer;
 
@@ -45,10 +43,8 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
         // A published root always points at its record, so a root the buffer no longer holds is copied back in.
         if (Root.Pointer == 0 && Root.Hash != default) SetRoot((Root.Hash, CopyRootRecord()));
         if (_rootDirty && Root.Pointer != 0) Buffer.SetRoot(Root.Hash, Root.Pointer);
-        bundle.PublishTreeRoot(Root, _writtenGroups, _writtenBytes);
+        bundle.PublishTreeRoot(Root);
 
-        _writtenGroups = 0;
-        _writtenBytes = 0;
         _rootDirty = false;
     }
 
@@ -93,12 +89,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle, (ValueHash256 Has
     }
 
     /// <inheritdoc/>
-    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
-    {
-        Interlocked.Increment(ref _writtenGroups);
-        Interlocked.Add(ref _writtenBytes, alignedTotalLength);
-        return Buffer.StartWriteBatch(alignedTotalLength);
-    }
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => Buffer.StartWriteBatch(alignedTotalLength);
 
     private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
     {

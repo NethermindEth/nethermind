@@ -33,10 +33,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     private IPbtGroupRecordBufferPin? _nodeGroupPin;
-    private long _nodeGroupBytes;
 
     /// <summary>The group record buffer whose records this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
     public IPbtGroupRecordBuffer? GroupRecordBuffer => _nodeGroupPin?.Buffer;
+
+    /// <summary>The first pointer this content's groups can have, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
+    public ulong? NodeGroupWriteBoundary => _nodeGroupPin?.WriteBoundary;
 
     /// <summary>Pins the active generation of <paramref name="buffer"/>, unless already pinned, so later group writes stay readable.</summary>
     public void BeginNodeGroupWrites(IPbtGroupRecordBuffer buffer)
@@ -48,16 +50,21 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>The pointer of the root group of the tree this layer published, or 0 for an empty tree or when it published none.</summary>
     public ulong RootGroupPointer { get; set; }
 
-    /// <summary>An upper bound of the groups this layer wrote, counting groups later replaced within the layer.</summary>
-    public int NodeGroupCount { get; private set; }
-
-    /// <summary>Accounts for groups a fold wrote into this layer's tree.</summary>
-    /// <param name="count">The number of groups.</param>
-    /// <param name="bytes">Their record bytes.</param>
-    public void AddNodeGroups(int count, long bytes)
+    /// <summary>Estimates the group record buffer bytes of this layer: those from its pin to its root group record.</summary>
+    /// <remarks>
+    /// The pin keeps them from being dropped. The root group is published last, so the range covers the records the layer wrote,
+    /// along with any other writer's records interleaved there. Generations are taken to be <see cref="PbtGroupRecordBuffer.DefaultGenerationBytes"/> long.
+    /// </remarks>
+    public long EstimatePinnedNodeBytes()
     {
-        NodeGroupCount += count;
-        _nodeGroupBytes += bytes;
+        if (_nodeGroupPin is null) return 0;
+
+        ulong from = _nodeGroupPin.WriteBoundary;
+        ulong to = RootGroupPointer;
+        if (to <= from) return 0;
+
+        long generations = (long)((to >> PbtGroupRecordBuffer.OffsetBits) - (from >> PbtGroupRecordBuffer.OffsetBits));
+        return generations * PbtGroupRecordBuffer.DefaultGenerationBytes + (uint)to - (uint)from;
     }
 
     /// <summary>Enumerates the groups of this layer's tree that were written since its generation pin, in <see cref="PbtNodeGroupKey.InKeyOrder"/> order.</summary>
@@ -146,7 +153,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
             _nodeGroupPin?.Dispose();
             _nodeGroupPin = copy;
         }
-        AddNodeGroups(source.NodeGroupCount, source._nodeGroupBytes);
     }
 
     public void Reset()
@@ -159,8 +165,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         Codes.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         RootGroupPointer = 0;
-        NodeGroupCount = 0;
-        _nodeGroupBytes = 0;
         _nodeGroupPin?.Dispose();
         _nodeGroupPin = null;
     }
@@ -173,7 +177,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         foreach ((_, PackedSlotRun run) in Storages) leafBytes += PbtStoragePath.KeyLength + run.Count * ValueHash256.MemorySize;
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
-        return new PbtSnapshotPayloadSize(leafBytes, _nodeGroupBytes);
+        return new PbtSnapshotPayloadSize(leafBytes, EstimatePinnedNodeBytes());
     }
 
     public void Dispose() => Reset();

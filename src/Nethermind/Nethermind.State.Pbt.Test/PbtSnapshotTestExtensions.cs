@@ -77,6 +77,10 @@ internal static class PbtSnapshotTestExtensions
     internal static int PinCount(this PbtGroupRecordBuffer buffer) =>
         (int)typeof(PbtGroupRecordBuffer).GetField("_pinCount", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
 
+    /// <summary>The keys added to the bloom of the generation of <paramref name="pointer"/>.</summary>
+    internal static long BloomCount(this PbtGroupRecordBuffer buffer, ulong pointer) =>
+        ((Nethermind.Core.Collections.BloomFilter)typeof(PbtGroupRecordBuffer).GetMethod("FindBloom", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(buffer, [pointer])!).Count;
+
     /// <summary>The group record buffer of test layers and bundles that bring none of their own.</summary>
     internal static PbtGroupRecordBuffer DefaultGroupRecordBuffer { get; } = new(0, PbtGroupRecordBuffer.DefaultGenerationBytes, 1);
 
@@ -92,39 +96,30 @@ internal static class PbtSnapshotTestExtensions
     internal static void SetTree(this PbtSnapshotContent content, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
         content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
-        (ulong root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!, groups, fillAncestors: true);
-        content.RootGroupPointer = root;
-        content.AddNodeGroups(count, bytes);
+        content.RootGroupPointer = BuildTree(content.GroupRecordBuffer!, groups, fillAncestors: true);
     }
 
     /// <summary>Publishes a complete physical tree as the layer's own groups, each linked from its nearest physical ancestor across compressed routes.</summary>
     internal static void SetPhysicalTree(this PbtSnapshotContent content, IEnumerable<PbtPhysicalPayload> groups)
     {
         content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
-        (ulong root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!,
+        content.RootGroupPointer = BuildTree(content.GroupRecordBuffer!,
             [.. groups.Select(static group => (group.Key, (byte[]?)group.Payload.ToArray()))], fillAncestors: false);
-        content.RootGroupPointer = root;
-        content.AddNodeGroups(count, bytes);
     }
 
     /// <inheritdoc cref="SetTree(PbtSnapshotContent, ValueTuple{PbtStorageNodePath, byte[]}[])"/>
-    internal static void SetTree(this PbtSnapshotBundle bundle, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
-    {
-        (ulong root, int count, long bytes) = BuildTree(bundle.GroupRecordBuffer, groups, fillAncestors: true);
-        bundle.PublishTreeRoot((default, root), count, bytes);
-    }
+    internal static void SetTree(this PbtSnapshotBundle bundle, params (PbtStorageNodePath Path, byte[]? Payload)[] groups) =>
+        bundle.PublishTreeRoot((default, BuildTree(bundle.GroupRecordBuffer, groups, fillAncestors: true)));
 
-    private static (ulong Root, int Count, long Bytes) BuildTree(IPbtGroupRecordBuffer buffer, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
+    private static ulong BuildTree(IPbtGroupRecordBuffer buffer, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
     {
-        if (groups.Any(static group => group.Path.BitDepth == 0 && group.Payload is null)) return (0, 0, 0);
+        if (groups.Any(static group => group.Path.BitDepth == 0 && group.Payload is null)) return 0;
         Dictionary<PbtStorageNodePath, byte[]?> tree = groups.ToDictionary(static group => group.Path, static group => group.Payload);
         tree.TryAdd(default, [0]);
         if (fillAncestors)
             foreach ((PbtStorageNodePath path, _) in groups)
                 for (int depth = 0; depth < path.BitDepth; depth += PbtThreeLevelGroupGeometry.LevelsPerGroup) tree.TryAdd(path.Prefix(depth), [0]);
         Dictionary<PbtStorageNodePath, ulong> published = [];
-        int count = 0;
-        long bytes = 0;
         foreach ((PbtStorageNodePath path, byte[]? payload) in tree.OrderByDescending(static group => group.Key.BitDepth))
         {
             if (payload is null)
@@ -142,10 +137,8 @@ internal static class PbtSnapshotTestExtensions
                 links[TrieUpdater.BoundarySlot(childBytes, path.BitDepth)] = pointer;
             }
             published[path] = buffer.Append(path, payload, links);
-            count++;
-            bytes += ((path.BitDepth + 7) >> 3) + payload.Length;
         }
-        return (published[default], count, bytes);
+        return published[default];
     }
 
     private static PbtStorageNodePath NearestAncestor(Dictionary<PbtStorageNodePath, byte[]?> tree, PbtStorageNodePath path)
