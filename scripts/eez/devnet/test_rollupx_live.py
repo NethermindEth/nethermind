@@ -31,7 +31,8 @@ class NativePreparationTests(unittest.TestCase):
         (self.package / "start.sh").write_text("EEZ_SKIP_PROOF_SIGNER_BUILD")
         (self.package / "ci-args.yaml").write_text('  enable_explorers: true\n  eez_node_image: old\n  proof_signer_image: old\n  deploy_image: old\n')
         loop = 'for service in eez-node eez-proof-signer "$KURTOSIS_BUILDER_SERVICE" mev-relay-api; do true; done\n'
-        self.driver = ('L2="$l2" bash "$HERE/scripts/verify-eezl2-deployment.sh"\n'
+        self.driver = ('    timeout 30s kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service" \n'
+            'L2="$l2" bash "$HERE/scripts/verify-eezl2-deployment.sh"\n'
             'timed_phase waves-and-state-chaining bash "$HERE/scripts/verify-cross-chain-waves.sh"\n'
             'timed_phase protocol-suite bash "$HERE/scripts/run-protocol-e2e.sh"\n'
             + loop + loop + 'capture_service_log eez-proof-signer\nverify_real_proof_path\nwrite_result pass 0\n')
@@ -49,7 +50,7 @@ class NativePreparationTests(unittest.TestCase):
         with patch.object(prepare, "revision", side_effect=["a" * 40, "b" * 40]):
             prepare.prepare(self.args)
 
-    def test_native_overlay_preserves_upstream_prover_and_assertions_and_adds_observations(self):
+    def test_native_overlay_preserves_upstream_prover_command_and_assertions_and_adds_observations(self):
         self.prepare()
         main = (self.package / "main.star").read_text()
         self.assertIn('ethereum_package.run(nethermind.relay_plan(resources.relay_startup_plan(plan)), eth_args)', main)
@@ -203,6 +204,35 @@ class NativeFollowerEvidenceTests(unittest.TestCase):
                         self.assertEqual(report["candidate_revision"], args.revision)
                         self.assertNotIn("signed_windows", report)
                 self.assertFalse((root / "candidate-prover.json").exists())
+
+    def test_candidate_prover_role_requires_matching_successful_native_v2_evidence(self):
+        for mutation in (None, "result", "profile", "wire", "candidate_revision"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = {"repository": upstream.PROFILES["rollupx"], "profile": "rollupx", "revision": "a" * 40, "core_revision": "b" * 40}
+                result = {"result": "pass", "exit_code": 0, "commits": {"root": "a" * 40, "protocol": "b" * 40},
+                    "proof_flow": {"signed_windows": 2, "remote_attestations": 2}}
+                (root / "upstream.json").write_text(json.dumps(manifest))
+                (root / "result.json").write_text(json.dumps(result))
+                for phase in ("verify-eezl2-deployment", "before-restart", "after-restart", "fresh-follower"):
+                    observation = {"result": "pass", "phase": phase, "profile": "rollupx-native", "verified_blocks": 20,
+                        "verified_receipts": 3, "verified_native_transactions": 2}
+                    (root / (phase + ".json")).write_text(json.dumps(observation))
+                args = SimpleNamespace(directory=root, revision="e" * 40, image_id="sha256:" + "f" * 64)
+                prover = {"result": "pass", "profile": "rollupx-native", "wire": "prove.v2",
+                    "candidate_revision": args.revision, "image_id": "sha256:" + "d" * 64}
+                if mutation is not None: prover[mutation] = "wrong"
+                (root / "candidate-prover.json").write_text(json.dumps(prover))
+                with patch.dict(os.environ, {"EEZ_SUITE": ""}):
+                    if mutation is not None:
+                        with self.assertRaisesRegex(ValueError, "prover evidence"):
+                            prepare.follower_report(args)
+                        self.assertFalse((root / "candidate-follower.json").exists())
+                    else:
+                        prepare.follower_report(args)
+                        report = json.loads((root / "candidate-follower.json").read_text())
+                        self.assertEqual(report["prover"], "Nethermind")
+                        self.assertEqual(report["candidate_prover_image_id"], prover["image_id"])
 
     def test_native_runtime_build_is_bound_to_selected_source_without_rollup0_artifact_fallback(self):
         with tempfile.TemporaryDirectory() as directory:

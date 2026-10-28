@@ -86,10 +86,16 @@ class StreamingSourceTests(unittest.TestCase):
 
 class StreamingEvidenceTests(unittest.TestCase):
     def test_requires_v2_signed_windows_matching_passed_upstream_source_and_counts(self):
+        self.check_profile(False)
+        self.check_profile(True)
+
+    def check_profile(self, native):
         for mutation in (None, "v1", "absent", "count", "digest", "result", "source", "remote", "partition", "genesis-only", "missing-prefix"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 manifest = {"revision": "a" * 40, "core_revision": "b" * 40, "streaming": {"wire": "prove.v2", "profile": "rollup0-conditional"}}
+                if native:
+                    manifest = {"profile": "rollupx", "repository": "eez-association/eez-rollupX", "revision": "a" * 40, "core_revision": "b" * 40}
                 result = {"result": "pass", "exit_code": 0, "commits": {"root": "a" * 40, "protocol": "b" * 40}, "proof_flow": {"signed_windows": 1, "remote_attestations": 2}}
                 fields = {"wire": "prove.v2", "validated_from_block": 1, "validated_to_block": 6, "recomputed_public_inputs_hash": "0x" + "cd" * 32}
                 if mutation == "v1": fields["wire"] = "prove.v1"
@@ -137,7 +143,7 @@ class StreamingProxyTests(unittest.TestCase):
             stream = root / "keystore/streaming"
             config = (stream / "haproxy.cfg").read_text()
             self.assertIn("bind :50061 proto h2", config)
-            self.assertIn("http-request deny unless { path /prove.v2.Prover/ProveStream }", config)
+            self.assertIn("http-request deny unless { path /prove.v2.Prover/ProveStream /prove.v2.Prover/Capabilities }", config)
             self.assertIn("http-request set-uri https://eez-ci-server%[pathq]", config)
             self.assertIn("log stdout format raw local0", config)
             self.assertIn("option httplog", config)
@@ -153,6 +159,67 @@ class StreamingProxyTests(unittest.TestCase):
             self.assertGreaterEqual(settings["maxReservedBytes"], 8 * 64 * 1024 * 1024 * settings["maxSessionsPerOwner"])
             self.assertEqual((stream / "server.pfx").stat().st_mode & 0o777, 0o600)
             self.assertNotIn((stream / "password").read_text().strip(), result.stdout + result.stderr)
+
+    def test_native_proxy_uses_deployed_identity_and_forwards_only_the_known_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = root / "start-streaming.sh"
+            shutil.copyfile(Path(__file__).with_name("start-streaming.sh"), launcher)
+            proxy = root / "haproxy"
+            proxy.write_text('#!/bin/bash\nif [[ "$1" == -c ]]; then exit 0; fi\n'
+                'for ((n=0;n<1000;n++)); do [[ ! -f "$EEZ_TEST_ARGS" ]] || exit 7; sleep 0.01; done\nexit 9\n')
+            proxy.chmod(0o555)
+            prover = root / "nethermind-eez-attester"
+            prover.write_text('#!/usr/bin/env python3\nimport json, os, pathlib, sys\n'
+                'target = pathlib.Path(os.environ["EEZ_TEST_ARGS"])\n'
+                'temporary = target.with_suffix(".tmp")\n'
+                'temporary.write_text(json.dumps(sys.argv[1:]))\n'
+                'temporary.replace(target)\n'
+                'os.execvp("sleep", ["sleep", "30"])\n')
+            prover.chmod(0o555)
+            arguments = root / "attester-args.json"
+            genesis = root / "l1.json"
+            genesis.write_text('{"config":{"chainId":7331}}')
+            jq = root / "jq"
+            jq.write_text('#!/usr/bin/env python3\nimport os, sys\n'
+                'args = [os.environ["EEZ_TEST_L1_GENESIS"] if a == "/genesis/genesis.json" else a for a in sys.argv[1:]]\n'
+                'os.execv(os.environ["EEZ_TEST_JQ"], [os.environ["EEZ_TEST_JQ"], *args])\n')
+            jq.chmod(0o555)
+            environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                EEZ_KEYSTORE_DIRECTORY=str(root / "keystore"), EEZ_CI_PROFILE="rollupx",
+                EEZ_REGISTRY_ADDRESS="0x" + "11" * 20, EEZ_ROLLUP_MANAGER_ADDRESS="0x" + "22" * 20,
+                EEZ_INITIAL_BLOCK_HASH="0x" + "33" * 32, EEZ_TEST_JQ=shutil.which("jq"),
+                EEZ_TEST_L1_GENESIS=str(genesis), EEZ_TEST_ARGS=str(arguments))
+            result = subprocess.run(["bash", str(launcher), "--listen-addr=0.0.0.0:50061",
+                "--chain-config=/out/l2-genesis.json", "--l1-chain-config=/genesis/genesis.json", "--max-request-blocks=64"],
+                env=environment, text=True, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 7, result.stderr)
+            self.assertEqual(json.loads(arguments.read_text()), ["--listen-addr=127.0.0.1:50063",
+                "--chain-config=/out/l2-genesis.json", "--streaming-config=" + str(root / "keystore/streaming/config.json"),
+                "--max-request-blocks=64"])
+            settings = json.loads((root / "keystore/streaming/config.json").read_text())
+            self.assertEqual(settings["profile"], "rollupx-native")
+            self.assertEqual(settings["l1ChainId"], 7331)
+            self.assertEqual(settings["registry"], environment["EEZ_REGISTRY_ADDRESS"])
+            self.assertEqual(settings["manager"], environment["EEZ_ROLLUP_MANAGER_ADDRESS"])
+            self.assertEqual(settings["l2GenesisHash"], environment["EEZ_INITIAL_BLOCK_HASH"])
+            self.assertEqual(settings["l1ChainConfigPath"], "/genesis/genesis.json")
+            self.assertNotIn("l1Rpc", settings)
+            self.assertNotIn("l2Rpc", settings)
+
+    def test_native_proxy_rejects_changed_or_duplicate_args_before_generating_certificates(self):
+        for tail in ([], ["--l1-chain-config=/other"], ["--l1-chain-config=/genesis/genesis.json", "--max-request-blocks=0"],
+                ["--l1-chain-config=/genesis/genesis.json", "--max-request-blocks=64", "--max-request-blocks=64"],
+                ["--l1-chain-config=/genesis/genesis.json", "--streaming-config=/other"]):
+            with self.subTest(tail=tail), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                environment = dict(os.environ, EEZ_KEYSTORE_DIRECTORY=str(root / "keystore"), EEZ_CI_PROFILE="rollupx")
+                result = subprocess.run(["bash", str(Path(__file__).with_name("start-streaming.sh")),
+                    "--listen-addr=0.0.0.0:50061", "--chain-config=/out/l2-genesis.json", *tail],
+                    env=environment, text=True, capture_output=True, timeout=5)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("upstream prover arguments changed", result.stderr)
+                self.assertFalse((root / "keystore").exists())
 
     def test_proxy_output_cannot_interleave_with_signed_window_evidence(self):
         with tempfile.TemporaryDirectory() as directory:

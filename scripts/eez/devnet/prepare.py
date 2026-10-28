@@ -109,7 +109,8 @@ def prepare(args):
         if commands.count(readiness) != 1:
             raise ValueError("upstream streaming readiness log boundary changed")
         commands = commands.replace(readiness, 'timeout 10s kurtosis service logs --all "$KURTOSIS_ENCLAVE" eez-node')
-        capture = '    timeout 30s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" '
+    if "streaming" in manifest or native:
+        capture = '    timeout 30s kurtosis service logs ' + ('--all ' if native else '') + '"$KURTOSIS_ENCLAVE" "$service" '
         if commands.count(capture) != 1:
             raise ValueError("upstream log capture boundary changed")
         commands = commands.replace(capture,
@@ -162,9 +163,12 @@ def late(args):
 def report(args):
     manifest = json.loads((args.directory / "upstream.json").read_text())
     result = json.loads((args.directory / "result.json").read_text())
-    streaming = manifest["streaming"]
+    native = manifest.get("profile") == "rollupx"
+    streaming = {"wire": "prove.v2", "profile": "rollupx-native"} if native else manifest["streaming"]
+    if native and manifest.get("repository") != "eez-association/eez-rollupX":
+        raise ValueError("unexpected native prover source")
     counts = result["proof_flow"]
-    if streaming["wire"] != "prove.v2" or streaming["profile"] != "rollup0-conditional" or result["result"] != "pass" or result["exit_code"] != 0:
+    if streaming["wire"] != "prove.v2" or streaming["profile"] != ("rollupx-native" if native else "rollup0-conditional") or result["result"] != "pass" or result["exit_code"] != 0:
         raise ValueError("live streaming scenarios did not pass")
     if not all(type(counts[name]) is int and counts[name] > 0 for name in ("signed_windows", "remote_attestations")):
         raise ValueError("missing actual signed windows or remote attestations")
@@ -196,7 +200,7 @@ def report(args):
             if observation["result"] != "pass" or observation.get("verified_blocks", 0) <= 1:
                 raise ValueError("missing complete candidate prefix observation")
     report = {"result": "pass", "implementation": "Nethermind", "wire": "prove.v2",
-        "profile": "rollup0-conditional", "transport": "isolated-h2-to-mtls",
+        "profile": streaming["profile"], "transport": "isolated-h2-to-mtls",
         "candidate_revision": args.revision, "image_id": args.image_id,
         "proof_flow": counts, "signed_windows": signed}
     (args.directory / "candidate-prover.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -230,6 +234,13 @@ def follower_report(args):
     report = {"result": "pass", "implementation": "Nethermind", "role": "follower", "profile": "rollupx-native",
         "candidate_revision": args.revision, "image_id": args.image_id, "prover": "upstream",
         "upstream_proof_flow": counts, "observations": observations}
+    prover_path = args.directory / "candidate-prover.json"
+    if prover_path.exists():
+        prover = json.loads(prover_path.read_text())
+        if prover.get("result") != "pass" or prover.get("profile") != "rollupx-native" or prover.get("wire") != "prove.v2" or prover.get("candidate_revision") != args.revision:
+            raise ValueError("candidate prover evidence does not match the follower")
+        report["prover"] = "Nethermind"
+        report["candidate_prover_image_id"] = prover["image_id"]
     (args.directory / "candidate-follower.json").write_text(json.dumps(report, indent=2) + "\n")
 
 
