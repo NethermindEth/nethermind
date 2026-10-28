@@ -95,6 +95,7 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Specified_block_registered_native_tracers_enforce_reached_timeout(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
         [Values(NativeNoopTracer.NoopTracer, NativeKeccakPreimageTracer.KeccakPreimageTracer, "registered", Native4ByteTracer.FourByteTracer)] string tracer,
