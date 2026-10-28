@@ -18,6 +18,9 @@ public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
 
+    /// <summary>Historical blocks kept for repeated replays, such as traces of several transactions of one block.</summary>
+    public const int ReplayCacheSize = 16;
+
     private readonly IDb _blockDb;
     private readonly BlockDecoder _blockDecoder;
     // A block body is a re-execution input, so the persistence barrier must make it durable before state. Null when off.
@@ -27,6 +30,10 @@ public class BlockStore : IBlockStore, IClearableCache
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
+
+    // Its blocks are never handed out: each replay gets its own block over the shared header and body, so what
+    // processing records on a block, such as its account changes, is neither seen by other replays nor retained.
+    private readonly AssociativeCache<ValueHash256, Block> _replayCache = new(ReplayCacheSize);
 
     public BlockStore(
         [KeyFilter(DbNames.Blocks)] IDb blockDb,
@@ -117,6 +124,7 @@ public class BlockStore : IBlockStore, IClearableCache
     private void DeleteFromDb(ulong blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(in blockHash.ValueHash256);
+        _replayCache.Delete(in blockHash.ValueHash256);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
     }
@@ -151,6 +159,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
         // disk must stop being served whatever the reclaim does.
         _blockCache.Clear();
+        _replayCache.Clear();
         foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
         {
             if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
@@ -168,10 +177,7 @@ public class BlockStore : IBlockStore, IClearableCache
             return pendingBlock;
         }
 
-        Block? block = _blockDb.Get(blockNumber, blockHash, _blockDecoder,
-            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false)
-            ?? _blockDb.Get(blockHash, _blockDecoder,
-                cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
+        Block? block = Decode(blockNumber, blockHash, rlpBehaviors);
 
         if (shouldCache && block is not null)
         {
@@ -180,6 +186,33 @@ public class BlockStore : IBlockStore, IClearableCache
 
         return block;
     }
+
+    public Block? GetForReplay(ulong blockNumber, Hash256 blockHash)
+    {
+        ValueHash256 cacheKey = blockHash.ValueHash256;
+        if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock)) return cachedBlock;
+
+        if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
+        {
+            return pendingBlock;
+        }
+
+        if (!_replayCache.TryGet(in cacheKey, out Block? block))
+        {
+            block = Decode(blockNumber, blockHash, RlpBehaviors.None);
+            if (block is null) return null;
+
+            _replayCache.Set(in cacheKey, block);
+        }
+
+        return new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
+    }
+
+    private Block? Decode(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors) =>
+        _blockDb.Get(blockNumber, blockHash, _blockDecoder,
+            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false)
+        ?? _blockDb.Get(blockHash, _blockDecoder,
+            cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
 
     public byte[]? GetRlp(ulong blockNumber, Hash256 blockHash)
     {
@@ -240,5 +273,9 @@ public class BlockStore : IBlockStore, IClearableCache
         _blockCache.Set(in cacheKey, cachedBlock);
     }
 
-    void IClearableCache.ClearCache() => _blockCache.Clear();
+    void IClearableCache.ClearCache()
+    {
+        _blockCache.Clear();
+        _replayCache.Clear();
+    }
 }

@@ -1754,14 +1754,19 @@ namespace Nethermind.Blockchain
 
             long deletions = Volatile.Read(ref _deletions);
             Block? block = null;
+            bool forReplay = false;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
             {
-                block = _blockStore.Get(
-                    blockNumber.Value,
-                    blockHash,
-                    (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
-                    shouldCache: false);
+                forReplay = (options & (BlockTreeLookupOptions.ReuseHistoricalBody | BlockTreeLookupOptions.ExcludeTxHashes)) == BlockTreeLookupOptions.ReuseHistoricalBody
+                    && !ShouldCache(blockNumber.Value);
+                block = forReplay
+                    ? _blockStore.GetForReplay(blockNumber.Value, blockHash)
+                    : _blockStore.Get(
+                        blockNumber.Value,
+                        blockHash,
+                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                        shouldCache: false);
             }
 
             if (block is null)
@@ -1818,6 +1823,10 @@ namespace Nethermind.Blockchain
                     (_blockStore as IClearableCache)?.ClearCache();
                     (_headerStore as IClearableCache)?.ClearCache();
                 }
+            }
+            else if (forReplay && OverlappedDeletion(deletions))
+            {
+                (_blockStore as IClearableCache)?.ClearCache();
             }
 
             return block;

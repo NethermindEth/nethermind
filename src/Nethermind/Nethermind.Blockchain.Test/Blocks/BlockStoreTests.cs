@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
@@ -244,4 +246,100 @@ public class BlockStoreTests
         Assert.That(retrieved, Is.Null);
     }
 
+    [Test]
+    public void GetForReplay_decodes_a_block_once_and_gives_each_caller_its_own_block()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)).TestObject;
+        store.Insert(block);
+
+        Block first = store.GetForReplay(block.Number, block.Hash!)!;
+        first.ExecutionRequests = [[1]];
+        Block second = store.GetForReplay(block.Number, block.Hash!)!;
+
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        db.KeyWasRead(key);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Hash, Is.EqualTo(block.Hash));
+            Assert.That(first.Transactions.Select(static tx => tx.Hash), Is.EqualTo(block.Transactions.Select(static tx => tx.Hash)));
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.Body, Is.SameAs(first.Body));
+            Assert.That(second.ExecutionRequests, Is.Null);
+            Assert.That(second.EncodedSize, Is.EqualTo(first.EncodedSize).And.Not.Null);
+        }
+    }
+
+    [Test]
+    public void GetForReplay_does_not_serve_a_deleted_block([Values] bool byRange)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+        Assert.That(store.GetForReplay(block.Number, block.Hash!), Is.Not.Null);
+
+        if (byRange) store.DeleteRange(block.Number, block.Number + 1);
+        else store.Delete(block.Number, block.Hash!);
+
+        Assert.That(store.GetForReplay(block.Number, block.Hash!), Is.Null);
+    }
+
+    [Test]
+    public void GetForReplay_decodes_again_after_ClearCache()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block);
+
+        store.GetForReplay(block.Number, block.Hash!);
+        ((IClearableCache)store).ClearCache();
+        store.GetForReplay(block.Number, block.Hash!);
+
+        db.KeyWasRead(Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray()), 2);
+    }
+
+    [Test]
+    public void GetForReplay_keeps_at_most_ReplayCacheSize_blocks()
+    {
+        const int count = BlockStore.ReplayCacheSize * 4;
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block[] blocks = new Block[count];
+        for (int i = 0; i < count; i++)
+        {
+            blocks[i] = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
+            store.Insert(blocks[i]);
+            store.GetForReplay(blocks[i].Number, blocks[i].Hash!);
+        }
+
+        long readsBefore = db.ReadsCount;
+        foreach (Block block in blocks)
+        {
+            Assert.That(store.GetForReplay(block.Number, block.Hash!), Is.EqualTo(block).UsingBlockComparer());
+        }
+
+        Assert.That(db.ReadsCount - readsBefore, Is.GreaterThanOrEqualTo(count - BlockStore.ReplayCacheSize));
+    }
+
+    [Test]
+    public void GetForReplay_serves_concurrent_callers_the_same_content()
+    {
+        const int callers = 64;
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)).TestObject;
+        store.Insert(block);
+
+        Block?[] results = new Block?[callers];
+        Parallel.For(0, callers, i => results[i] = store.GetForReplay(block.Number, block.Hash!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results.Select(static result => result?.Hash), Is.All.EqualTo(block.Hash));
+            Assert.That(new HashSet<Block?>(results, ReferenceEqualityComparer.Instance), Has.Count.EqualTo(callers));
+        }
+    }
 }

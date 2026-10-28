@@ -35,6 +35,11 @@ public interface IBlockStore
     }
 
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
+
+    /// <summary>Reads a block for a replay, which may share its header and body with other replays of the same block.</summary>
+    /// <remarks>See <see cref="BlockTreeLookupOptions.ReuseHistoricalBody"/> for what the caller may change.</remarks>
+    Block? GetForReplay(ulong blockNumber, Hash256 blockHash) => Get(blockNumber, blockHash, shouldCache: false);
+
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);

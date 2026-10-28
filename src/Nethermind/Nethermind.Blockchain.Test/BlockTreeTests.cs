@@ -949,6 +949,70 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_decodes_a_historical_body_once_only_for_replay_lookups([Values] bool reuse)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        ((IClearableCache)builder.BlockStore).ClearCache();
+        MemDb blocksDb = (MemDb)builder.BlocksDb;
+        Block historical = blockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        BlockTreeLookupOptions options = reuse
+            ? BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.ReuseHistoricalBody
+            : BlockTreeLookupOptions.RequireCanonical;
+
+        long readsBefore = blocksDb.ReadsCount;
+        Block first = blockTree.FindBlock(historical.Hash!, options)!;
+        Block second = blockTree.FindBlock(historical.Hash!, options)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocksDb.ReadsCount - readsBefore, Is.EqualTo(reuse ? 1 : 2));
+            Assert.That(first, Is.EqualTo(historical).UsingBlockComparer());
+            Assert.That(second, Is.EqualTo(historical).UsingBlockComparer());
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.TotalDifficulty, Is.EqualTo(historical.TotalDifficulty));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_for_replay_keeps_blocks_of_one_number_apart()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block canonical = blockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        Block sibling = Build.A.Block.WithParent(blockTree.Genesis!).WithExtraData([1]).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(2)).TestObject;
+        blockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        ((IClearableCache)builder.BlockStore).ClearCache();
+
+        const BlockTreeLookupOptions reuse = BlockTreeLookupOptions.ReuseHistoricalBody;
+        Block? siblingFound = blockTree.FindBlock(sibling.Hash!, reuse);
+        Block? canonicalFound = blockTree.FindBlock(canonical.Hash!, reuse | BlockTreeLookupOptions.RequireCanonical);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(siblingFound?.Hash, Is.EqualTo(sibling.Hash));
+            Assert.That(siblingFound?.Transactions.Length, Is.EqualTo(2));
+            Assert.That(canonicalFound?.Hash, Is.EqualTo(canonical.Hash));
+            Assert.That(canonicalFound?.Header.TxRoot, Is.EqualTo(canonical.Header.TxRoot));
+            Assert.That(blockTree.FindBlock(sibling.Hash!, reuse | BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(blockTree.FindBlock(sibling.Hash!, reuse)?.Hash, Is.EqualTo(sibling.Hash));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_for_replay_does_not_serve_a_deleted_block()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block historical = blockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        Assert.That(blockTree.FindBlock(historical.Hash!, BlockTreeLookupOptions.ReuseHistoricalBody), Is.Not.Null);
+
+        builder.BlockStore.Delete(historical.Number, historical.Hash!);
+
+        Assert.That(blockTree.FindBlock(historical.Hash!, BlockTreeLookupOptions.ReuseHistoricalBody), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_basic()
     {
         BlockTree blockTree = BuildBlockTree();

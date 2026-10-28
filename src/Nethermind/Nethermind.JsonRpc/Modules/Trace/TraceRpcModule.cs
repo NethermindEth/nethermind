@@ -366,7 +366,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay?>.Success(null);
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHash, requireCanonical: !traceNonCanonical));
+            SearchResult<Block> blockSearch = SearchForTransactionBlock(blockHash, traceNonCanonical);
             if (blockSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay?>.Fail(blockSearch);
@@ -698,7 +698,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(null);
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(new BlockParameter(blockHash, requireCanonical: !traceNonCanonical));
+            SearchResult<Block> blockSearch = SearchForTransactionBlock(blockHash, traceNonCanonical);
             if (blockSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Fail(blockSearch);
@@ -731,6 +731,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new(txHash, ParityTraceTypes.Trace, specProvider), transactionHash: txHash);
                     return ParityTxTraceFromStore.FromTxTrace(txTrace);
                 });
+        }
+
+        /// <summary>
+        /// Finds the block of a transaction to replay, sharing a historical body with other replays of its transactions.
+        /// </summary>
+        private SearchResult<Block> SearchForTransactionBlock(Hash256 blockHash, bool traceNonCanonical)
+        {
+            BlockTreeLookupOptions options = traceNonCanonical
+                ? BlockTreeLookupOptions.ReuseHistoricalBody
+                : BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.ReuseHistoricalBody;
+
+            // A miss searches again to report why the block is unavailable.
+            return blockFinder.FindBlock(blockHash, options) is { } block
+                ? new SearchResult<Block>(block)
+                : blockFinder.SearchForBlock(new BlockParameter(blockHash, requireCanonical: !traceNonCanonical));
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)

@@ -239,7 +239,11 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(Hash256 blockHash, Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+        // Overrides change what execution stores on the transactions, which a shared body must not see.
+        BlockTreeLookupOptions lookupOptions = traceOptions.StateOverrides is null && traceOptions.BlockOverrides is null && !traceOptions.NoBaseFee
+            ? BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.ReuseHistoricalBody
+            : BlockTreeLookupOptions.RequireCanonical;
+        Block? block = blockTree.FindBlock(blockHash, lookupOptions);
         if (block is null) return null;
 
         return TraceImpl(block, txHash, cancellationToken, traceOptions, writer: writer, pipeWriter: pipeWriter);

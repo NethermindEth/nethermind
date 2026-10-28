@@ -12,10 +12,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -26,6 +28,7 @@ using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using NSubstitute;
@@ -35,6 +38,7 @@ using NUnit.Framework.Constraints;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
@@ -1727,6 +1731,44 @@ public class TraceRpcModuleTests
 
         using ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, [0]);
         Assert.That(traceGet.Data, Is.Null);
+    }
+
+    [Test]
+    public async Task Transaction_traces_of_a_historical_block_read_its_body_once()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithFlatDb(false).Build(static builder =>
+            builder.AddSingleton<IPruningConfig>(new PruningConfig { Mode = PruningMode.None }));
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction first = Build.A.Transaction.WithNonce(nonce).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction last = Build.A.Transaction.WithNonce(nonce + 1).WithTo(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await blockchain.AddBlock(first, last);
+        for (int i = 0; i <= BlockStore.CacheSize; i++) await blockchain.AddBlock();
+
+        ITraceRpcModule traceModule = blockchain.TraceRpcModule;
+        IDebugRpcModule debugModule = blockchain.DebugRpcModule;
+        IClearableCache blockStore = (IClearableCache)blockchain.Container.Resolve<IBlockStore>();
+        MemDb blocksDb = (MemDb)blockchain.DbProvider.BlocksDb;
+        blockStore.ClearCache();
+        string expectedTrace = await RpcTest.TestSerializedRequest(traceModule, "trace_transaction", last.Hash!);
+        blockStore.ClearCache();
+        string expectedDebugTrace = await RpcTest.TestSerializedRequest(debugModule, "debug_traceTransaction", first.Hash!);
+        blockStore.ClearCache();
+
+        long readsBefore = blocksDb.ReadsCount;
+        await RpcTest.TestSerializedRequest(traceModule, "trace_transaction", first.Hash!);
+        long readsAfterFirstTrace = blocksDb.ReadsCount;
+        string trace = await RpcTest.TestSerializedRequest(traceModule, "trace_transaction", last.Hash!);
+        string debugTrace = await RpcTest.TestSerializedRequest(debugModule, "debug_traceTransaction", first.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedTrace, Does.Contain("\"result\":[{"));
+            Assert.That(expectedDebugTrace, Does.Contain("\"structLogs\""));
+            Assert.That(readsAfterFirstTrace, Is.GreaterThan(readsBefore));
+            Assert.That(blocksDb.ReadsCount, Is.EqualTo(readsAfterFirstTrace));
+            Assert.That(trace, Is.EqualTo(expectedTrace));
+            Assert.That(debugTrace, Is.EqualTo(expectedDebugTrace));
+        }
     }
 
     [Test]

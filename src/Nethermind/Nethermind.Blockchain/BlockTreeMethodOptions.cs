@@ -14,7 +14,15 @@ public enum BlockTreeLookupOptions
     DoNotCreateLevelIfMissing = 4,
     AllowInvalid = 8,
     ExcludeTxHashes = 16,
-    All = 31
+
+    /// <summary>
+    /// A block below the recent-block window is read through a small cache shared by the lookups that pass this option,
+    /// so that replays of one block's transactions decode its body once. The returned block is the caller's own, but its
+    /// header, transactions, uncles and withdrawals are shared: the caller may only store on them what every unaltered
+    /// replay of the block derives identically, such as a transaction's hash, sender or gas used.
+    /// </summary>
+    ReuseHistoricalBody = 32,
+    All = 63
 }
 
 [Flags]
