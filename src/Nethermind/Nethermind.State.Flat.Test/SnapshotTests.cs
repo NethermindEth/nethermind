@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -54,9 +56,9 @@ public class SnapshotTests
     public void CountsAndEstimatesAreSealedByFirstObservation()
     {
         // The repository adds EstimateMemory() to its memory ledger when a snapshot is published and
-        // subtracts a later call on removal: both sides must see the same value even if a straggling
-        // writer (e.g. a trie-warmer job) mutates the content in between, and serving sealed counts
-        // avoids the all-stripe-locks ConcurrentDictionary.Count on live maps.
+        // subtracts a later call on removal: both sides must see the same value even if the content
+        // changes in between, and serving sealed counts avoids the all-stripe-locks
+        // ConcurrentDictionary.Count on live maps.
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
@@ -147,6 +149,123 @@ public class SnapshotTests
             Assert.That(foundB, Is.SameAs(otherAddress));
             Assert.That(snapshot.StorageNodesCount, Is.EqualTo(2));
         }
+    }
+
+    [Test]
+    public void FilteredLookupsFindEveryWrittenKeyAndNoOthers([Values] bool reusedContent)
+    {
+        const int Count = 1_000;
+        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+        if (reusedContent)
+        {
+            // An earlier, larger build over the keys asserted absent below: its filter arrays are reused, not reallocated.
+            Populate(Count, 4 * Count);
+            using (Snapshot previous = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing))
+            {
+                previous.BuildFilters();
+            }
+
+            SnapshotContent reused = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+            Assert.That(reused, Is.SameAs(content));
+            content = reused;
+        }
+
+        Populate(0, Count);
+        using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        snapshot.BuildFilters();
+
+        SnapshotContentFilters filters = content.Filters!;
+        int[] maybePresent = new int[5];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 2 * Count; i++)
+            {
+                bool written = i < Count;
+                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
+                HashedKey<Address> account = new(address);
+                HashedKey<(Address, UInt256)> storage = new((address, (UInt256)i));
+                HashedKey<TreePath> stateNode = new(path);
+                HashedKey<(Hash256, TreePath)> storageNode = new((hash, path));
+                HashedKey<(Hash256, TreePath)> otherStorageNode = new((hash, otherPath));
+                Assert.That(snapshot.TryGetAccount(account, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorage(storage, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStateNode(stateNode, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(storageNode, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(otherStorageNode, out _), Is.EqualTo(written));
+
+                // The dictionaries decide the lookups above, so also check that the filters reject absent keys.
+                if (written) continue;
+                if (filters.Accounts.MightContain((uint)account.GetHashCode())) maybePresent[0]++;
+                if (filters.Storages.MightContain((uint)storage.GetHashCode())) maybePresent[1]++;
+                if (filters.StateNodes.MightContain((uint)stateNode.GetHashCode())) maybePresent[2]++;
+                if (filters.StorageNodes.MightContain((uint)storageNode.GetHashCode())) maybePresent[3]++;
+                if (filters.StorageNodes.MightContain((uint)otherStorageNode.GetHashCode())) maybePresent[4]++;
+            }
+
+            Assert.That(maybePresent, Is.All.LessThan(Count / 10));
+        }
+
+        void Populate(int from, int to)
+        {
+            for (int i = from; i < to; i++)
+            {
+                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
+                content.Accounts[new(address)] = new((ulong)i, 1);
+                content.Storages[new((address, (UInt256)i))] = (UInt256)i;
+                content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, otherPath)] = new TrieNode(NodeType.Leaf, hash);
+            }
+        }
+
+        static (Address, Hash256, TreePath, TreePath) Key(int i)
+        {
+            Hash256 hash = Keccak.Compute(i.ToString());
+            return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes), TreePath.FromPath(hash.Bytes[..16]));
+        }
+    }
+
+    [Test]
+    public void RebuildingFiltersDoesNotHidePublishedStorageNodes()
+    {
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing);
+        HashedKey<(Hash256, TreePath)> key = new((TestItem.KeccakA, TreePath.Empty));
+        snapshot.Content.StorageNodes[key] = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
+        snapshot.BuildFilters();
+
+        // A stale queued compaction job can resolve to a snapshot whose filters are already published.
+        // Observe a lookup exactly between clearing the storage filter and adding its first key if it rebuilds.
+        FieldInfo field = typeof(AddressStorageNodeDictionary).GetField("_cachedAddressEnumerator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>> original =
+            (IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>)field.GetValue(snapshot.Content.StorageNodes)!;
+        field.SetValue(snapshot.Content.StorageNodes,
+            new LookupCheckingEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>(original, () =>
+                Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True, "published filters must never hide a written key")));
+
+        try
+        {
+            snapshot.BuildFilters();
+            Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True);
+        }
+        finally
+        {
+            field.SetValue(snapshot.Content.StorageNodes, original);
+        }
+    }
+
+    private sealed class LookupCheckingEnumerator<T>(IEnumerator<T> inner, Action checkLookup) : IEnumerator<T>
+    {
+        public T Current => inner.Current;
+        object IEnumerator.Current => Current!;
+
+        public bool MoveNext()
+        {
+            checkLookup();
+            return inner.MoveNext();
+        }
+
+        public void Reset() => inner.Reset();
+        public void Dispose() => inner.Dispose();
     }
 
     [TestCase(256)]

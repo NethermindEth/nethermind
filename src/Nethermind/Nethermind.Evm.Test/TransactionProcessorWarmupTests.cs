@@ -196,8 +196,11 @@ public class TransactionProcessorWarmupTests
         ITxTracer composite = new CompositeTxTracer(tracer, observer);
         if (cancelable) composite = composite.WithCancellation(default);
         TransactionResult result = _transactionProcessor.CallAndRestore(tx, composite);
-        Assert.That(result.TransactionExecuted, Is.True);
-        Assert.That(observer.Failed, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(observer.Failed, Is.False);
+        }
 
         if (tracer is GethLikeTxTracer gethTracer)
         {
@@ -280,13 +283,16 @@ public class TransactionProcessorWarmupTests
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
         TransactionResult result = _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the warm execution ran");
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL),
-            "a warm execution must bump the nonce so a same-sender successor warms the right state");
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore - 100.GWei - 21_000),
-            "a warm execution must debit value and gas so successors see real balances");
-        Assert.That(tx.BlockGasUsed, Is.EqualTo(100_000UL),
-            "warmup must never mutate the shared transaction object: the getter must still fall back to the gas limit");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the warm execution ran");
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL),
+                "a warm execution must bump the nonce so a same-sender successor warms the right state");
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(balanceBefore - 100.GWei - 21_000),
+                "a warm execution must debit value and gas so successors see real balances");
+            Assert.That(tx.BlockGasUsed, Is.EqualTo(100_000UL),
+                "warmup must never mutate the shared transaction object: the getter must still fall back to the gas limit");
+        }
     }
 
     // A sender funded earlier in the block by another sender's transaction has no balance in
@@ -316,9 +322,12 @@ public class TransactionProcessorWarmupTests
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
         TransactionResult result = _transactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
-        Assert.That(result.TransactionExecuted, Is.True,
-            "an underfunded warm sender must still warm its execution path");
-        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True,
+                "an underfunded warm sender must still warm its execution path");
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+        }
     }
 
     // The motivating bug: with no-op nonce handling, every deploy in a same-sender warm chain
@@ -358,9 +367,12 @@ public class TransactionProcessorWarmupTests
         _transactionProcessor.Warmup(firstDeploy, NullTxTracer.Instance);
         _transactionProcessor.Warmup(secondDeploy, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.AccountExists(ContractAddress.From(TestItem.AddressA, 0)), Is.True,
-            "the first deploy must land at the nonce-0 CREATE address");
-        Assert.That(_stateProvider.AccountExists(ContractAddress.From(TestItem.AddressA, 1)), Is.True,
-            "the successor must observe the bumped nonce and deploy at the nonce-1 CREATE address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.AccountExists(ContractAddress.From(TestItem.AddressA, 0)), Is.True,
+                "the first deploy must land at the nonce-0 CREATE address");
+            Assert.That(_stateProvider.AccountExists(ContractAddress.From(TestItem.AddressA, 1)), Is.True,
+                "the successor must observe the bumped nonce and deploy at the nonce-1 CREATE address");
+        }
     }
 }

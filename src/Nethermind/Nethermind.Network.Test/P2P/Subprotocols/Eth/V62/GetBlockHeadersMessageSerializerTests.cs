@@ -28,10 +28,13 @@ public class GetBlockHeadersMessageSerializerTests
         Assert.That(Bytes.AreEqual(bytes, expectedBytes), Is.True, "bytes");
 
         using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.StartBlockHash, Is.EqualTo(message.StartBlockHash), $"{nameof(message.StartBlockHash)}");
-        Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
-        Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
-        Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.StartBlockHash, Is.EqualTo(message.StartBlockHash), $"{nameof(message.StartBlockHash)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        }
 
         SerializerTester.TestZero(serializer, message);
     }
@@ -81,10 +84,13 @@ public class GetBlockHeadersMessageSerializerTests
         Assert.That(bytes, Is.EqualTo(expectedBytes), "bytes");
 
         using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
-        Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
-        Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
-        Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+        }
 
         SerializerTester.TestZero(serializer, message);
     }
