@@ -34,7 +34,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
 using NSubstitute;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks;
