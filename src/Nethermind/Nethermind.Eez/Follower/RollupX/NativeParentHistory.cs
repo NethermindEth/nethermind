@@ -20,10 +20,10 @@ internal sealed class NativeParentHistory(IStateReader state, EezChainRules rule
     internal NativeHistoryState ReadParent(BlockHeader parent)
     {
         if (!state.TryGetAccount(parent, EezConstants.L1HistoryAddress, out AccountStruct account) ||
-            (_rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? account.Nonce < 2 : account.Nonce != 1) ||
+            (_rules.NativeFormat.UsesProxyHistory() ? account.Nonce < 2 : account.Nonce != 1) ||
             account.CodeHash != NativeHistoryBlockExecutor.GetRuntimeHash(_rules.NativeFormat))
             throw NativeL1Header.Invalid("parent history account differs from the native profile");
-        if (_rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+        if (_rules.NativeFormat.UsesProxyHistory())
         {
             ulong storedNumber = Scalar(parent, 1);
             state.GetStorage(parent, EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(storedNumber), out UInt256 storedHash);

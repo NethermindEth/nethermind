@@ -19,7 +19,7 @@ internal sealed record RollupXSettlementInput(PostBatch Batch, NativeStream Stre
     Hash256[] BlobHashes, ulong L1ParentNumber, L1PostingTarget Target)
 {
     internal static RollupXSettlementInput Decode(SettlementInput input, EezSettlementContext context, ISpecProvider l1Specs,
-        CancellationToken cancellation, NativeOfflineContext? offline = null, ulong rulesTimestamp = 0, PostBatch? decodedBatch = null)
+        CancellationToken cancellation, NativeOfflineContext? offline = null, ulong rulesTimestamp = 0, PostBatch? decodedBatch = null, NativeL1Rules? nativeRules = null)
     {
         cancellation.ThrowIfCancellationRequested();
         SettlementInput snapshot = input.Clone();
@@ -38,9 +38,19 @@ internal sealed record RollupXSettlementInput(PostBatch Batch, NativeStream Stre
             parentNumber = offline.Anchor.Number;
             target = new(rulesTimestamp, new Hash256(offline.Anchor.Hash));
         }
-        IReleaseSpec spec = l1Specs.GetSpec(offline?.Anchor.TargetTimestamp is null && offline is not null ? parentNumber : checked(parentNumber + 1), target.Timestamp);
+        ulong maximum;
+        if (offline is { UsesCore: true })
+        {
+            if (nativeRules is null || nativeRules.Specs.ChainId != l1Specs.ChainId) throw Invalid();
+            maximum = nativeRules.PostingBlobLimit(offline.Anchor.TargetTimestamp, parentNumber);
+        }
+        else
+        {
+            IReleaseSpec spec = l1Specs.GetSpec(offline?.Anchor.TargetTimestamp is null && offline is not null ? parentNumber : checked(parentNumber + 1), target.Timestamp);
+            maximum = spec.IsEip4844Enabled ? Math.Min(spec.MaxBlobCount, spec.MaxBlobsPerTx) : 0;
+        }
         int count = snapshot.Blobs.Count;
-        if (!spec.IsEip4844Enabled || count == 0 || (ulong)count > Math.Min(spec.MaxBlobCount, spec.MaxBlobsPerTx)) throw Invalid();
+        if (count == 0 || (ulong)count > maximum) throw Invalid();
         try
         {
             PostBatch batch = decodedBatch ?? EezCalldata.DecodePostAndVerifyBatch(snapshot.AbiCalldata.Span);

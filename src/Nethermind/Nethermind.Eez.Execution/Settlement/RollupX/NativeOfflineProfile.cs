@@ -18,12 +18,15 @@ internal static class NativeOfflineProfile
     private static readonly ValueHash256 Domain = ValueKeccak.Compute("EEZ_ROLLUPX_OFFLINE_PROFILE"u8);
     private static readonly ValueHash256 RulesDomain = ValueKeccak.Compute("EEZ_ROLLUPX_L1_RULES_V1"u8);
 
-    internal static ValueHash256 Compute(in Inputs input, ReadOnlySpan<ulong> ruleTimes) => ValueKeccak.Compute(Encode(in input, ruleTimes));
+    internal static ValueHash256 Compute(in Inputs input, ReadOnlySpan<ulong> ruleTimes) =>
+        input.ValidationVersion == 7 ? NativeNetworkProfile.Compute(in input) : ValueKeccak.Compute(Encode(in input, ruleTimes));
 
     internal static void Validate(in Inputs input, ReadOnlySpan<ulong> ruleTimes, in UInt256 l1ChainId, in ValueHash256 historyCodeHash)
     {
         RollupXValidationIdentity.ValidateVersion(input.ValidationVersion);
-        ValidateEpochs(ruleTimes);
+        if (input.ValidationVersion != 7) ValidateEpochs(ruleTimes);
+        if (input.ValidationVersion == 7 && input.HistoryCodeHash != NativeProxyHistory.RuntimeHash)
+            throw new ArgumentException("Network profile history runtime differs from validation version 7.");
         if (input.L1ChainId.IsZero || input.L1ChainId != l1ChainId || input.L2ChainId.IsZero || input.GenesisHash == default ||
             input.L1ConfigHash == default || historyCodeHash == default || input.HistoryCodeHash != historyCodeHash ||
             input.FeeCollector == Address.Zero || input.FeeCollector == Address.SystemUser || input.FeeCollector == EezConstants.RollupXEezl2Address)
@@ -33,6 +36,7 @@ internal static class NativeOfflineProfile
 
     internal static byte[] Encode(in Inputs input, ReadOnlySpan<ulong> ruleTimes)
     {
+        if (input.ValidationVersion == 7) return NativeNetworkProfile.Encode(in input);
         RollupXValidationIdentity.ValidateVersion(input.ValidationVersion);
         ValidateEpochs(ruleTimes);
         byte[] encoded = new byte[(OuterWords + ProfileWords + 1 + ruleTimes.Length) * AbiWord.Size];

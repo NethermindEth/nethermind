@@ -1,0 +1,46 @@
+{
+  "repository": "https://github.com/eez-association/eez-rollupX",
+  "commit": "d0130ab931fcdb264d0822707fc1ef5889122f6f",
+  "files": {
+    "lookup-before-history.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/lookup-before-history.v2.protobuf",
+      "sha256": "f3d0ad62bb9fcc473494ef3136a8cb076cb3fdd003415c6c02f9d035f46147da"
+    },
+    "l1-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/l1-genesis.json",
+      "sha256": "296c862df9959d3ae64dcff4ccb6d10c83d5dbb5594fd58dddeb9bdb08af5a34"
+    },
+    "static-before-history.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/static-before-history.v2.protobuf",
+      "sha256": "e710279828b7c8997ea31766788799c21c1493a1eed21cd607e7d8d85884f9f0"
+    },
+    "static-before-ordinary.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/static-before-ordinary.v2.protobuf",
+      "sha256": "8aa8977ef567a1690ca8b9fc9bd1513ebcbe3bfe8a97b64e77fcc4a167f32c27"
+    },
+    "lookup-before-ordinary.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/lookup-before-ordinary.v2.protobuf",
+      "sha256": "1193c2a5826cbc5691bc1ef229dcb7dbf42ac412de40f64ece64ae4f089eb79b"
+    },
+    "lookup-correct.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/lookup-correct.v2.protobuf",
+      "sha256": "3274207a06dca60b86851b141f026c05a662985a6cd6b9b5137b4a29f85a1e6f"
+    },
+    "README.md": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/README.md",
+      "sha256": "795a9ba88d2900d1aa47341beee25be490cb049ad1772e995a063c791fb6f28d"
+    },
+    "identity.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/identity.json",
+      "sha256": "98fc0ac13f7fc6d2037473c3428fb5987ab3172d53f66d4225ea903bb6902774"
+    },
+    "static-correct.v2.protobuf": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/static-correct.v2.protobuf",
+      "sha256": "96a0ff37e82b6ced2ae1fc181c2cc1a2a258eff1a4c9b3680d922fd07040ce5a"
+    },
+    "l2-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-history-observations/l2-genesis.json",
+      "sha256": "d131fdb2ebc815c6d0d646dd50b8dc5e43b9f4620ac5f15dd645d16a694fca3d"
+    }
+  }
+}

@@ -49,7 +49,7 @@ public sealed class EezChainRules
 
     internal static EezChainRules NativeRollupX(RollupXSchedule schedule, Address feeCollector, NativeSystemTxFormat format = NativeSystemTxFormat.RecordedV1, uint historyOffset = 0)
     {
-        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6))
+        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7))
             throw new ArgumentOutOfRangeException(nameof(format));
         if (feeCollector == Address.Zero || feeCollector == Address.SystemUser || feeCollector == EezConstants.RollupXEezl2Address)
             throw new ArgumentException("Native fee collector uses a reserved address.", nameof(feeCollector));
@@ -69,7 +69,7 @@ public sealed class EezChainRules
         if (genesis.TryGetProperty("config", out JsonElement nativeConfig) &&
             nativeConfig.TryGetProperty("rollupX", out JsonElement nativeSection) && nativeSection.ValueKind == JsonValueKind.Object &&
             (nativeSection.TryGetProperty("historyUpdateOffset", out _) || nativeSection.TryGetProperty("feeCollector", out _)))
-            return NativeGenesisSnapshot.Load(JsonSerializer.SerializeToUtf8Bytes(genesis), NativeSystemTxFormat.ContractV6).Rules;
+            return NativeGenesisSnapshot.Load(JsonSerializer.SerializeToUtf8Bytes(genesis), NativeSystemTxFormat.ContractV7).Rules;
         RollupXSchedule? schedule = RollupXGenesis.Read(genesis);
         if (!genesis.TryGetProperty("config", out JsonElement config) || !config.TryGetProperty("feeCollector", out JsonElement collector))
         {
@@ -111,7 +111,7 @@ public sealed class EezChainRules
     internal TxType SystemTransactionType { get; }
     internal NativeSystemTxFormat NativeFormat { get; }
     internal uint NativeHistoryOffset { get; }
-    internal bool UsesNativeContract => UsesNativeSystemTransactions && NativeFormat is NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6;
+    internal bool UsesNativeContract => UsesNativeSystemTransactions && NativeFormat is NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7;
     internal bool UsesNativeSystemTransactions => SystemTransactionType == EezConstants.NativeSystemTxType;
     internal Address SystemAddress => UsesNativeSystemTransactions ? Address.SystemUser : EezConstants.SystemAddress;
 
@@ -123,7 +123,7 @@ public sealed class EezChainRules
     /// </summary>
     public Address[] BurnedAtBlockStart => FinalizesProtocolBalances ? [] : ProtocolBalanceAccounts;
     internal Address[] ProtocolBalanceAccounts => UsesNativeSystemTransactions ? NativeRollupXBurned : IsRollupX ? RollupXBurned : [];
-    internal bool FinalizesProtocolBalances => UsesNativeSystemTransactions && NativeFormat == NativeSystemTxFormat.ContractV6;
+    internal bool FinalizesProtocolBalances => UsesNativeSystemTransactions && NativeFormat.UsesProxyHistory();
 
     /// <summary>The EIP-1559 denominator the chain uses instead of the fork's, if any.</summary>
     public ulong? BaseFeeMaxChangeDenominator => IsRollupX ? RollupXBaseFeeMaxChangeDenominator : null;

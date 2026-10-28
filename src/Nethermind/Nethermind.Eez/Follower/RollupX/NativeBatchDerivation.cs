@@ -69,7 +69,7 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                 foreach (OperationsRun run in operations.Runs()) last = run;
                 return [new DerivedBlock(last.Beneficiary, last.ExtraData.ToArray(), effects)
                     { PrevRandao = inputs.PrevRandao, NativeEffectsStart = effects.Length == 0 ? -1 : 0,
-                        NativeHistoryAnchor = owner._rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? inputs.Settling : null }];
+                        NativeHistoryAnchor = owner._rules.NativeFormat.UsesProxyHistory() ? inputs.Settling : null }];
             }
             if (operations.BlockCount > int.MaxValue) throw NativeL1Header.Invalid("native block range exceeds the supported representation");
             DerivedBlock[] blocks = new DerivedBlock[operations.BlockCount];
@@ -83,7 +83,7 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                     for (int index = 0; index < ordinary.Length; index++) ordinary[index] = run.Transactions[index].ToArray();
                     ulong number = parent.Number + (ulong)next + 1;
                     ulong at = owner._schedule.Timestamp(number) ?? throw NativeL1Header.Invalid("native block timestamp overflow");
-                    if (owner._rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+                    if (owner._rules.NativeFormat.UsesProxyHistory())
                     {
                         _ = ReadImport(ordinary);
                         blocks[next++] = new DerivedBlock(run.Beneficiary, run.ExtraData.ToArray(), ordinary)
@@ -127,7 +127,7 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                     throw NativeL1Header.Invalid("cross-chain system transaction in ordinary DA");
                 if (raw[0] != NativeHistoryEnvelope.Type) continue;
                 if (index != 0) throw NativeL1Header.Invalid("history transaction is not transaction zero");
-                import = owner._rules.NativeFormat == NativeSystemTxFormat.ContractV6
+                import = owner._rules.NativeFormat.UsesProxyHistory()
                     ? NativeHistoryEnvelope.DecodeBlocks(raw) : NativeHistoryEnvelope.Decode(raw);
                 if (import.ChainId != owner._context.ChainId) throw NativeL1Header.Invalid("history envelope targets another chain");
             }

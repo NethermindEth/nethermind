@@ -49,7 +49,7 @@ internal sealed class NativeHistoryBlockExecutor(
         NativeSystemTxFormat.RecordedV1 => RuntimeHash,
         NativeSystemTxFormat.ContractV3 => ContractV3RuntimeHash,
         NativeSystemTxFormat.ContractV4 => ContractV4RuntimeHash,
-        NativeSystemTxFormat.ContractV6 => NativeProxyHistory.RuntimeHash,
+        NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7 => NativeProxyHistory.RuntimeHash,
         _ => throw new ArgumentOutOfRangeException(nameof(format)),
     };
 
@@ -72,7 +72,7 @@ internal sealed class NativeHistoryBlockExecutor(
                 import.SourceHash!.ValueHash256 != _source!.Compute(block.ParentHash.ValueHash256, block.Number, block.Timestamp, import.Data.Span)))
                 throw new InvalidBlockException(block, "Native history transaction differs from the recorded transition.");
         }
-        if (DeriveOrigin && rules.NativeFormat == NativeSystemTxFormat.ContractV6 && processingOptions.HasFlag(ProcessingOptions.ProducingBlock))
+        if (DeriveOrigin && rules.NativeFormat.UsesProxyHistory() && processingOptions.HasFlag(ProcessingOptions.ProducingBlock))
             block.Header.MixHash = new Hash256(execution.PrevRandao);
         if (block.Header.MixHash?.ValueHash256 != execution.PrevRandao)
             throw new InvalidBlockException(block, "L2 PREVRANDAO differs from the selected L1 origin.");
@@ -81,7 +81,7 @@ internal sealed class NativeHistoryBlockExecutor(
         TxReceipt[] receipts = inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
         if (import is not null && (receipts.Length == 0 || receipts[0].StatusCode != StatusCode.Success || receipts[0].Logs is { Length: > 0 }))
             throw new InvalidBlockException(block, "Mandatory native history import failed or emitted logs.");
-        if (rules.NativeFormat == NativeSystemTxFormat.ContractV6) return receipts;
+        if (rules.NativeFormat.UsesProxyHistory()) return receipts;
         NativeHistoryState after = ReadState();
         ulong nextCutoff = rules.UsesNativeContract || import is null ? prior.ScheduleCutoff : execution.Cutoff + schedule.Interval;
         if (after != new NativeHistoryState(prior.FirstNumber, execution.OriginNumber, execution.OriginHash, nextCutoff))
@@ -112,9 +112,9 @@ internal sealed class NativeHistoryBlockExecutor(
         group.EnsureComplete();
         NativeHistoryTransaction? history = import as NativeHistoryTransaction;
         if (import is not null && (history is null ||
-            history.Envelope.HasExplicitBlocks != (rules.NativeFormat == NativeSystemTxFormat.ContractV6)))
+            history.Envelope.HasExplicitBlocks != (rules.NativeFormat.UsesProxyHistory())))
             throw new InvalidBlockException(block, "Invalid dedicated history transaction.");
-        if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+        if (rules.NativeFormat.UsesProxyHistory())
             return schedule.VerifyBlocks(block.Timestamp, in prior, evidence, history?.Envelope);
         ulong? selected = null;
         if (history is not null)
@@ -137,10 +137,10 @@ internal sealed class NativeHistoryBlockExecutor(
     private NativeHistoryState ReadState()
     {
         UInt256 nonce = state.GetNonce(EezConstants.L1HistoryAddress);
-        if ((rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? nonce < 2 : nonce != 1) || state.GetCodeHash(EezConstants.L1HistoryAddress) != GetRuntimeHash(rules.NativeFormat) ||
+        if ((rules.NativeFormat.UsesProxyHistory() ? nonce < 2 : nonce != 1) || state.GetCodeHash(EezConstants.L1HistoryAddress) != GetRuntimeHash(rules.NativeFormat) ||
             ValueKeccak.Compute(state.GetCode(EezConstants.L1HistoryAddress).Span) != GetRuntimeHash(rules.NativeFormat))
             throw NativeL1Header.Invalid("incorrect history runtime or nonce");
-        if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+        if (rules.NativeFormat.UsesProxyHistory())
         {
             ulong storedNumber = Scalar(1);
             state.Get(new StorageCell(EezConstants.L1HistoryAddress, HashSlot(storedNumber)), out UInt256 storedHash);

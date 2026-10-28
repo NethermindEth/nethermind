@@ -35,9 +35,16 @@ internal sealed class NativeOfflineFinalizer
     internal NativeOfflineFinalizer(NativeStreamingProfile profile, EezSettlementContext context,
         Address registry, Address manager, EezAttestationSigner signer, ILogManager logs)
     {
-        if (profile.Genesis.Rules.NativeFormat is not (NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6) ||
+        if (profile.Genesis.Rules.NativeFormat is not (NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7) ||
             profile.Genesis.Specs.ChainId != context.ChainId || registry == Address.Zero || manager == Address.Zero)
             throw new ArgumentException("Offline finalization requires a matching native offline deployment.");
+        NativeOfflineProfile.Inputs network = profile.Offline;
+        if (network.ValidationVersion == 7)
+        {
+            ValueHash256 commitment = NativeNetworkProfile.Compute(in network);
+            if (NativeNetworkProfile.VerificationKey(in commitment, registry, context.ProofSystem, signer.Address) != context.VerificationKey)
+                throw new ArgumentException("Configured verification key differs from the local network profile and signer.");
+        }
         _profile = profile;
         _context = context;
         _registry = registry;
@@ -69,7 +76,7 @@ internal sealed class NativeOfflineFinalizer
             Begin predecessor = operation.Predecessor ?? throw Rejected();
             ValidateRange(predecessor.AnchorNumber, selection.ToBlock, eligibility, false, offline);
             RollupXSettlementInput input = RollupXSettlementInput.Decode(settlement, _context, _profile.L1.Specs, cancellation,
-                offline, eligibility, batch);
+                offline, eligibility, batch, _profile.L1);
             using AdmittedWindow window = ToWindow(blocks, selection);
             EezStatelessBlockResult[] executed = Execute(operation, window, history, cancellation);
             BlockHeader parent = executed[0].Parent;
@@ -80,7 +87,7 @@ internal sealed class NativeOfflineFinalizer
                 _context, _profile.Genesis.Rules, offline, cancellation);
             if (observations.Length != 0)
                 history.CreateObservationReplay(_profile.Genesis, _logs).Verify(window.Blocks[^1], executed[^1], observations, cancellation);
-            ValidateAcceptedRoot(parent, executed[^1], offline.AcceptedL2BlockHash);
+            if (!offline.UsesCore) ValidateAcceptedRoot(parent, executed[^1], offline.AcceptedL2BlockHash);
             ValueHash256 publicInputs = RollupXPostBatchProfile.PublicInputsHash(input.Batch, _context.RollupId,
                 _context.VerificationKey, input.BlobHashes, offline.CustomData);
             cancellation.ThrowIfCancellationRequested();
@@ -106,6 +113,7 @@ internal sealed class NativeOfflineFinalizer
             if (posting.ChainId == 0 || posting.TargetTimestamp == 0 || posting.ParentNumber == ulong.MaxValue ||
                 posting.ParentHash.Length != Hash256.Size || !posting.ParentHash.Span.ContainsAnyExcept((byte)0)) throw Invalid();
             if (posting.ChainId != _profile.L1.Specs.ChainId) throw Rejected();
+            if (_profile.L1.Headers.UnsupportedTime is { } unsupported && posting.TargetTimestamp >= unsupported) throw Invalid();
             anchor = new(posting.ParentNumber, new ValueHash256(posting.ParentHash.Span), posting.TargetTimestamp);
         }
         else

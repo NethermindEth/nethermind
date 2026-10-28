@@ -40,12 +40,12 @@ namespace Nethermind.Eez.Test.RollupX;
 public partial class RollupXGenesisTests
 {
     [Test]
-    public void FromGenesis_CurrentNativeProfile_SelectsCompleteV6Rules()
+    public void FromGenesis_CurrentNativeProfile_SelectsCompleteV7Rules()
     {
-        EezChainRules rules = EezChainRules.FromGenesisFile(StatelessFixtures.PathOf("rollupx/native-offline-v6", "l2-genesis.json"));
+        EezChainRules rules = EezChainRules.FromGenesisFile(StatelessFixtures.PathOf("rollupx/native-offline-v7", "l2-genesis.json"));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rules.NativeFormat, Is.EqualTo(NativeSystemTxFormat.ContractV6));
+            Assert.That(rules.NativeFormat, Is.EqualTo(NativeSystemTxFormat.ContractV7));
             Assert.That(rules.UsesNativeContract, Is.True);
             Assert.That(rules.FeeCollector, Is.Not.Null);
         }

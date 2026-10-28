@@ -31,7 +31,7 @@ public static class EezTransactionExtensions
 
     private static bool HasNativeEnvelopeFields(Transaction tx, EezChainRules rules) =>
         (tx is NativeHistoryTransaction history
-            ? rules.UsesNativeContract && (rules.NativeFormat == NativeSystemTxFormat.ContractV6) == history.Envelope.HasExplicitBlocks
+            ? rules.UsesNativeContract && (rules.NativeFormat.UsesProxyHistory()) == history.Envelope.HasExplicitBlocks
                 && tx.SourceHash is null && tx.ChainId == history.Envelope.ChainId
                 && tx.To == EezConstants.L1HistoryAddress && tx.ValueRef.IsZero && tx.GasLimit == EezConstants.L1HistoryTxGasCap
                 && (tx.Data.IsEmpty || history.IsExecutionView)

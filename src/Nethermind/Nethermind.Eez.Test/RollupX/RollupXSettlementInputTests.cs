@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Protobuf;
@@ -114,6 +115,40 @@ public class RollupXSettlementInputTests
     [TestCase(2UL, 0UL, TestName = "Decode_ZeroPerTransactionBlobCap_Rejects")]
     public void Decode_TrustedBlobAllowanceExceeded_IsInvalidArgument(ulong blockCap, ulong transactionCap) =>
         Invalid(TwoBlobs(), Provider(Spec(blockCap, transactionCap)));
+
+    [Test]
+    public void Decode_CoreHistoricalAnchorBeforeCancun_UsesConfiguredBlobAllowance()
+    {
+        JsonObject genesis = JsonNode.Parse(File.ReadAllBytes(StatelessFixtures.PathOf("rollupx/native-offline-bidirectional", "l1-genesis.json")))!.AsObject();
+        genesis["config"]!["cancunTime"] = 2_000_000_000;
+        genesis["config"]!["pragueTime"] = 2_000_000_000;
+        genesis["config"]!["osakaTime"] = 2_000_000_000;
+        NativeL1Rules rules = NativeL1Rules.LoadEthereum(JsonSerializer.SerializeToUtf8Bytes(genesis));
+        JsonElement vector = StatelessFixtures.ReadJson("rollupx/native-profile-v3", "offline-context.json");
+        NativeL1Header endpoint = NativeL1Header.Decode(Bytes.FromHexString(vector.GetProperty("endpointRlp").GetString()!), new(null, null, null, null, null));
+        Assert.That(rules.Specs.GetSpec(endpoint.Number, endpoint.Timestamp).IsEip4844Enabled, Is.False,
+            "precondition: the historical anchor precedes blob activation");
+        ValueHash256 accepted = TestItem.KeccakA.ValueHash256;
+        NativeOfflineProfile.Inputs profile = new(rules.Specs.ChainId, _context.ChainId, TestItem.KeccakB.ValueHash256, 120, 1, 5, 0,
+            rules.ConfigHash, NativeProxyHistory.RuntimeHash, TestItem.AddressC, 7);
+        NativeEvidenceAnchor anchor = new(endpoint.Number, endpoint.Hash, null);
+        NativeOfflineContext offline = new(in profile, rules.RuleTimes, TestItem.AddressA, TestItem.AddressB,
+            _context.RollupId, in accepted, in anchor, endpoint);
+        _input.PostingContext = null;
+        Rewrite(_input, batch => batch with
+        {
+            BlockNumber = endpoint.Number,
+            ExpectedRoots = [new ExpectedRoot(_context.RollupId, TestItem.KeccakC.ValueHash256)]
+        });
+        RollupXSettlementInput decoded = RollupXSettlementInput.Decode(_input, _context, rules.Specs, CancellationToken.None,
+            offline, endpoint.Timestamp, nativeRules: rules);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobHashes, Has.Length.EqualTo(1), "historical mode uses configured blob maxima rather than anchor-time activation");
+            Assert.That(decoded.Batch.ExpectedRoots[0].Root, Is.EqualTo(TestItem.KeccakC.ValueHash256),
+                "the unsigned root pin is preserved and does not choose the execution parent");
+        }
+    }
 
     [Test]
     public void Decode_L1Before4844_IsInvalidArgument()

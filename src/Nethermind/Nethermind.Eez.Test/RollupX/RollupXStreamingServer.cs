@@ -92,7 +92,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         EezSettlementContext context = new(identity.RootElement.GetProperty("rollup_id").GetUInt64(), specs.ChainId,
             new Address(identity.RootElement.GetProperty("proof_system").GetString()!),
             new ValueHash256(identity.RootElement.GetProperty("vkey").GetString()!), rules.Schedule!.BlockIntervalSeconds);
-        bool offline = rules.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6;
+        bool offline = rules.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7;
         if (offline)
         {
             if (reorgBeforeSigning || registryRoot is not null) throw new ArgumentException("canonical RPC controls require the historical profile");

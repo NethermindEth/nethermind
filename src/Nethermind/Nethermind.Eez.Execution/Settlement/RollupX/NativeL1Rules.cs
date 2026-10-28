@@ -27,6 +27,7 @@ internal sealed partial class NativeL1Rules
     internal ValueHash256 SourceDigest { get; }
     internal ValueHash256 ConfigHash { get; }
     internal ReadOnlySpan<ulong> RuleTimes => _ruleTimes;
+    internal ulong MaximumHistoricalBlobCount { get; }
 
     private NativeL1Rules(ChainSpec spec, in ValueHash256 sourceDigest, GethGenesisConfigJson config)
     {
@@ -40,7 +41,8 @@ internal sealed partial class NativeL1Rules
         _ = NativeL1Header.Decode(Rlp.Encode(genesis).Bytes, Headers);
         SortedSet<ulong> times = [0];
         JsonObject forks = Forks(config, times, out _lastBlockFork);
-        JsonObject blobs = BlobRules(config, times, spec);
+        JsonObject blobs = BlobRules(config, times, spec, out ulong maximum);
+        MaximumHistoricalBlobCount = maximum;
         if (times.Count > NativeOfflineProfile.MaxRuleEpochs) throw Invalid("too many rule epochs");
         _ruleTimes = new ulong[times.Count];
         times.CopyTo(_ruleTimes);
@@ -96,12 +98,21 @@ internal sealed partial class NativeL1Rules
             ConfigHash, runtimeHash, l2.Rules.FeeCollector!,
             l2.Rules.NativeFormat switch
             {
+                NativeSystemTxFormat.ContractV7 => 7UL,
                 NativeSystemTxFormat.ContractV6 => 6UL,
                 NativeSystemTxFormat.ContractV4 => 4UL,
                 _ => 3UL,
             });
         NativeOfflineProfile.Validate(in result, _ruleTimes, result.L1ChainId, runtimeHash);
         return result;
+    }
+
+    internal ulong PostingBlobLimit(ulong? timestamp, ulong parentNumber)
+    {
+        if (timestamp is null) return MaximumHistoricalBlobCount;
+        if (parentNumber == ulong.MaxValue || Headers.UnsupportedTime is { } unsupported && timestamp.Value >= unsupported) return 0;
+        IReleaseSpec spec = Specs.GetSpec(parentNumber + 1, timestamp.Value);
+        return spec.IsEip4844Enabled ? Math.Min(spec.MaxBlobCount, spec.MaxBlobsPerTx) : 0;
     }
 
     private static ulong? Earliest(ulong? left, ulong? right) => left is null ? right : right is null ? left : Math.Min(left.Value, right.Value);

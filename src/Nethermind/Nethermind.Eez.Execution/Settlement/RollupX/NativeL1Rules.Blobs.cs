@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using Nethermind.Core.Specs;
@@ -12,17 +13,18 @@ namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
 internal sealed partial class NativeL1Rules
 {
-    private static JsonObject BlobRules(GethGenesisConfigJson config, SortedSet<ulong> times, ChainSpec spec)
+    private static JsonObject BlobRules(GethGenesisConfigJson config, SortedSet<ulong> times, ChainSpec spec, out ulong maximum)
     {
         BlobParameters cancun = Blob(config, "cancun", Cancun.Instance);
         BlobParameters prague = Blob(config, "prague", Prague.Instance);
         BlobParameters osaka = Blob(config, "osaka", Osaka.Instance);
+        maximum = Math.Max(cancun.Allowance, Math.Max(prague.Allowance, osaka.Allowance));
         List<(ulong At, BlobParameters Value)> scheduled = new(6);
         foreach ((string key, ulong? at) in BlobUpdates(config))
         {
             if (at is not { } timestamp || config.BlobSchedule is null || !config.BlobSchedule.TryGetValue(key, out GethBlobScheduleEntry? entry))
                 continue;
-            scheduled.Add((timestamp, new BlobParameters(entry.Target, entry.Max, entry.BaseFeeUpdateFraction)));
+            scheduled.Add((timestamp, new BlobParameters(entry.Target, entry.Max, entry.BaseFeeUpdateFraction, Osaka.Instance.MaxBlobsPerTx)));
         }
         scheduled.Sort(static (left, right) => left.At.CompareTo(right.At));
         JsonArray updates = [];
@@ -30,6 +32,7 @@ internal sealed partial class NativeL1Rules
         {
             (ulong at, BlobParameters value) = scheduled[index];
             if (index > 0 && at <= scheduled[index - 1].At) throw Invalid("blob updates must strictly increase");
+            maximum = Math.Max(maximum, value.Allowance);
             times.Add(at);
             updates.Add(new JsonArray(JsonValue.Create(at), value.Json()));
         }
@@ -61,8 +64,8 @@ internal sealed partial class NativeL1Rules
 
     private static BlobParameters Blob(GethGenesisConfigJson config, string name, IReleaseSpec defaults) =>
         config.BlobSchedule is { } schedule && schedule.TryGetValue(name, out GethBlobScheduleEntry? entry)
-            ? new(entry.Target, entry.Max, entry.BaseFeeUpdateFraction)
-            : new(defaults.TargetBlobCount, defaults.MaxBlobCount, defaults.BlobBaseFeeUpdateFraction);
+            ? new(entry.Target, entry.Max, entry.BaseFeeUpdateFraction, name == "osaka" ? Osaka.Instance.MaxBlobsPerTx : entry.Max)
+            : new(defaults.TargetBlobCount, defaults.MaxBlobCount, defaults.BlobBaseFeeUpdateFraction, defaults.MaxBlobsPerTx);
 
     private static (string Key, ulong? At)[] BlobUpdates(GethGenesisConfigJson c) =>
     [
@@ -70,8 +73,9 @@ internal sealed partial class NativeL1Rules
         ("Amsterdam", c.AmsterdamTime)
     ];
 
-    private readonly record struct BlobParameters(ulong Target, ulong Max, ulong Fraction)
+    private readonly record struct BlobParameters(ulong Target, ulong Max, ulong Fraction, ulong MaxPerTransaction)
     {
+        internal ulong Allowance => Math.Min(Max, MaxPerTransaction);
         internal JsonObject Json() => new() { ["target"] = Target, ["max"] = Max, ["baseFeeUpdateFraction"] = Fraction };
     }
 }

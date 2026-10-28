@@ -27,7 +27,7 @@ public sealed partial class EezStatelessExecutor
 
         internal void ValidateEmptyPrefix(BlockHeader header, IWorldState state)
         {
-            bool proxy = profile.Rules.NativeFormat == NativeSystemTxFormat.ContractV6;
+            bool proxy = profile.Rules.NativeFormat.UsesProxyHistory();
             state.Get(new StorageCell(EezConstants.L1HistoryAddress, proxy ? UInt256.One : (UInt256)2), out UInt256 endpoint);
             if (endpoint > ulong.MaxValue) throw NativeL1Header.Invalid("history scalar exceeds uint64");
             ulong number = (ulong)endpoint;

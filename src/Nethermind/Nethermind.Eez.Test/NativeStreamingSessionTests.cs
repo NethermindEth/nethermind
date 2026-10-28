@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Block = Nethermind.Core.Block;
+using PostBatch = Nethermind.Eez.Execution.Settlement.PostBatch;
 using ProveBlock = Nethermind.Eez.Prove.V2.Block;
 
 namespace Nethermind.Eez.Test;
@@ -35,6 +36,7 @@ namespace Nethermind.Eez.Test;
 [TestFixture(3)]
 [TestFixture(4)]
 [TestFixture(6)]
+[TestFixture(7)]
 public sealed class NativeStreamingSessionTests(int version)
 {
     private string Capture => $"rollupx/native-offline-v{version}";
@@ -51,7 +53,7 @@ public sealed class NativeStreamingSessionTests(int version)
         _profile = new NativeStreamingProfile(genesis, l1);
         _executor = new StreamingBlockExecutor(_profile, LimboLogs.Instance);
         byte[] request = File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "request.v2.protobuf"));
-        Assert.That(ValueKeccak.Compute(request), Is.EqualTo(new ValueHash256(version == 6
+        Assert.That(ValueKeccak.Compute(request), Is.EqualTo(new ValueHash256(version >= 6
             ? "0xb2e42e07bef03c231f66973cd43afad57f3c5720d6ce7eb9e391a0e391dd3278"
             : version == 4 ? "0x4fe2bd2df0167990164d7004a44e141768ecd70595db718dade3e18c054ff715"
             : "0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")));
@@ -101,7 +103,7 @@ public sealed class NativeStreamingSessionTests(int version)
     }
 
     [Test]
-    public async Task Finalize_CurrentNativeCapture_MatchesIndependentProofAndRejectsPreviousProfile()
+    public async Task Finalize_CurrentNativeCapture_UsesVersionedUnsignedPinRules([Values] bool unrelatedPin)
     {
         using JsonDocument identity = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "identity.json")));
         JsonElement fields = identity.RootElement;
@@ -140,11 +142,25 @@ public sealed class NativeStreamingSessionTests(int version)
         ClientFrame request = _frames[^1].Clone();
         request.SessionId = previous.SessionId;
         request.Epoch = previous.Epoch;
+        if (unrelatedPin)
+        {
+            PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(request.Finalize.Settlement.AbiCalldata.Span);
+            request.Finalize.Settlement.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(batch with
+            {
+                ExpectedRoots = [new ExpectedRoot(context.RollupId, TestItem.KeccakA.ValueHash256)]
+            }));
+        }
         StreamingDispatch dispatched = connection.Dispatch(request);
         Assert.That(dispatched.Operation, Is.Not.Null, "the configured native route must reach the real finalizer");
         SessionOperation operation = dispatched.Operation!;
         try
         {
+            if (unrelatedPin && version != 7)
+            {
+                RpcException? rejected = await Assert.ThrowsAsync<RpcException>(() => finalizer.Finalize(operation, CancellationToken.None));
+                Assert.That(rejected!.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition));
+                return;
+            }
             Proof proof = await finalizer.Finalize(operation, CancellationToken.None);
             ServerFrame completed = connection.CompleteProof(operation, proof);
             using JsonDocument response = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "response.json")));
@@ -399,7 +415,7 @@ public sealed class NativeStreamingSessionTests(int version)
     [Test]
     public void Field5Quota_RejectsOneBelowTheCapturedWitness([Values] bool completeQuota)
     {
-        long items = version == 6 ? 38 : 49;
+        long items = version >= 6 ? 38 : 49;
         long maxItems = completeQuota ? items : items - 1;
         using (Assert.EnterMultipleScope())
         {
@@ -497,7 +513,7 @@ public sealed class NativeStreamingSessionTests(int version)
         Assert.That(Append(session, _blocks[0]).Validated.Hash, Is.EqualTo(_blocks[0].Hash));
         NativeL1Rules l1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l1-genesis.json")));
         Assert.That(l1.Profile(_profile.Genesis).HistoryCodeHash,
-            Is.EqualTo(new ValueHash256(version == 6
+            Is.EqualTo(new ValueHash256(version >= 6
                 ? "0x3725e8abaa83c431d55a24c39d4327791423019e9c8a2702cc68e6201105baf7"
                 : version == 4 ? "0xbe389fdaa7ed5833a65c0ceffacb8e04e727127f8faf6e240611272d566b6676"
                 : "0xef41c0d934734d41e8eed6c11a19015ea84cd5cce35e52f5fdd5e5fe30d8dac9")), "the profile commits to the unchanged current upstream runtime");

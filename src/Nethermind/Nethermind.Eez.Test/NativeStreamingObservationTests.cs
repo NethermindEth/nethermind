@@ -22,9 +22,11 @@ using NUnit.Framework;
 namespace Nethermind.Eez.Test;
 
 [NonParallelizable]
-public sealed class NativeStreamingObservationTests
+[TestFixture(6)]
+[TestFixture(7)]
+public sealed class NativeStreamingObservationTests(int version)
 {
-    private const string Capture = "rollupx/native-history-observations-v6";
+    private string Capture => $"rollupx/native-history-observations-v{version}";
 
     [TestCase("static-before-history.v2.protobuf")]
     [TestCase("static-before-ordinary.v2.protobuf")]
@@ -35,7 +37,7 @@ public sealed class NativeStreamingObservationTests
     public async Task Finalize_UpstreamObservation_UsesItsExactTransactionPosition(string filename)
     {
         NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(
-            File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l2-genesis.json")), NativeSystemTxFormat.ContractV6);
+            File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l2-genesis.json")), (NativeSystemTxFormat)version);
         NativeL1Rules l1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l1-genesis.json")));
         NativeStreamingProfile profile = new(genesis, l1);
         using JsonDocument identity = JsonDocument.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "identity.json")));
@@ -49,7 +51,7 @@ public sealed class NativeStreamingObservationTests
         EezSettlementContext context = new(metadata.GetProperty("rollup_id").GetUInt64(), genesis.Specs.ChainId,
             new Address(metadata.GetProperty("proof_system").GetString()!), new ValueHash256(metadata.GetProperty("vkey").GetString()!),
             genesis.Rules.Schedule!.BlockIntervalSeconds);
-        using PrivateKey key = new("8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba");
+        using PrivateKey key = new("59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
         EezAttestationSigner signer = new(key);
         NativeOfflineFinalizer finalizer = new(profile, context,
             new Address(metadata.GetProperty("registry").GetString()!), new Address(metadata.GetProperty("manager").GetString()!),

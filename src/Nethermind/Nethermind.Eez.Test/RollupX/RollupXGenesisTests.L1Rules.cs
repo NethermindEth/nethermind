@@ -284,6 +284,65 @@ public partial class RollupXGenesisTests
         Assert.Throws<InvalidDataException>(() => NativeL1Rules.LoadEthereum(L1Bytes(document)));
     }
 
+    [TestCase("cancun", 30UL)]
+    [TestCase("prague", 30UL)]
+    [TestCase("osaka", 6UL)]
+    [TestCase("bpo1", 6UL)]
+    public void NativeNetwork_HistoricalBlobLimit_UsesConfiguredMaximaAndPerTransactionCaps(string selected, ulong expected)
+    {
+        JsonObject document = L1Document();
+        document["timestamp"] = "0x0";
+        JsonObject config = document["config"]!.AsObject();
+        config["cancunTime"] = 100;
+        config["pragueTime"] = 200;
+        config["osakaTime"] = 300;
+        config["bpo1Time"] = 400;
+        JsonObject schedule = new() { ["cancun"] = Blob(1, 2, 1), ["prague"] = Blob(1, 2, 1), ["osaka"] = Blob(1, 2, 1) };
+        schedule[selected] = Blob(1, 30, 1);
+        config["blobSchedule"] = schedule;
+        NativeL1Rules rules = NativeL1Rules.LoadEthereum(L1Bytes(document));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rules.MaximumHistoricalBlobCount, Is.EqualTo(expected));
+            Assert.That(rules.PostingBlobLimit(null, 1), Is.EqualTo(expected), "historical admission is independent of pre-Cancun anchor time");
+            Assert.That(rules.PostingBlobLimit(99, 1), Is.Zero, "actual posting requires active blob rules");
+        }
+    }
+
+    [Test]
+    public void NativeNetwork_HistoricalBlobLimit_IncludesInactiveNamedParametersButNotUnscheduledUpdates()
+    {
+        JsonObject document = L1Document();
+        JsonObject config = document["config"]!.AsObject();
+        config.Remove("pragueTime");
+        config.Remove("osakaTime");
+        config.Remove("bpo1Time");
+        config["blobSchedule"] = new JsonObject
+        {
+            ["cancun"] = Blob(1, 2, 1),
+            ["prague"] = Blob(1, 17, 1),
+            ["osaka"] = Blob(1, 30, 1),
+            ["bpo1"] = Blob(1, 99, 1)
+        };
+        NativeL1Rules rules = NativeL1Rules.LoadEthereum(L1Bytes(document));
+        Assert.That(rules.PostingBlobLimit(null, 1), Is.EqualTo(17UL));
+    }
+
+    [Test]
+    public void NativeNetwork_ActualPostingTarget_RejectsTheFirstUnsupportedBlock()
+    {
+        JsonObject document = L1Document();
+        document["timestamp"] = "0x0";
+        document["config"]!["amsterdamTime"] = 500;
+        NativeL1Rules rules = NativeL1Rules.LoadEthereum(L1Bytes(document));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rules.PostingBlobLimit(499, 1), Is.GreaterThan(0UL));
+            Assert.That(rules.PostingBlobLimit(500, 1), Is.Zero);
+            Assert.That(rules.PostingBlobLimit(501, 1), Is.Zero);
+        }
+    }
+
     private static JsonObject L1Document() => JsonNode.Parse(File.ReadAllBytes(StatelessFixtures.PathOf(L1Capture, "l1-genesis.json")))!.AsObject();
     private static JsonObject PreLondonL1()
     {

@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/eez-association/eez-rollupX",
+  "commit": "d0130ab931fcdb264d0822707fc1ef5889122f6f",
+  "files": {
+    "vectors.json": {
+      "source": "crates/eez-control-rpc/conformance/native-profile-v1.json",
+      "sha256": "e34194f2a2cba5151f27fb3964be1c6a22961a3ad7a11ff46d66668e9d966276"
+    },
+    "identity.json": {
+      "source": "crates/eez-control-rpc/conformance/validation-identity.json",
+      "sha256": "aa11d1fb95a2ada730e79f9743e0562fe341f5599617b24e441dd37cf8071e6b"
+    },
+    "genesis.json": {
+      "source": "genesis.json",
+      "sha256": "af18c662f3975356c625c7bff9271a82e4be265ab7780c218dcc5c169385372b"
+    },
+    "l1-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-osaka-lookup/l1-genesis.json",
+      "sha256": "575c1e48df4cf0715be1874ad677f835193b859a548ee59f5a49a0075ed0d902"
+    },
+    "l2-genesis.json": {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-osaka-lookup/l2-genesis.json",
+      "sha256": "28f0bad675b5d2aed6e032ca17b6cbee8bdc8722283d043dde43378f45b37c28"
+    }
+  }
+}

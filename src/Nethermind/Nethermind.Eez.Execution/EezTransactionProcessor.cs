@@ -66,7 +66,7 @@ public sealed class EezTransactionProcessor(
             if (!rules.UsesNativeContract || !tx.HasSystemTransactionFields(rules) || history.IsExecutionView)
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("Invalid dedicated history transaction fields");
             tx = history.ForExecution(_historySchedule!.SourceCutoff(header.Timestamp));
-            if (rules.NativeFormat == NativeSystemTxFormat.ContractV6 && !opts.HasFlag(ExecutionOptions.Warmup))
+            if (rules.NativeFormat.UsesProxyHistory() && !opts.HasFlag(ExecutionOptions.Warmup))
             {
                 historyResult = new NativeHistoryResultTracer();
                 tracer = new CompositeTxTracer(tracer, historyResult);

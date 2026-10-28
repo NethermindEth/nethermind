@@ -41,7 +41,7 @@ internal sealed class NativeDerivedBlockExecutor(ILifetimeScope rootLifetime, IW
         public async ValueTask<Block> ExecuteAsync(BlockHeader parent, DerivedBlock derived, CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();
-            if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+            if (rules.NativeFormat.UsesProxyHistory())
             {
                 L1Anchor anchor = derived.NativeHistoryAnchor ?? throw NativeL1Header.Invalid("derived native block has no settlement anchor");
                 if (_settlement is { } bound && bound != anchor)

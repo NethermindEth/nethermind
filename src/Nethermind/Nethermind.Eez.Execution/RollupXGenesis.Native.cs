@@ -55,7 +55,7 @@ public static partial class RollupXGenesis
 
     private static void EnsureNativeHistory(JsonElement genesis, RollupXSchedule schedule, NativeHistorySchedule history, NativeSystemTxFormat format)
     {
-        if (format == NativeSystemTxFormat.ContractV6)
+        if (format.UsesProxyHistory())
         {
             EnsureNativeProxyHistory(genesis);
             return;

@@ -46,7 +46,8 @@ public static class RollupXPostBatchProfile
 
     internal static void ValidateNative(PostBatch batch, Address proofSystem, int blobCount, NativeOfflineContext context)
     {
-        Require(batch.ExpectedRoots is [{ } pin] && pin.RollupId == context.RollupId && pin.Root == context.AcceptedL2BlockHash,
+        Require(batch.ExpectedRoots is [{ } pin] && pin.RollupId == context.RollupId && pin.Root != default &&
+            (context.UsesCore || pin.Root == context.AcceptedL2BlockHash),
             "expected state root must equal the selected accepted-root pin");
         Require(batch.BlockNumber == context.Selector, "the block number must equal the selected anchor");
         ValidateShared(batch, context.RollupId, proofSystem, blobCount);

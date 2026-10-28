@@ -40,7 +40,7 @@ internal static class RollupXValidationIdentity
 
     internal static void ValidateVersion(ulong version)
     {
-        if (version is not (3 or 4 or 6)) throw new ArgumentOutOfRangeException(nameof(version));
+        if (version is not (3 or 4 or 6 or 7)) throw new ArgumentOutOfRangeException(nameof(version));
     }
 
     internal readonly record struct Inputs(ulong RollupId, ulong ChainId, Address SystemAddress, Address Eezl2Address,

@@ -84,7 +84,7 @@ internal sealed class StreamingRuntime : IDisposable
             }
             finally { foreach (X509Certificate2? pin in pins) pin?.Dispose(); }
             NativeStreamingProfile? nativeProfile = null;
-            if (chainRules?.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6)
+            if (chainRules?.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7)
             {
                 NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(StreamingOptions.ReadFile(options.ChainConfigPath, 8 * 1024 * 1024), chainRules.NativeFormat);
                 NativeL1Rules l1Rules = NativeL1Rules.LoadEthereum(StreamingOptions.ReadFile(settings.L1ChainConfigPath!, 8 * 1024 * 1024));

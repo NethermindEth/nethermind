@@ -16,9 +16,9 @@ internal sealed class EezNativeHistoryTxDecoder : BaseTxDecoder
     internal EezNativeHistoryTxDecoder(NativeSystemTxFormat format = NativeSystemTxFormat.ContractV4)
         : base((TxType)NativeHistoryEnvelope.Type)
     {
-        if (format is not (NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6))
+        if (format is not (NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7))
             throw new ArgumentOutOfRangeException(nameof(format));
-        _explicitBlocks = format == NativeSystemTxFormat.ContractV6;
+        _explicitBlocks = format.UsesProxyHistory();
     }
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

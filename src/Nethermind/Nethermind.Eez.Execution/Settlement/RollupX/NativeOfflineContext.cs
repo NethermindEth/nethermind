@@ -16,6 +16,7 @@ internal sealed class NativeOfflineContext
     private readonly ulong[] _ruleTimes;
     private readonly byte[] _customData;
 
+    internal bool UsesCore => _profile.ValidationVersion == 7;
     internal NativeEvidenceAnchor Anchor { get; }
     internal ulong Selector => Anchor.Selector;
     internal ulong RollupId { get; }
@@ -28,8 +29,8 @@ internal sealed class NativeOfflineContext
         Address registry, Address manager, ulong rollupId, in ValueHash256 acceptedL2BlockHash,
         in NativeEvidenceAnchor anchor, NativeL1Header endpoint)
     {
-        if (ruleTimes.Length > NativeOfflineProfile.MaxRuleEpochs) throw new ArgumentException("L1 rule epoch limit exceeded.", nameof(ruleTimes));
-        _ruleTimes = ruleTimes.ToArray();
+        if (profile.ValidationVersion != 7 && ruleTimes.Length > NativeOfflineProfile.MaxRuleEpochs) throw new ArgumentException("L1 rule epoch limit exceeded.", nameof(ruleTimes));
+        _ruleTimes = profile.ValidationVersion == 7 ? [] : ruleTimes.ToArray();
         _profile = profile;
         NativeOfflineProfile.Validate(in _profile, _ruleTimes, _profile.L1ChainId, _profile.HistoryCodeHash);
         if (registry == Address.Zero || manager == Address.Zero || rollupId == 0 || acceptedL2BlockHash == default ||
@@ -39,6 +40,11 @@ internal sealed class NativeOfflineContext
         Anchor = anchor;
         RollupId = rollupId;
         AcceptedL2BlockHash = acceptedL2BlockHash;
+        if (UsesCore)
+        {
+            _customData = new L1PostingTarget(anchor.TargetTimestamp ?? 0, new Hash256(anchor.Hash)).CustomData();
+            return;
+        }
         ProfileHash = NativeOfflineProfile.Compute(in profile, _ruleTimes);
         RulesId = NativeOfflineProfile.RulesId(profile.L1ConfigHash, _ruleTimes, anchor.TargetTimestamp ?? endpoint.Timestamp);
         _customData = new byte[(anchor.TargetTimestamp.HasValue ? 13 : 12) * AbiWord.Size];
@@ -74,7 +80,7 @@ internal sealed class NativeOfflineContext
         }
         else if (inclusion.Number <= Anchor.Number || inclusion.Number - Anchor.Number > 256)
             throw NativeL1Header.Invalid("historical inclusion anchor unavailable");
-        if (NativeOfflineProfile.RulesId(_profile.L1ConfigHash, _ruleTimes, inclusion.Timestamp) != RulesId)
+        if (!UsesCore && NativeOfflineProfile.RulesId(_profile.L1ConfigHash, _ruleTimes, inclusion.Timestamp) != RulesId)
             throw NativeL1Header.Invalid("inclusion crosses an L1 rule epoch");
     }
 }
