@@ -220,11 +220,13 @@ public class HistoryBackedPersistenceReaderTests
     /// Takes the minimum over several calls: one call can also pay one-off runtime costs
     /// (lazy thread-local or static initialization) that do not belong to the code under test.
     /// </remarks>
+    private const int MeasureRuns = 6;
+
     private static long MeasureAllocatedBytes(Action action)
     {
         action();
         long min = long.MaxValue;
-        for (int i = 0; i < 5; i++)
+        for (int i = 1; i < MeasureRuns; i++)
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
             action();
@@ -236,10 +238,10 @@ public class HistoryBackedPersistenceReaderTests
 
     private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
 
-    // MeasureAllocatedBytes runs its action six times.
+    // One reader per MeasureAllocatedBytes run.
     private HistoryBackedPersistenceReader[] ReadersFrom(ulong firstBlock)
     {
-        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[6];
+        HistoryBackedPersistenceReader[] readers = new HistoryBackedPersistenceReader[MeasureRuns];
         for (int i = 0; i < readers.Length; i++) readers[i] = Reader(firstBlock + (ulong)i);
         return readers;
     }
