@@ -342,7 +342,13 @@ public class DebugRpcModule(
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
         if (validateStructLogTimeout && string.IsNullOrEmpty(effective.Tracer))
         {
-            if (CheckBlockTraceTimeout(resolvedBlock, effective) is { } timeoutError) return timeoutError;
+            bool hasTransactionToTrace = effective.TxHash is { } txHash
+                ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
+                : resolvedBlock.Transactions.Length != 0;
+            if (hasTransactionToTrace && effective.ParsedTimeout.Error is { } durationError)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput);
+            }
         }
         BlockParameter blockParameter = new(header.Hash!);
         return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
