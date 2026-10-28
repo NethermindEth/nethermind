@@ -130,11 +130,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api!.AdvanceSlot(40);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(20));
-        });
+        }
 
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -142,11 +142,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api.AdvanceSlot(0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(20));
-        });
+        }
 
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -154,11 +154,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api.AdvanceSlot(0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 2));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(0));
-        });
+        }
 
     }
 
@@ -174,11 +174,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api!.AdvanceSlot(5);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(5));
-        });
+        }
 
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -187,11 +187,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
         chain.Api.NextEon();
         chain.Api.AdvanceSlot(5);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(5));
-        });
+        }
     }
 
     [Test]
@@ -227,11 +227,11 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         chain.Api!.AdvanceSlot(20);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
-        });
+        }
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
@@ -239,10 +239,10 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
         chain.Api.NextEon();
         chain.Api.AdvanceSlot(0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.Api.LoadedTransactions!.Value.Slot, Is.EqualTo(ShutterTestsCommon.InitialSlot + 1));
             Assert.That(chain.Api.LoadedTransactions.Value.Transactions, Has.Length.EqualTo(10));
-        });
+        }
     }
 }

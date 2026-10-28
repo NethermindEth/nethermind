@@ -196,8 +196,11 @@ public class StartupTests
 
         AssertJsonResponse(response, static root =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
@@ -315,8 +318,11 @@ public class StartupTests
 
         (int statusCode, string body) = await host.SendRawAsync(request);
 
-        Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
-        Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
+            Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        }
         AssertErrorCodeResponse(body, ErrorCodes.InvalidRequest);
         // Kestrel authors its own text for these - "Bad chunk size data." for "zzz", a MinRequestBodyDataRate
         // message for the 408. This endpoint serves unauthenticated callers, so what reaches them has to be a
@@ -371,8 +377,11 @@ public class StartupTests
         AssertJsonResponse(response, static root =>
         {
             JsonElement error = root.GetProperty("error");
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            }
         });
     }
 
@@ -392,11 +401,17 @@ public class StartupTests
         AssertJsonResponse(response, static root =>
         {
             JsonElement result = root.GetProperty("result");
-            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.GetArrayLength(), Is.EqualTo(1));
+                Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
         });
-        Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
-        Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
+            Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -767,8 +782,11 @@ public class StartupTests
     {
         Startup.TrustedCidr[] networks = Startup.ParseTrustedNetworks(["100.64.0.0/10"], LimboLogs.Instance.GetClassLogger<StartupTests>());
 
-        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
-        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
+            Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
+        }
     }
 
     [Test]
@@ -791,8 +809,11 @@ public class StartupTests
 
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(engineUrl), [], out JsonRpcUrl? resolvedUrl);
 
-        Assert.That(usesFastLane, Is.True);
-        Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(usesFastLane, Is.True);
+            Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        }
         Assert.That(resolvedUrl!.IsAuthenticated, Is.True);
     }
 
@@ -837,8 +858,11 @@ public class StartupTests
             return Task.CompletedTask;
         }, new TestJsonRpcUrlCollection(jsonRpcUrl));
 
-        Assert.That(nextCalled, Is.True);
-        Assert.That(ctx.Response.HasStarted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextCalled, Is.True);
+            Assert.That(ctx.Response.HasStarted, Is.False);
+        }
     }
 
     [TestCase(null, false)]
@@ -907,9 +931,12 @@ public class StartupTests
         Assert.That(logger.LogList, Is.Empty);
 
         WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectWebSocketAsync(uri, OtherOrigin, deadline.Token));
-        Assert.That(refused!.Message, Does.Contain("403"));
-        // The node logs the refused origin before it answers, so the line is there once the client sees 403.
-        Assert.That(logger.LogList, Has.Exactly(1).Items);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused!.Message, Does.Contain("403"));
+            // The node logs the refused origin before it answers, so the line is there once the client sees 403.
+            Assert.That(logger.LogList, Has.Exactly(1).Items);
+        }
         Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
     }
 
@@ -1048,8 +1075,11 @@ public class StartupTests
     private static void AssertBatchArrayResultResponse(string response, int expectedCount, bool assertItemResults = true) =>
         AssertJsonResponse(response, root =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            }
             for (int i = 0; assertItemResults && i < expectedCount; i++)
             {
                 AssertArrayResult(root[i], i + 1);
