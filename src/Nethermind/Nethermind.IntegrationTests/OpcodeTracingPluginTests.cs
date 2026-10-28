@@ -130,11 +130,14 @@ public class OpcodeTracingPluginTests
         JsonNode root = JsonNode.Parse(json);
         JsonNode metadata = root["metadata"];
 
-        Assert.That(metadata["startBlock"].GetValue<long>(), Is.EqualTo(1));
-        Assert.That(metadata["endBlock"].GetValue<long>(), Is.EqualTo(5));
-        Assert.That(metadata["mode"].GetValue<string>(), Is.EqualTo("Retrospective"));
-        Assert.That(metadata["completionStatus"].GetValue<string>(), Is.EqualTo("complete"));
-        Assert.That(root["opcodeCounts"], Is.Not.Null, "opcodeCounts must be present even if empty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata["startBlock"].GetValue<long>(), Is.EqualTo(1));
+            Assert.That(metadata["endBlock"].GetValue<long>(), Is.EqualTo(5));
+            Assert.That(metadata["mode"].GetValue<string>(), Is.EqualTo("Retrospective"));
+            Assert.That(metadata["completionStatus"].GetValue<string>(), Is.EqualTo("complete"));
+            Assert.That(root["opcodeCounts"], Is.Not.Null, "opcodeCounts must be present even if empty");
+        }
     }
 
     [Test]
@@ -259,12 +262,17 @@ public class OpcodeTracingPluginTests
         JsonNode cumRoot = JsonNode.Parse(cumulativeJson);
         Assert.That(string.IsNullOrWhiteSpace(cumRoot["metadata"]["sessionId"].GetValue<string>()), Is.False);
         JsonObject cumulativeCounts = AssertOpcodeCountsShape(cumRoot["opcodeCounts"], requireNonEmpty: true);
-        Assert.That(cumulativeCounts.ContainsKey("PUSH1"), Is.True, $"cumulative opcodeCounts should contain PUSH1 from the init-code; got {cumulativeCounts.ToJsonString()}");
-        Assert.That(cumulativeCounts.ContainsKey("RETURN"), Is.True, $"cumulative opcodeCounts should contain RETURN from the init-code; got {cumulativeCounts.ToJsonString()}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cumulativeCounts.ContainsKey("PUSH1"), Is.True, $"cumulative opcodeCounts should contain PUSH1 from the init-code; got {cumulativeCounts.ToJsonString()}");
+            Assert.That(cumulativeCounts.ContainsKey("RETURN"), Is.True, $"cumulative opcodeCounts should contain RETURN from the init-code; got {cumulativeCounts.ToJsonString()}");
+        }
 
         foreach (KeyValuePair<string, long> entry in perBlockTotals)
         {
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
             Assert.That(cumulativeCounts.ContainsKey(entry.Key), Is.True, $"cumulative file should contain opcode '{entry.Key}' summed across per-block files");
+#pragma warning restore NUnit2045
             Assert.That(cumulativeCounts[entry.Key].GetValue<long>(), Is.GreaterThanOrEqualTo(entry.Value),
                 $"cumulative count for '{entry.Key}' must be >= sum of per-block counts");
         }
@@ -352,8 +360,11 @@ public class OpcodeTracingPluginTests
             }
 
             JsonObject counts = AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: true);
-            Assert.That(counts.ContainsKey("PUSH1"), Is.True, $"opcodeCounts should contain PUSH1 from the init code; got {counts.ToJsonString()}");
-            Assert.That(counts.ContainsKey("RETURN"), Is.True, $"opcodeCounts should contain RETURN from the init code; got {counts.ToJsonString()}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(counts.ContainsKey("PUSH1"), Is.True, $"opcodeCounts should contain PUSH1 from the init code; got {counts.ToJsonString()}");
+                Assert.That(counts.ContainsKey("RETURN"), Is.True, $"opcodeCounts should contain RETURN from the init code; got {counts.ToJsonString()}");
+            }
         }
         finally
         {
@@ -426,8 +437,11 @@ public class OpcodeTracingPluginTests
             }
 
             JsonObject counts = AssertOpcodeCountsShape(root["opcodeCounts"], requireNonEmpty: true);
-            Assert.That(counts.ContainsKey("PUSH1"), Is.True, $"opcodeCounts should contain PUSH1 under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
-            Assert.That(counts.ContainsKey("RETURN"), Is.True, $"opcodeCounts should contain RETURN under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(counts.ContainsKey("PUSH1"), Is.True, $"opcodeCounts should contain PUSH1 under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+                Assert.That(counts.ContainsKey("RETURN"), Is.True, $"opcodeCounts should contain RETURN under Blocks.ParallelExecution={blocksParallelExecution}; got {counts.ToJsonString()}");
+            }
 
             string stdout = await _container.GetCleanStdoutAsync();
             Assert.That(stdout, Does.Not.Contain("Unhandled"), "no unhandled errors should occur during replay");
@@ -445,8 +459,11 @@ public class OpcodeTracingPluginTests
     private static void AssertCommonMetadata(JsonNode metadata, long expectedStart, long expectedEnd, string expectedMode, bool requireCompletion)
     {
         Assert.That(metadata, Is.Not.Null, "metadata must be present");
-        Assert.That(metadata["startBlock"].GetValue<long>(), Is.EqualTo(expectedStart));
-        Assert.That(metadata["endBlock"].GetValue<long>(), Is.EqualTo(expectedEnd));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata["startBlock"].GetValue<long>(), Is.EqualTo(expectedStart));
+            Assert.That(metadata["endBlock"].GetValue<long>(), Is.EqualTo(expectedEnd));
+        }
 
         JsonNode mode = metadata["mode"];
         if (mode is not null)
@@ -494,10 +511,13 @@ public class OpcodeTracingPluginTests
     private static void AssertCumulativeMetadata(JsonNode metadata, long expectedFirst, long expectedLast, bool requireCompletion)
     {
         Assert.That(metadata, Is.Not.Null, "cumulative metadata must be present");
-        Assert.That(metadata["firstBlock"].GetValue<long>(), Is.EqualTo(expectedFirst));
-        Assert.That(metadata["lastBlock"].GetValue<long>(), Is.EqualTo(expectedLast));
-        Assert.That(metadata["totalBlocksProcessed"].GetValue<long>(), Is.GreaterThanOrEqualTo(expectedLast - expectedFirst + 1));
-        Assert.That(string.IsNullOrWhiteSpace(metadata["sessionId"].GetValue<string>()), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata["firstBlock"].GetValue<long>(), Is.EqualTo(expectedFirst));
+            Assert.That(metadata["lastBlock"].GetValue<long>(), Is.EqualTo(expectedLast));
+            Assert.That(metadata["totalBlocksProcessed"].GetValue<long>(), Is.GreaterThanOrEqualTo(expectedLast - expectedFirst + 1));
+            Assert.That(string.IsNullOrWhiteSpace(metadata["sessionId"].GetValue<string>()), Is.False);
+        }
 
         JsonNode mode = metadata["mode"];
         if (mode is not null)
@@ -576,11 +596,14 @@ public class OpcodeTracingPluginTests
 
         foreach (KeyValuePair<string, JsonNode> entry in counts)
         {
-            Assert.That(
-                s_opcodeKeyPattern.IsMatch(entry.Key),
-                Is.True,
-                $"opcode key '{entry.Key}' must be either an uppercase mnemonic (e.g. ADD) or hex form (e.g. 0xfe)");
-            Assert.That(entry.Value.GetValue<long>(), Is.GreaterThan(0), $"count for opcode '{entry.Key}' must be > 0");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    s_opcodeKeyPattern.IsMatch(entry.Key),
+                    Is.True,
+                    $"opcode key '{entry.Key}' must be either an uppercase mnemonic (e.g. ADD) or hex form (e.g. 0xfe)");
+                Assert.That(entry.Value.GetValue<long>(), Is.GreaterThan(0), $"count for opcode '{entry.Key}' must be > 0");
+            }
         }
 
         return counts;

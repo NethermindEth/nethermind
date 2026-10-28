@@ -45,8 +45,11 @@ public class Eip4844Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Activation, 50000, code, blobVersionedHashes: hashes);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(result.ReturnValue, Is.EqualTo(expectedOutput));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.ReturnValue, Is.EqualTo(expectedOutput));
+        }
         AssertGas(result, gasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 

@@ -82,8 +82,11 @@ public class BlockStoreTests
         // The cache is a bounded read accelerator, so a hit there says the block can be read right now, not that
         // it is stored. Callers deciding whether they still have to download a body key off HasBlock, and an
         // eviction after a true answer loses the body for good.
-        Assert.That(store.Get(block.Number, block.Hash!), Is.Not.Null);
-        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(block.Number, block.Hash!), Is.Not.Null);
+            Assert.That(store.HasBlock(block.Number, block.Hash!), Is.False);
+        }
     }
 
     [Test]
@@ -169,11 +172,12 @@ public class BlockStoreTests
             {
                 Assert.That(retrieved.Header, Is.EqualTo(block.Header).UsingBlockHeaderComparer());
                 Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
-                for (int i = 0; i < retrieved.TransactionCount; i++)
-                {
-                    block.Transactions[i].Data = Array.Empty<byte>();
-                    Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
-                }
+            }
+
+            for (int i = 0; i < retrieved.TransactionCount; i++)
+            {
+                block.Transactions[i].Data = Array.Empty<byte>();
+                Assert.That(retrieved.GetNextTransaction(), Is.EqualTo(block.Transactions[i]).UsingTransactionComparer());
             }
         }
         finally

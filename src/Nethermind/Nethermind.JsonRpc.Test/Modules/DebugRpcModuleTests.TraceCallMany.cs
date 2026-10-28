@@ -91,7 +91,9 @@ public partial class DebugRpcModuleTests
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(result, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That((JArray)result[0], Has.Count.EqualTo(1));
     }
 
@@ -138,10 +140,13 @@ public partial class DebugRpcModuleTests
         Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1]));
 
         JToken trace = result[0][0]!;
-        Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
-        Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
-        Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
-        Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
+            Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
+            Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
+            Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        }
     }
 
     [Test]
@@ -207,7 +212,9 @@ public partial class DebugRpcModuleTests
         };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+#pragma warning disable NUnit2045 // The nested collection shape must be checked before taking its first element.
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+#pragma warning restore NUnit2045
         Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
@@ -225,7 +232,9 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
+#pragma warning disable NUnit2045 // The nested collection shape must be checked before taking its first element.
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+#pragma warning restore NUnit2045
         Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
@@ -324,8 +333,11 @@ public partial class DebugRpcModuleTests
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
 
-        Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
-        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
+            Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
+        }
     }
 
     [Test]
@@ -418,8 +430,11 @@ public partial class DebugRpcModuleTests
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
         if (uncapped)
         {
-            Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
-            Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
+                Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+            }
         }
         else
         {

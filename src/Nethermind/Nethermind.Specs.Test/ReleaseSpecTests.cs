@@ -29,8 +29,11 @@ public class ReleaseSpecTests
         Address registered = Address.FromNumber((UInt256)(ulong)number);
         IReleaseSpec spec = new SpecWithPrecompileAt(registered);
 
-        Assert.That(spec.IsPrecompile(registered), Is.True);
-        Assert.That(spec.IsPrecompile(Address.FromNumber((UInt256)(ulong)number + 1)), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsPrecompile(registered), Is.True);
+            Assert.That(spec.IsPrecompile(Address.FromNumber((UInt256)(ulong)number + 1)), Is.False);
+        }
     }
 
     /// <summary>Every named fork this assembly defines — mainnet and Gnosis alike.</summary>
@@ -71,8 +74,11 @@ public class ReleaseSpecTests
     {
         // The number lives in the last four bytes, so 0x1_0000_0000 needs a fifth and reads as an ordinary
         // address. That is the ceiling the sweep above defends.
-        Assert.That(Address.FromNumber(uint.MaxValue).CouldBePrecompile(), Is.True);
-        Assert.That(Address.FromNumber((UInt256)uint.MaxValue + 1).CouldBePrecompile(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Address.FromNumber(uint.MaxValue).CouldBePrecompile(), Is.True);
+            Assert.That(Address.FromNumber((UInt256)uint.MaxValue + 1).CouldBePrecompile(), Is.False);
+        }
     }
 
     /// <summary>Bools the sweeps cannot pin, so <see cref="EveryForkFlag"/> skips them.</summary>
@@ -139,8 +145,11 @@ public class ReleaseSpecTests
         Assert.That(driver?.CanWrite, Is.True, $"{flag.Name} has no writable flag behind it, so the sweep proves nothing");
         driver!.SetValue(enabled, true);
 
-        Assert.That(flag.GetValue(enabled), Is.True, $"{flag.Name} could not be switched on, so the sweep proves nothing");
-        Assert.That(flag.GetValue(new MinimalExternalDecorator(enabled)), Is.True, $"{flag.Name} is not forwarded");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flag.GetValue(enabled), Is.True, $"{flag.Name} could not be switched on, so the sweep proves nothing");
+            Assert.That(flag.GetValue(new MinimalExternalDecorator(enabled)), Is.True, $"{flag.Name} is not forwarded");
+        }
     }
 
     /// <summary>Interface defaults computed from the forwarder's own members, so inheriting them is correct.</summary>

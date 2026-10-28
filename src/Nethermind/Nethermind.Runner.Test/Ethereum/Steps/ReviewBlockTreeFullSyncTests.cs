@@ -67,9 +67,12 @@ public class ReviewBlockTreeFullSyncTests
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(blockInfosDb.Get(3), Is.Null, "full-sync startup must route through the fixer, which deletes the phantom level");
-        Assert.That(blockInfosDb.Get(4), Is.Null, "levels above the phantom must be deleted with it");
-        Assert.That(blockInfosDb.Get(5), Is.Null, "levels above the phantom must be deleted with it");
-        Assert.That(tree.BestKnownNumber, Is.EqualTo(2UL), "best known must fall back to the last intact processed block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfosDb.Get(3), Is.Null, "full-sync startup must route through the fixer, which deletes the phantom level");
+            Assert.That(blockInfosDb.Get(4), Is.Null, "levels above the phantom must be deleted with it");
+            Assert.That(blockInfosDb.Get(5), Is.Null, "levels above the phantom must be deleted with it");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2UL), "best known must fall back to the last intact processed block");
+        }
     }
 }

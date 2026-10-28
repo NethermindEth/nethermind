@@ -100,8 +100,11 @@ public class ImporterTests
 
         // Straight after, not merely after: a periodic ingest flush would satisfy the weaker check on a larger seed.
         int advance = log.IndexOf("advance-pointer");
-        Assert.That(advance, Is.GreaterThan(0), "the state pointer must advance, and not before a flush");
-        Assert.That(log[advance - 1], Is.EqualTo("flush"), "the state pointer must advance straight after a flush");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(advance, Is.GreaterThan(0), "the state pointer must advance, and not before a flush");
+            Assert.That(log[advance - 1], Is.EqualTo("flush"), "the state pointer must advance straight after a flush");
+        }
     }
 
     [Test]
