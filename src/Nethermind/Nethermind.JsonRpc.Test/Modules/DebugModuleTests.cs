@@ -90,6 +90,19 @@ public class DebugModuleTests
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
     [Test]
+    public void DebugTraceBlockByHash_missing_header_preserves_temporary_status([Values] bool temporary)
+    {
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = CreateModule().debug_traceBlockByHash(TestItem.KeccakA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo($"block {TestItem.KeccakA} not found"));
+            Assert.That(result.IsTemporary, Is.EqualTo(temporary));
+        }
+    }
+
+    [Test]
     public void DebugTraceBlock_streamed_missing_body_message_is_route_scoped([Values] bool byHash)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
@@ -98,7 +111,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(header.Hash!).Returns(header);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
         _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(new Block(header));
         _blockFinder.FindBlock(header.Hash!, header.Number).ReturnsNull();
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         GethTraceOptions options = new() { StreamMode = true };
@@ -114,6 +127,17 @@ public class DebugModuleTests
             Assert.That(result.Result.Error, Is.EqualTo(byHash
                 ? $"block {header.Hash} not found" : $"Block body not found for {header.Hash}"));
         }
+        if (byHash)
+            _blockFinder.Received(1).FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+        _blockFinder.Received(1).FindBlock(header.Hash!, header.Number);
+    }
+
+    [Test]
+    public void DebugTraceBlockByHash_preserves_lookup_exception()
+    {
+        InvalidOperationException failure = new("lookup unavailable");
+        _blockFinder.FindHeader(TestItem.KeccakA).Returns(_ => throw failure);
+        Assert.That(Assert.Throws<InvalidOperationException>(() => CreateModule().debug_traceBlockByHash(TestItem.KeccakA)), Is.SameAs(failure));
     }
 
     [Test]
@@ -707,6 +731,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
         _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
         _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, block.Number).Returns(block);
         _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
         Assert.That(_blockFinder.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None, block.Number - 1), Is.Null);
         object selector = method switch
@@ -762,6 +787,7 @@ public class DebugModuleTests
         _blockFinder.FindBlock(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(block);
         _blockFinder.FindBlock(header.Hash!, header.Number).Returns(block);
         _blockFinder.FindBlock(header.Hash!).Returns(block);
+        _blockFinder.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number).Returns(block);
         _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
         _blockFinder.FindHeader(header.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeaderMissing ? null : parent);
         // The RLP-decoded block of debug_traceBlock is a copy, so headers are matched by hash.
