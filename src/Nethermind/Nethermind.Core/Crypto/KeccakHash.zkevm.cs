@@ -201,7 +201,7 @@ public sealed partial class KeccakHash
     /// <param name="low">The source word at <paramref name="from"/>.</param>
     /// <returns>The source word past the block.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe ulong CopyAndAbsorbBlock(ref ulong lane, ulong* from, ulong* to, ulong low, int shift, bool intoZeroState)
+    internal static unsafe ulong CopyAndAbsorbBlock(ref ulong lane, ulong* from, ulong* to, ulong low, int shift, bool intoZeroState)
     {
         low = CopyAndAbsorbLane(ref lane, from, to, 0, low, shift, intoZeroState);
         low = CopyAndAbsorbLane(ref lane, from, to, 1, low, shift, intoZeroState);
