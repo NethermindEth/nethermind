@@ -20,7 +20,6 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
 
     private readonly dynamic _tracer;
@@ -98,7 +97,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             TimeSpan timeout;
             try
             {
-                timeout = options.ResolveTimeout() ?? DefaultTimeout;
+                timeout = options.ResolveTimeout() ?? GethTraceDeadline.DefaultTimeout;
             }
             catch (TraceDurationFormatException exception) when (_captureErrors)
             {

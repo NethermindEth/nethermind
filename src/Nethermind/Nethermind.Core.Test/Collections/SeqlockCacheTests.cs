@@ -123,8 +123,11 @@ public class SeqlockCacheTests
         {
             if (exclusive) Assert.That(cache.TrySetExclusive(in key, in expected), Is.True);
             else cache.Set(in key, in expected);
-            Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
-            Assert.That(actual, Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
+                Assert.That(actual, Is.EqualTo(expected));
+            }
             long header = EntryHeader(Entries(cache), 0);
             if (exclusive) Assert.That(cache.TrySetExclusive(in key, in expected), Is.True);
             else cache.Set(in key, in expected);
@@ -179,7 +182,9 @@ public class SeqlockCacheTests
         cache.Clear();
         cache.Set(in key, UInt256.MaxValue);
         cache.Clear();
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(cache.TryGetValue(in key, out _), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(cache.TrySetExclusive(in key, UInt256.MaxValue), Is.False);
     }
 

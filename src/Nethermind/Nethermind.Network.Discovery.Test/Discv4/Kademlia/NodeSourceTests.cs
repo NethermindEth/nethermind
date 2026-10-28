@@ -76,7 +76,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await enumerator.MoveNextAsync(), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(enumerator.Current, Is.EqualTo(node));
             using (Assert.EnterMultipleScope())
             {
@@ -101,7 +103,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(moveNext.IsCompleted, Is.False);
             RaisePeerCandidate(peerNode);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await moveNext.AsTask(), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(enumerator.Current, Is.EqualTo(peerNode));
         }
 
@@ -120,7 +124,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             RaisePeerCandidate(incompatible);
             RaisePeerCandidate(compatible);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await moveNext.AsTask(), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(enumerator.Current.Id, Is.EqualTo(compatible.Id));
         }
 
@@ -136,7 +142,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _kademliaDiscovery.Started.Task.WaitAsync(token);
             RaisePeerCandidate(node);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await moveNext.AsTask(), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(enumerator.Current.Id, Is.EqualTo(node.Id));
         }
 

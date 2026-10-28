@@ -98,7 +98,9 @@ public class TransactionChangesetIndexModuleTests
         TransactionIndexGenesisBootstrap bootstrap = new(new ChainSpec(), new InitConfig { ChainSpecPath = "missing-chainspec" },
             new EthereumJsonSerializer(), LimboLogs.Instance);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(session.IsReady, Is.False);
     }
 
@@ -119,7 +121,9 @@ public class TransactionChangesetIndexModuleTests
         using BulkFillSession session = new(new MemDbFactory(), code, TestItem.KeccakA, anchor.Header, false);
         TransactionIndexGenesisBootstrap bootstrap = new(spec, new InitConfig(), new EthereumJsonSerializer(), LimboLogs.Instance);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(session.IsReady, Is.False);
     }
 
@@ -137,7 +141,9 @@ public class TransactionChangesetIndexModuleTests
         using BulkFillSession session = new(new MemDbFactory(), code, TestItem.KeccakA, genesis.Header, false);
         TransactionIndexGenesisBootstrap bootstrap = new(spec, config, serializer, LimboLogs.Instance);
 
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(session.IsReady, Is.True);
         Assert.That(session.CurrentState.StateRoot, Is.EqualTo(expectedRoot.ValueHash256));
         Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.True);
@@ -196,15 +202,20 @@ public class TransactionChangesetIndexModuleTests
 
         foreach (Block block in new[] { first, second, third, fourth, fifth })
         {
-            Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
-            Assert.That(block.TotalDifficulty, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+                Assert.That(block.TotalDifficulty, Is.Not.Null);
+            }
             session.BeginBlock(block.Header);
             using TransactionChangesetIndex.BlockCapture capture = index.StartBlock(block.Number);
             Block isolated = block.WithReplacedHeader(block.Header.Clone());
             try
             {
                 Block processed = processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer);
+#pragma warning disable NUnit2045 // Processing must succeed before committing the captured changes.
                 Assert.That(processed, Is.Not.Null);
+#pragma warning restore NUnit2045
                 Assert.That(capture.Commit(), Is.True);
                 index.SyncWal();
                 session.CommitBlock();
@@ -266,8 +277,11 @@ public class TransactionChangesetIndexModuleTests
         {
             state.Get(new StorageCell(contract, 0), out UInt256 previous);
             state.Get(new StorageCell(contract, 1), out UInt256 added);
-            Assert.That(previous, Is.EqualTo(new UInt256(clearMode is 0 or 2 ? 2u : 0u)));
-            Assert.That(added, Is.EqualTo(new UInt256(9)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(previous, Is.EqualTo(new UInt256(clearMode is 0 or 2 ? 2u : 0u)));
+                Assert.That(added, Is.EqualTo(new UInt256(9)));
+            }
         }
 
         Transaction wrongNonce = Build.A.Transaction.WithTo(TestItem.AddressB).WithGasPrice(0).WithGasLimit(21000)
@@ -377,7 +391,9 @@ public class TransactionChangesetIndexModuleTests
         Block isolated = block.WithReplacedHeader(block.Header.Clone());
         try
         {
+#pragma warning disable NUnit2045 // Processing must succeed before committing the captured changes.
             Assert.That(processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer), Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(capture.Commit(), Is.True);
             index.SyncWal();
             session.CommitBlock();

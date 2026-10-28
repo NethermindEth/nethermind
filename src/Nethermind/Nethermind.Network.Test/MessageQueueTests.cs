@@ -34,8 +34,11 @@ public class MessageQueueTests
 
         _queue.Send(request);
 
-        Assert.That(_recordedSends.Count, Is.EqualTo(1));
-        Assert.That(request.CompletionSource.Task.IsCompleted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_recordedSends.Count, Is.EqualTo(1));
+            Assert.That(request.CompletionSource.Task.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -47,8 +50,11 @@ public class MessageQueueTests
         _queue.Send(request1);
         _queue.Send(request2);
 
-        Assert.That(_recordedSends.Count, Is.EqualTo(1));
-        Assert.That(request2.CompletionSource.Task.IsCompleted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_recordedSends.Count, Is.EqualTo(1));
+            Assert.That(request2.CompletionSource.Task.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -64,9 +70,12 @@ public class MessageQueueTests
 
         _queue.Handle(response, 100);
 
-        Assert.That(request1.CompletionSource.Task.IsCompleted, Is.True);
-        Assert.That(request1.CompletionSource.Task.Result, Is.SameAs(response));
-        Assert.That(_recordedSends.Count, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.CompletionSource.Task.IsCompleted, Is.True);
+            Assert.That(request1.CompletionSource.Task.Result, Is.SameAs(response));
+            Assert.That(_recordedSends.Count, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -137,8 +146,11 @@ public class MessageQueueTests
         _queue.Handle(response, 100);
 
         // The second request should have been dequeued and sent
-        Assert.That(_recordedSends.Count, Is.EqualTo(2));
-        Assert.That(request2.CompletionSource.Task.IsCompleted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_recordedSends.Count, Is.EqualTo(2));
+            Assert.That(request2.CompletionSource.Task.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -179,9 +191,12 @@ public class MessageQueueTests
 
         _queue.CompleteAdding();
 
-        Assert.That(request1.CompletionSource.Task.IsCanceled, Is.True);
-        Assert.That(request2.CompletionSource.Task.IsCanceled, Is.True);
-        Assert.That(request3.CompletionSource.Task.IsCanceled, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request1.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(request2.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(request3.CompletionSource.Task.IsCanceled, Is.True);
+        }
     }
 
     [Test]
@@ -193,8 +208,11 @@ public class MessageQueueTests
 
         _queue.Send(request);
 
-        Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
-        Assert.That(_recordedSends.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request.CompletionSource.Task.IsCanceled, Is.True);
+            Assert.That(_recordedSends.Count, Is.EqualTo(0));
+        }
     }
 
     [Test]
