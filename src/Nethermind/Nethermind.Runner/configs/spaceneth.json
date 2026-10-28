@@ -8,8 +8,7 @@
     "ChainSpecPath": "chainspec/spaceneth.json",
     "BaseDbPath": "spaceneth_db",
     "LogFileName": "spaceneth.log",
-    "DiagnosticMode": "MemDb",
-    "MemoryHint": 64000000
+    "DiagnosticMode": "MemDb"
   },
   "Sync": {
     "NetworkingEnabled": false,

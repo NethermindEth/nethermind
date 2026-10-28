@@ -519,8 +519,8 @@ public class BlobTxStorageTests
             SenderAddress = TestItem.AddressA,
             GasLimit = 1_000_000,
             GasPrice = 1,
+            MaxFee = 100_000_000,
             DecodedMaxFeePerGas = 100,
-            MaxFeePerBlobGas = 1,
             Frames =
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),

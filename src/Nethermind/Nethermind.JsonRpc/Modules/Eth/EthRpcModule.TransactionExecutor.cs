@@ -260,12 +260,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// applied. A request that sets one of the fee cap and priority fee after London gets the other before it
             /// is priced: a missing priority fee is the node's suggested one, and a missing fee cap is the priority fee
             /// plus twice the block's base fee. A request with no fee field at all stays unpriced, so a sender that
-            /// cannot afford fees the node would pick can still get its access list.
+            /// cannot afford fees the node would pick can still get its access list. A frame request naming
+            /// <c>maxFee</c> has its fee cap and gets only a missing priority fee.
             /// </remarks>
             public static FeeDefaults FillFeeDefaults(TransactionForRpc call, BlockHeader header, bool isLondon, IGasPriceOracle gasPriceOracle)
             {
                 if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
                     return new FeeDefaults(feeDefaultsError, null);
+
+                if (isLondon && call is FrameTransactionForRpc { MaxFee: not null } budgeted)
+                {
+                    budgeted.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+                    return default;
+                }
 
                 // Before London the rules above leave no fee field to fill.
                 if (!isLondon

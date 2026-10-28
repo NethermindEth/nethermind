@@ -475,7 +475,7 @@ public class BlockchainBridgeTests
         {
             OverrideCall.Call => bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken: CancellationToken.None).Error,
             OverrideCall.EstimateGas => bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, cancellationToken: CancellationToken.None).Error,
-            OverrideCall.EstimateFrameGas => bridge.EstimateFrameGas(header, tx, [], [], 0, 1, stateOverride, blockOverride, CancellationToken.None, out _).Error,
+            OverrideCall.EstimateFrameGas => bridge.EstimateFrameGas(header, tx, [], [], 0, 1, null, stateOverride, blockOverride, CancellationToken.None, out _).Error,
             _ => throw new ArgumentOutOfRangeException(nameof(call))
         };
 
@@ -660,6 +660,37 @@ public class BlockchainBridgeTests
         Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(UInt256.Zero));
         _transactionProcessor.Received().SetBlockExecutionContext(
             Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.BlobBaseFee == UInt256.Zero.ToValueHash()));
+    }
+
+    [Test]
+    public void Frame_blob_call_with_a_max_fee_runs_at_the_header_blob_base_fee([Values] bool capOmitted)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        const ulong excessBlobGas = 10_000_000;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        UInt256? maxFeePerBlobGas = capOmitted ? null : UInt256.Zero;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            GasLimit = Transaction.BaseTxGasCost,
+            MaxFee = 1,
+            MaxFeePerBlobGas = maxFeePerBlobGas,
+            BlobVersionedHashes = [new byte[Eip4844Constants.BytesPerBlobVersionedHash]]
+        };
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, _specProvider.GetSpec(header).BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee);
+        ValueHash256 expectedBlobBaseFee = blobBaseFee.ToValueHash();
+
+        _blockchainBridge.Call(header, tx);
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo(maxFeePerBlobGas));
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFee));
     }
 
     [Test, Combinatorial]

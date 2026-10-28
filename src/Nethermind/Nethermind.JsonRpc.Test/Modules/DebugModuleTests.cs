@@ -706,7 +706,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer()
+    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer([Values] bool streaming)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
@@ -716,15 +716,24 @@ public class DebugModuleTests
         _blockchainBridge.HasStateForBlock(header).Returns(false);
         _blockchainBridge.HasStateForBlock(parent).Returns(true);
         GethLikeTxTrace trace = new();
-        _debugBridge.GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        _debugBridge.GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>()).Returns(trace);
 
         using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceTransaction(TestItem.KeccakA,
-            new GethTraceOptions { Tracer = "noopTracer" });
-        using (Assert.EnterMultipleScope())
+            new GethTraceOptions { Tracer = streaming ? string.Empty : "noopTracer", StreamMode = streaming });
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+        if (streaming)
         {
-            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingSingleResult)actual.Data).WriteAsJson(writer);
+        }
+        else
+        {
             Assert.That(actual.Data, Is.SameAs(trace));
         }
+        _debugBridge.Received(1).GetTransactionBlockHash(TestItem.KeccakA);
+        _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
     }
 
     [Test]
