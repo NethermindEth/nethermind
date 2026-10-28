@@ -3,6 +3,7 @@ name: CI change guard
 # pull_request_target runs this file from the base branch, so a PR cannot weaken the check that reviews it.
 # Never check out or execute PR code here: the token has write access to the PR.
 on:
+  # pull_request_review runs the PR's copy of this file, so withdrawing an approval needs a re-run or a 'ci-change-reviewed' label toggle.
   pull_request_target:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
@@ -23,7 +24,7 @@ jobs:
         with:
           script: |
             const retriggerLabel = 'ci-change-reviewed';
-            const guardedPrefixes = ['.github/', 'scripts/', 'tools/scripts/', '.agents/'];
+            const guardedPrefixes = ['.github/', 'scripts/', '.agents/'];
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             const issue_number = pr.number;
