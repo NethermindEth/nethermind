@@ -105,6 +105,7 @@ jobs:
               Nethermind.Era1.Test
               Nethermind.Facade.Test
               Nethermind.OpcodeTracing.Plugin.Test
+              Nethermind.Serialization.FluentRlp.Test
               Nethermind.Serialization.JsonGenerator.Test
               Nethermind.Shutter.Test
               Nethermind.State.Flat.Test
