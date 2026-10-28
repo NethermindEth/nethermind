@@ -41,6 +41,20 @@ internal static class WrapperCompaction
         return [.. encodings];
     }
 
+    /// <summary>The number of transactions a wrapper carries, read from item headers; 0 when it is malformed.</summary>
+    public static int CountTransactions(ReadOnlySpan<byte> wrapper)
+    {
+        try
+        {
+            Eth73RlpReader outer = new(wrapper);
+            Eth73RlpReader transactions = outer.ReadList().ReadList();
+            int count = 0;
+            for (; transactions.HasMore; count++) transactions.ReadItem();
+            return count;
+        }
+        catch (RlpException) { return 0; }
+    }
+
     /// <summary>The encoding hashes of a complete wrapper's transactions, in order.</summary>
     public static ValueHash256[] EncodingHashes(ReadOnlySpan<byte> wrapper)
     {
@@ -55,20 +69,27 @@ internal static class WrapperCompaction
     /// reference; returns the wrapper unchanged when nothing is replaced.</summary>
     public static byte[] Compact(byte[] wrapper, Func<ValueHash256, bool> delivered)
     {
+        ValueHash256[] hashes = EncodingHashes(wrapper);
+        return Compact(wrapper, Array.ConvertAll(hashes, hash => delivered(hash)), hashes);
+    }
+
+    /// <summary>Replaces each transaction encoding selected by <paramref name="replace"/>, whose reference is smaller, with its
+    /// reference to <paramref name="hashes"/>; returns the wrapper unchanged when nothing is replaced.</summary>
+    /// <param name="replace">Per transaction, in order, whether the recipient holds its encoding.</param>
+    /// <param name="hashes">The encoding hashes of the wrapper's transactions, in order.</param>
+    public static byte[] Compact(byte[] wrapper, ReadOnlySpan<bool> replace, ReadOnlySpan<ValueHash256> hashes)
+    {
         Eth73RlpReader outer = new(wrapper);
         Eth73RlpReader fields = outer.ReadList();
         Eth73RlpReader transactions = fields.ReadList();
         List<byte[]> items = [];
         bool replaced = false;
-        while (transactions.HasMore)
+        for (int i = 0; transactions.HasMore; i++)
         {
             ReadOnlySpan<byte> item = transactions.ReadItem();
-            Eth73RlpReader single = new(item);
-            ReadOnlySpan<byte> encoding = single.ReadBytes();
-            ValueHash256 hash = ValueKeccak.Compute(encoding);
-            if (item.Length > ReferenceLength && delivered(hash))
+            if (item.Length > ReferenceLength && replace[i])
             {
-                items.Add(Reference(hash));
+                items.Add(Reference(hashes[i]));
                 replaced = true;
             }
             else items.Add(item.ToArray());
@@ -77,6 +98,28 @@ internal static class WrapperCompaction
         byte[] mode = fields.ReadItem().ToArray();
         byte[] content = fields.ReadItem().ToArray();
         return Eth73Rlp.EncodeList(Eth73Rlp.EncodeList([.. items]), mode, content);
+    }
+
+    /// <summary>The length <see cref="Compact(byte[], ReadOnlySpan{bool}, ReadOnlySpan{ValueHash256})"/> returns for the same
+    /// <paramref name="replace"/>, read from item headers alone.</summary>
+    public static int CompactLength(ReadOnlySpan<byte> wrapper, ReadOnlySpan<bool> replace)
+    {
+        Eth73RlpReader outer = new(wrapper);
+        Eth73RlpReader fields = outer.ReadList();
+        Eth73RlpReader transactions = fields.ReadList();
+        int content = 0;
+        bool replaced = false;
+        for (int i = 0; transactions.HasMore; i++)
+        {
+            int length = transactions.ReadItem().Length;
+            bool reference = length > ReferenceLength && replace[i];
+            replaced |= reference;
+            content += reference ? ReferenceLength : length;
+        }
+        if (!replaced) return wrapper.Length;
+        int rest = fields.ReadItem().Length;
+        rest += fields.ReadItem().Length;
+        return Eth73Rlp.LengthOfList(Eth73Rlp.LengthOfList(content) + rest);
     }
 
     public static byte[] Reference(in ValueHash256 hash) => Eth73Rlp.EncodeList(Eth73Rlp.EncodeBytes(hash.Bytes));

@@ -199,9 +199,9 @@ public sealed partial class ProofWrapperTransport
                         fetch.Tried.Remove(peer);
                         continue;
                     }
-                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, wrapper.Length)) continue;
+                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, item.Charge)) continue;
                     fetch.Wrapper = wrapper;
-                    fetch.ChargedBytes = wrapper.Length;
+                    fetch.ChargedBytes = item.Charge;
                     fetch.Server = peer;
                     fetch.AddSource(peer, item.Mode, wrapper.Length);
                     Enqueue(fetch);
@@ -215,9 +215,16 @@ public sealed partial class ProofWrapperTransport
         outbox.Flush();
     }
 
-    /// <summary>A returned entry after reference resolution: the complete wrapper and its hash, or no wrapper on a cache miss,
-    /// or the reason it is malformed.</summary>
-    private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error);
+    /// <summary>A returned entry after reference resolution: the complete wrapper, its hash and its admission charge, or no
+    /// wrapper on a cache miss, or the reason it is malformed.</summary>
+    private readonly record struct Returned(int Mode, ValueHash256 Hash, byte[]? Wrapper, bool Referenced, string? Error, long Charge = 0);
+
+    /// <summary>What a held wrapper is charged to its server's byte budgets until validated: as ordinary transaction gossip, the
+    /// larger of its bytes and a per-transaction overhead, so many small transactions sharing one proof cost their admission work;
+    /// capped at two wrappers' worth, so any wrapper within <c>MAX_WRAPPER_BYTES</c> stays retrievable.</summary>
+    private static long AdmissionCharge(byte[] wrapper) =>
+        Math.Min(Math.Max(wrapper.Length, (long)WrapperCompaction.CountTransactions(wrapper) * InboundTransactionBudget.TransactionCharge),
+            2L * Eth73Protocol.MaxWrapperBytes);
 
     /// <summary>Resolves and hashes the returned wrappers outside the lock, since a response carries up to 2 MiB.</summary>
     private Returned[] Resolve(WrapperPeer peer, ProofWrappersMessage message)
@@ -231,7 +238,7 @@ public sealed partial class ProofWrapperTransport
             int mode = WrapperBodies.TryReadMode(wire);
             if (!WrapperCompaction.HasReferences(wire))
             {
-                returned[i] = new(mode, ValueKeccak.Compute(wire), wire, false, null);
+                returned[i] = new(mode, ValueKeccak.Compute(wire), wire, false, null, AdmissionCharge(wire));
                 continue;
             }
             // Reconstruction is bounded by the length this peer announced; an entry matching no request fails matching later.
@@ -245,7 +252,7 @@ public sealed partial class ProofWrapperTransport
                 out byte[]? wrapper, out string? error);
             returned[i] = outcome switch
             {
-                WrapperCompaction.Outcome.Complete => new(mode, ValueKeccak.Compute(wrapper!), wrapper, true, null),
+                WrapperCompaction.Outcome.Complete => new(mode, ValueKeccak.Compute(wrapper!), wrapper, true, null, AdmissionCharge(wrapper!)),
                 WrapperCompaction.Outcome.Missing => new(mode, default, null, true, null),
                 _ => new(mode, default, null, true, error)
             };
@@ -453,27 +460,29 @@ public sealed partial class ProofWrapperTransport
 
     private async Task<(Verdict, string?, Eip8288Verifier?)> VerifyAsync(Func<CancellationToken, Task<ProofWrapperAcceptance>> accept, CancellationToken cancellation)
     {
-        // Proof verification and admission stay serialized across the bounded validation workers.
-        await _verification.WaitAsync(cancellation).ConfigureAwait(false);
-        try
+        for (int attempt = 0; ; attempt++)
         {
-            for (int attempt = 0; ; attempt++)
+            ProofWrapperAcceptance result;
+            // Proof verification and admission stay serialized across the bounded validation workers; a busy retry waits
+            // outside, so other queued validations go first.
+            await _verification.WaitAsync(cancellation).ConfigureAwait(false);
+            try
             {
                 cancellation.ThrowIfCancellationRequested();
-                ProofWrapperAcceptance result = await accept(cancellation).ConfigureAwait(false);
-                switch (result.Status)
-                {
-                    case ProofWrapperAcceptanceStatus.Accepted: return (Verdict.Valid, null, null);
-                    case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error, null);
-                    case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error, result.Verifier);
-                    case ProofWrapperAcceptanceStatus.Malformed: return (Verdict.Malformed, result.Result.Error, null);
-                    case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:
-                        await Task.Delay(WrapperTransportLimits.BusyRetry, cancellation).ConfigureAwait(false);
-                        continue;
-                    default: return (Verdict.LocalFailure, result.Result.Error, null);
-                }
+                result = await accept(cancellation).ConfigureAwait(false);
+            }
+            finally { _verification.Release(); }
+            switch (result.Status)
+            {
+                case ProofWrapperAcceptanceStatus.Accepted: return (Verdict.Valid, null, null);
+                case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error, null);
+                case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error, result.Verifier);
+                case ProofWrapperAcceptanceStatus.Malformed: return (Verdict.Malformed, result.Result.Error, null);
+                case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:
+                    await Task.Delay(WrapperTransportLimits.BusyRetry, cancellation).ConfigureAwait(false);
+                    continue;
+                default: return (Verdict.LocalFailure, result.Result.Error, null);
             }
         }
-        finally { _verification.Release(); }
     }
 }

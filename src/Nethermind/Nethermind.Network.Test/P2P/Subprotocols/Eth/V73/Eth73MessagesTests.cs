@@ -270,6 +270,9 @@ public class Eth73MessagesTests
             Assert.That(message.Entries[0].Hash.ToString(false), Is.EqualTo("082aec04a3cd181c4a376032dc0819b192a8b39ab14839f3fffb09089d1f9638"));
             Assert.That(() => WrapperBodies.ParseWrapper(compact, out _), Throws.InstanceOf<RlpException>(), "references are unresolved");
             Assert.That(WrapperCompaction.Compact(body, cache.ContainsKey), Is.EqualTo(compact), "both encodings are replaced");
+            Assert.That(WrapperCompaction.CompactLength(body, [true, true]), Is.EqualTo(compact.Length), "sized from headers alone");
+            Assert.That(WrapperCompaction.CompactLength(body, [false, false]), Is.EqualTo(body.Length));
+            Assert.That(WrapperCompaction.CountTransactions(body), Is.EqualTo(2));
             Assert.That(WrapperCompaction.Reconstruct(compact, body.Length, h => cache.GetValueOrDefault(h), out byte[]? rebuilt, out _),
                 Is.EqualTo(WrapperCompaction.Outcome.Complete));
             Assert.That(rebuilt, Is.EqualTo(body));

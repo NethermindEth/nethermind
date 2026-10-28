@@ -180,7 +180,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private void Tick()
     {
         // Applies the local verifier-change rule, through VerifierChanged, once the head reaches a fork with another verifier.
-        // Idle while EIP-8288 is inactive: no peer registers then.
+        // Before activation it runs only for peers, which register once the fork is scheduled.
         if (!IsEnabled && PeerCount == 0) return;
         Eip8288Verifier? refreshed;
         try { refreshed = _wrappers.RefreshVerifier(); }
@@ -226,6 +226,12 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (_disposed) return;
             _disposed = true;
             foreach (WrapperPeer peer in _peers.ToArray()) RemoveCore(peer, outbox);
+            // Workers stop at the next dequeue, so queued validations are released here; running ones release their own.
+            while (_validation.TryDequeue(out WrapperFetch? queued))
+            {
+                queued.Processing?.Dispose();
+                queued.Processing = null;
+            }
             foreach (WrapperFetch fetch in _fetches.Values) if (fetch.Processing is null) Drop(fetch);
             if (_validationWorkers == 0) _verification.Dispose();
         }
@@ -482,14 +488,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
     /// adding none once the response reaches the soft response limit; the last one added may take it past the limit
     /// (EIP-8437).</summary>
     /// <remarks>With <c>compact = 1</c>, each transaction encoding this node already sent the peer in full within a validated
-    /// wrapper is replaced by its hash reference where that is smaller; with <c>compact = 0</c> wrappers are complete.</remarks>
+    /// wrapper is replaced by its hash reference where that is smaller; with <c>compact = 0</c> wrappers are complete. The
+    /// response is sized and charged to the serving budget under the lock from item headers alone; compact wrappers are built
+    /// after it is released.</remarks>
     internal void OnGetProofWrappers(WrapperPeer peer, GetProofWrappersMessage request)
     {
         Outbox outbox = new();
+        List<(WrapperStore.Entry Entry, bool[]? Replace)> served = [];
         lock (_gate)
         {
             if (peer.Closed) return;
-            List<(WrapperStore.Entry Entry, byte[] Sent)> served = [];
             int content = 0;
             long now = _clock.GetTimestamp();
             foreach (ValueHash256 wrapperHash in request.Hashes)
@@ -498,36 +506,44 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 // Hashes this node has not announced on this connection are unavailable.
                 if (!peer.Announced.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
                 if (ResponseLength(request.RequestId, content) >= Eth73Protocol.SoftResponseLimit) break;
-                byte[] sent = request.Compact ? Compact(peer, entry, now) : entry.Wrapper;
-                served.Add((entry, sent));
-                content += EntryLength(sent.Length);
+                bool[]? replace = request.Compact ? Replacements(peer, entry, now) : null;
+                served.Add((entry, replace));
+                content += EntryLength(replace is null ? entry.Wrapper.Length : WrapperCompaction.CompactLength(entry.Wrapper, replace));
             }
             // Beyond the serving budget a responder answers with an empty list.
             if (served.Count > 0 && !peer.Serving.TryTake(content)) served.Clear();
-            ProofWrapperEntry[] entries = new ProofWrapperEntry[served.Count];
-            for (int i = 0; i < entries.Length; i++)
+            foreach ((WrapperStore.Entry entry, _) in served)
             {
-                (WrapperStore.Entry entry, byte[] sent) = served[i];
-                entries[i] = new(entry.Announcement.Hash, sent);
                 peer.Exchanged.Add(entry.Announcement.Hash);
                 // Every encoding of the wrapper is now held by the peer, whether sent now or earlier.
                 foreach (ValueHash256 encoding in entry.EncodingHashes) peer.Delivered.Add(encoding);
             }
-            if (entries.Length > 0) WrapperMetrics.Record(WrapperEvent.Served, entries.Length);
-            outbox.Send(peer, new ProofWrappersMessage(request.RequestId, entries));
         }
+        ProofWrapperEntry[] entries = new ProofWrapperEntry[served.Count];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            (WrapperStore.Entry entry, bool[]? replace) = served[i];
+            entries[i] = new(entry.Announcement.Hash, replace is null ? entry.Wrapper : WrapperCompaction.Compact(entry.Wrapper, replace, entry.EncodingHashes));
+        }
+        if (entries.Length > 0) WrapperMetrics.Record(WrapperEvent.Served, entries.Length);
+        outbox.Send(peer, new ProofWrappersMessage(request.RequestId, entries));
         outbox.Flush();
     }
 
-    /// <summary>The wrapper with each encoding previously sent to <paramref name="peer"/> in full replaced by its reference.</summary>
-    private static byte[] Compact(WrapperPeer peer, WrapperStore.Entry entry, long now)
+    /// <summary>Per transaction of <paramref name="entry"/>, whether its encoding was previously sent to <paramref name="peer"/>
+    /// in full; null when none was.</summary>
+    private static bool[]? Replacements(WrapperPeer peer, WrapperStore.Entry entry, long now)
     {
+        bool[]? replace = null;
         int references = 0;
-        foreach (ValueHash256 encoding in entry.EncodingHashes) if (peer.Delivered.Contains(encoding, now)) references++;
-        if (references == 0) return entry.Wrapper;
-        byte[] compact = WrapperCompaction.Compact(entry.Wrapper, hash => peer.Delivered.Contains(hash, now));
-        if (compact != entry.Wrapper) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
-        return compact;
+        for (int i = 0; i < entry.EncodingHashes.Length; i++)
+        {
+            if (!peer.Delivered.Contains(entry.EncodingHashes[i], now)) continue;
+            (replace ??= new bool[entry.EncodingHashes.Length])[i] = true;
+            references++;
+        }
+        if (references > 0) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
+        return replace;
     }
 
     /// <summary>The encoded length of a ProofWrappers entry <c>[hash, wrapper]</c> for a wrapper of <paramref name="wrapperLength"/> bytes.</summary>
