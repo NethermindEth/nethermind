@@ -44,16 +44,16 @@ public static class Metrics
 
     /// <remarks>Slots embedded in the account header report under the <c>storage</c> tree in the <c>bal</c> phase, and their node groups under <c>state</c>.</remarks>
     [DetailedMetric]
-    [Description("Time of one key read by the pbt HintBal prefetch, by phase (bal: an account or slot the block access list names; node_group: a node group the fold walks into) and tree (state, storage) (Stopwatch ticks)")]
+    [Description("Time of one key read by the pbt HintBal prefetch, by phase (bal: an account or slot the block access list names; node_group: the path of a key the fold walks) and tree (state, storage) (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["phase", "tree"])]
     public static IMetricObserver PbtBalPrefetchKeyTime { get; set; } = new NoopMetricObserver();
 
     /// <remarks>
-    /// Counts accounts and slots in the <c>bal</c> phase. In the <c>node_group</c> phase, <c>state</c> counts account groups
-    /// (accounts and header slots for <c>no_write</c>) and <c>storage</c> counts groups, except <c>cancelled</c>, which counts the slots left.
+    /// Counts accounts and slots in the <c>bal</c> phase. In the <c>node_group</c> phase, <c>state</c> counts accounts and header
+    /// slots and <c>storage</c> counts slots, whose paths are left unwalked.
     /// </remarks>
     [CounterMetric]
-    [Description("Reads the pbt HintBal prefetch skipped, by phase (bal, node_group), tree (state, storage) and reason: cancelled (the prefetch stopped first), no_write (the block access list writes nothing there), buffered_run (the slot run was read already), shared_group (another key read the node group)")]
+    [Description("Reads the pbt HintBal prefetch skipped, by phase (bal, node_group), tree (state, storage) and reason: cancelled (the prefetch stopped first), no_write (the block access list writes nothing there), buffered_run (the slot run was read already)")]
     [KeyIsLabel("phase", "tree", "reason")]
     public static ConcurrentDictionary<PbtBalPrefetchSkipLabel, long> PbtBalPrefetchSkips { get; } = new();
 

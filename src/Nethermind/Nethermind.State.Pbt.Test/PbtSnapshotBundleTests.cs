@@ -307,15 +307,16 @@ public class PbtSnapshotBundleTests
     public void Only_the_warm_up_warms_groups_which_stay_warmed_until_collect_retires_the_transient_resource()
     {
         PbtStorageNodePath path = new([], 0);
-        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
-        Reader reader = new(default, null) { GroupPayload = encoding };
+        // A single-leaf tree, so a walk to its leaf reads only the root group.
+        PbtPath key = new(PbtStoreTestExtensions.ZoneKey("00"));
+        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, PbtTreeHarness.EncodeLeaf(key))], default);
+        Reader reader = new(default, null) { GroupPayload = encoding, CurrentRoot = TestItem.KeccakA.ValueHash256 };
         PbtSnapshotBundle bundle = CreateBundle(reader);
         byte[]? Load() => PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(path, action, groups));
 
         byte[]?[] loads = [Load(), Load()];
         int loadReads = reader.GroupReadCount;
-        bundle.WarmUp(path, []);
-        bundle.WarmUp(path, []);
+        bundle.WarmUp<PbtPath, PbtNodePath>(key);
         byte[]? warmedLoad = Load();
         int warmUpReads = reader.GroupReadCount;
         (PbtSnapshot snapshot, PbtTransientResource retired) = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
@@ -325,39 +326,15 @@ public class PbtSnapshotBundleTests
         byte[]? loadAfterCollect = Load();
         int readsAfterCollect = reader.GroupReadCount;
         bundle.Dispose();
-        bundle.WarmUp(path, []);
+        bundle.WarmUp<PbtPath, PbtNodePath>(key);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(new[] { loads[0], loads[1], warmedLoad, loadAfterCollect }, Is.All.EqualTo(encoding));
             Assert.That(loadReads, Is.EqualTo(2), "a loaded group is not warmed");
-            Assert.That(warmUpReads, Is.EqualTo(3), "the warm-up reads the group once, then finds it warmed and answers loads");
+            Assert.That(warmUpReads, Is.EqualTo(3), "the warm-up reads the group once and then answers loads");
             Assert.That(retiredGroups, Is.EqualTo(1), "collect hands out the resource that warmed the group");
             Assert.That(readsAfterCollect, Is.EqualTo(4), "the next block reads a fresh resource");
             Assert.That(reader.GroupReadCount, Is.EqualTo(readsAfterCollect), "a disposed bundle warms nothing");
-        }
-    }
-
-    [Test]
-    public void Warm_up_reads_only_the_groups_the_buffer_does_not_reach_taking_the_descendant_sizes_of_those_it_does()
-    {
-        PbtStorageNodePath inBuffer = new(Bytes.FromHexString("0x20"), 3);
-        PbtStorageNodePath belowInBuffer = new(Bytes.FromHexString("0x24"), 6);
-        PbtStorageNodePath outsideBuffer = new(Bytes.FromHexString("0x40"), 3);
-        long[] storedDescendantBytes = [0, 0, 0, 0, 0, 0, 0, 4096];
-        Reader reader = new(default, null);
-        using PbtSnapshotBundle bundle = CreateBundle(reader);
-        bundle.SetTree((inBuffer, PbtNodeGroupEncoder.Encode(inBuffer, [new PbtNodeRecord(PbtTestPaths.PathOf(inBuffer, 0), BranchEncoding(1))], storedDescendantBytes)));
-        long[] descendantBytes = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
-
-        bundle.WarmUp(inBuffer, descendantBytes);
-        int inBufferReads = reader.GroupReadCount;
-        bundle.WarmUp(belowInBuffer, []);
-        bundle.WarmUp(outsideBuffer, []);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(inBufferReads, Is.Zero, "a group the buffer reaches is not read");
-            Assert.That(descendantBytes, Is.EqualTo(storedDescendantBytes), "its descendant sizes come from the buffer");
-            Assert.That(reader.GroupReadCount, Is.EqualTo(2), "a group behind a link the buffer lacks is read");
         }
     }
 
