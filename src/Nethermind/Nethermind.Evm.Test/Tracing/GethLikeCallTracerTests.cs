@@ -1673,13 +1673,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         ReadOnlySpan<NativeCallTracerCallFrame> children = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value).Calls.AsSpan();
 
         Assert.That(children.Length, Is.EqualTo(FrameCount));
-        for (int i = 0; i < FrameCount; i++)
+        using (Assert.EnterMultipleScope())
         {
-            int inputLength = i == FrameCount / 2 ? LargeInputLength : 68;
-            Assert.That(children[i].Input.Length, Is.EqualTo(inputLength), $"frame {i} input length");
-            Assert.That(children[i].Input.Span.IndexOfAnyExcept((byte)i), Is.EqualTo(-1), $"frame {i} input");
-            Assert.That(children[i].Output.Span.IndexOfAnyExcept((byte)~i), Is.EqualTo(-1), $"frame {i} output");
-            Assert.That(children[i].Output.Length, Is.EqualTo(32), $"frame {i} output length");
+            for (int i = 0; i < FrameCount; i++)
+            {
+                int inputLength = i == FrameCount / 2 ? LargeInputLength : 68;
+                Assert.That(children[i].Input.Length, Is.EqualTo(inputLength), $"frame {i} input length");
+                Assert.That(children[i].Input.Span.IndexOfAnyExcept((byte)i), Is.EqualTo(-1), $"frame {i} input");
+                Assert.That(children[i].Output.Span.IndexOfAnyExcept((byte)~i), Is.EqualTo(-1), $"frame {i} output");
+                Assert.That(children[i].Output.Length, Is.EqualTo(32), $"frame {i} output length");
+            }
         }
     }
 
@@ -1755,8 +1758,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             bare = Math.Min(bare, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        // The slack covers the root's child list and the chunk list, both once per trace.
-        Assert.That(traced, Is.LessThanOrEqualTo(bare + 1024),
+        // Renting per frame cost about 200 bytes a frame. The slack covers per-trace lists, such as the root's child
+        // list and the chunk list, which some builds and runtimes do not serve from the shared pool.
+        Assert.That(traced, Is.LessThanOrEqualTo(bare + FrameCount * 8),
             $"tracing {FrameCount} frames allocated {traced} bytes, {bare} of them for the frames themselves");
     }
 
