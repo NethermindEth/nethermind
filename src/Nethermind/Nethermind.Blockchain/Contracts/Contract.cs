@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -153,11 +152,7 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
-        protected LogEntry GetSearchLogEntry(Hash256 eventHash, params Hash256[] topics)
-        {
-            Hash256[] eventNameTopic = { eventHash };
-            topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
-            return new LogEntry(ContractAddress, [], topics);
-        }
+        protected LogEntry GetSearchLogEntry(Hash256 eventHash, params Hash256[] topics) =>
+            new(ContractAddress, [], [eventHash, .. topics]);
     }
 }
