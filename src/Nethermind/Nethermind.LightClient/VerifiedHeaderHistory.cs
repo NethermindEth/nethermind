@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -18,12 +19,19 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
 {
     internal const int PageSize = 128;
     internal const int MaxHeaderBytes = 2048;
+    private const int PrefetchPages = 3;
+    internal readonly struct PageRequest(Task fetch, Func<BlockHeader, CancellationToken, Task<BlockHeader[]>> authenticate)
+    {
+        internal readonly Task Fetch = fetch;
+        internal readonly Func<BlockHeader, CancellationToken, Task<BlockHeader[]>> Authenticate = authenticate;
+    }
     private const long DiskWriteLimit = 1024L * 1024 * 1024;
     private static readonly byte[] IdentityKey = [0xff];
     private readonly IDb _db;
     private readonly HeaderDecoder _decoder;
     private readonly Func<VerifiedHead, CancellationToken, Task<BlockHeader>> _getAnchor;
     private readonly Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> _fetchPage;
+    private readonly Func<ulong, int, CancellationToken, PageRequest>? _prefetchPage;
     private readonly Nethermind.Logging.ILogger _logger;
     private readonly TimeProvider _clock;
     private readonly TimeSpan _runBudget;
@@ -52,7 +60,8 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         Func<VerifiedHead, CancellationToken, Task<BlockHeader>> getAnchor,
         Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> fetchPage, Nethermind.Logging.ILogger logger,
         TimeProvider? clock = null, int capacity = VerifiedLogHeaders.HistoryCapacity,
-        TimeSpan? runBudget = null, string? directory = null)
+        TimeSpan? runBudget = null, string? directory = null,
+        Func<ulong, int, CancellationToken, PageRequest>? prefetchPage = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 2);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, VerifiedLogHeaders.HistoryCapacity);
@@ -60,6 +69,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         _decoder = new(specProvider);
         _getAnchor = getAnchor;
         _fetchPage = fetchPage;
+        _prefetchPage = prefetchPage;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
         _runBudget = runBudget ?? TimeSpan.FromMinutes(30);
@@ -244,10 +254,8 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         await SaveAsync([cursor], cancellationToken, persist: cachedAnchor is null);
         if (previous is not null && target.Number - previous.Number < (ulong)_hashes.Length)
         {
-            while (cursor.Number > previous.Number)
+            await foreach ((BlockHeader[] page, bool cached) in ReadPagesAsync(cursor, previous.Number, cancellationToken))
             {
-                int count = (int)Math.Min(PageSize, cursor.Number - previous.Number);
-                (BlockHeader[] page, bool cached) = await ReadPageAsync(cursor, count, cancellationToken);
                 if (page[0].Number == previous.Number && page[0].Hash != previous.BlockHash)
                     throw new InvalidDataException("Finalized log ancestry conflicts with the existing anchor.");
                 await SaveAsync(page, cancellationToken, persist: !cached);
@@ -269,21 +277,17 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
 
     private async Task BackfillAsync(ulong first, CancellationToken cancellationToken)
     {
-        while (true)
+        BlockHeader cursor;
+        await _access.WaitAsync(cancellationToken);
+        try
         {
-            BlockHeader? cursor;
-            int count;
-            await _access.WaitAsync(cancellationToken);
-            try
-            {
-                if (_first <= first) return;
-                cursor = ReadHeader(_first, new Hash256(_hashes[Slot(_first)]));
-                count = (int)Math.Min(PageSize, _first - first);
-                if (cursor is null)
-                    throw new InvalidDataException("A verified log history cursor is corrupt.");
-            }
-            finally { _access.Release(); }
-            (BlockHeader[] page, bool cached) = await ReadPageAsync(cursor, count, cancellationToken);
+            if (_first <= first) return;
+            cursor = ReadHeader(_first, new Hash256(_hashes[Slot(_first)]))
+                ?? throw new InvalidDataException("A verified log history cursor is corrupt.");
+        }
+        finally { _access.Release(); }
+        await foreach ((BlockHeader[] page, bool cached) in ReadPagesAsync(cursor, first, cancellationToken))
+        {
             await SaveAsync(page, cancellationToken, persist: !cached);
             await _access.WaitAsync(cancellationToken);
             try
@@ -295,26 +299,104 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         }
     }
 
-    private async Task<(BlockHeader[] Headers, bool Cached)> ReadPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken)
+    private async IAsyncEnumerable<(BlockHeader[] Headers, bool Cached)> ReadPagesAsync(BlockHeader cursor, ulong first,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Queue<(ulong Number, PageRequest Request)> pending = new(PrefetchPages);
+        Task<BlockHeader[]>? active = null;
+        Task? activeFetch = null;
+        ulong next = cursor.Number;
+        try
+        {
+            while (cursor.Number > first)
+            {
+                int count = (int)Math.Min(PageSize, cursor.Number - first);
+                BlockHeader[]? page = null;
+                bool cached = false;
+                if (pending.TryPeek(out (ulong Number, PageRequest Request) queued) && queued.Number == cursor.Number)
+                {
+                    pending.Dequeue();
+                    activeFetch = queued.Request.Fetch;
+                    active = queued.Request.Authenticate(cursor, stopping.Token);
+                }
+                else
+                {
+                    page = await ReadCachedPageAsync(cursor, count, stopping.Token);
+                    cached = page is not null;
+                    if (!cached)
+                    {
+                        active = _fetchPage(cursor, count, stopping.Token);
+                        activeFetch = active;
+                    }
+                }
+                if (active is not null)
+                {
+                    if (pending.Count == 0) next = cursor.Number - (ulong)count;
+                    while (_prefetchPage is not null && pending.Count < PrefetchPages && next > first)
+                    {
+                        int prefetched = (int)Math.Min(PageSize, next - first);
+                        if (await IsPagePresentAsync(next, prefetched, stopping.Token)) break;
+                        pending.Enqueue((next, _prefetchPage(next, prefetched, stopping.Token)));
+                        next -= (ulong)prefetched;
+                    }
+                    page = await active;
+                    active = null;
+                    activeFetch = null;
+                }
+                VerifyPage(cursor, count, page!);
+                yield return (page!, cached);
+                cursor = page![0];
+            }
+        }
+        finally
+        {
+            try { await stopping.CancelAsync(); }
+            finally
+            {
+                if (active is not null)
+                    await ((Task)active).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                if (activeFetch is not null && !ReferenceEquals(activeFetch, active))
+                    await activeFetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                foreach ((ulong _, PageRequest request) in pending)
+                    await request.Fetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+        }
+    }
+
+    private async Task<bool> IsPagePresentAsync(ulong number, int count, CancellationToken cancellationToken)
+    {
+        await _access.WaitAsync(cancellationToken);
+        try
+        {
+            Span<byte> key = stackalloc byte[4];
+            for (int i = 0; i < count; i++)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(key, Slot(number - (ulong)count + (ulong)i));
+                if (!_db.KeyExists(key)) return false;
+            }
+            return true;
+        }
+        finally { _access.Release(); }
+    }
+
+    private async Task<BlockHeader[]?> ReadCachedPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken)
     {
         BlockHeader[] page = new BlockHeader[count];
         Hash256 hash = cursor.ParentHash!;
-        bool cached = true;
         await _access.WaitAsync(cancellationToken);
         try
         {
             for (int i = count - 1; i >= 0; i--)
             {
                 BlockHeader? header = ReadHeader(cursor.Number - (ulong)(count - i), hash);
-                if (header is null) { cached = false; break; }
+                if (header is null) return null;
                 page[i] = header;
                 hash = header.ParentHash!;
             }
         }
         finally { _access.Release(); }
-        if (!cached) page = await _fetchPage(cursor, count, cancellationToken);
-        VerifyPage(cursor, count, page);
-        return (page, cached);
+        return page;
     }
 
     internal static void VerifyPage(BlockHeader cursor, int count, BlockHeader[] page)

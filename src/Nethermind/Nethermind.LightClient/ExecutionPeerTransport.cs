@@ -192,7 +192,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             try
             {
                 return new(db, genesisHash, SpecProvider, GetHeaderAsync, FetchLogHeaderPageAsync, _logger,
-                    directory: directory);
+                    clock: _clock, directory: directory, prefetchPage: BeginLogHeaderPage);
             }
             catch { db.Dispose(); throw; }
         });
@@ -678,13 +678,63 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private Task<BlockHeader[]> FetchLogHeaderPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken) =>
         RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
 
+    private VerifiedHeaderHistory.PageRequest BeginLogHeaderPage(ulong number, int count, CancellationToken cancellationToken)
+    {
+        HeaderPrefetch prefetch = new();
+        Task<BlockHeader[]> fetch = RequestExecutionAsync(AllocationContexts.Headers,
+            (peer, token) => ReadUnverifiedLogHeaderPageAsync(peer, number, count, token), cancellationToken,
+            prefetch: prefetch);
+        return new(fetch, AuthenticateAsync);
+
+        async Task<BlockHeader[]> AuthenticateAsync(BlockHeader cursor, CancellationToken token)
+        {
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token, timeout.Token);
+            if (prefetch.TryHandoff())
+            {
+                await ((Task)fetch).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                deadline.Token.ThrowIfCancellationRequested();
+                return await FetchLogHeaderPageAsync(cursor, count, deadline.Token);
+            }
+            BlockHeader[] headers;
+            try { headers = await fetch.WaitAsync(deadline.Token); }
+            catch (RpcException) when (!deadline.IsCancellationRequested)
+            {
+                return await FetchLogHeaderPageAsync(cursor, count, deadline.Token);
+            }
+            deadline.Token.ThrowIfCancellationRequested();
+            ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
+            PeerInfo supplier = prefetch.Supplier;
+            bool IsCurrent(PeerInfo peer) => peer.IsInitialized && ReferenceEquals(pool.GetPeer(peer.SyncPeer.Node), peer);
+            bool CanPrefer(PeerInfo peer) => IsCurrent(peer) && !IsCooling(peer, AllocationContexts.Headers);
+            try { VerifiedHeaderHistory.VerifyPage(cursor, count, headers); }
+            catch (InvalidDataException exception)
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                if (IsCurrent(supplier)) RecordPeerFailure(pool, AllocationContexts.Headers, supplier, exception);
+                return await FetchLogHeaderPageAsync(cursor, count, deadline.Token);
+            }
+            deadline.Token.ThrowIfCancellationRequested();
+            PromotePeer(AllocationContexts.Headers, supplier, CanPrefer);
+            return headers;
+        }
+    }
+
     internal static async Task<BlockHeader[]> ReadLogHeaderPageAsync(ISyncPeer peer, BlockHeader cursor, int count,
         CancellationToken cancellationToken)
     {
-        if (count is < 1 or > VerifiedHeaderHistory.PageSize || cursor.Number < (ulong)count)
+        BlockHeader[] result = await ReadUnverifiedLogHeaderPageAsync(peer, cursor.Number, count, cancellationToken);
+        VerifiedHeaderHistory.VerifyPage(cursor, count, result);
+        return result;
+    }
+
+    private static async Task<BlockHeader[]> ReadUnverifiedLogHeaderPageAsync(ISyncPeer peer, ulong number, int count,
+        CancellationToken cancellationToken)
+    {
+        if (count is < 1 or > VerifiedHeaderHistory.PageSize || number < (ulong)count)
             throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
         BlockHeader[] result = new BlockHeader[count];
-        ulong first = cursor.Number - (ulong)count;
+        ulong first = number - (ulong)count;
         int received = 0;
         while (received < count)
         {
@@ -703,7 +753,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             }
             received += headers.Count;
         }
-        VerifiedHeaderHistory.VerifyPage(cursor, count, result);
         return result;
     }
 
@@ -839,8 +888,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
-        string failureMessage = "No execution peer supplied authenticated block data.") =>
-        RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage);
+        string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null) =>
+        RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
+            prefetch: prefetch);
 
     private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         string operation = "proof") =>
@@ -850,7 +900,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
-        Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null) where TPeer : class
+        Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null,
+        HeaderPrefetch? prefetch = null) where TPeer : class
     {
         bool trace = _logger.IsDebug;
         using Activity? diagnostic = trace
@@ -858,7 +909,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (trace)
             _logger.Debug($"LC peer id={diagnostic?.Id} parent={diagnostic?.ParentId} context={context} operation={operation ?? context.ToString()}");
         SemaphoreSlim requests = context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests;
-        bool bulk = context is not (AllocationContexts.Headers or AllocationContexts.Snap);
+        // Speculation must leave the header lane available until its trusted cursor arrives.
+        bool bulk = context is not (AllocationContexts.Headers or AllocationContexts.Snap) || prefetch is not null;
         bool bulkAcquired = false;
         bool requestAcquired = false;
         long admissionStart = trace ? _clock.GetTimestamp() : 0;
@@ -871,17 +923,22 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             if (bulk)
             {
-                await _executionBulkRequests.WaitAsync(deadline.Token);
+                await (prefetch is null
+                    ? _executionBulkRequests.WaitAsync(deadline.Token)
+                    : WaitForPrefetchSlotAsync(_executionBulkRequests, prefetch, deadline));
                 bulkAcquired = true;
                 if (trace)
                     _logger.Debug($"LC peer id={diagnostic?.Id} phase=bulk-admission admitted=True elapsedMs={_clock.GetElapsedTime(admissionStart).TotalMilliseconds:F3}");
                 requestSlotStart = trace ? _clock.GetTimestamp() : 0;
                 requestSlotStarted = true;
             }
-            await requests.WaitAsync(deadline.Token);
+            await (prefetch is null
+                ? requests.WaitAsync(deadline.Token)
+                : WaitForPrefetchSlotAsync(requests, prefetch, deadline));
             requestAcquired = true;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !stopToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !stopToken.IsCancellationRequested
+            && prefetch?.HandedOff is not true)
         {
             string kind = context == AllocationContexts.Snap ? "SNAP" : "execution data";
             throw new RpcException(-32000, $"Timed out waiting for an available {kind} request slot.");
@@ -894,6 +951,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         try
         {
+            if (prefetch is not null && !prefetch.TryAdmit())
+            {
+                await deadline.CancelAsync();
+                throw new OperationCanceledException(deadline.Token);
+            }
             ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
             bool IsCurrent(PeerInfo peer) => peer.IsInitialized && ReferenceEquals(pool.GetPeer(peer.SyncPeer.Node), peer);
             bool CanPrefer(PeerInfo peer) => IsCurrent(peer) && (canServe is null || canServe(peer.SyncPeer))
@@ -956,13 +1018,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         if (error is null)
                         {
                             if (trace)
-                                _logger.Debug($"LC peer id={diagnostic?.Id} phase=selection peer={supplier.SyncPeer.Node:c} outcome=selected");
-                            while (CanPrefer(supplier))
-                            {
-                                if (_preferredPeers.TryAdd(context, supplier)) break;
-                                if (_preferredPeers.TryGetValue(context, out PeerInfo? current)
-                                    && (CanPrefer(current) || _preferredPeers.TryUpdate(context, supplier, current))) break;
-                            }
+                                _logger.Debug($"LC peer id={diagnostic?.Id} phase=selection peer={supplier.SyncPeer.Node:c} outcome={(prefetch is null ? "selected" : "received-unverified")}");
+                            if (prefetch is null) PromotePeer(context, supplier, CanPrefer);
+                            else prefetch.Supplier = supplier;
                             return result;
                         }
                         if (error is ConcurrencyLimitReachedException)
@@ -970,18 +1028,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                             if (_logger.IsDebug) _logger.Debug($"Execution {context} peer {supplier.SyncPeer.Node:c} is busy: {error.Message}");
                             continue;
                         }
-                        TimeSpan duration = context == AllocationContexts.Snap && error is not InvalidDataException
-                            ? TimeSpan.FromSeconds(15) : TimeSpan.FromMinutes(1);
-                        _peerCooldowns.Set((supplier.SyncPeer.Id, context), (_clock.GetTimestamp(), duration), new MemoryCacheEntryOptions { Size = 1 });
-                        _preferredPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, supplier));
-                        pool.ReportWeakPeer(supplier, context);
-                        if (_logger.IsWarn)
-                        {
-                            string detail = $"{error.GetType().Name}: {error.Message}";
-                            _logger.Warn(context == AllocationContexts.Snap
-                                ? $"SNAP peer {supplier.SyncPeer.Node:c} could not serve the selected state: {detail}"
-                                : $"Execution {context} peer {supplier.SyncPeer.Node:c} failed: {detail}");
-                        }
+                        RecordPeerFailure(pool, context, supplier, error);
                     }
                 }
                 finally
@@ -1031,6 +1078,62 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             requests.Release();
             if (bulkAcquired) _executionBulkRequests.Release();
+        }
+    }
+
+    private sealed class HeaderPrefetch
+    {
+        private const int Admitted = 1;
+        private const int Handoff = 2;
+        private int _state;
+        internal readonly TaskCompletionSource Leading = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal PeerInfo Supplier = null!;
+        internal bool HandedOff => Volatile.Read(ref _state) == Handoff;
+        internal bool TryAdmit() => Interlocked.CompareExchange(ref _state, Admitted, 0) == 0;
+
+        internal bool TryHandoff()
+        {
+            if (Interlocked.CompareExchange(ref _state, Handoff, 0) != 0) return false;
+            Leading.TrySetResult();
+            return true;
+        }
+    }
+
+    private static async Task WaitForPrefetchSlotAsync(SemaphoreSlim slots, HeaderPrefetch prefetch,
+        CancellationTokenSource deadline)
+    {
+        Task waiting = slots.WaitAsync(deadline.Token);
+        if (!waiting.IsCompleted)
+        {
+            await Task.WhenAny(waiting, prefetch.Leading.Task);
+            if (prefetch.HandedOff) await deadline.CancelAsync();
+        }
+        await waiting;
+    }
+
+    private void PromotePeer(AllocationContexts context, PeerInfo supplier, Func<PeerInfo, bool> canPrefer)
+    {
+        while (canPrefer(supplier))
+        {
+            if (_preferredPeers.TryAdd(context, supplier)) break;
+            if (_preferredPeers.TryGetValue(context, out PeerInfo? current)
+                && (canPrefer(current) || _preferredPeers.TryUpdate(context, supplier, current))) break;
+        }
+    }
+
+    private void RecordPeerFailure(ISyncPeerPool pool, AllocationContexts context, PeerInfo supplier, Exception error)
+    {
+        TimeSpan duration = context == AllocationContexts.Snap && error is not InvalidDataException
+            ? TimeSpan.FromSeconds(15) : TimeSpan.FromMinutes(1);
+        _peerCooldowns.Set((supplier.SyncPeer.Id, context), (_clock.GetTimestamp(), duration), new MemoryCacheEntryOptions { Size = 1 });
+        _preferredPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, supplier));
+        pool.ReportWeakPeer(supplier, context);
+        if (_logger.IsWarn)
+        {
+            string detail = $"{error.GetType().Name}: {error.Message}";
+            _logger.Warn(context == AllocationContexts.Snap
+                ? $"SNAP peer {supplier.SyncPeer.Node:c} could not serve the selected state: {detail}"
+                : $"Execution {context} peer {supplier.SyncPeer.Node:c} failed: {detail}");
         }
     }
 

@@ -589,24 +589,15 @@ public class TransportTests
         await using ExecutionPeers peers = new(1);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         using CancellationTokenSource reading = CancellationTokenSource.CreateLinkedTokenSource(token);
-        BlockHeader[] chain = new BlockHeader[701];
-        for (int i = 0; i < chain.Length; i++)
-        {
-            BlockHeader header = EmptyHeader();
-            header.Number = (ulong)i;
-            header.ParentHash = i == 0 ? Keccak.Zero : chain[i - 1].Hash!;
-            header.StateRoot = Keccak.EmptyTreeHash;
-            header.Bloom = Bloom.Empty;
-            header.Hash = header.CalculateHash();
-            chain[i] = header;
-        }
+        BlockHeader[] chain = HistoryChain(700);
         BlockHeader anchor = chain[600];
         ExecutionPeer peer = peers.Ordered[0];
         peer.SyncPeer.HeadNumber = 600;
         peer.SyncPeer.HeadHash = anchor.Hash!;
         peer.SyncPeer.Configure().GetHeadBlockHeader(Arg.Is<Hash256?>(hash => hash == anchor.Hash), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<BlockHeader?>(anchor));
-        Channel<bool> responseDelays = Channel.CreateUnbounded<bool>();
+        Channel<long> responseDelays = Channel.CreateUnbounded<long>();
+        Lock advancing = new();
         TaskCompletionSource interrupted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TimeSpan responseDelay = TimeSpan.FromMilliseconds(responseDelayMs);
         int pageRequests = 0;
@@ -617,8 +608,13 @@ public class TransportTests
                 int count = Math.Min(17, call.ArgAt<int>(1));
                 CancellationToken cancellation = call.ArgAt<CancellationToken>(3);
                 Interlocked.Increment(ref pageRequests);
-                Task delay = Task.Delay(responseDelay, peers.Clock, cancellation);
-                responseDelays.Writer.TryWrite(true);
+                Task delay;
+                lock (advancing)
+                {
+                    long due = peers.Clock.GetTimestamp() + responseDelay.Ticks;
+                    delay = Task.Delay(responseDelay, peers.Clock, cancellation);
+                    responseDelays.Writer.TryWrite(due);
+                }
                 try { await delay; }
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
                 {
@@ -631,7 +627,7 @@ public class TransportTests
             });
         VerifiedHead finalized = new(600, anchor.Number, anchor.Hash!, anchor.StateRoot!);
         Task<BlockHeader[]> query = peers.Transport.GetLogHeadersAsync(finalized, finalized, 100, 598, caller.Token);
-        Task<bool>? pendingRead = null;
+        Task<long>? pendingRead = null;
         try
         {
             while (true)
@@ -641,9 +637,13 @@ public class TransportTests
                 Assert.That(interrupted.Task.IsCompleted, Is.False,
                     $"The production 10-second peer deadline interrupted an active legal prefix response before the history page completed; firstVerified={peers.Transport.LogHistoryProgress.FirstVerifiedBlock}.");
                 if (ReferenceEquals(completed, query)) break;
-                await pendingRead;
+                long due = await pendingRead;
                 pendingRead = null;
-                peers.Clock.Advance(responseDelay);
+                lock (advancing)
+                {
+                    long remaining = due - peers.Clock.GetTimestamp();
+                    if (remaining > 0) peers.Clock.Advance(TimeSpan.FromTicks(remaining));
+                }
             }
             BlockHeader[] headers = await query;
             HistoryProgress progress = peers.Transport.LogHistoryProgress;
@@ -673,6 +673,275 @@ public class TransportTests
             await peers.DisposeAsync();
             await ((Task)query).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Speculative_history_pages_defer_credit_and_retry_noncanonical_data(
+        [Values] bool forked, [Values] bool reconnect, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        BlockHeader[] canonical = HistoryChain(700);
+        BlockHeader[] other = HistoryChain(700, 1);
+        bool speculative = true;
+        ServeHistoryPages(peers, peer => forked && ReferenceEquals(peer, peers.Ordered[0]) && speculative ? other : canonical);
+        VerifiedHeaderHistory.PageRequest pending = BeginHistoryPage(peers, 472, 128, token);
+        await pending.Fetch;
+        speculative = false;
+        PeerInfo original = peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PreferredHistoryPeers(peers).ContainsKey(AllocationContexts.Headers), Is.False);
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1, 0 }));
+        }
+        if (reconnect)
+        {
+            peers.Pool.RemovePeer(peers.Ordered[0].SyncPeer);
+            peers.Pool.AddPeer(peers.Ordered[0].SyncPeer);
+            Assert.That(peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node), Is.Not.SameAs(original));
+        }
+        peers.Clock.Advance(TimeSpan.FromSeconds(31));
+        BlockHeader[] result = await pending.Authenticate(canonical[472], token);
+        PreferredHistoryPeers(peers).TryGetValue(AllocationContexts.Headers, out PeerInfo? preferred);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Select(header => header.Hash), Is.EqualTo(canonical.Skip(344).Take(128).Select(header => header.Hash)));
+            Assert.That(HistoryCooldowns(peers).Count, Is.EqualTo(forked && !reconnect ? 1 : 0));
+            Assert.That(peers.Ordered.Sum(peer => peer.ResponsesDisposed), Is.EqualTo(forked ? 2 : 1));
+            if (reconnect && !forked)
+                Assert.That(preferred, Is.Null);
+            else if (reconnect)
+            {
+                Assert.That(peers.Pool.AllPeers.Any(info => ReferenceEquals(info, preferred)), Is.True);
+                Assert.That(preferred, Is.Not.SameAs(original));
+            }
+            else
+                Assert.That(preferred,
+                    Is.SameAs(peers.Pool.GetPeer(peers.Ordered[forked ? 1 : 0].SyncPeer.Node)));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Speculative_history_admission_leaves_the_header_lane_available(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        BlockHeader[] chain = HistoryChain(1200);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Channel<ulong> started = Channel.CreateUnbounded<ulong>();
+        int requests = 0;
+        peers.Ordered[0].SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                ulong first = call.ArgAt<ulong>(0);
+                Interlocked.Increment(ref requests);
+                started.Writer.TryWrite(first);
+                await release.Task.WaitAsync(call.ArgAt<CancellationToken>(3));
+                return (IOwnedReadOnlyList<BlockHeader>?)new TrackedResponse<BlockHeader>(
+                    chain.AsSpan(checked((int)first), call.ArgAt<int>(1)).ToArray(),
+                    () => Interlocked.Increment(ref peers.Ordered[0].ResponsesDisposed));
+            });
+        VerifiedHeaderHistory.PageRequest[] pending = [
+            BeginHistoryPage(peers, 1000, 128, stopping.Token),
+            BeginHistoryPage(peers, 872, 128, stopping.Token),
+            BeginHistoryPage(peers, 744, 128, stopping.Token),
+            BeginHistoryPage(peers, 616, 128, stopping.Token),
+        ];
+        try
+        {
+            for (int i = 0; i < 3; i++) await started.Reader.ReadAsync(token);
+            SemaphoreSlim bulk = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+                .GetField("_executionBulkRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            SemaphoreSlim all = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+                .GetField("_executionDataRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requests, Is.EqualTo(3));
+                Assert.That(bulk.CurrentCount, Is.Zero);
+                Assert.That(all.CurrentCount, Is.EqualTo(1));
+            }
+            Assert.That((await peers.Transport.GetHeaderByHashAsync(peers.Header.Hash!, token)).Hash, Is.EqualTo(peers.Header.Hash));
+        }
+        finally
+        {
+            stopping.Cancel();
+            release.TrySetResult();
+            await Task.WhenAll(pending.Select(page => page.Fetch)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Leading_history_hands_off_unadmitted_speculation_without_releasing_bulk_work(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (context, cancellation) => context == AllocationContexts.Bodies
+            ? release.Task.WaitAsync(cancellation) : Task.CompletedTask;
+        Task[] bulk = Enumerable.Range(1, 3).Select(identity => peers.RequestPayload(AllocationContexts.Bodies, identity, stopping.Token)).ToArray();
+        VerifiedHeaderHistory.PageRequest? pending = null;
+        try
+        {
+            for (int i = 0; i < 3; i++) await peers.Started.Reader.ReadAsync(token);
+            BlockHeader[] chain = HistoryChain(700);
+            int requests = 0;
+            peers.Ordered[0].SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    Interlocked.Increment(ref requests);
+                    return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new TrackedResponse<BlockHeader>(
+                        chain.AsSpan(checked((int)call.ArgAt<ulong>(0)), call.ArgAt<int>(1)).ToArray(),
+                        () => Interlocked.Increment(ref peers.Ordered[0].ResponsesDisposed)));
+                });
+            pending = BeginHistoryPage(peers, 472, 128, stopping.Token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requests, Is.Zero);
+                Assert.That(pending.Value.Fetch.IsCompleted, Is.False);
+                Assert.That(bulk, Is.All.Matches<Task>(task => task is { IsCompleted: false }));
+            }
+            BlockHeader[] result = await pending.Value.Authenticate(chain[472], token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Select(header => header.Hash), Is.EqualTo(chain.Skip(344).Take(128).Select(header => header.Hash)));
+                Assert.That(requests, Is.EqualTo(1));
+                Assert.That(pending.Value.Fetch.IsCanceled, Is.True);
+                Assert.That(bulk, Is.All.Matches<Task>(task => task is { IsCompleted: false }));
+                Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+                Assert.That(peers.Pool.AllPeers.Single().SleepingContexts, Is.EqualTo(AllocationContexts.None));
+            }
+        }
+        finally
+        {
+            stopping.Cancel();
+            release.TrySetResult();
+            if (pending is { } page) await page.Fetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await Task.WhenAll(bulk).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Speculative_history_completion_keeps_an_eligible_preferred_peer(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(2);
+        BlockHeader[] chain = HistoryChain(700);
+        ServeHistoryPages(peers, _ => chain);
+        VerifiedHeaderHistory.PageRequest pending = BeginHistoryPage(peers, 472, 128, token);
+        await pending.Fetch;
+        await peers.Transport.GetHeaderByHashAsync(peers.Header.Hash!, token);
+        PreferredHistoryPeers(peers).TryGetValue(AllocationContexts.Headers, out PeerInfo? preferred);
+        Assert.That(preferred, Is.SameAs(peers.Pool.GetPeer(peers.Ordered[1].SyncPeer.Node)));
+        await pending.Authenticate(chain[472], token);
+        PreferredHistoryPeers(peers).TryGetValue(AllocationContexts.Headers, out PeerInfo? completedPreference);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedPreference, Is.SameAs(preferred));
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1, 1 }));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Leading_history_handoff_returns_its_bulk_lease_while_waiting_for_a_global_slot(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Ordered[0].BeforeResponse = (context, cancellation) => context == AllocationContexts.Headers
+            ? release.Task.WaitAsync(cancellation) : Task.CompletedTask;
+        Task[] headers = Enumerable.Range(1, 4).Select(identity => peers.RequestPayload(AllocationContexts.Headers, identity, stopping.Token)).ToArray();
+        VerifiedHeaderHistory.PageRequest? pending = null;
+        Task<BlockHeader[]>? leading = null;
+        try
+        {
+            for (int i = 0; i < 4; i++) await peers.Started.Reader.ReadAsync(token);
+            BlockHeader[] chain = HistoryChain(700);
+            ServeHistoryPages(peers, _ => chain);
+            SemaphoreSlim bulk = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+                .GetField("_executionBulkRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            SemaphoreSlim all = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+                .GetField("_executionDataRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            pending = BeginHistoryPage(peers, 472, 128, stopping.Token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bulk.CurrentCount, Is.EqualTo(2));
+                Assert.That(all.CurrentCount, Is.Zero);
+            }
+            leading = pending.Value.Authenticate(chain[472], stopping.Token);
+            Assert.That(async () => await pending.Value.Fetch, Throws.InstanceOf<OperationCanceledException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bulk.CurrentCount, Is.EqualTo(3), "The canceled speculative admission must return its one bulk lease.");
+                Assert.That(all.CurrentCount, Is.Zero);
+                Assert.That(headers, Is.All.Matches<Task>(task => task is { IsCompleted: false }));
+                Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+            }
+            release.TrySetResult();
+            await Task.WhenAll(headers);
+            BlockHeader[] result = await leading;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Select(header => header.Hash), Is.EqualTo(chain.Skip(344).Take(128).Select(header => header.Hash)));
+                Assert.That(bulk.CurrentCount, Is.EqualTo(3));
+                Assert.That(all.CurrentCount, Is.EqualTo(4));
+            }
+        }
+        finally
+        {
+            stopping.Cancel();
+            release.TrySetResult();
+            if (pending is { } page) await page.Fetch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (leading is not null) await ((Task)leading).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await Task.WhenAll(headers).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    private static void ServeHistoryPages(ExecutionPeers peers, Func<ExecutionPeer, BlockHeader[]> headers)
+    {
+        foreach (ExecutionPeer peer in peers.Ordered)
+            peer.SyncPeer.Configure().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(call =>
+                {
+                    peer.Calls.AddOrUpdate(AllocationContexts.Headers, 1, static (_, count) => count + 1);
+                    BlockHeader[] chain = headers(peer);
+                    return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new TrackedResponse<BlockHeader>(
+                        chain.AsSpan(checked((int)call.ArgAt<ulong>(0)), call.ArgAt<int>(1)).ToArray(),
+                        () => Interlocked.Increment(ref peer.ResponsesDisposed)));
+                });
+    }
+
+    private static VerifiedHeaderHistory.PageRequest BeginHistoryPage(ExecutionPeers peers, ulong number, int count,
+        CancellationToken token) => (VerifiedHeaderHistory.PageRequest)typeof(ExecutionPeerTransport)
+        .GetMethod("BeginLogHeaderPage", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .Invoke(peers.Transport, [number, count, token])!;
+
+    private static ConcurrentDictionary<AllocationContexts, PeerInfo> PreferredHistoryPeers(ExecutionPeers peers) =>
+        (ConcurrentDictionary<AllocationContexts, PeerInfo>)typeof(ExecutionPeerTransport)
+            .GetField("_preferredPeers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+
+    private static MemoryCache HistoryCooldowns(ExecutionPeers peers) => (MemoryCache)typeof(ExecutionPeerTransport)
+        .GetField("_peerCooldowns", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+
+    private static BlockHeader[] HistoryChain(int last, byte branch = 0)
+    {
+        BlockHeader[] headers = new BlockHeader[last + 1];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            BlockHeader header = EmptyHeader();
+            header.Number = (ulong)i;
+            header.ParentHash = i == 0 ? Keccak.Zero : headers[i - 1].Hash!;
+            header.StateRoot = Keccak.EmptyTreeHash;
+            header.Bloom = Bloom.Empty;
+            if (branch != 0) header.ExtraData = [branch];
+            header.Hash = header.CalculateHash();
+            headers[i] = header;
+        }
+        return headers;
     }
 
     [Test]
@@ -1678,13 +1947,21 @@ public class TransportTests
         [Values(AllocationContexts.Headers, AllocationContexts.Bodies, AllocationContexts.Receipts, AllocationContexts.BlockAccessLists, AllocationContexts.Snap)] AllocationContexts context,
         [Values] bool reconnect, CancellationToken token)
     {
-        await using ExecutionPeers peers = new(3, snap1: context == AllocationContexts.Snap);
+        await using ExecutionPeers peers = new(3, snap1: context == AllocationContexts.Snap, collidingIds: true);
         peers.Ordered[0].BeforeResponse = static (_, _) => Task.FromException(new IOException("Temporarily unavailable."));
         await peers.Request(context, token);
+        PeerInfo cooled = peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!;
+        PeerInfo previous = peers.Pool.GetPeer(peers.Ordered[1].SyncPeer.Node)!;
+        MethodInfo isCooling = typeof(ExecutionPeerTransport).GetMethod("IsCooling", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Assert.That(isCooling.Invoke(peers.Transport, [cooled, context]), Is.True);
         peers.Pool.RemovePeer(peers.Ordered[1].SyncPeer);
         if (reconnect) peers.Pool.AddPeer(peers.Ordered[1].SyncPeer);
         peers.Ordered[0].BeforeResponse = null;
         peers.Clock.Advance(TimeSpan.FromSeconds(60));
+        Assert.That(isCooling.Invoke(peers.Transport, [cooled, context]), Is.False);
+        PeerInfo expected = peers.Pool.InitializedPeers.First();
+        int[] counts = [1, 1, 0];
+        counts[Array.FindIndex(peers.Ordered, peer => ReferenceEquals(peer.SyncPeer, expected.SyncPeer))] += 2;
 
         if (context is AllocationContexts.Bodies or AllocationContexts.Receipts)
         {
@@ -1697,7 +1974,12 @@ public class TransportTests
             await peers.Request(context, token);
         }
 
-        Assert.That(peers.Counts(context), Is.EqualTo(new[] { 3, 1, 0 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers.Counts(context), Is.EqualTo(counts));
+            Assert.That(PreferredHistoryPeers(peers)[context], Is.SameAs(expected));
+            Assert.That(PreferredHistoryPeers(peers)[context], Is.Not.SameAs(previous));
+        }
     }
 
     [Test]
@@ -3282,7 +3564,7 @@ public class TransportTests
         private int _headerRequest;
 
         internal ExecutionPeers(int count, bool snap2 = false, byte ethVersion = 71, bool snap1 = false,
-            ulong startupTimestamp = 1_800_000_000, Nethermind.Logging.ILogManager? logs = null)
+            ulong startupTimestamp = 1_800_000_000, Nethermind.Logging.ILogManager? logs = null, bool collidingIds = false)
         {
             Transport = new("sepolia", logs ?? Nethermind.Logging.LimboLogs.Instance,
                 new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Keccak.Zero), startupTimestamp, clock: Clock);
@@ -3305,7 +3587,7 @@ public class TransportTests
             foreach (BlockHeader header in Chain) Headers[new Hash256(header.Hash!.ValueHash256)] = header;
             Pool = Services(Transport).Resolve<ISyncPeerPool>();
             Pool.Start();
-            ExecutionPeer[] peers = Enumerable.Range(0, count).Select(i => new ExecutionPeer(this, i + 1, snap2, ethVersion, snap1)).ToArray();
+            ExecutionPeer[] peers = Enumerable.Range(0, count).Select(i => new ExecutionPeer(this, i + 1, snap2, ethVersion, snap1, collidingIds)).ToArray();
             foreach (ExecutionPeer peer in peers) Pool.AddPeer(peer.SyncPeer);
             Ordered = Pool.AllPeers.Select(info => peers.Single(peer => ReferenceEquals(peer.SyncPeer, info.SyncPeer))).ToArray();
         }
@@ -3407,6 +3689,11 @@ public class TransportTests
         }
     }
 
+    private sealed class CollidingPublicKey(ReadOnlySpan<byte> bytes) : PublicKey(bytes)
+    {
+        public override int GetHashCode() => 0;
+    }
+
     private sealed class ExecutionPeer
     {
         internal ISyncPeer SyncPeer { get; } = Substitute.For<ISyncPeer>();
@@ -3421,11 +3708,12 @@ public class TransportTests
         internal ReadOnlyMemory<int> LastReceiptCounts;
         internal ReadOnlyMemory<int>? LastReceiptLimits;
 
-        internal ExecutionPeer(ExecutionPeers owner, int id, bool snap2, byte ethVersion, bool snap1)
+        internal ExecutionPeer(ExecutionPeers owner, int id, bool snap2, byte ethVersion, bool snap1, bool collidingIds)
         {
             using PrivateKey key = new(((UInt256)id).ToBigEndian());
-            SyncPeer.Id.Returns(key.PublicKey);
-            SyncPeer.Node.Returns(new Node(key.PublicKey, "127.0.0.1", 30300 + id));
+            PublicKey identity = collidingIds ? new CollidingPublicKey(key.PublicKey.Bytes) : key.PublicKey;
+            SyncPeer.Id.Returns(identity);
+            SyncPeer.Node.Returns(new Node(identity, "127.0.0.1", 30300 + id));
             SyncPeer.ProtocolVersion.Returns(ethVersion);
             SyncPeer.IsInitialized = true;
             BlockHeader initial = EmptyHeader();
