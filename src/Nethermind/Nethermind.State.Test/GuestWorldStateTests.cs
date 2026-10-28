@@ -226,6 +226,34 @@ public class GuestWorldStateTests
         string Trace() => string.Join(Environment.NewLine, log);
     }
 
+    /// <remarks>
+    /// EIP-161 removes an account whose storage is still only in the uncommitted trie, and a CREATE lands on it. The
+    /// cleared storage must not come back from that trie.
+    /// </remarks>
+    [Test]
+    public void Cleared_storage_of_a_removed_and_recreated_account_reads_zero()
+    {
+        Address address = TestItem.Addresses[100];
+        StorageCell cell = new(address, 1);
+        foreach (bool guest in new[] { false, true })
+        {
+            (IWorldState state, BlockHeader baseBlock) = CreatePreState(guest, builder =>
+            {
+                builder.CreateAccount(address, 1);
+                builder.Set(cell, 7);
+            });
+            using IDisposable scope = state.BeginScope(baseBlock);
+
+            state.SubtractFromBalance(address, 1, Cancun.Instance);
+            state.Commit(Cancun.Instance, NullStateTracer.Instance, commitRoots: false);
+            state.CreateAccount(address, 0, 1);
+            state.ClearStorage(address);
+
+            state.Get(cell, out UInt256 value);
+            Assert.That(value, Is.EqualTo(UInt256.Zero), guest ? "guest" : "world state");
+        }
+    }
+
     private static string Apply(IWorldState state, Func<IWorldState, string> operation)
     {
         try
@@ -243,7 +271,7 @@ public class GuestWorldStateTests
         $"{state.GetBalance(address)} {state.GetCodeHash(address)}";
 
     /// <remarks>A, B and C exist, A and B with code and storage; D, E and F do not.</remarks>
-    private static (IWorldState State, BlockHeader Base) CreatePreState(bool guest)
+    private static (IWorldState State, BlockHeader Base) CreatePreState(bool guest, Action<WorldState> addState = null)
     {
         TrieStoreScopeProvider scopeProvider = new(
             new TestRawTrieStore(new NodeStorage(new MemDb())), new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
@@ -266,6 +294,7 @@ public class GuestWorldStateTests
                 }
             }
 
+            addState?.Invoke(builder);
             builder.Commit(Cancun.Instance);
             builder.CommitTree(0);
             baseBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(builder.StateRoot).TestObject;

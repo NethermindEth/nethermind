@@ -540,6 +540,17 @@ public class GuestDispatchDifferentialTests
     public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
         Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
 
+    [TestCaseSource(nameof(StorageStoreForks))]
+    public bool Guest_storage_store_handler_is_installed_until_eip8038(IReleaseSpec spec) =>
+        VirtualMachine<EthereumGasPolicy>.StoresStorageThroughGuestHandlerForTests(spec);
+
+    private static IEnumerable<TestCaseData> StorageStoreForks()
+    {
+        yield return new TestCaseData(Berlin.Instance).Returns(true);
+        yield return new TestCaseData(Osaka.Instance).Returns(true);
+        yield return new TestCaseData(Amsterdam.Instance).Returns(false);
+    }
+
     /// <remarks>
     /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
     /// TSTORE faults instead.
