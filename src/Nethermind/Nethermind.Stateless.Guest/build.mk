@@ -15,7 +15,9 @@ GUEST_PROJECT := $(notdir $(MAKEFILE_DIR))
 # put in the NuGet cache, not the files that the build copied out of it: bflat
 # checks the signature of a package, and does not check a local manifest. The
 # package has the platform (entry, linker script, manifest) and the bindings.
-NUGET_PACKAGES ?= $(HOME)/.nuget/packages
+# dotnet gives the folder that restore uses: $(HOME) can be unset (a test agent
+# runs make with no HOME) while dotnet still finds the home of the user.
+NUGET_PACKAGES ?= $(patsubst %/,%,$(shell dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p'))
 GUEST_PACKAGE_ID := $(shell echo '$(GUEST_PACKAGE)' | tr '[:upper:]' '[:lower:]')
 GUEST_PACKAGE_VERSION := $(shell sed -n 's/.*Include="$(GUEST_PACKAGE)" Version="\[\([^]]*\)\]".*/\1/p' $(MAKEFILE_DIR)/../../../Directory.Packages.props)
 GUEST_NUPKG := $(GUEST_PACKAGE_ID).$(GUEST_PACKAGE_VERSION).nupkg
