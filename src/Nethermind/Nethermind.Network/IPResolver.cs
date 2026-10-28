@@ -265,7 +265,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
 
         if (!externalIp.IsWildcardOrNone)
         {
-            ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
+            ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}", sensitive: true);
         }
 
         bool unresolved = externalIpV4 is null && externalIpV6 is null;

@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
@@ -63,7 +64,8 @@ namespace Nethermind.Core
 
         private static readonly ConcurrentDictionary<string, string> _nodeInfoItems = new();
 
-        public static void AddInfo(string infoDescription, string value) => _nodeInfoItems.TryAdd(infoDescription, value);
+        public static void AddInfo(string infoDescription, string value, bool sensitive = false) =>
+            _nodeInfoItems.TryAdd(infoDescription, sensitive && SensitiveLogMasking.Enabled ? "[redacted]" : value);
 
         public static string BuildNodeInfoScreen()
         {

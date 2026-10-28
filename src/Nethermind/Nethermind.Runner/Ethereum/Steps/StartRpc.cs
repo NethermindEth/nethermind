@@ -61,7 +61,7 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
                 : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
 
         // Added before the warmup, whose own RPC host would otherwise claim this entry.
-        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));
+        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls), sensitive: true);
         if (GetPipelineWarmupSkipReason(api) is { } skipReason)
         {
             if (logger.IsDebug) logger.Debug($"Skipping startup payload pipeline warmup: {skipReason}");

@@ -100,12 +100,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
-        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(rpcRequest)}, exception: {ex.GetType().Name}");
+        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(rpcRequest)}, exception: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : GetExceptionText(ex), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
     private static string DescribeRequestForLog(JsonRpcRequest? request) =>
         request is null ? "null" : $"Id:{request.Id}, {request.Method}(params omitted)";
+
+    private static string DiagnosticStackTrace(Exception ex) =>
+        SensitiveLogMasking.Enabled || ex.StackTrace is not { } stack ? string.Empty : Environment.NewLine + stack;
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
@@ -350,7 +353,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // not demote it either - -32602 alone would otherwise read as the caller's fault at both sites.
             if (IsNodeFault(e))
             {
-                if (_logger.IsError) _logger.Error($"Failed to bind JSON RPC parameters for {methodName}: {e.GetType().Name}");
+                if (_logger.IsError) _logger.Error($"Failed to bind JSON RPC parameters for {methodName}: {e.GetType().Name}{DiagnosticStackTrace(e)}");
                 JsonRpcErrorResponse nodeFault = GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
                 if (nodeFault.Error is not null) nodeFault.Error.OperatorActionable = true;
                 return nodeFault;
@@ -701,13 +704,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // HandleException already logs at Error, so it does not need a second line here.
         JsonRpcErrorResponse LogFailureType(Exception ex, JsonRpcErrorResponse response)
         {
-            if (_logger.IsDebug) _logger.Debug($"Exception during {methodName} execution: {ex.GetType().Name}");
+            if (_logger.IsDebug) _logger.Debug($"Exception during {methodName} execution: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
             return response;
         }
 
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
-            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(request)}, exception: {ex.GetType().Name}");
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(request)}, exception: {ex.GetType().Name}{DiagnosticStackTrace(ex)}");
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", GetExceptionText(ex), in request.IdRef, returnAction);
         }
 
@@ -719,7 +722,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // HasStateForBlock only checks the state root; subtree nodes can still be pruned out
             // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
             // can investigate whether it's a legitimate pruning gap or a deeper issue.
-            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.GetType().Name}");
+            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: hash {ex.Hash:hide}, path {ex.Path:hide}{DiagnosticStackTrace(ex)}");
             return LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
 

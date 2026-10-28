@@ -58,7 +58,7 @@ public class EthereumBeaconApi : IBeaconApi
             {
                 if (_logger.IsWarn)
                 {
-                    _logger.Warn($"Unsuccessful {uri:hide} request. Status code: {response.StatusCode}");
+                    _logger.Warn($"Unsuccessful {SensitiveLogMasking.SafeUrl(_client.BaseAddress)} request. Status code: {response.StatusCode}");
                 }
 
                 return default;
@@ -67,7 +67,7 @@ public class EthereumBeaconApi : IBeaconApi
             if (_logger.IsDebug)
             {
                 string content = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.Debug($"GetData<{typeof(T)}>({uri:hide}) result: {content}");
+                _logger.Debug($"GetData<{typeof(T)}>({SensitiveLogMasking.SafeUrl(_client.BaseAddress)}) result: {content}");
             }
 
             T? decoded =
@@ -81,7 +81,7 @@ public class EthereumBeaconApi : IBeaconApi
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Beacon API request exception({uri:hide}): {e.Message:hide}");
+            if (_logger.IsWarn) _logger.Warn($"Beacon API request exception({SensitiveLogMasking.SafeUrl(_client.BaseAddress)}): {e.Message:hide}");
         }
 
         return default;

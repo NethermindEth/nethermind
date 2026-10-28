@@ -111,9 +111,9 @@ namespace Nethermind.Logging.NLog.Test
                 Assert.That(SensitiveLogMasking.SafeUrl(url), Is.EqualTo(expected));
                 Assert.That(SensitiveLogMasking.SafeUrl(new Uri(url)), Is.EqualTo(expected));
                 Assert.That(SensitiveLogMasking.SafeUrl("https://example.org/era/mainnet/"),
-                    Is.EqualTo(maskSensitiveData ? "[redacted]" : "https://example.org/era/mainnet/"));
-                Assert.That(SensitiveLogMasking.SafeUrl("https://example.org/era/mainnet/?token=secret"),
-                    Is.EqualTo(maskSensitiveData ? "[redacted]" : "https://example.org/era/mainnet/"));
+                    Is.EqualTo(maskSensitiveData ? "[redacted]" : "https://example.org"));
+                Assert.That(SensitiveLogMasking.SafeUrl("https://example.org/api-key/secret?token=secret"),
+                    Is.EqualTo(maskSensitiveData ? "[redacted]" : "https://example.org"));
                 Assert.That(SensitiveLogMasking.SafeUrl("not a URL"), Is.EqualTo("[redacted]"));
             }
         }

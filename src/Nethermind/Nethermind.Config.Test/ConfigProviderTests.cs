@@ -151,6 +151,22 @@ namespace Nethermind.Config.Test
             }
         }
 
+        [Test]
+        public void Additional_rpc_urls_remain_available_when_masking_is_disabled()
+        {
+            const string url = "http://127.0.0.1:8546|http|eth";
+            IConfigProvider provider = Provider(("JsonRpc.AdditionalRpcUrls", $"[\"{url}\"]"));
+            NonDefaultConfigValue value = provider.GetNonDefaultValues()
+                .Single(static x => x.Category == "JsonRpc" && x.Name == nameof(IJsonRpcConfig.AdditionalRpcUrls));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value.ValueForLog(false), Does.Contain(url));
+                Assert.That(value.ValueForLog(true), Is.EqualTo("[redacted]"));
+                Assert.That(provider.GetRawValue("JsonRpc", nameof(IJsonRpcConfig.AdditionalRpcUrls)), Is.Not.Null);
+            }
+        }
+
         public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
             yield return new TestCaseData(

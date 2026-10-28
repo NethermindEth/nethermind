@@ -102,7 +102,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of additional JSON-RPC URLs to listen at with protocol and JSON-RPC namespace list. For instance, `[http://localhost:8546|http;ws|eth;web3]`.",
-        DefaultValue = "[]", IsSensitive = true)]
+        DefaultValue = "[]", IsSensitiveWhenMasked = true)]
     string[] AdditionalRpcUrls { get; set; }
 
     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
@@ -236,13 +236,13 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to enable eth_signTransaction. Disabled by default; enable only on nodes that explicitly manage unlocked accounts.", DefaultValue = "false")]
     bool EnableEthSignTransaction { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC server CORS origins. Also limits WebSocket connections: a handshake with an `Origin` header not in this list is refused with HTTP 403; handshakes without an `Origin` header are accepted.", DefaultValue = "*")]
+    [ConfigItem(Description = "The JSON-RPC server CORS origins. Also limits WebSocket connections: a handshake with an `Origin` header not in this list is refused with HTTP 403; handshakes without an `Origin` header are accepted.", DefaultValue = "*", IsSensitiveWhenMasked = true)]
     string[] CorsOrigins { get; set; }
 
-    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on URLs without authentication, as host names without a port, for example `localhost` or `*.example.com`. Matching ignores the port and case. Requests with other host names get HTTP 403. Requests with an IP address or without a `Host` header are always accepted. `*` accepts all hosts. To stop web pages from calling the server, also limit `CorsOrigins`.", DefaultValue = "*")]
+    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on URLs without authentication, as host names without a port, for example `localhost` or `*.example.com`. Matching ignores the port and case. Requests with other host names get HTTP 403. Requests with an IP address or without a `Host` header are always accepted. `*` accepts all hosts. To stop web pages from calling the server, also limit `CorsOrigins`.", DefaultValue = "*", IsSensitiveWhenMasked = true)]
     string[] AllowedHosts { get; set; }
 
-    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on authenticated (Engine API) URLs. The rules are the same as for `AllowedHosts`.", DefaultValue = "*")]
+    [ConfigItem(Description = "The `Host` header values the JSON-RPC server accepts on authenticated (Engine API) URLs. The rules are the same as for `AllowedHosts`.", DefaultValue = "*", IsSensitiveWhenMasked = true)]
     string[] EngineAllowedHosts { get; set; }
 
     [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]

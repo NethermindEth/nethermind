@@ -20,7 +20,7 @@ public static class SensitiveLogMasking
         set => Volatile.Write(ref s_enabled, value);
     }
 
-    /// <summary>Hides URL credentials, query data, and fragments, or the entire URL when masking is enabled.</summary>
+    /// <summary>Shows only the URL origin, or hides the entire URL when masking is enabled.</summary>
     public static string SafeUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return url ?? string.Empty;
@@ -32,7 +32,5 @@ public static class SensitiveLogMasking
     public static string SafeUrl(Uri? url) =>
         url is null ? string.Empty : Enabled || !url.IsAbsoluteUri
             ? "[redacted]"
-            : url.UserInfo.Length == 0
-                ? url.GetLeftPart(UriPartial.Path)
-                : url.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped);
+            : url.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped);
 }

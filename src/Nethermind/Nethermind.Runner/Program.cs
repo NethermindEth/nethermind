@@ -12,6 +12,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -97,9 +98,16 @@ finally
 void LogCriticalException(ILogger criticalLogger, string message, Exception ex)
 {
     if (Volatile.Read(ref maskingConfigLoaded) == 0 || SensitiveLogMasking.Enabled)
-        criticalLogger.Error(ex is ConfigurationFileNotFoundException
-            ? $"{message} {ex.Message}"
-            : $"{message} Exception: {ex.GetType().Name}");
+    {
+        string detail = ex switch
+        {
+            ConfigurationFileNotFoundException => ex.Message,
+            System.Configuration.ConfigurationErrorsException { InnerException: JsonException jsonError } =>
+                $"Invalid JSON at line {jsonError.LineNumber}, byte position {jsonError.BytePositionInLine}.",
+            _ => $"Exception: {ex.GetType().Name}"
+        };
+        criticalLogger.Error($"{message} {detail}");
+    }
     else
         criticalLogger.Error(message, ex);
 }
@@ -432,7 +440,7 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
     }
 
     using Stream stream = BuiltInConfigs.Open(config)
-        ?? throw new ConfigurationFileNotFoundException();
+        ?? throw new ConfigurationFileNotFoundException(config);
 
     if (configsDir is not null)
         logger.Warn($"Configuration '{config}' not found in --configs-dir. Loading the built-in configuration.");
@@ -649,4 +657,4 @@ class AsynchronousCommandLineAction(Func<ParseResult, int> action) : Synchronous
     public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
 
-file sealed class ConfigurationFileNotFoundException() : FileNotFoundException("Configuration file not found.");
+file sealed class ConfigurationFileNotFoundException(string config) : FileNotFoundException(ConfigFileLocator.NotFoundMessage(config));

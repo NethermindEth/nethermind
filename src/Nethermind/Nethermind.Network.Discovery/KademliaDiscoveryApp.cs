@@ -157,7 +157,7 @@ public abstract class KademliaDiscoveryApp(
 
         if (Logger.IsDebug) Logger.Debug($"Discovery    : udp://{ip.ExternalIp:hide}:{_networkConfig.DiscoveryPort}");
 
-        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}", sensitive: true);
     }
 
     protected void OnChannelActivated()

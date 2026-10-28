@@ -1178,23 +1178,34 @@ public class JsonRpcServiceTests
         }
     }
 
-    [Test]
-    public void Invocation_error_log_omits_request_parameters()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Invocation_error_log_omits_request_parameters(bool maskSensitiveData)
     {
-        const string secret = "invocation-secret-5349";
-        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
-        module.test_string(Arg.Any<string>()).Throws(new InvalidOperationException($"failure {secret}"));
-        TestLogger logger = new();
-        _logManager = new OneLoggerLogManager(new(logger));
-
-        using JsonRpcResponse response = TestRequest(module, "test_string", secret);
-
-        AssertJsonRpcError(response, ErrorCodes.InternalError);
-        string log = logger.LogList.Single(line => line.Contains("Error during method execution, request"));
-        using (Assert.EnterMultipleScope())
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
         {
-            Assert.That(log, Does.Contain("test_string").And.Contain("67").And.Contain(nameof(InvalidOperationException)));
-            Assert.That(logger.LogList, Has.None.Contains(secret));
+            const string secret = "invocation-secret-5349";
+            IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+            module.test_string(Arg.Any<string>()).Throws(new InvalidOperationException($"failure {secret}"));
+            TestLogger logger = new();
+            _logManager = new OneLoggerLogManager(new(logger));
+
+            using JsonRpcResponse response = TestRequest(module, "test_string", secret);
+
+            AssertJsonRpcError(response, ErrorCodes.InternalError);
+            string log = logger.LogList.Single(line => line.Contains("Error during method execution, request"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(log, Does.Contain("test_string").And.Contain("67").And.Contain(nameof(InvalidOperationException)));
+                Assert.That(log.Contains(Environment.NewLine), Is.EqualTo(!maskSensitiveData));
+                Assert.That(logger.LogList, Has.None.Contains(secret));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
         }
     }
 
@@ -1574,14 +1585,29 @@ public class JsonRpcServiceTests
         }
     }
 
-    [Test]
-    public void Missing_trie_node_exception_returns_resource_not_found()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Missing_trie_node_exception_returns_resource_not_found(bool maskSensitiveData)
     {
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_getLogs(Arg.Any<Filter>())
-            .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
+        bool previous = SensitiveLogMasking.Enabled;
+        try
+        {
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            TestLogger logger = new();
+            _logManager = new OneLoggerLogManager(new(logger));
+            IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+            ethRpcModule.eth_getLogs(Arg.Any<Filter>())
+                .Throws(new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
 
-        using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+            using JsonRpcErrorResponse response = AssertJsonRpcError(TestRequest(ethRpcModule, "eth_getLogs", "{}"), ErrorCodes.ResourceNotFound, "Node missing");
+            string warning = logger.LogList.Single(static line => line.Contains("Missing trie node during eth_getLogs"));
+            Assert.That(warning.Contains(TestItem.KeccakA.ToString()), Is.EqualTo(!maskSensitiveData));
+            Assert.That(warning, Does.Not.Contain("Node missing"));
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
     }
 
     [TestCaseSource(nameof(StateUnavailableShapes))]

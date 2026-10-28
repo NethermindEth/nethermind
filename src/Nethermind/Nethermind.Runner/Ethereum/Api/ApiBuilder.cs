@@ -74,7 +74,7 @@ public class ApiBuilder
     {
         if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath:hide}");
 
-        ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
+        ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath, sensitive: true);
 
         ChainSpecFileLoader loader = new(ethereumJsonSerializer, _logManager);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);

@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -23,6 +25,32 @@ namespace Nethermind.Api.Test;
 
 public class PluginLoaderTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Assembly_load_failure_retains_exception_only_without_masking(bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        try
+        {
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            string assemblyPath = Path.Combine(Path.GetTempPath(), $"missing-plugin-{Guid.NewGuid():N}.dll");
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.Directory.Exists(Arg.Any<string>()).Returns(true);
+            fileSystem.Directory.GetFiles(Arg.Any<string>(), "*.dll").Returns([assemblyPath]);
+            fileSystem.Path.GetFileNameWithoutExtension(assemblyPath).Returns("missing-plugin");
+            TestErrorLogManager logs = new();
+
+            new PluginLoader(string.Empty, fileSystem, logs.GetClassLogger<PluginLoaderTests>()).Load();
+
+            TestErrorLogManager.Error error = logs.Errors.Single();
+            Assert.That(error.Exception is not null, Is.EqualTo(!maskSensitiveData));
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
     [Test]
     public void full_lexicographical_order()
     {
