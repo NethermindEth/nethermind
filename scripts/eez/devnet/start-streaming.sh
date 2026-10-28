@@ -84,6 +84,9 @@ cleanup() {
     done
     for child in $(jobs -pr); do kill -KILL "$child" 2>/dev/null || true; done
     wait || true
+    if [[ -s "$stream/haproxy.log" ]]; then
+        sed 's/^/[eez-ci-proxy] /' "$stream/haproxy.log" >&2
+    fi
 }
 trap cleanup EXIT
 trap 'exit 143' TERM
@@ -91,6 +94,19 @@ trap 'exit 130' INT
 "$HERE/nethermind-eez-attester" --listen-addr=127.0.0.1:50063 \
     --chain-config=/out/l2-genesis.json --streaming-config="$stream/config.json" "${prover_args[@]}" &
 prover_pid=$!
+deadline=$((SECONDS + 60))
+until timeout 5s openssl s_client -no_ign_eof -verify_return_error \
+    -connect 127.0.0.1:50062 -servername eez-ci-server -verify_hostname eez-ci-server \
+    -CAfile "$stream/server.crt" -cert "$stream/client.crt" -key "$stream/client.key" -alpn h2 \
+    </dev/null > "$stream/backend-ready.log" 2>&1 && grep -Fq 'ALPN protocol: h2' "$stream/backend-ready.log"; do
+    if ! kill -0 "$prover_pid" 2>/dev/null || ((SECONDS >= deadline)); then
+        echo "streaming prover TLS backend did not become ready" >&2
+        grep -E '^(connect:|verify error:|Verification error:|ALPN protocol:|No ALPN negotiated)' "$stream/backend-ready.log" >&2 || true
+        exit 1
+    fi
+    sleep 0.1
+done
+printf '%s\n' 'streaming prover TLS backend is ready'
 haproxy -db -f "$stream/haproxy.cfg" > "$stream/haproxy.log" 2>&1 &
 proxy_pid=$!
 set +e

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 import tempfile
+import textwrap
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -128,6 +129,15 @@ class StreamingEvidenceTests(unittest.TestCase):
 
 
 class StreamingProxyTests(unittest.TestCase):
+    def install_probe(self, root, code='print("ALPN protocol: h2"); sys.exit(0)'):
+        executable = shutil.which("openssl")
+        self.assertIsNotNone(executable)
+        probe = root / "openssl"
+        probe.write_text('#!/usr/bin/env python3\nimport os, pathlib, sys\n'
+            'if sys.argv[1:2] == ["s_client"]:\n' + textwrap.indent(code, "    ") + '\n'
+            + f'os.execv({executable!r}, [{executable!r}, *sys.argv[1:]])\n')
+        probe.chmod(0o555)
+
     def test_generated_proxy_allows_only_v2_with_verified_backend_and_pinned_client(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -163,6 +173,7 @@ class StreamingProxyTests(unittest.TestCase):
     def test_native_proxy_uses_deployed_identity_and_forwards_only_the_known_limit(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            self.install_probe(root)
             launcher = root / "start-streaming.sh"
             shutil.copyfile(Path(__file__).with_name("start-streaming.sh"), launcher)
             proxy = root / "haproxy"
@@ -224,6 +235,7 @@ class StreamingProxyTests(unittest.TestCase):
     def test_proxy_output_cannot_interleave_with_signed_window_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            self.install_probe(root)
             launcher = root / "start-streaming.sh"
             shutil.copyfile(Path(__file__).with_name("start-streaming.sh"), launcher)
             proxy = root / "haproxy"
@@ -243,11 +255,55 @@ class StreamingProxyTests(unittest.TestCase):
                 env=environment, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 7, result.stderr)
             self.assertIn(event + "\n", result.stdout)
-            self.assertNotIn("proxy-stdout", result.stdout + result.stderr)
-            self.assertNotIn("proxy-stderr", result.stdout + result.stderr)
+            self.assertNotIn("proxy-stdout", result.stdout)
+            self.assertNotIn("proxy-stderr", result.stdout)
+            self.assertIn("[eez-ci-proxy] proxy-stdout\n", result.stderr)
+            self.assertIn("[eez-ci-proxy] proxy-stderr\n", result.stderr)
             log = root / "keystore/streaming/haproxy.log"
             self.assertEqual(log.read_text(), "proxy-stdout\nproxy-stderr\n")
             self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+
+    def test_frontend_waits_for_backend_h2_and_does_not_start_after_backend_exit(self):
+        for dead in (False, True):
+            with self.subTest(dead=dead), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                launcher = root / "start-streaming.sh"
+                shutil.copyfile(Path(__file__).with_name("start-streaming.sh"), launcher)
+                probe = '''marker = pathlib.Path(os.environ["EEZ_TEST_PROBE"])
+if os.environ["EEZ_TEST_DEAD"] == "true":
+    print("Master-Key: PRIVATE-TEST-SESSION")
+    sys.exit(1)
+if not marker.exists():
+    marker.write_text("first")
+    print("ALPN protocol: http/1.1")
+else:
+    marker.write_text("ready")
+    print("ALPN protocol: h2")
+sys.exit(0)'''
+                self.install_probe(root, probe)
+                proxy = root / "haproxy"
+                proxy.write_text('#!/bin/bash\nif [[ "$1" == -c ]]; then exit 0; fi\n'
+                    '[[ "$(cat "$EEZ_TEST_PROBE")" == ready ]] || exit 9\n'
+                    'touch "$EEZ_TEST_FRONTEND"\nexit 7\n')
+                proxy.chmod(0o555)
+                prover = root / "nethermind-eez-attester"
+                prover.write_text("#!/bin/sh\n" + ("exit 23\n" if dead else "exec sleep 30\n"))
+                prover.chmod(0o555)
+                frontend = root / "frontend"
+                marker = root / "probe"
+                environment = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                    EEZ_KEYSTORE_DIRECTORY=str(root / "keystore"), EEZ_TEST_PROBE=str(marker),
+                    EEZ_TEST_FRONTEND=str(frontend), EEZ_TEST_DEAD=str(dead).lower())
+                result = subprocess.run(["bash", str(launcher), "--listen-addr=0.0.0.0:50061", "--chain-config=/out/l2-genesis.json"],
+                    env=environment, text=True, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 1 if dead else 7, result.stderr)
+                self.assertEqual(frontend.exists(), not dead)
+                if not dead:
+                    self.assertEqual(marker.read_text(), "ready")
+                else:
+                    self.assertIn("TLS backend did not become ready", result.stderr)
+                    self.assertIn("Master-Key: PRIVATE-TEST-SESSION", (root / "keystore/streaming/backend-ready.log").read_text())
+                    self.assertNotIn("PRIVATE-TEST-SESSION", result.stdout + result.stderr)
 
     def test_changed_upstream_arguments_fail_before_certificate_generation(self):
         with tempfile.TemporaryDirectory() as directory:
