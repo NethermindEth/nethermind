@@ -2426,7 +2426,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nint target = (nint)Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
             Debug.Assert((nuint)target < (nuint)stack.CodeLength);
-            if (stack.TryMarkJumpDestination(target, ref code))
+            if (AlignedStack(ref stack).TryMarkJumpDestination(target, ref code))
             {
                 head -= TConditional.IsActive ? 2 : 1;
                 sp = ref Moved(ref sp, -(TConditional.IsActive ? 2 : 1));
