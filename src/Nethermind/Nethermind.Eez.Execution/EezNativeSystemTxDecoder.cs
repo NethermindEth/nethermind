@@ -20,7 +20,7 @@ public sealed class EezNativeSystemTxDecoder : BaseTxDecoder
     internal EezNativeSystemTxDecoder(NativeSystemTxFormat format, Func<Transaction>? transactionFactory = null)
         : base(EezConstants.NativeSystemTxType, transactionFactory)
     {
-        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4))
+        if (format is not (NativeSystemTxFormat.RecordedV1 or NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6))
             throw new ArgumentOutOfRangeException(nameof(format));
         _format = format;
     }
@@ -139,4 +139,5 @@ internal enum NativeSystemTxFormat
     RecordedV1 = 1,
     ContractV3 = 3,
     ContractV4 = 4,
+    ContractV6 = 6,
 }

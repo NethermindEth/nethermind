@@ -18,7 +18,7 @@ public partial class RollupXGenesisTests
 {
     private static IEnumerable<TestCaseData> PortableIdentityVectors()
     {
-        foreach (ulong version in new ulong[] { 3, 4 })
+        foreach (ulong version in new ulong[] { 3, 4, 6 })
             foreach (JsonElement vector in IdentityFixture(version).GetProperty("identities").EnumerateArray())
                 yield return new TestCaseData(vector, version).SetName($"PortableIdentity_V{version}_Upstream_{vector.GetProperty("name").GetString()}");
     }

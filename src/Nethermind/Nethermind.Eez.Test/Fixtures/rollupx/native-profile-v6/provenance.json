@@ -2,5 +2,23 @@
   "repository": "eez-association/eez-rollupX",
   "revision": "b832ad6a4764c9796eb61f86dcd6a29d85f72c77",
   "source": "crates/eez-control-rpc/conformance/native-profile-v1.json",
-  "sha256": "e6848921a8993ff76a5fc85a61b3c76d2dcfa8f4bfc2f4200bdc2f8211585ad6"
+  "sha256": "e6848921a8993ff76a5fc85a61b3c76d2dcfa8f4bfc2f4200bdc2f8211585ad6",
+  "additionalFiles": [
+    {
+      "source": "genesis.json",
+      "sha256": "af18c662f3975356c625c7bff9271a82e4be265ab7780c218dcc5c169385372b"
+    },
+    {
+      "source": "crates/eez-control-rpc/conformance/validation-identity.json",
+      "sha256": "ed3d73695f9e690b21c6c04f0d540067a5ff43ec84f69e159d832dff8491a7c7"
+    },
+    {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-osaka-lookup/l1-genesis.json",
+      "sha256": "575c1e48df4cf0715be1874ad677f835193b859a548ee59f5a49a0075ed0d902"
+    },
+    {
+      "source": "crates/eez-proof-signer/tests/fixtures/native-osaka-lookup/l2-genesis.json",
+      "sha256": "28f0bad675b5d2aed6e032ca17b6cbee8bdc8722283d043dde43378f45b37c28"
+    }
+  ]
 }

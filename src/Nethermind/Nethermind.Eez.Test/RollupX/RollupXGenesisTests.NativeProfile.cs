@@ -17,7 +17,7 @@ namespace Nethermind.Eez.Test.RollupX;
 public partial class RollupXGenesisTests
 {
     [Test]
-    public void NativeProfile_IndependentVector_MatchesAbiAndCommitment([Values("profile-collector-a", "profile-collector-b")] string id, [Values(3UL, 4UL)] ulong version)
+    public void NativeProfile_IndependentVector_MatchesAbiAndCommitment([Values("profile-collector-a", "profile-collector-b")] string id, [Values(3UL, 4UL, 6UL)] ulong version)
     {
         NativeOfflineProfile.Inputs input = OfflineInput(id == "profile-collector-a" ? (byte)0x11 : (byte)0x12) with { ValidationVersion = version };
         JsonElement vector = OfflineVector(id, version);

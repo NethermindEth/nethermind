@@ -47,6 +47,7 @@ internal sealed class NativeHistoryBlockExecutor(
         NativeSystemTxFormat.RecordedV1 => RuntimeHash,
         NativeSystemTxFormat.ContractV3 => ContractV3RuntimeHash,
         NativeSystemTxFormat.ContractV4 => ContractV4RuntimeHash,
+        NativeSystemTxFormat.ContractV6 => NativeProxyHistory.RuntimeHash,
         _ => throw new ArgumentOutOfRangeException(nameof(format)),
     };
 

@@ -4,8 +4,6 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Int256;
 
@@ -57,11 +55,12 @@ public static partial class RollupXGenesis
 
     private static void EnsureNativeHistory(JsonElement genesis, RollupXSchedule schedule, NativeHistorySchedule history, NativeSystemTxFormat format)
     {
-        JsonElement account = FindAccount(genesis, EezConstants.L1HistoryAddress) ?? throw Invalid("missing native history predeploy");
-        if (Quantity(account, "nonce") != 1 || Quantity(account, "balance") != 0 ||
-            ValueKeccak.Compute(Bytes.FromHexString(Required(account, "code").GetString()!)) != NativeHistoryBlockExecutor.GetRuntimeHash(format))
-            throw Invalid("native history code, nonce or balance differs from the profile");
-        JsonElement storage = Required(account, "storage");
+        if (format == NativeSystemTxFormat.ContractV6)
+        {
+            EnsureNativeProxyHistory(genesis);
+            return;
+        }
+        JsonElement account = NativeHistoryAccount(genesis, EezConstants.L1HistoryAddress, 1, NativeHistoryBlockExecutor.GetRuntimeHash(format));
         Dictionary<UInt256, UInt256> expected = new(7)
         {
             [(UInt256)1] = schedule.L1Reference.Number,
@@ -72,15 +71,7 @@ public static partial class RollupXGenesis
             [(UInt256)6] = NativeHistoryCall.MaxHashes,
             [NativeHistoryBlockExecutor.HashSlot(schedule.L1Reference.Number)] = new UInt256(schedule.L1Reference.Hash.Bytes, isBigEndian: true)
         };
-        if (storage.ValueKind != JsonValueKind.Object || storage.GetPropertyCount() != expected.Count)
-            throw Invalid("native history genesis storage differs from the profile");
-        foreach (JsonProperty entry in storage.EnumerateObject())
-        {
-            UInt256 key = NativeChainDocument.StorageWord(entry.Name);
-            UInt256 value = NativeChainDocument.StorageWord(entry.Value.GetString());
-            if (!expected.Remove(key, out UInt256 wanted) || value != wanted)
-                throw Invalid("native history genesis storage differs from the profile");
-        }
+        RequireNativeHistoryStorage(account, expected);
     }
 
 }

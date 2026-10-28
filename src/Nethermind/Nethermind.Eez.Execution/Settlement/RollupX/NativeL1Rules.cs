@@ -94,7 +94,12 @@ internal sealed partial class NativeL1Rules
         NativeOfflineProfile.Inputs result = new(Specs.ChainId, l2.Specs.ChainId, l2.GenesisHash, schedule.GenesisTimestamp,
             schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks, checked((uint)(l2.History.Delay / l2.History.BlockInterval - 1)),
             ConfigHash, runtimeHash, l2.Rules.FeeCollector!,
-            l2.Rules.NativeFormat == NativeSystemTxFormat.ContractV4 ? 4UL : 3UL);
+            l2.Rules.NativeFormat switch
+            {
+                NativeSystemTxFormat.ContractV6 => 6UL,
+                NativeSystemTxFormat.ContractV4 => 4UL,
+                _ => 3UL,
+            });
         NativeOfflineProfile.Validate(in result, _ruleTimes, result.L1ChainId, runtimeHash);
         return result;
     }
