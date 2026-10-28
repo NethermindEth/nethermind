@@ -391,7 +391,7 @@ public class ParallelUpdateRootTests
         Apply([entries[0]]);
         Apply([(entries[0].Key, null)]);
 
-        void Apply((byte[] Key, byte[]? Value)[] writes) => AssertLoggedFold(store, expected, writes, SplitFanOut(splitEveryFrame));
+        void Apply((byte[] Key, byte[]? Value)[] writes) => AssertLoggedFold(store, expected, writes, splitEveryFrame);
     }
 
     [TestCase("000100", "000200")]
@@ -411,14 +411,14 @@ public class ParallelUpdateRootTests
         Apply((ZoneKey(divergingKey), null), (ZoneKey("000010"), null));
         Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(initial));
 
-        void Apply(params (byte[] Key, byte[]? Value)[] writes) => AssertLoggedFold(store, expected, writes, SplitFanOut(true));
+        void Apply(params (byte[] Key, byte[]? Value)[] writes) => AssertLoggedFold(store, expected, writes, splitEveryFrame: true);
     }
 
-    private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut)
+    private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, bool splitEveryFrame)
     {
         PbtStorageNodePath[] previous = store.TreePayloads().Select(static group => group.Key).ToArray();
         using PbtGroupRecordBufferPin pin = store.Buffer.PinHead();
-        ValueHash256 actual = store.Fold(writes, fanOut);
+        ValueHash256 actual = store.Fold(writes, SplitFanOut(splitEveryFrame));
         expected.ApplyBatch(writes);
         HashSet<PbtStorageNodePath> current = expected.PhysicalPayloads.Select(static group => group.Key).ToHashSet();
         using (Assert.EnterMultipleScope())
@@ -428,7 +428,12 @@ public class ParallelUpdateRootTests
             Assert.That(store.LastFallbackReads, Is.Zero);
             Assert.That(store.StoreReads, Is.EqualTo(store.LastFallbackReads));
             Assert.That(store.TreePayloads().PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()), "the walk from the root reaches exactly the tree's groups");
-            Assert.That(store.TreePayloads(pin.WriteBoundary).Select(static group => group.Key), Is.EquivalentTo(store.LastWrittenGroups), "a bounded walk yields only the fold's own groups");
+            Assert.That(store.TreePayloads(pin.WriteBoundary).Select(static group => group.Key), Is.EquivalentTo(store.LastWrittenGroups.SelectMany(static batch => batch)), "a bounded walk yields only the fold's own groups");
+            Assert.That(store.LastWrittenGroups.Select(static batch => batch.Select(static path => path.BitDepth).Distinct().Count()), Is.All.EqualTo(1), "a write batch holds one level");
+            // Unsplit, each root slot folds its groups in one scope, and the root group in one of its own.
+            if (!splitEveryFrame)
+                Assert.That(store.LastWrittenGroups, Has.Count.EqualTo(store.LastWrittenGroups.SelectMany(static batch => batch).Select(static path => (path.BitDepth == 0 ? -1 : path.GetByte(0) >> 5, path.BitDepth)).Distinct().Count()),
+                    "one write batch per level");
             foreach (PbtPhysicalPayload group in expected.PhysicalPayloads)
                 Assert.That(store.FindGroup(group.Key), Is.EqualTo(group.Payload.ToArray()));
             foreach (PbtStorageNodePath removed in previous.Where(key => !current.Contains(key)))
@@ -447,7 +452,7 @@ public class ParallelUpdateRootTests
         (byte[] Key, byte[]? Value)[] deletes = entries.Select(static entry => (entry.Key, (byte[]?)null)).ToArray();
         Assert.That(store.Fold(deletes, SplitFanOut(true)), Is.EqualTo(default(ValueHash256)));
         expected.ApplyBatch(deletes);
-        AssertLoggedFold(store, expected, [(entries[0].Key, Value(0xA5))], SplitFanOut(true));
+        AssertLoggedFold(store, expected, [(entries[0].Key, Value(0xA5))], splitEveryFrame: true);
     }
 
     [Test]
@@ -573,7 +578,7 @@ public class ParallelUpdateRootTests
         private long _directReads;
         private long _fallbackReads;
         private ulong _inputRoot;
-        private readonly List<ulong> _writes = [];
+        private readonly List<(ulong Pointer, int Length)> _writes = [];
         // Groups the folds published, with None for removed ones, over the persisted groups.
         private readonly Dictionary<PbtStorageNodePath, ulong> _groups = [];
 
@@ -602,14 +607,15 @@ public class ParallelUpdateRootTests
         private int _writeCount;
         public bool LastComplete { get; private set; }
         public ulong LastWriteFrontier { get; private set; }
-        public List<PbtStorageNodePath> LastWrittenGroups { get; } = [];
+        /// <summary>The paths of the groups the last fold wrote, by write batch.</summary>
+        public List<List<PbtStorageNodePath>> LastWrittenGroups { get; } = [];
         public int FoldConcurrency { get; set; } = Environment.ProcessorCount;
 
         public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
         {
             if (Interlocked.Increment(ref _writeCount) == FailOnWrite) throw new InvalidOperationException("Configured write failure.");
             IPbtGroupRecordWriteBatch batch = Buffer.StartWriteBatch(alignedTotalLength);
-            lock (_writes) _writes.Add(batch.BasePointer);
+            lock (_writes) _writes.Add((batch.BasePointer, alignedTotalLength));
             return batch;
         }
 
@@ -655,13 +661,20 @@ public class ParallelUpdateRootTests
                 if (LastComplete)
                 {
                     RootPointer = 0;
-                    foreach (ulong pointer in _writes)
+                    foreach ((ulong batchPointer, int length) in _writes)
                     {
-                        Buffer.TryLocate(pointer, out PbtGroupRecord record);
-                        PbtStorageNodePath path = record.Path;
-                        _groups[path] = pointer;
-                        if (path.BitDepth == 0) RootPointer = pointer;
-                        LastWrittenGroups.Add(path);
+                        List<PbtStorageNodePath> batch = [];
+                        LastWrittenGroups.Add(batch);
+                        // A batch holds one level's records back to back.
+                        for (ulong pointer = batchPointer; pointer < batchPointer + (ulong)length;)
+                        {
+                            Buffer.TryLocate(pointer, out PbtGroupRecord record);
+                            PbtStorageNodePath path = record.Path;
+                            _groups[path] = pointer;
+                            if (path.BitDepth == 0) RootPointer = pointer;
+                            batch.Add(path);
+                            pointer += (ulong)PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(record.Span));
+                        }
                     }
                 }
                 _writes.Clear();

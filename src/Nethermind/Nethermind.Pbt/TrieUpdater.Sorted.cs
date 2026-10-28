@@ -390,7 +390,7 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <summary>Folds <paramref name="operations"/> below boundary slot <paramref name="slot"/> of the group at <paramref name="groupPath"/>, away from the frame that owns the slot.</summary>
     /// <remarks>
     /// The fold below only reads its owner's depth and this slot's descendant size, so a stand-in carrying that size
-    /// replaces the owner frame, which stays with the calling thread.
+    /// replaces the owner frame, which stays with the calling thread. The groups it publishes are committed before it returns.
     /// </remarks>
     /// <param name="encoding">Receives the node the slot then holds, at least <see cref="MaxNodeLength"/> bytes.</param>
     [SkipLocalsInit]
@@ -401,7 +401,9 @@ public static partial class TrieUpdater<TKey, TPath>
         PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupPath);
         path.AppendMut(slot);
         AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, slot, descendantBytes, boundary.GroupPointer);
-        return FoldSortedRange(context, ref owner, boundary, operations, ref path, bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, encoding);
+        SlotNode result = FoldSortedRange(context, ref owner, boundary, operations, ref path, bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, encoding);
+        result.GroupPointer = context.WorkingState.Commit(context.Store, result.GroupPointer);
+        return result;
     }
 
     private static SlotNode Copy(ReadOnlySpan<byte> node, in ValueHash256 hash, Span<byte> encoding)

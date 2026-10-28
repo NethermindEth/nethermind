@@ -12,10 +12,10 @@ public static partial class TrieUpdater<TKey, TPath>
 {
     /// <summary>The working memory of one fold on one thread: the groups it loaded, its group writers and its frames' scratch.</summary>
     /// <remarks>
-    /// Working states are pooled; a returned one releases its loaded records and keeps its writers, with their scratch, and its
-    /// buffers for the next fold.
+    /// Working states are pooled, unless grown past <see cref="MaxPooledPendingGroups"/> pending groups; a returned one releases its
+    /// loaded records and pending groups and keeps its writers, with their scratch, and its buffers for the next fold.
     /// </remarks>
-    public sealed class FoldWorkingState : IDisposable
+    public sealed partial class FoldWorkingState : IDisposable
     {
         private const int MaxPooled = 64;
         /// <summary>How many writers a state keeps, enough for the deepest fold's frames.</summary>
@@ -39,9 +39,10 @@ public static partial class TrieUpdater<TKey, TPath>
 
         public static void Return(FoldWorkingState state)
         {
-            if (Pool.Count < MaxPooled)
+            if (Pool.Count < MaxPooled && state.IsPoolable)
             {
                 state.Loaded.Clear();
+                state.ClearPending();
                 Pool.Enqueue(state);
             }
             else
@@ -80,6 +81,7 @@ public static partial class TrieUpdater<TKey, TPath>
             Loaded.Dispose();
             foreach (PbtNodeGroupWriter<TPath> writer in _writers) writer.Dispose();
             _writers.Clear();
+            DisposePending();
         }
     }
 

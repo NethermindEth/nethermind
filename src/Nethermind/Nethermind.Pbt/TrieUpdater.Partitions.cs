@@ -110,7 +110,7 @@ public static partial class TrieUpdater
         {
             context.WorkingState.ReturnWriter(rootWriter);
         }
-        return (hash, publication.Pointer);
+        return (hash, context.WorkingState.Commit(context.Store, publication.Pointer));
     }
 
     /// <summary>The operations under one root boundary slot, all of one key type, folded below the root group.</summary>
