@@ -17,6 +17,7 @@ using CurrentRlp = Nethermind.Serialization.Rlp;
 namespace Nethermind.Serialization.FluentRlp.Benchmark;
 
 /// <summary>An EIP-2930 storage key, which is encoded as 32 bytes and not as an integer.</summary>
+[RlpFixedLength(32)]
 public readonly record struct StorageKey(UInt256 Value);
 
 public static class AccessListRlpConverters
@@ -49,7 +50,7 @@ public static class AccessListRlpConverters
 }
 
 [RlpSerializable]
-public record AccessListItem(CoreAddress Address, List<StorageKey> StorageKeys);
+public record AccessListItem([RlpFixedLength(CoreAddress.Size)] CoreAddress Address, List<StorageKey> StorageKeys);
 
 [RlpSerializable(RlpRepresentation.Newtype)]
 public record AccessList(List<AccessListItem> Items);

@@ -236,6 +236,37 @@ public class RlpWriterTest
             writer.Write("dog");
         }, Throws.ArgumentException);
 
+    // Payload lengths around the short and long prefix forms.
+    [Test]
+    public void WriteSequenceWithDeclaredLength([Values(0, 2, 60, 300)] int stringLength)
+    {
+        byte[] value = new byte[stringLength];
+        int payloadLength = stringLength == 0 ? 0 : Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.Write(value)).Length;
+
+        byte[] expected = Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.WriteSequence(value, WritePayload));
+        byte[] actual = Rlp.Write((value, payloadLength), static (ref RlpWriter w, (byte[] Value, int PayloadLength) ctx) =>
+            w.WriteSequence(ctx.PayloadLength, ctx.Value, WritePayload));
+
+        RlpWriter lengthWriter = RlpWriter.LengthWriter();
+        lengthWriter.WriteSequence(payloadLength, 0, static (ref RlpWriter _, int _) => throw new InvalidOperationException("A length writer must not run the action"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(lengthWriter.Length, Is.EqualTo(expected.Length));
+        }
+    }
+
+    private static void WritePayload(ref RlpWriter w, byte[] value)
+    {
+        if (value.Length > 0) w.Write(value);
+    }
+
+    [Test]
+    public void WriteSequenceWithWrongDeclaredLength()
+        => Assert.That(static () => Rlp.Write(static (ref RlpWriter w) =>
+            w.WriteSequence(5, 0, static (ref RlpWriter w, int _) => w.Write("dog"))), Throws.InvalidOperationException);
+
     // A write action that swallows the exception of a nested sequence leaves that sequence without a prefix.
     [Test]
     public void WriteAfterSwallowedNestedException()

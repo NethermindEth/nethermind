@@ -44,3 +44,7 @@ cannot encode without data loss:
 | RLP0006 | `Newtype` record that contains itself without a sequence around it      |
 
 A parameter of another type `T` uses the `ReadT()` and `Write(T)` extension methods that are in scope of the record.
+
+`[RlpFixedLength(n)]` on such a type, or on a parameter, declares that its value is always a byte string of `n`
+bytes. A record or list made only of values with a known length then writes its exact prefix at once, without a pass
+over the values. A write that does not match the declared length throws.

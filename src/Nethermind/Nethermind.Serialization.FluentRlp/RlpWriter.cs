@@ -259,6 +259,49 @@ public ref struct RlpWriter
         }
     }
 
+    /// <summary>Writes a sequence whose payload of <paramref name="payloadLength"/> bytes is written by <paramref name="action"/>.</summary>
+    /// <remarks>
+    /// A known payload length saves work: a <see cref="LengthWriter"/> does not run <paramref name="action"/>, and the
+    /// other writers write the exact prefix at once.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException"><paramref name="action"/> writes another number of bytes.</exception>
+    public void WriteSequence<TContext>(int payloadLength, TContext ctx, RefRlpWriterAction<TContext> action)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
+        int prefixLength = payloadLength > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(payloadLength) : 1;
+        if (!_isContent)
+        {
+            _length += prefixLength + payloadLength;
+            return;
+        }
+
+        int openSequences = ++_openSequences;
+        if (openSequences % StackCheckInterval == 0) RuntimeHelpers.EnsureSufficientExecutionStack();
+
+        Span<byte> prefix = Reserve(prefixLength);
+        if (prefixLength == 1)
+        {
+            prefix[0] = (byte)(RlpPrefix.ShortList + payloadLength);
+        }
+        else
+        {
+            WriteLongPrefix(prefix, RlpPrefix.ShortList, payloadLength);
+        }
+
+        _length += prefixLength;
+        int payloadStart = _length;
+        int longPrefixBytes = _longPrefixBytes;
+        action(ref this, ctx);
+
+        if (_length - payloadStart + _longPrefixBytes - longPrefixBytes != payloadLength)
+        {
+            throw new InvalidOperationException("RLP write action wrote another length than the sequence declares");
+        }
+
+        if (_openSequences != openSequences) throw new InvalidOperationException("RLP write action did not end all sequences");
+        _openSequences = openSequences - 1;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteMeasuredSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
     {

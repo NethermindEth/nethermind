@@ -41,6 +41,15 @@ public record UnsignedIntegers(byte A, ushort B, uint C, ulong D, UInt128 E, UIn
 [RlpSerializable]
 public record IntegerTuple((int, long) Values);
 
+[RlpSerializable(RlpRepresentation.Newtype, length: 32)]
+public record FixedKey(byte[] Bytes);
+
+[RlpSerializable]
+public record FixedEntry([RlpFixedLength(20)] byte[] Address, List<FixedKey> Keys);
+
+[RlpSerializable]
+public record UnhintedEntry(byte[] Address, List<byte[]> Keys);
+
 [RlpSerializable(RlpRepresentation.Newtype)]
 public record Address(string HexString);
 
@@ -188,6 +197,27 @@ public class RlpDerivedTest
             Assert.That(() => Rlp.Read(shortRlp, static (scoped ref RlpReader r) => r.ReadFixedAddress()), Throws.TypeOf<RlpReaderException>());
             Assert.That(() => Rlp.Write(new FixedAddress(new byte[FixedAddress.Size + 1]), static (ref RlpWriter w, FixedAddress value) => w.Write(value)),
                 Throws.ArgumentException);
+        }
+    }
+
+    [Test]
+    public void RecordWithFixedLengthHints([Values(0, 1, 3)] int keyCount)
+    {
+        byte[] address = Enumerable.Range(1, 20).Select(static b => (byte)b).ToArray();
+        List<byte[]> keys = Enumerable.Range(0, keyCount).Select(static i => Enumerable.Repeat((byte)(i + 1), 32).ToArray()).ToList();
+        FixedEntry entry = new(address, keys.Select(static k => new FixedKey(k)).ToList());
+
+        byte[] rlp = Rlp.Write(entry, static (ref RlpWriter w, FixedEntry value) => w.Write(value));
+        byte[] unhinted = Rlp.Write(new UnhintedEntry(address, keys), static (ref RlpWriter w, UnhintedEntry value) => w.Write(value));
+        FixedEntry decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedEntry());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp, Is.EqualTo(unhinted));
+            Assert.That(decoded.Address, Is.EqualTo(address));
+            Assert.That(decoded.Keys.Select(static k => k.Bytes), Is.EqualTo(keys));
+            Assert.That(() => Rlp.Write(entry with { Address = new byte[19] }, static (ref RlpWriter w, FixedEntry value) => w.Write(value)),
+                Throws.InvalidOperationException);
         }
     }
 
