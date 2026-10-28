@@ -59,7 +59,7 @@ public class TraceStoreModuleTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IDbFactory>(new MemDbFactory())
             .AddSingleton(config)
-            .AddModule(new TraceStorePlugin(config).Module!);
+            .AddModule(new TraceStorePlugin(config, new JsonRpcConfig()).Module!);
         configure?.Invoke(builder);
         return builder.Build();
     }

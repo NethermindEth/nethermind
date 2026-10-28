@@ -1,0 +1,257 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc.Modules;
+
+namespace Nethermind.JsonRpc.TraceStore.Ots;
+
+/// <summary>Serves the account-history OTS subset without requiring historical state.</summary>
+/// <remarks>
+/// Searches scan stored traces one block at a time and can time out. Missing history never
+/// becomes an empty page or a claim that the end of an address's history has been reached.
+/// </remarks>
+public sealed class OtsRpcModule(
+    [KeyFilter(TraceStorePlugin.DbName)] IDb traceStore,
+    ITraceSerializer<ParityLikeTxTrace> serializer,
+    IBlockFinder blockFinder,
+    IReceiptFinder receiptFinder,
+    ISpecProvider specProvider,
+    ITraceStoreConfig traceStoreConfig,
+    IJsonRpcConfig rpcConfig) : IOtsRpcModule
+{
+    private const int MaxPageSize = 25;
+    private const string ChainChanged = "Canonical chain changed during OTS search; retry the request.";
+
+    /// <inheritdoc />
+    public ResultWrapper<int> ots_getApiLevel() => ResultWrapper<int>.Success(0);
+
+    /// <inheritdoc />
+    public ResultWrapper<OtsSearchResult> ots_searchTransactionsBefore(Address address, ulong blockNumber, int pageSize) =>
+        Search(address, blockNumber, pageSize, backwards: true);
+
+    /// <inheritdoc />
+    public ResultWrapper<OtsSearchResult> ots_searchTransactionsAfter(Address address, ulong blockNumber, int pageSize) =>
+        Search(address, blockNumber, pageSize, backwards: false);
+
+    private ResultWrapper<OtsSearchResult> Search(Address address, ulong cursor, int pageSize, bool backwards)
+    {
+        if (address is null || pageSize is < 1 or > MaxPageSize)
+            return ResultWrapper<OtsSearchResult>.Fail($"An address and page size between 1 and {MaxPageSize} are required.", ErrorCodes.InvalidParams);
+
+        if (blockFinder.Head is not { } head)
+            return ResultWrapper<OtsSearchResult>.Fail("Chain head is unavailable.", ErrorCodes.ResourceUnavailable);
+
+        using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken ct = timeout.Token;
+        OtsSearchResult result = new();
+        bool hasMore = false;
+        // Genesis contains no user transactions. Avoid overflowing an after cursor at ulong.MaxValue.
+        ulong number = backwards ? (cursor == 0 ? head.Number : Math.Min(cursor - 1, head.Number))
+            : cursor >= head.Number ? 0 : cursor + 1;
+        Block? previous = null;
+        Block? highestScanned = null;
+
+        while (number > 0 && number <= head.Number)
+        {
+            ct.ThrowIfCancellationRequested();
+            Block? block = blockFinder.FindBlock(number);
+            if (block is null)
+                return ResultWrapper<OtsSearchResult>.Fail($"Block {number} is unavailable.", ErrorCodes.ResourceUnavailable);
+
+            if (!blockFinder.IsMainChain(block.Header) || (previous is not null && (backwards
+                ? previous.ParentHash != block.Hash : block.ParentHash != previous.Hash)))
+                return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            previous = block;
+            if (highestScanned is null || block.Number > highestScanned.Number) highestScanned = block;
+
+            if (block.Transactions.Length != 0)
+            {
+                SearchResult<List<ParityLikeTxTrace>> stored = ReadTraces(block.Header);
+                if (stored.IsError) return ResultWrapper<OtsSearchResult>.Fail(stored);
+                SearchResult<bool[]> matches = MatchTransactions(block, stored.Object!, address, ct);
+                if (matches.IsError) return ResultWrapper<OtsSearchResult>.Fail(matches);
+
+                bool found = Array.IndexOf(matches.Object!, true) >= 0;
+                if (found)
+                {
+                    // OTS needs one further matching block to distinguish a full terminal page from a middle page.
+                    if (result.Txs.Count >= pageSize)
+                    {
+                        hasMore = true;
+                        break;
+                    }
+
+                    string? error = AddMatches(result, block, matches.Object!, backwards, ct);
+                    if (error is not null)
+                        return ResultWrapper<OtsSearchResult>.Fail(error, ErrorCodes.ResourceUnavailable);
+                }
+            }
+            if (backwards) number--;
+            else if (number == head.Number) break;
+            else number++;
+        }
+
+        ct.ThrowIfCancellationRequested();
+        if (!blockFinder.IsMainChain(head.Header) || (highestScanned is not null && !blockFinder.IsMainChain(highestScanned.Header)))
+            return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+
+        foreach (TransactionForRpc transaction in result.Txs)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (blockFinder.FindBlockHash(transaction.BlockNumber!.Value) != transaction.BlockHash)
+                return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+        }
+        if (!backwards)
+        {
+            result.Txs.Reverse();
+            result.Receipts.Reverse();
+        }
+        result.FirstPage = backwards ? cursor == 0 : !hasMore;
+        result.LastPage = backwards ? !hasMore : cursor == 0;
+        return ResultWrapper<OtsSearchResult>.Success(result);
+    }
+
+    private static SearchResult<bool[]> MatchTransactions(Block block, List<ParityLikeTxTrace> traces, Address address, CancellationToken ct)
+    {
+        if (OtsTraceReader.Validate(block, traces, ct) is { } error)
+            return new(error, ErrorCodes.ResourceUnavailable);
+        bool[] matches = new bool[block.Transactions.Length];
+        foreach (ParityLikeTxTrace trace in traces)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (trace.TransactionHash is null) continue; // Block rewards are not transactions.
+            int position = trace.TransactionPosition!.Value;
+            Stack<ParityTraceAction> actions = new();
+            actions.Push(trace.Action!);
+            while (actions.TryPop(out ParityTraceAction? action))
+            {
+                ct.ThrowIfCancellationRequested();
+                // Search is call involvement, including zero-value/reverted calls, not committed value transfers.
+                if (action.From == address || action.To == address || action.Result?.Address == address)
+                {
+                    matches[position] = true;
+                    break;
+                }
+                foreach (ParityTraceAction child in action.Subtraces) actions.Push(child);
+            }
+        }
+
+        return new(matches);
+    }
+
+    private string? AddMatches(OtsSearchResult result, Block block, bool[] matches, bool backwards, CancellationToken ct)
+    {
+        TxReceipt[] receipts = receiptFinder.Get(block);
+        if (receipts.Length != block.Transactions.Length)
+            return $"Receipts for block {block.Number} are unavailable or incomplete.";
+
+        int start = result.Txs.Count;
+        int logIndex = 0;
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            TxReceipt receipt = receipts[i];
+            Transaction tx = block.Transactions[i];
+            if (receipt.Index != i || receipt.TxHash != tx.Hash || receipt.BlockHash != block.Hash)
+                return $"Receipts for block {block.Number} are inconsistent.";
+
+            if (matches[i])
+            {
+                tx.SenderAddress ??= receipt.Sender;
+                result.Txs.Add(TransactionForRpc.FromTransaction(tx, new(specProvider.ChainId, block.Hash!, block.Number,
+                    i, block.Timestamp, block.BaseFeePerGas, receipt)));
+                result.Receipts.Add(new(tx.Hash!, receipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndex));
+            }
+            logIndex += receipt.Logs?.Length ?? 0;
+        }
+
+        if (backwards)
+        {
+            result.Txs.Reverse(start, result.Txs.Count - start);
+            result.Receipts.Reverse(start, result.Receipts.Count - start);
+        }
+        return null;
+    }
+
+    /// <inheritdoc />
+    public ResultWrapper<List<OtsTraceEntry>> ots_traceTransaction(Hash256 transactionHash)
+    {
+        if (transactionHash is null)
+            return ResultWrapper<List<OtsTraceEntry>>.Fail("A transaction hash is required.", ErrorCodes.InvalidParams);
+
+        using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
+        CancellationToken ct = timeout.Token;
+        SearchResult<Hash256> blockHash = receiptFinder.SearchForReceiptBlockHash(transactionHash);
+        if (blockHash.IsError) return ResultWrapper<List<OtsTraceEntry>>.Fail(blockHash);
+
+        SearchResult<Block> search = blockFinder.SearchForBlock(new BlockParameter(blockHash.Object!, requireCanonical: true));
+        if (search.IsError) return ResultWrapper<List<OtsTraceEntry>>.Fail(search);
+        Block block = search.Object!;
+        SearchResult<List<ParityLikeTxTrace>> stored = ReadTraces(block.Header);
+        if (stored.IsError) return ResultWrapper<List<OtsTraceEntry>>.Fail(stored);
+
+        foreach (ParityLikeTxTrace trace in stored.Object!)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (trace.TransactionHash != transactionHash) continue;
+            if (trace.Action is null || trace.TransactionPosition is not { } index
+                || (uint)index >= (uint)block.Transactions.Length || block.Transactions[index].Hash != transactionHash
+                || trace.BlockHash != block.Hash || trace.BlockNumber != block.Number)
+                break;
+
+            List<OtsTraceEntry> entries = [];
+            Stack<(ParityTraceAction Action, int Depth)> stack = new();
+            stack.Push((trace.Action, 0));
+            while (stack.TryPop(out (ParityTraceAction Action, int Depth) frame))
+            {
+                ct.ThrowIfCancellationRequested();
+                ParityTraceAction action = frame.Action;
+                if (!action.IsPrecompiled)
+                {
+                    Address? to = action.To ?? action.Result?.Address;
+                    if (action.From is null || to is null)
+                        return ResultWrapper<List<OtsTraceEntry>>.Fail("Stored trace lacks a call's sender or destination.", ErrorCodes.ResourceUnavailable);
+
+                    string type = action.Type switch
+                    {
+                        "create" => action.CreationMethod == "create2" ? "CREATE2" : "CREATE",
+                        "suicide" => "SELFDESTRUCT",
+                        "call" => action.CallType?.ToUpperInvariant() ?? "CALL",
+                        _ => "UNKNOWN"
+                    };
+                    entries.Add(new()
+                    {
+                        Type = type,
+                        Depth = frame.Depth,
+                        From = action.From,
+                        To = to,
+                        Value = type is "STATICCALL" or "DELEGATECALL" ? null : action.Value,
+                        Input = action.Input.ToArray() ?? [],
+                        Output = action.Result?.Code ?? action.Result?.Output ?? []
+                    });
+                }
+                for (int i = action.Subtraces.Count - 1; i >= 0; i--)
+                    stack.Push((action.Subtraces[i], frame.Depth + 1));
+            }
+
+            if (!blockFinder.IsMainChain(block.Header))
+                return ResultWrapper<List<OtsTraceEntry>>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            return ResultWrapper<List<OtsTraceEntry>>.Success(entries);
+        }
+        return ResultWrapper<List<OtsTraceEntry>>.Fail($"Stored trace for {transactionHash} is unavailable.", ErrorCodes.ResourceUnavailable);
+    }
+
+    private SearchResult<List<ParityLikeTxTrace>> ReadTraces(BlockHeader header) =>
+        OtsTraceReader.Read(traceStore, serializer, traceStoreConfig, header);
+}
