@@ -85,17 +85,15 @@ public sealed class HistoryReader
     internal ScopeFloor[] GetSliceScopesArray() => _availability.GetScopesArray();
 
     /// <summary>Resolves the account as of <paramref name="block"/>. False when it did not exist there.</summary>
-    public bool TryGetAccount(ulong block, Address address, out AccountStruct account) => TryGetAccount(block, address, out account, null);
-
     [SkipLocalsInit]
-    internal bool TryGetAccount(ulong block, Address address, out AccountStruct account, ReadScope? scope)
+    public bool TryGetAccount(ulong block, Address address, out AccountStruct account)
     {
         ValueHash256 accountPath = address.ToAccountPath;
         ReadOnlySpan<byte> flatKey = accountPath.Bytes;
 
         Span<byte> valueBuffer = stackalloc byte[AccountValueBufferSize];
         int written = _isV3
-            ? TryGetAccountV3(block, flatKey, valueBuffer, scope)
+            ? TryGetAccountV3(block, flatKey, valueBuffer)
             : _accountHistory!.TryGetAt(block, flatKey, valueBuffer, out _, _availability.CaptureGeneration);
         if (written <= 0) // -1 = no such row; 0 = deletion tombstone, or a live-column miss under v3
         {
@@ -111,11 +109,11 @@ public sealed class HistoryReader
     /// commit in between; the second seek settles that, since a row commits before the persist superseding it. It is
     /// worth only when a capture actually landed, so the generation sampled before the first seek gates it.</remarks>
     [SkipLocalsInit]
-    private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer, ReadScope? scope)
+    private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer)
     {
         long generation = _availability.CaptureGeneration;
 
-        int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _, scope?.Accounts, generation);
+        int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _, generation);
         if (written >= 0) return written;
 
         Span<byte> liveBuffer = stackalloc byte[AccountValueBufferSize];
@@ -123,7 +121,7 @@ public sealed class HistoryReader
 
         if (_availability.HasCapturedSince(generation))
         {
-            written = _accountHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _, scope?.Accounts, _availability.CaptureGeneration);
+            written = _accountHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _, _availability.CaptureGeneration);
             if (written >= 0) return written;
         }
 
@@ -137,7 +135,7 @@ public sealed class HistoryReader
 
     /// <param name="clearsCache">Skips the per-slot destruct probes for an account with no clear markers.</param>
     [SkipLocalsInit]
-    internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache, ReadScope? scope = null)
+    internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache)
     {
         ValueHash256 addrHash = address.ToAccountPath;
         ValueHash256 slotHash = ValueKeccak.Zero;
@@ -151,7 +149,7 @@ public sealed class HistoryReader
         {
             // Seek, live only on a miss, then seek again only if a capture landed - see TryGetAccountV3's remarks.
             long generation = _availability.CaptureGeneration;
-            int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out ulong rowBlock, scope?.Storage, generation);
+            int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out ulong rowBlock, generation);
             if (written < 0)
             {
                 Span<byte> liveBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
@@ -159,7 +157,7 @@ public sealed class HistoryReader
 
                 if (_availability.HasCapturedSince(generation))
                 {
-                    written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out rowBlock, scope?.Storage, _availability.CaptureGeneration);
+                    written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out rowBlock, _availability.CaptureGeneration);
                 }
 
                 if (written < 0)
@@ -202,56 +200,6 @@ public sealed class HistoryReader
 
         value = DecodeSlotValue(valueBuffer[..v2Written]);
         return true;
-    }
-
-    internal ReadScopeState CreateReadScopeState() => new(_isV3);
-
-    internal struct ReadScopeState(bool enabled) : IDisposable
-    {
-        private static readonly object FirstRead = new();
-        private static readonly object ReuseReads = new();
-        private static readonly object Disposed = new();
-        private object? _scope = enabled ? FirstRead : null;
-
-        internal ReadScope? GetScope()
-        {
-            object? scope = Volatile.Read(ref _scope);
-            if (ReferenceEquals(scope, FirstRead))
-            {
-                scope = Interlocked.CompareExchange(ref _scope, ReuseReads, FirstRead);
-                if (ReferenceEquals(scope, FirstRead)) return null;
-            }
-
-            if (ReferenceEquals(scope, ReuseReads))
-            {
-                ReadScope created = new();
-                scope = Interlocked.CompareExchange(ref _scope, created, ReuseReads);
-                if (ReferenceEquals(scope, ReuseReads)) return created;
-
-                created.Dispose();
-            }
-
-            ObjectDisposedException.ThrowIf(ReferenceEquals(scope, Disposed), typeof(ReadScopeState));
-            return (ReadScope?)scope;
-        }
-
-        public void Dispose()
-        {
-            object? scope = Interlocked.Exchange(ref _scope, Disposed);
-            (scope as ReadScope)?.Dispose();
-        }
-    }
-
-    internal sealed class ReadScope : IDisposable
-    {
-        internal HistoryStoreV3.ReadScope Accounts { get; } = new();
-        internal HistoryStoreV3.ReadScope Storage { get; } = new();
-
-        public void Dispose()
-        {
-            Accounts.Dispose();
-            Storage.Dispose();
-        }
     }
 
     private UInt256 DecodeSlotValue(ReadOnlySpan<byte> stored)

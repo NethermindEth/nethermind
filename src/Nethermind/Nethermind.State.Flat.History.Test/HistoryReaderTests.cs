@@ -150,10 +150,10 @@ public class HistoryReaderTests
     [TestCase(false, 9ul, true)]
     [TestCase(true, 5ul, false)]
     [TestCase(true, 5ul, true)]
-    public void A_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, ulong expectedNonce, bool scoped)
+    public void A_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, ulong expectedNonce, bool rocksDb)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? RocksHistoryTestDb.CreateColumns(directory.Path) : null;
+        using ColumnsDb<FlatHistoryColumns>? rocks = rocksDb ? RocksHistoryTestDb.CreateColumns(directory.Path) : null;
         IColumnsDb<FlatHistoryColumns> history = rocks is null ? _historyColumns : rocks;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
@@ -167,8 +167,7 @@ public class HistoryReaderTests
 
         HistoryReader reader = new(hooked, history, availability, rowFormat, LimboLogs.Instance);
 
-        using HistoryReader.ReadScope? scope = scoped ? new() : null;
-        bool found = reader.TryGetAccount(10, Address, out AccountStruct account, scope);
+        bool found = reader.TryGetAccount(10, Address, out AccountStruct account);
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,10 +180,10 @@ public class HistoryReaderTests
     [TestCase(false, false, true)]
     [TestCase(true, true, false)]
     [TestCase(true, true, true)]
-    public void A_storage_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, bool expectedFound, bool scoped)
+    public void A_storage_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, bool expectedFound, bool rocksDb)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? RocksHistoryTestDb.CreateColumns(directory.Path) : null;
+        using ColumnsDb<FlatHistoryColumns>? rocks = rocksDb ? RocksHistoryTestDb.CreateColumns(directory.Path) : null;
         IColumnsDb<FlatHistoryColumns> history = rocks is null ? _historyColumns : rocks;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
@@ -197,8 +196,7 @@ public class HistoryReaderTests
 
         HistoryReader reader = new(hooked, history, availability, rowFormat, LimboLogs.Instance);
 
-        using HistoryReader.ReadScope? scope = scoped ? new() : null;
-        bool found = reader.TryGetStorage(10, Address, Slot, out UInt256 value, clearsCache: null, scope);
+        bool found = reader.TryGetStorage(10, Address, Slot, out UInt256 value, clearsCache: null);
 
         Assert.That(found, Is.EqualTo(expectedFound));
         if (expectedFound)
@@ -208,58 +206,8 @@ public class HistoryReaderTests
     }
 
     [Test]
-    public void ReadScopeState_WithAtMostOneRead_DoesNotAllocate([Values] bool enabled, [Values(0, 1)] int reads)
-    {
-        ReadScopeWithoutRows(enabled, reads);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        ReadScopeWithoutRows(enabled, reads);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.That(allocated, Is.Zero);
-    }
-
-    [Test]
-    public void ReadScopeState_AfterTheFirstRead_ReusesTheScope([Values] bool enabled)
-    {
-        HistoryReader.ReadScopeState state = new(enabled);
-        try
-        {
-            Assert.That(state.GetScope(), Is.Null);
-            HistoryReader.ReadScope? scope = state.GetScope();
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(scope is not null, Is.EqualTo(enabled));
-                Assert.That(state.GetScope(), Is.SameAs(scope));
-            }
-        }
-        finally
-        {
-            state.Dispose();
-        }
-    }
-
-    [Test]
-    public void ReadScopeState_AfterDisposal_RejectsReadsAndDisposesViews([Values(0, 1, 2)] int reads)
-    {
-        HistoryReader.ReadScopeState state = new(true);
-        HistoryReader.ReadScope? scope = null;
-        for (int i = 0; i < reads; i++) scope = state.GetScope();
-
-        state.Dispose();
-        state.Dispose();
-
-        Assert.That(() => state.GetScope(), Throws.TypeOf<ObjectDisposedException>());
-        if (scope is not null)
-        {
-            HistoryStoreV3 store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
-            Assert.That(() => store.TryGetValueBeforeNextChange(0, new byte[32], new byte[256], out _, scope.Accounts),
-                Throws.TypeOf<ObjectDisposedException>());
-        }
-    }
-
-    [Test]
-    public void PersistenceReader_AfterTheFirstRead_ReusesAndDisposesNativeViews([Values] bool storage)
+    // Readers of one block share one persistence reader; a shared view would make every read wait on its lock.
+    public void PersistenceReader_V3Reads_ShareNoView([Values] bool storage)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using ColumnsDb<FlatHistoryColumns> history = RocksHistoryTestDb.CreateColumns(directory.Path);
@@ -299,36 +247,16 @@ public class HistoryReaderTests
             {
                 Assert.That(reader.GetAccount(Address)?.Nonce, Is.EqualTo(5UL));
             }
-            Assert.That(views.Count, Is.EqualTo(i == 0 ? 1 : 2));
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(views[0].Disposed, Is.True);
-            Assert.That(views[1].Disposed, Is.False);
-        }
         reader.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(views[1].Disposed, Is.True);
+            Assert.That(views, Is.Empty);
             Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.Zero, CancellationToken.None), Is.True);
         }
     }
-
-    private static void ReadScopeWithoutRows(bool enabled, int reads)
-    {
-        HistoryReader.ReadScopeState state = new(enabled);
-        try
-        {
-            for (int i = 0; i < reads; i++) _ = state.GetScope();
-        }
-        finally
-        {
-            state.Dispose();
-        }
-    }
-
 
     private sealed class HookedColumns<TKey>(IColumnsDb<TKey> inner, TKey hookedColumn, Action onFirstRead, Func<ISortedView, ISortedView>? onView = null)
         : IColumnsDb<TKey> where TKey : struct, Enum
@@ -359,6 +287,10 @@ public class HistoryReaderTests
             ISortedView view = Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags);
             return onView?.Invoke(view) ?? view;
         }
+
+        public bool TryGetCeilingAtEpoch(scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, long epoch,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength) =>
+            Sorted.TryGetCeilingAtEpoch(lowerBoundIncl, upperBoundExcl, epoch, keyBuffer, out keyLength, valueBuffer, out valueLength);
 
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {

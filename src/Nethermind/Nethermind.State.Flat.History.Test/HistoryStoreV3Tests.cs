@@ -159,30 +159,26 @@ public class HistoryStoreV3Tests
     }
 
     [Test]
-    public void ReadScope_WhenCaptureGenerationChanges_RefreshesTheSnapshot([Values] bool flush)
+    public void A_new_generation_observes_rows_captured_after_the_previous_read([Values] bool flush)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
         HistoryStoreV3 store = new(db);
         using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(20, KeyA, [0xAA], batch);
         if (flush) db.Flush();
-        using HistoryStoreV3.ReadScope scope = new();
         Span<byte> output = stackalloc byte[64];
-        Assert.That(store.TryGetValueBeforeNextChange(5, KeyA, output, out _, scope, generation: 0), Is.EqualTo(1));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyA, output, out _, captureGeneration: 0), Is.EqualTo(1));
         Assert.That(output[0], Is.EqualTo(0xAA));
-        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, captureGeneration: 0), Is.EqualTo(-1));
 
         using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(25, KeyB, [0xBB], batch);
         if (flush) db.Flush();
-        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
-        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out ulong next, scope, generation: 1), Is.EqualTo(1));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out ulong next, captureGeneration: 1), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(output[0], Is.EqualTo(0xBB));
             Assert.That(next, Is.EqualTo(25UL));
         }
-        scope.Dispose();
-        Assert.That(() => store.TryGetValueBeforeNextChange(5, KeyA, new byte[64], out _, scope, generation: 1), Throws.TypeOf<ObjectDisposedException>());
     }
 
     private sealed class SnapshotCeilingDb(ISnapshotSortedKeyValueStore inner) : MemDb, ISnapshotSortedKeyValueStore
