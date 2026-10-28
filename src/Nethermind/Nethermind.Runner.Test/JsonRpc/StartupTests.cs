@@ -29,12 +29,17 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -70,13 +75,16 @@ public class StartupTests
         IEngineRpcModule? engineModule = null,
         JsonRpcConfig? rpcConfig = null,
         IJsonRpcLocalStats? jsonRpcLocalStats = null,
-        ILogManager? processorLogManager = null)
+        ILogManager? processorLogManager = null,
+        IDebugRpcModule? debugModule = null)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
         engineModule ??= CreateEngineModule();
 
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), rpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(engineModule), true));
+        if (debugModule is not null)
+            moduleProvider.Register(new SingletonModulePool<IDebugRpcModule>(new SingletonFactory<IDebugRpcModule>(debugModule), true));
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
@@ -640,6 +648,89 @@ public class StartupTests
             Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.Zero);
         }
         stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == GetBlobsV2Method && report.Success), Arg.Any<long>(), Arg.Any<long?>());
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_DebugDeadlineReportsFailureThroughKestrel(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values] bool bufferResponse, [Values] bool flush, [Values] bool batch,
+        [Values(0, 32 * 1024)] int payloadSize)
+    {
+        using CancellationTokenSource resultCancellation = new();
+        using GethLikeTxTraceStreamingBlockResult result = new((writer, pipe, token) =>
+        {
+            writer.WriteStringValue(new string('x', payloadSize));
+            writer.Flush();
+            if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
+            throw RpcTest.CreateTraceDeadlineException();
+        }, resultCancellation, NullLogger.Instance)
+        { PropagateExecutionTimeout = true };
+        IDebugRpcModule debugModule = Substitute.For<IDebugRpcModule>();
+        debugModule.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>())
+            .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(result));
+        debugModule.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>())
+            .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(result));
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        TaskCompletionSource<RpcReport> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        stats.When(value => value.ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), Arg.Any<long?>()))
+            .Do(call =>
+            {
+                RpcReport report = call.ArgAt<RpcReport>(0);
+                if (report.Method == method) reported.TrySetResult(report);
+            });
+        Startup startup = CreateStartup(rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine, ModuleType.Debug],
+            BufferResponses = bufferResponse
+        }, jsonRpcLocalStats: stats, debugModule: debugModule);
+        string selector = method == "debug_traceBlockByNumber" ? "\"latest\"" : JsonSerializer.Serialize(TestItem.KeccakA.ToString());
+        string request = CreateJsonRpcRequest(method, paramsJson: "[" + selector + ",{\"streamMode\":true}]");
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
+        long successes = JsonRpcMetrics.JsonRpcSuccesses;
+        long errors = JsonRpcMetrics.JsonRpcErrors;
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine, ModuleType.Debug]);
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        await using (KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url))
+        {
+            if (bufferResponse || payloadSize == 0)
+            {
+                (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+                using JsonDocument document = JsonDocument.Parse(response);
+                JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+                    Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(1));
+                    Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                    Assert.That(envelope.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
+                    Assert.That(envelope.TryGetProperty("result", out _), Is.False);
+                    if (batch) Assert.That(document.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                }
+            }
+            else if (flush)
+            {
+                await Assert.ThrowsAsync<HttpRequestException>(() => host.PostAsync(request, deadline.Token));
+            }
+            else
+            {
+                (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(statusCode, Is.EqualTo(StatusCodes.Status500InternalServerError));
+                    Assert.That(response, Is.Empty);
+                }
+            }
+            RpcReport report = await reported.Task.WaitAsync(deadline.Token);
+            Assert.That(report.Success, Is.False);
+        }
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == method && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo(batch ? 1 : 0));
+            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(1));
+        }
     }
 
     private static Startup CreateStreamingStartup(ProbeBlobStreamableResult result, bool bufferResponse, IJsonRpcLocalStats? stats = null)

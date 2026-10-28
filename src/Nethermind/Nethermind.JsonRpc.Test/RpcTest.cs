@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using System;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
@@ -20,6 +22,9 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
+    /// <summary>Creates the owned-deadline failure for cross-assembly transport tests.</summary>
+    public static Exception CreateTraceDeadlineException() => new GethTraceDeadlineException();
+
     public static void AssertSuccess(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<IResultWrapper>(), GetFailureMessage(response));
