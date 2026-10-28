@@ -106,11 +106,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             NativeCallTracerCallFrame firstCallFrame = _callStack[0];
             _callStack.RemoveAt(0);
-            firstCallFrame.TakeBuffer(ref _buffer);
-            result.Disposable = firstCallFrame;
+            NativeCallTracerResult callTrace = new(firstCallFrame, ref _buffer);
+            result.Disposable = callTrace;
 
             result.TxHash = _txHash;
-            result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+            result.CustomTracerResult = callTrace;
         }
 
         result.TxHash = _txHash;
