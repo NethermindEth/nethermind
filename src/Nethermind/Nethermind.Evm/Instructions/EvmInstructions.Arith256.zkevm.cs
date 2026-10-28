@@ -115,6 +115,36 @@ public static unsafe partial class EvmInstructions
             ZiskArithmetic.Mod((ulong*)pa, (ulong*)pb, (ulong*)pr);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void SignedDivide256(in UInt256 a, in UInt256 b, out UInt256 result)
+    {
+        if (!AirbenderFlag.IsActive)
+        {
+            Unsafe.SkipInit(out result);
+            Int256.Divide(
+                in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in a)),
+                in Unsafe.As<UInt256, Int256>(ref Unsafe.AsRef(in b)),
+                out Unsafe.As<UInt256, Int256>(ref result));
+            return;
+        }
+
+        // Truncating division of the magnitudes, negated when the signs differ.
+        bool negativeDividend = (long)a.u3 < 0;
+        bool negativeDivisor = (long)b.u3 < 0;
+        UInt256 dividend = negativeDividend ? Negate(in a) : a;
+        UInt256 divisor = negativeDivisor ? Negate(in b) : b;
+        WordDivision.DivRem(in dividend, in divisor, out result, out _);
+        if (negativeDividend != negativeDivisor)
+            result = Negate(in result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt256 Negate(in UInt256 value)
+    {
+        UInt256.Subtract(default, in value, out UInt256 negated);
+        return negated;
+    }
+
     /// <summary>Takes <c>(a * b) mod m</c> from the runner, for <paramref name="a"/> and <paramref name="b"/> below <paramref name="m"/>.</summary>
     /// <returns>Whether the runner's quotient and remainder passed the check; if not, the caller computes the result.</returns>
     /// <remarks>
