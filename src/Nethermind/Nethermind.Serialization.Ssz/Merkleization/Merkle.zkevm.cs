@@ -262,11 +262,7 @@ public static partial class Merkle
         ulong* schedule = stackalloc ulong[Sp1Sha256ScheduleLength];
         ulong* state = stackalloc ulong[Sp1Sha256StateLength];
         LoadSp1Sha256Block(in left, in right, schedule, state);
-
-        Accelerators.Sha256Extend(schedule);
-        Accelerators.Sp1Sha256Compress(schedule, state);
-        Accelerators.Sp1Sha256Compress((ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sp1Sha256PaddingSchedule)), state);
-
+        CompressSp1Sha256Block(schedule, state);
         parent = ReadSp1Sha256Digest(state);
     }
 
