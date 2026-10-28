@@ -140,8 +140,11 @@ public class FrameTxVerifyDosMeasurement
         TransactionResult probeResult = Process(AttackTx(verifyGas), probe);
         Assert.That(probeResult.TransactionExecuted, Is.False, "the attack transaction must not settle");
         string diag = $"ops={probe.Operations} high={probe.HighestRemaining} low={probe.LowestRemaining} err={probe.LastError}";
-        Assert.That(probe.LastError, Is.EqualTo(EvmExceptionType.OutOfGas), $"the frame must end by exhausting its budget ({diag})");
-        Assert.That((long)probe.Consumed, Is.GreaterThan(verifyGas * 99 / 100), $"nearly the whole verification budget must be burned ({diag})");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe.LastError, Is.EqualTo(EvmExceptionType.OutOfGas), $"the frame must end by exhausting its budget ({diag})");
+            Assert.That((long)probe.Consumed, Is.GreaterThan(verifyGas * 99 / 100), $"nearly the whole verification budget must be burned ({diag})");
+        }
 
         for (int i = 0; i < Warmup; i++) Process(AttackTx(verifyGas));
 
@@ -233,6 +236,6 @@ public class FrameTxVerifyDosMeasurement
             Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: (ulong)verifyGas, UInt256.Zero, default)],
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 }

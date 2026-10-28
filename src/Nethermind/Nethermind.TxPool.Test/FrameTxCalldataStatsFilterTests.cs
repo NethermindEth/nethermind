@@ -64,7 +64,9 @@ internal class FrameTxCalldataStatsFilterTests
         // the transaction does not carry.
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
 
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
     }
 
@@ -89,7 +91,9 @@ internal class FrameTxCalldataStatsFilterTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).TestObject;
         tx.NonceKeys = [UInt256.One];
 
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
         Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
     }
 
@@ -106,8 +110,11 @@ internal class FrameTxCalldataStatsFilterTests
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong unmeasured, out _, out _), Is.True);
         Accept(tx);
 
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measured, out _, out _), Is.True);
-        Assert.That(measured, Is.GreaterThan(unmeasured));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong measured, out _, out _), Is.True);
+            Assert.That(measured, Is.GreaterThan(unmeasured));
+        }
     }
 
     private static AcceptTxResult Accept(Transaction tx)

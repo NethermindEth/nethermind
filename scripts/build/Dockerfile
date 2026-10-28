@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.402-resolute@sha256:ed736da7c0253cf85c2d36b27f827665b90d7d0b3d153e716e83007a5200d9da
+FROM mcr.microsoft.com/dotnet/sdk:10.0.403-resolute@sha256:667f3cee6f24afb202d3e32c7941e3800bbac57dd70bb68f89e52a6245aff88f
 
 ARG COMMIT_HASH
 ARG SOURCE_DATE_EPOCH

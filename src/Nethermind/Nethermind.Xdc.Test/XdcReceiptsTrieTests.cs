@@ -40,11 +40,11 @@ internal class XdcReceiptsTrieTests
 
         Hash256 asEncoded = Root(XdcBlockProcessor.AsEncodedForTrie([typed], Spec));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(asEncoded, Is.EqualTo(Root(Receipt(BlockSigner, TxType.Legacy))));
             Assert.That(asEncoded, Is.Not.EqualTo(Root(typed)));
-        });
+        }
     }
 
     [TestCase(TxType.EIP1559)]
@@ -54,11 +54,11 @@ internal class XdcReceiptsTrieTests
         TxReceipt randomize = Receipt(TestItem.AddressC, txType);
         TxReceipt ordinary = Receipt(TestItem.AddressD, txType);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Root(XdcBlockProcessor.AsEncodedForTrie([randomize], Spec)), Is.EqualTo(Root(randomize)));
             Assert.That(Root(XdcBlockProcessor.AsEncodedForTrie([ordinary], Spec)), Is.EqualTo(Root(ordinary)));
-        });
+        }
     }
 
     // The caller keeps using these receipts after the root is taken — they are what gets stored and
@@ -73,7 +73,7 @@ internal class XdcReceiptsTrieTests
 
         TxReceipt[] forTrie = XdcBlockProcessor.AsEncodedForTrie(receipts, Spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(forTrie, Is.Not.SameAs(receipts));
             for (int i = 0; i < receipts.Length; i++)
@@ -81,7 +81,7 @@ internal class XdcReceiptsTrieTests
                 Assert.That(receipts[i], Is.SameAs(before[i]));
                 Assert.That(receipts[i].TxType, Is.EqualTo(typesBefore[i]));
             }
-        });
+        }
     }
 
     [Test]

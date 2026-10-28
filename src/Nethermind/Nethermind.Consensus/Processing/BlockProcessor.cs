@@ -16,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -28,6 +29,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
@@ -91,13 +93,18 @@ public partial class BlockProcessor(
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
-        catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
+        catch (InvalidBlockException ex) when (IsBlockAccessListFailure(ex))
         {
-            // Some checks run only on the parallel path, so a false positive on a valid block must stand out from
-            // ordinary invalid blocks, even when a sequential retry later accepts it.
-            Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
-            if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
-            if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
+            if (_balManager.ParallelExecutionEnabled)
+            {
+                // Some checks run only on the parallel path, so a false positive on a valid block must stand out from
+                // ordinary invalid blocks, even when a sequential retry later accepts it.
+                Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
+                if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+                if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
+            }
+
+            KeepGeneratedBlockAccessList(suggestedBlock, block.GeneratedBlockAccessList);
             throw;
         }
         finally
@@ -124,6 +131,10 @@ public partial class BlockProcessor(
         return false;
     }
 
+    // The manager resets its generated access list in place for the next block, so the bad-block store gets a copy.
+    private static void KeepGeneratedBlockAccessList(Block suggestedBlock, GeneratedBlockAccessList? generated) =>
+        suggestedBlock.EncodedGeneratedBlockAccessList = generated is null ? null : BlockAccessListDecoder.EncodeToBytes(generated);
+
     private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
         e is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException
             or BlockAccessListManager.ParallelExecutionException { InnerException: BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException };
@@ -135,6 +146,7 @@ public partial class BlockProcessor(
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             block.DisposeAccountChanges();
+            KeepGeneratedBlockAccessList(suggestedBlock, suggestedBlock.GeneratedBlockAccessList);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
         }

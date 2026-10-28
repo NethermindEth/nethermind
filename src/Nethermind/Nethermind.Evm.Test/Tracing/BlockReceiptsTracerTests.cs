@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +18,54 @@ namespace Nethermind.Evm.Test.Tracing
     [TestFixture]
     public class BlockReceiptsTracerTests
     {
+        [Test]
+        public void Forwards_current_transaction_cancellation([Values] bool nested)
+        {
+            using CancellationTokenSource cancellation = new();
+            Transaction first = Build.A.Transaction.WithNonce(0).TestObject;
+            Transaction second = Build.A.Transaction.WithNonce(1).TestObject;
+            using CancellationTxTracer transactionTracer = new(NullTxTracer.Instance, cancellation.Token);
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(first).Returns(transactionTracer);
+            blockTracer.StartNewTxTrace(second).Returns(NullTxTracer.Instance);
+            using BlockReceiptsTracer? inner = nested ? new() : null;
+            if (inner is not null)
+            {
+                inner.SetOtherTracer(blockTracer);
+                blockTracer = inner;
+            }
+            using BlockReceiptsTracer tracer = new();
+            ITxTracer capabilities = tracer;
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(first, second).TestObject);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capabilities.IsCancelable, Is.False);
+                Assert.That(capabilities.IsCancelled, Is.False);
+            }
+
+            tracer.StartNewTxTrace(first);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capabilities.IsCancelable, Is.True);
+                Assert.That(capabilities.IsCancelled, Is.False);
+            }
+            cancellation.Cancel();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capabilities.IsCancelable, Is.True);
+                Assert.That(capabilities.IsCancelled, Is.True);
+            }
+
+            tracer.EndTxTrace();
+            tracer.StartNewTxTrace(second);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capabilities.IsCancelable, Is.False);
+                Assert.That(capabilities.IsCancelled, Is.False);
+            }
+        }
+
         [Test]
         public void Nested_receipts_tracers_retain_frame_data([Values] bool failedFrame, [Values] bool blockHandlesFrames)
         {
@@ -251,10 +300,16 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.SetReceipt(2, receipt);
 
-            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
-            Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
-            Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
-            Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(3));
+                Assert.That(wrappedTracer.TxReceipts.Length, Is.EqualTo(3));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts[2], Is.SameAs(receipt));
+                Assert.That(wrappedTracer.TxReceipts[2], Is.SameAs(receipt));
+            }
         }
 
         [Test]
@@ -291,8 +346,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             tracer.ResetForParallelTx(nextBlock, nextOtherTracer);
 
-            Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
-            Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+                Assert.That(tracer.InnerTracer, Is.SameAs(NullTxTracer.Instance));
+            }
             previousOtherTracer.Received(1).StartNewBlockTrace(previousBlock);
             previousOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
             nextOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);

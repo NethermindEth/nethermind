@@ -174,14 +174,22 @@ public partial class PatriciaTree
                     ref childPath,
                     child,
                     flipCount,
-                    flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+                    flags & ~Flags.DoNotParallelize); // A nested level with enough entries under a full branch parallelizes too.
 
                 jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
 
                 return workerTraverseStack;
             },
-            ReturnTraverseStack
+            ReturnJobTraverseStack
         );
+    }
+
+    /// <summary>Returns a worker's stack to its thread empty, also when one of its jobs threw part way through a walk.</summary>
+    /// <remarks>The loop runs this after an exception too, and the next write on the thread takes the stack as it finds it.</remarks>
+    private static void ReturnJobTraverseStack(TraverseStack stack)
+    {
+        stack.Clear();
+        ReturnTraverseStack(stack);
     }
 
     /// <param name="ctx">Just to reduce the param count</param>
