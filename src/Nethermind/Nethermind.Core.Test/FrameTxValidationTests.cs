@@ -674,11 +674,13 @@ public class FrameTxValidationTests
         Transaction nonZeros = CreateValidFrameTx(t => t.FrameSignatures =
             [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, ones)]);
 
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _), Is.True);
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _), Is.True);
+        bool zerosBudgeted = FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _);
+        bool nonZerosBudgeted = FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(zerosBudgeted, Is.True);
+            Assert.That(nonZerosBudgeted, Is.True);
             Assert.That(zerosIntrinsic == nonZerosIntrinsic, Is.EqualTo(samePrice));
             Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
         }
