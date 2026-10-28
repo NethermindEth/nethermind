@@ -12,6 +12,8 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 [JsonConverter(typeof(GethLikeTxTraceCollectionConverter))]
 public record GethLikeTxTraceCollection(IReadOnlyCollection<GethLikeTxTrace> Traces) : IReadOnlyCollection<GethLikeTxTrace>, IDisposable
 {
+    internal bool IncludeErrorResult { get; init; }
+
     public IEnumerator<GethLikeTxTrace> GetEnumerator() => Traces.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
