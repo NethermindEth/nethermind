@@ -120,6 +120,7 @@ public class ResourcePoolTests
                 Assert.That(content, Is.SameAs(first));
                 Assert.That(content.Accounts, Is.Empty);
                 Assert.That(content.ReadAccounts, Is.Empty);
+                Assert.That(content.OwnerReadAccounts ?? [], Is.Empty);
                 Assert.That(content.Storages, Is.Empty);
                 Assert.That(content.SelfDestructedStorageAddresses, Is.Empty);
                 Assert.That(content.StateNodes, Is.Empty);
@@ -128,6 +129,7 @@ public class ResourcePoolTests
 
             content.Accounts[address] = new Account(1, 2);
             content.ReadAccounts[address] = new Account(3, 4);
+            (content.OwnerReadAccounts ??= [])[address] = new Account(5, 6);
             content.Storages[(address, UInt256.One)] = UInt256.One;
             content.SelfDestructedStorageAddresses[address] = true;
             content.StateNodes[TreePath.Empty] = new TrieNode(NodeType.Unknown, TestItem.KeccakA);

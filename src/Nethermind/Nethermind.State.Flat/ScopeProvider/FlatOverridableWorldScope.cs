@@ -108,14 +108,16 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
         // Everything this scope executes is read-only (calls, simulations, traces, proofs, Flashbots block validation,
         // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
-        // snapshots' negative filter.
+        // snapshots' negative filter, and the thread that runs it caches its account reads without the stripe locks
+        // of the shared read cache.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
             _trieNodeCache,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,
-            filterInMemorySlotReads: true
+            filterInMemorySlotReads: true,
+            cacheOwnerReadsWithoutLocks: true
         );
     }
 

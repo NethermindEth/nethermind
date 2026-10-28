@@ -179,6 +179,13 @@ public sealed class SnapshotContent : IDisposable, IResettable
     /// </remarks>
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> ReadAccounts = new();
 
+    /// <summary>Accounts the opening thread of a read-only bundle read, cached for that thread alone.</summary>
+    /// <remarks>
+    /// Only that thread reads or writes it while the bundle is open, so caching a read takes no stripe lock; other
+    /// threads keep using <see cref="ReadAccounts"/>. Created on first use and kept, with its capacity, across pool reuse.
+    /// </remarks>
+    public Dictionary<HashedKey<Address>, Account?>? OwnerReadAccounts;
+
     public void Reset()
     {
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
@@ -194,6 +201,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         // the lock-free clear skips ~thousands of inflated Monitor acquisitions per return.
         Accounts.NoLockClear();
         ReadAccounts.NoLockClear();
+        OwnerReadAccounts?.Clear();
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateNodes.Clear();
