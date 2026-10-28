@@ -539,9 +539,8 @@ public sealed partial class KeccakHash
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         nuint length = (nuint)node.Length;
 
-        fixed (byte* pinned = node)
+        fixed (byte* data = node)
         {
-            byte* data = StrictAlignmentFlag.IsActive ? AlignedDown(pinned) : pinned;
             ZeroCapacity(ref retained);
             AbsorbBlock(ref retained, data, intoZeroState: true);
             Accelerators.KeccakF(ref retained);
@@ -811,7 +810,7 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Absorbs a whole rate block of <paramref name="data"/>.</summary>
-    /// <param name="intoZeroState">Whether the state's rate lanes are still zero, so the block is written rather than XORed.</param>
+    /// <param name="intoZeroState">Whether the state's rate lanes are uninitialized, so the block is written rather than XORed.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
@@ -825,7 +824,7 @@ public sealed partial class KeccakHash
             return;
         }
 
-        if (CanXorin(data))
+        if (!intoZeroState && CanXorin(data))
         {
             Xorin(ref lane, data, HASH_DATA_AREA);
             return;
@@ -956,11 +955,21 @@ public sealed partial class KeccakHash
     /// <see cref="XorVectors"/> is compiled for the host as well; this file is not, and riscv64 has no
     /// vector width, so on the only target that reaches here the gate would be a constant.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
+    private static unsafe void AbsorbFirstBlock(Span<byte> state, ReadOnlySpan<byte> block)
     {
         if (block.Length != HASH_DATA_AREA)
         {
             XorVectors(state, block);
+            return;
+        }
+
+        if (Sp1Flag.IsActive)
+        {
+            fixed (byte* data = block)
+            {
+                AbsorbBlock(ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(state)), data, intoZeroState: true);
+            }
+
             return;
         }
 
