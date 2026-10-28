@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IO;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Test;
@@ -140,6 +141,68 @@ public class JsonRpcResponseWriterStreamingIdTests
             Assert.That(document.RootElement[0].GetInt32(), Is.EqualTo(1));
             Assert.That(document.RootElement[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
             Assert.That(transport.WrittenCount, Is.EqualTo(initialWrittenCount + stream.Length));
+        }
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(false, 1)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    [TestCase(true, 2)]
+    [NonParallelizable]
+    public async Task Streamed_deadline_replaces_only_the_failing_batch_item(bool rewindable, int commitMode)
+    {
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("deadline-batch");
+        CountingWriter transport = rewindable
+            ? new RewindableStreamPipeWriter(stream, initialWrittenCount: 1234)
+            : new CountingStreamPipeWriter(stream, initialWrittenCount: 1234);
+        RecordingObserver observer = new();
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = new JsonRpcId(42L),
+            Result = new GethLikeTxTraceStreamingBlockResult((writer, pipe, token) =>
+            {
+                writer.WriteStringValue(new string('a', commitMode == 2 ? 32 * 1024 : 1));
+                writer.Flush();
+                if (commitMode == 1) pipe!.FlushAsync(token).GetAwaiter().GetResult();
+                throw new GethTraceDeadlineException();
+            }, new CancellationTokenSource(), NullLogger.Instance) { PropagateExecutionTimeout = true },
+            Streaming = CreateStreamingContext()
+        };
+        response.ObserveStreamedResult(observer, NullLogger.Instance);
+        response.Streaming.ReportCompletion = true;
+        long errors = Metrics.JsonRpcErrors;
+        long successes = Metrics.JsonRpcSuccesses;
+        try
+        {
+            transport.Write("[{\"jsonrpc\":\"2.0\",\"result\":\"previous\",\"id\":41},"u8);
+            Assert.That(transport.WrittenCount, Is.GreaterThan(1234));
+            await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions,
+                isBatch: true, CancellationToken.None);
+            transport.Write("]"u8);
+            await transport.FlushAsync();
+        }
+        finally
+        {
+            await transport.CompleteAsync();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        JsonElement previous = document.RootElement[0];
+        JsonElement failed = document.RootElement[1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+            Assert.That(previous.GetProperty("id").GetInt32(), Is.EqualTo(41));
+            Assert.That(previous.GetProperty("result").GetString(), Is.EqualTo("previous"));
+            Assert.That(failed.GetProperty("id").GetInt32(), Is.EqualTo(42));
+            Assert.That(failed.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(failed.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
+            Assert.That(failed.TryGetProperty("result", out _), Is.False);
+            Assert.That(transport.WrittenCount, Is.EqualTo(1234 + stream.Length));
+            Assert.That(observer.Succeeded, Is.False);
+            Assert.That(Metrics.JsonRpcErrors - errors, Is.EqualTo(1));
+            Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
         }
     }
 
