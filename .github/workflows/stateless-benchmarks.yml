@@ -46,7 +46,7 @@ jobs:
           filter: blob:none
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
         with:
           global-json-file: global.json
 
