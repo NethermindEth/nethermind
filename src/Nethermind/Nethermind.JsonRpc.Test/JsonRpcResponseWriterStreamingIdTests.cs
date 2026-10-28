@@ -166,7 +166,8 @@ public class JsonRpcResponseWriterStreamingIdTests
                 writer.Flush();
                 if (commitMode == 1) pipe!.FlushAsync(token).GetAwaiter().GetResult();
                 throw new GethTraceDeadlineException();
-            }, new CancellationTokenSource(), NullLogger.Instance) { PropagateExecutionTimeout = true },
+            }, new CancellationTokenSource(), NullLogger.Instance)
+            { PropagateExecutionTimeout = true },
             Streaming = CreateStreamingContext()
         };
         response.ObserveStreamedResult(observer, NullLogger.Instance);

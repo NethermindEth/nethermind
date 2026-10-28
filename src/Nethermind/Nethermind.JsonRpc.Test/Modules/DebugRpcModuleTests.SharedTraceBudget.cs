@@ -172,23 +172,24 @@ public partial class DebugRpcModuleTests
         GethTraceOptions options = new()
         {
             StreamMode = true,
-            Tracer = immediateJavaScript ? "{fault:function(){},result:function(){return {};}}" : null,
             Timeout = immediateJavaScript ? TimeSpan.Zero : TimeSpan.FromSeconds(1),
             DeadlineClock = clock,
             TxHash = selection == "selected" ? block.Transactions[2].Hash : selection == "unmatched" ? TestItem.KeccakH : null
         };
+        if (immediateJavaScript) options = options with { Tracer = "{fault:function(){},result:function(){return {};}}" };
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = method == "debug_traceBlockByHash"
             ? chain.DebugRpcModule.debug_traceBlockByHash(block.Hash!, options)
             : chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(response.Data, Is.InstanceOf<IStreamableResult>());
+        IReadOnlyCollection<GethLikeTxTrace> traces = response.Data;
+        Assert.That(traces, Is.InstanceOf<IStreamableResult>());
         using RecyclableMemoryStream output = RecyclableStream.GetStream("deadline-route");
         RewindableStreamPipeWriter writer = new(output);
         bool cancelled = expiry == "external" && selection != "empty";
         bool expired = expiry is "before" or "after" && selection is "full" or "selected";
         try
         {
-            async Task Write() => await ((IStreamableResult)response.Data).WriteToAsync(writer, external.Token);
+            async Task Write() => await ((IStreamableResult)traces).WriteToAsync(writer, external.Token);
             if (cancelled)
             {
                 await Assert.CatchAsync<OperationCanceledException>(Write);
