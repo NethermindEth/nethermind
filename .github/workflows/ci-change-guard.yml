@@ -23,7 +23,7 @@ jobs:
         with:
           script: |
             const retriggerLabel = 'ci-change-reviewed';
-            const guardedPrefixes = ['.github/workflows/', '.github/actions/', '.github/CODEOWNERS', 'scripts/', '.agents/'];
+            const guardedPrefixes = ['.github/', 'scripts/', 'tools/scripts/', '.agents/'];
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             const issue_number = pr.number;
@@ -72,6 +72,14 @@ jobs:
             // The commits API stops at 250 entries; unlisted committers could otherwise approve their own changes.
             if (commits.length < pr.commits) {
               core.setFailed(`Only ${commits.length} of ${pr.commits} commits could be listed; squash or split the PR.`);
+              return;
+            }
+            // An email not linked to an account hides who wrote the commit, so its author could approve it.
+            const unlinked = commits.filter(c => !c.author || !c.committer).map(c => c.sha.slice(0, 7));
+            if (unlinked.length > 0) {
+              core.setFailed(
+                `Commits ${unlinked.join(', ')} have an author or committer email that isn't linked to a GitHub account, ` +
+                `so their contributors can't be excluded from approving. Link the email to the account or re-author the commits.`);
               return;
             }
             const contributors = new Set(
