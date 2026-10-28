@@ -307,6 +307,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             ["JB_ETH_CALL_CORPUS_FILE"] = corpus, ["CORPUS_METHOD"] = Get("CORPUS_METHOD"), ["CORPUS_TRACER"] = Get("CORPUS_TRACER"), ["CORPUS_TRACE_TYPES"] = Get("CORPUS_TRACE_TYPES"),
             ["RESOURCE_SAMPLER_CONTAINER"] = sample ? container : "", ["RESOURCE_SAMPLER_OUT"] = sample ? Path.Combine(cell, "resources.json") : ""
         };
+        if (config == "transaction-lookups-snapshot") environment["RPC_BENCH_TRANSACTION_LOOKUP_MANIFEST"] = Path.Combine(Get("OUT_DIR"), "transaction-lookup-workload.json");
         if (warmup) environment["JB_MAX_FAIL_RATE_PCT"] = "100";
         return (await Script("run-json-bench.cs", [], environment, cancellationToken)).Code;
     }
