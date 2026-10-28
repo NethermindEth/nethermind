@@ -222,20 +222,13 @@ public class PatriciaTreeBulkSetterTests
                 byte[] key = new byte[32];
                 rng.NextBytes(key);
                 key[0] = (byte)prefix;
-                tree.Set(key, RandomValue(rng));
-                if (i == 0 && (prefix & 0xf) < 9) updates.Add((new Hash256(key), RandomValue(rng)));
+                tree.Set(key, MakeRandomValue(rng, canBeNull: false));
+                if (i == 0 && (prefix & 0xf) < 9) updates.Add((new Hash256(key), MakeRandomValue(rng, canBeNull: false)));
             }
         }
 
         tree.Commit();
         return (tree.RootHash, updates);
-    }
-
-    private static byte[] RandomValue(Random rng)
-    {
-        byte[] value = new byte[32];
-        rng.NextBytes(value);
-        return value;
     }
 
     private static PatriciaTree CreateTree(MemDb db, INodeStorage.KeyScheme scheme, Hash256 root, int missingDepth = int.MaxValue, Action<TreePath> onLoad = null) =>
