@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeBuffer;
@@ -265,6 +267,25 @@ public class ParallelUpdateRootTests
         tree.Apply([(left, Value(7)), (right, Value(8))]);
     }
 
+    [Test]
+    public void Phase_time_observes_each_partitions_sort_and_fold_once_and_every_commit([Values(64, 20000)] int keysPerZone)
+    {
+        (byte[] Key, byte[]? Value)[] entries = RandomZoneEntries(new Random(keysPerZone), keysPerZone);
+        using PbtNodeGroupStore store = new();
+        ValueHash256 root = store.Fold(default, entries);
+        using PbtPartitionBatches changes = PreparePartitions(Changes(entries));
+        PhaseRecorder phaseTime = new();
+
+        TrieUpdater.UpdateRoot(store, (root, 0), changes, new ConcurrencyController(3), PbtTreeHarness.FanOut(8), null, phaseTime);
+        string[] phases = [.. phaseTime.Observations.Select(static observation => observation.Phase)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(phases.Where(static phase => !phase.EndsWith("/commit")), Is.EquivalentTo(new[] { "account/sort", "account/fold", "storage/sort", "storage/fold" }));
+            Assert.That(phases.Where(static phase => phase.EndsWith("/commit")).Distinct(), Is.EquivalentTo(new[] { "account/commit", "storage/commit", "root/commit" }));
+            Assert.That(phaseTime.Observations.Select(static observation => observation.Ticks), Is.All.GreaterThanOrEqualTo(0));
+        }
+    }
+
     // 20000 keys per zone fan out at depth 9 and, with an 8-operation worker minimum, again at depth 12, so the join
     // and failure paths cover nested workers. A quota of three has the spare worker the root slot fan-out is gated on.
     // The injected failure sits at depth 12, the deepest the 64-key tree reaches.
@@ -287,7 +308,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null));
+            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null, null));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -299,7 +320,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null).Hash;
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, (root, 0), prepared, foldQuota, fanOut, null, null).Hash;
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -649,7 +670,7 @@ public class ParallelUpdateRootTests
             ValueHash256 root;
             try
             {
-                root = TrieUpdater.UpdateRoot(this, (_root, _inputRoot), batches, new ConcurrencyController(FoldConcurrency), fanOut, null).Hash;
+                root = TrieUpdater.UpdateRoot(this, (_root, _inputRoot), batches, new ConcurrencyController(FoldConcurrency), fanOut, null, null).Hash;
                 LastComplete = true;
             }
             finally
@@ -809,6 +830,14 @@ public class ParallelUpdateRootTests
             entries[index] = (key, Value((byte)(index % 4 + 1)));
         }
         return entries;
+    }
+
+    /// <summary>Records each observation as <c>partition/phase</c>, from the concurrent folds.</summary>
+    private sealed class PhaseRecorder : IMetricObserver
+    {
+        public ConcurrentQueue<(string Phase, double Ticks)> Observations { get; } = new();
+
+        public void Observe(double value, IMetricLabels? labels = null) => Observations.Enqueue((string.Join('/', labels!.Labels), value));
     }
 
     private sealed class CoordinatedStore : IPbtStore, IDisposable

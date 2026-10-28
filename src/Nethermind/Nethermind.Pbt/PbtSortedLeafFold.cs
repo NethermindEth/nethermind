@@ -42,7 +42,7 @@ public static class PbtSortedLeafFold
         {
             cancellationToken.ThrowIfCancellationRequested();
             using (PbtPartitionBatches prepared = changes.Build())
-                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null);
+                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null, null);
             store.ReleaseSuperseded();
             changes.Reset();
             onWindowFolded(windowCount);

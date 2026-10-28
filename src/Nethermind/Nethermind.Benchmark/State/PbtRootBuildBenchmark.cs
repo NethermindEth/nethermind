@@ -128,6 +128,6 @@ public class PbtRootBuildBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_shardedOperations), new ArrayPoolList<int>(_zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null).Hash;
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null, null).Hash;
     }
 }

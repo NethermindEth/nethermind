@@ -477,7 +477,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
                 long updaterStart = Stopwatch.GetTimestamp();
-                _tree.UpdateRoot(changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime);
+                _tree.UpdateRoot(changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, Metrics.PbtTrieUpdaterPhaseTime);
                 Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
                 Bundle.CompleteLeafChanges();
             }

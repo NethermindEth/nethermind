@@ -100,7 +100,7 @@ public class Eip8297CanonicalTreeTests
         table[0] = 1;
         table[1] = 1;
         using PbtWriteBatch<PbtPath> batch = new(operations, table);
-        Action update = () => TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
+        Action update = () => TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, null);
 
         if (foldFails is null) batch.Dispose();
         // A single zone never fans out, so the failure surfaces unwrapped.

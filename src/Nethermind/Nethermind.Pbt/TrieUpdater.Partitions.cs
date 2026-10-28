@@ -16,6 +16,9 @@ public static partial class TrieUpdater
 {
     private static readonly StringLabel _accountFoldLabel = new("account");
     private static readonly StringLabel _storageFoldLabel = new("storage");
+    private static readonly FoldPhaseLabels _accountPhaseLabels = new("account");
+    private static readonly FoldPhaseLabels _storagePhaseLabels = new("storage");
+    private static readonly FoldPhaseLabels _rootPhaseLabels = new("root");
 
     /// <summary>The root group slot the account and code zones share, both of whose keys are <see cref="PbtPath"/>s.</summary>
     private const int AccountSlot = Eip8297KeyDerivation.AccountZone >> ZoneSlotShift;
@@ -43,6 +46,10 @@ public static partial class TrieUpdater
     /// <param name="foldQuota">The worker slots the fold's parallel parts share.</param>
     /// <param name="fanOut">The fewest operations worth handing a worker, by the stored size below its buckets.</param>
     /// <param name="partitionFoldTime">Observes each root slot's fold time, labelled by partition; <c>null</c> to skip.</param>
+    /// <param name="phaseTime">
+    /// Observes each partition's sort and fold time, and every commit's time, labelled by partition (<c>root</c> for the root
+    /// group's commit) and phase as <see cref="FoldPhaseLabels"/> names them; <c>null</c> to skip.
+    /// </param>
     /// <returns>The root of the updated tree and its group's pointer, which is 0 for an empty tree.</returns>
     public static (ValueHash256 Hash, ulong Pointer) UpdateRoot(
         IPbtStore store,
@@ -50,11 +57,12 @@ public static partial class TrieUpdater
         PbtPartitionBatches changes,
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
-        IMetricObserver? partitionFoldTime)
+        IMetricObserver? partitionFoldTime,
+        IMetricObserver? phaseTime)
     {
         Debug.Assert(Eip8297KeyDerivation.CodeZone >> ZoneSlotShift == AccountSlot && StorageSlot != AccountSlot, "Only the account and code zones share a root slot.");
-        using RootSlotFold<PbtPath, PbtNodePath> accountFold = new(store, foldQuota, fanOut, partitionFoldTime, _accountFoldLabel);
-        using RootSlotFold<PbtStoragePath, PbtStorageNodePath> storageFold = new(store, foldQuota, fanOut, partitionFoldTime, _storageFoldLabel);
+        using RootSlotFold<PbtPath, PbtNodePath> accountFold = new(store, foldQuota, fanOut, partitionFoldTime, _accountFoldLabel, phaseTime, _accountPhaseLabels);
+        using RootSlotFold<PbtStoragePath, PbtStorageNodePath> storageFold = new(store, foldQuota, fanOut, partitionFoldTime, _storageFoldLabel, phaseTime, _storagePhaseLabels);
         accountFold.Add(changes.Account);
         accountFold.Add(changes.Code);
         storageFold.Add(changes.Storage);
@@ -68,7 +76,7 @@ public static partial class TrieUpdater
         FoldWorkingState workingState = FoldWorkingState.Rent();
         try
         {
-            FoldContext context = new(store, foldQuota, null, fanOut, workingState, null);
+            FoldContext context = new(store, foldQuota, null, fanOut, workingState, null, phaseTime, _rootPhaseLabels);
             // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
             if (currentRoot.Hash == default)
             {
@@ -104,12 +112,26 @@ public static partial class TrieUpdater
             hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
         }
         GroupPublication publication = PublishGroup(context, ref rootReader, rootWriter, rootPath);
-        return (hash, context.WorkingState.Commit(context.Store, publication.Pointer));
+        return (hash, context.Commit(publication.Pointer));
+    }
+
+    /// <summary>The labels of one partition's phases on the trie updater's phase observer: <c>sort</c>, <c>fold</c> and <c>commit</c>.</summary>
+    /// <remarks>The labels are stable, so an instance must live for the process.</remarks>
+    public sealed class FoldPhaseLabels(string partition)
+    {
+        public IMetricLabels Sort { get; } = new PhaseLabel(partition, "sort");
+        public IMetricLabels Fold { get; } = new PhaseLabel(partition, "fold");
+        public IMetricLabels Commit { get; } = new PhaseLabel(partition, "commit");
+
+        private sealed class PhaseLabel(string partition, string phase) : IStableMetricLabels
+        {
+            public string[] Labels { get; } = [partition, phase];
+        }
     }
 
     /// <summary>The operations under one root boundary slot, all of one key type, folded below the root group.</summary>
     private sealed class RootSlotFold<TKey, TPath>(IPbtStore store, ConcurrencyController foldQuota,
-        FoldFanOut fanOut, IMetricObserver? foldTime, StringLabel foldLabel) : IDisposable
+        FoldFanOut fanOut, IMetricObserver? foldTime, StringLabel foldLabel, IMetricObserver? phaseTime, FoldPhaseLabels phaseLabels) : IDisposable
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -147,16 +169,23 @@ public static partial class TrieUpdater
             using TrieUpdater<TKey, TPath>.SpareWorkingStates spares = new();
             try
             {
-                TrieUpdater<TKey, TPath>.FoldContext context = new(store, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut, workingState, spares);
+                TrieUpdater<TKey, TPath>.FoldContext context = new(store, foldQuota, _operations!.UnsafeGetInternalArray(), fanOut, workingState, spares, phaseTime, phaseLabels);
                 Span<PbtWriteOperation<TKey>> operations = _operations.AsSpan();
                 // The producer grouped each zone by its shard nibble, so sorted shards sort the zone; each shard's leaves are
                 // hashed with its sort, so the fold reads leaf hashes in place of values.
                 foreach ((int zoneStart, int count, ArrayPoolList<int> table) in _zones)
                     TrieUpdater<TKey, TPath>.SortShards(context, operations.Slice(zoneStart, count), table.AsSpan());
                 TrieUpdater<TKey, TPath>.AssertSorted(operations);
+                long sorted = phaseTime is null ? 0 : Stopwatch.GetTimestamp();
                 TrieUpdater<TKey, TPath>.SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
                     TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtVariableTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
-                foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
+                long folded = Stopwatch.GetTimestamp();
+                foldTime?.Observe(folded - start, foldLabel);
+                if (phaseTime is not null)
+                {
+                    phaseTime.Observe(sorted - start, phaseLabels.Sort);
+                    phaseTime.Observe(folded - sorted, phaseLabels.Fold);
+                }
                 return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta, GroupPointer = result.GroupPointer };
             }
             finally

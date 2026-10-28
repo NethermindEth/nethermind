@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt.NodeBuffer;
 using static Nethermind.Pbt.TrieUpdater;
@@ -175,9 +176,10 @@ public static partial class TrieUpdater<TKey, TPath>
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
     /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback and takes every group record.
     /// A parallel run folds under a context of its own, carrying a working state from <see cref="Spares"/>, which is set with <see cref="Operations"/>.
+    /// Commits are timed on <see cref="PhaseTime"/>, when set, under <see cref="PhaseLabels"/>.
     /// </remarks>
     public readonly struct FoldContext(IPbtStore store, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations,
-        FoldFanOut fanOut, FoldWorkingState workingState, SpareWorkingStates? spares)
+        FoldFanOut fanOut, FoldWorkingState workingState, SpareWorkingStates? spares, IMetricObserver? phaseTime, FoldPhaseLabels? phaseLabels)
     {
         public IPbtStore Store { get; } = store;
         public ConcurrencyController FoldQuota { get; } = foldQuota;
@@ -185,5 +187,18 @@ public static partial class TrieUpdater<TKey, TPath>
         public FoldFanOut FanOut { get; } = fanOut;
         public FoldWorkingState WorkingState { get; } = workingState;
         public SpareWorkingStates? Spares { get; } = spares;
+        public IMetricObserver? PhaseTime { get; } = phaseTime;
+        public FoldPhaseLabels? PhaseLabels { get; } = phaseLabels;
+
+        /// <summary>Commits the working state's pending groups from <paramref name="top"/>, as <see cref="FoldWorkingState.Commit"/> does, observing the time as the commit phase.</summary>
+        public ulong Commit(ulong top)
+        {
+            if (PhaseTime is null) return WorkingState.Commit(Store, top);
+
+            long start = Stopwatch.GetTimestamp();
+            ulong pointer = WorkingState.Commit(Store, top);
+            PhaseTime.Observe(Stopwatch.GetTimestamp() - start, PhaseLabels!.Commit);
+            return pointer;
+        }
     }
 }

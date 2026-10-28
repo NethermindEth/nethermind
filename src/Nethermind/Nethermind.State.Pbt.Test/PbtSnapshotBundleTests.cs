@@ -199,7 +199,7 @@ public class PbtSnapshotBundleTests
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(new PbtSnapshotStore(bundle, (bundle.TreeRoot, bundle.RootGroupPointer)));
-        ValueHash256 updated = TrieUpdater.UpdateRoot(counted, (bundle.TreeRoot, bundle.RootGroupPointer), changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null).Hash;
+        ValueHash256 updated = TrieUpdater.UpdateRoot(counted, (bundle.TreeRoot, bundle.RootGroupPointer), changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, null).Hash;
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
@@ -240,7 +240,7 @@ public class PbtSnapshotBundleTests
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(store);
-        TrieUpdater.UpdateRoot(counted, store.Root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
+        TrieUpdater.UpdateRoot(counted, store.Root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, null);
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
@@ -954,7 +954,7 @@ public class PbtSnapshotBundleTests
         SetAccountWithCode(bundle, TestItem.AddressB, other, new CodeInfo(otherBytes), codeFirst: true);
         ulong initialFrontier = buffer.WriteFrontier();
         CountingStore store = new(new PbtSnapshotStore(bundle, (root, bundle.RootGroupPointer))) { FailedZone = failedZone };
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, bundle.RootGroupPointer), bundle.PrepareLeafChanges(), new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null));
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, bundle.RootGroupPointer), bundle.PrepareLeafChanges(), new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null, null));
         if (failedZone == 0xFF)
         {
             Assert.That(store.ApplyCount, Is.GreaterThan(0));

@@ -251,7 +251,7 @@ public static partial class TrieUpdater<TKey, TPath>
         FoldWorkingState workingState = spares.Rent();
         try
         {
-            FoldContext runContext = new(context.Store, context.FoldQuota, context.Operations, context.FanOut, workingState, spares);
+            FoldContext runContext = new(context.Store, context.FoldQuota, context.Operations, context.FanOut, workingState, spares, context.PhaseTime, context.PhaseLabels);
             for (int fold = run == 0 ? 0 : runEnds[run - 1]; fold < runEnds[run]; fold++)
                 folds[fold].Fold(runContext, groupPath, bitDepth, foldedAhead);
         }
@@ -402,7 +402,7 @@ public static partial class TrieUpdater<TKey, TPath>
         path.AppendMut(slot);
         AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, slot, descendantBytes, boundary.GroupPointer);
         SlotNode result = FoldSortedRange(context, ref owner, boundary, operations, ref path, bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, encoding);
-        result.GroupPointer = context.WorkingState.Commit(context.Store, result.GroupPointer);
+        result.GroupPointer = context.Commit(result.GroupPointer);
         return result;
     }
 

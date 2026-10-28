@@ -350,7 +350,7 @@ internal static class PbtStoreTestExtensions
         ConcurrencyController foldQuota, FoldFanOut fanOut)
     {
         using PbtPartitionBatches changes = PreparePartitions(writes);
-        ValueHash256 folded = TrieUpdater.UpdateRoot(store, (root, 0), changes, foldQuota, fanOut, null).Hash;
+        ValueHash256 folded = TrieUpdater.UpdateRoot(store, (root, 0), changes, foldQuota, fanOut, null, null).Hash;
         // An emptied tree writes no root group, so nothing pruned its groups.
         if (folded == default && root != default && store is PbtNodeGroupStore groups) groups.RetainTreeGroups(emptyTree: true);
         return folded;
