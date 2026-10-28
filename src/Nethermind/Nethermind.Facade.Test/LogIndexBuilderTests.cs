@@ -243,6 +243,7 @@ public class LogIndexBuilderTests
         [Values(1, 16, MaxBlock)] int batchSize,
         [Values(
             new[] { -1, -1 }, // -1 is treated as null
+            new[] { 0, 2 }, // stored max more than a batch below the barrier
             new[] { 0, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock / 2 },
             new[] { MaxSyncBlock / 2, MaxSyncBlock },
