@@ -144,7 +144,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     /// <remarks>leanVM's proving arena gives each thread that allocates during a proof its own slab and never returns a slab's
     /// touched pages, so proofs called from changing thread-pool threads each leave another proof's peak resident (about
     /// 1.5 GB for four witnesses) until the process runs out of memory. The native prover lock serializes proofs anyway.
-    /// The queue is bounded, so callers that bypass the managed proving gate are refused rather than pile up behind the prover,
+    /// The queue is bounded, so callers that bypass the managed proving gate are refused with
+    /// <see cref="LeanProverBusyException"/> rather than pile up behind the prover,
     /// and it is completed at process exit. A caller that must stop waiting runs the call on a task of its own, as
     /// <c>ProductionProofCache</c> does.</remarks>
     private static class ProverThread
@@ -182,7 +183,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
                 });
             }
             catch (InvalidOperationException) { queued = false; }
-            if (!queued) throw new InvalidOperationException("The Lean prover is busy or shutting down; retry later.");
+            if (!queued) throw new LeanProverBusyException();
             done.Wait();
             failure?.Throw();
             return result!;

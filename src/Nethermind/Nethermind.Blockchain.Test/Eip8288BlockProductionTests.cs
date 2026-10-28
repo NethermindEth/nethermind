@@ -123,6 +123,28 @@ public class Eip8288BlockProductionTests
         Assert.That(args.Reason == "Too large for CL", Is.EqualTo(dependencyBearing));
     }
 
+    // A prover that refuses the statement leaves the body to what is already proven, as a production deadline does.
+    [Test]
+    public async Task Production_without_a_deadline_degrades_when_the_prover_is_busy()
+    {
+        CountingVerifier verifier = new() { OnProof = static () => throw new LeanProverBusyException() };
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("busy-prover"), default);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.One]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
+
+        Block? block = await chain.BlockProducer.BuildBlock();
+
+        Assert.That(block, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.Empty);
+            Assert.That(verifier.ProofCalls, Is.Positive, "the prover was asked and refused");
+        }
+    }
+
     [Test]
     public async Task Background_aggregate_is_reused_by_fresh_production_scopes()
     {

@@ -312,7 +312,17 @@ public partial class BlockProcessor(
                         throw new LeanProofNotReadyException(limit);
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
+                    try
+                    {
+                        proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
+                    }
+                    // A prover that cannot take the statement now leaves the body to what is already proven, as a deadline would.
+                    catch (LeanProverBusyException) when (producing is not null && leanProofStore is not null)
+                    {
+                        OfferInclusionListProofs(producing, leanProofStore);
+                        throw new LeanProofNotReadyException(new IncludableTransactions(block)
+                            .ChooseProvenLimit(leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps))).Limit);
+                    }
                     leanProofStore?.AddCachedRecursive(deps, proof);
                 }
                 token.ThrowIfCancellationRequested();

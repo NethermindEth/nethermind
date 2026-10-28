@@ -251,6 +251,11 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             {
                 if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof superseded by a newer statement");
             }
+            // A later production pass schedules the statement again.
+            catch (LeanProverBusyException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof skipped: the prover is busy");
+            }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
