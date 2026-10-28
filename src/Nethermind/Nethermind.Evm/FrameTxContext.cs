@@ -50,7 +50,7 @@ public sealed class FrameTxContext(
     public ulong Nonce { get; } = nonce;
 
     /// <summary>The EIP-8250 nonce keys this transaction consumes, or <see langword="null"/> for a plain account nonce.</summary>
-    /// <remarks>When set, <see cref="Nonce"/> is the shared <c>nonce_seq</c> every key currently sits at.</remarks>
+    /// <remarks>When non-empty, <see cref="Nonce"/> is the shared <c>nonce_seq</c>: every key sits at it, or for a single-use set every key reads 0. The empty set selects the account nonce.</remarks>
     public UInt256[]? NonceKeys { get; } = nonceKeys;
 
     /// <summary>The sender's account nonce before any frame executed.</summary>
