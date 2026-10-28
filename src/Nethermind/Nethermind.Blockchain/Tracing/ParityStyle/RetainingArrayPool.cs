@@ -6,17 +6,17 @@ using System.Buffers;
 using System.Numerics;
 using Nethermind.Core.Collections;
 
-namespace Nethermind.Blockchain.Tracing;
+namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
 /// <summary>An array pool that keeps every array returned to it for the next rentals of its owner.</summary>
 /// <remarks>
-/// The shared pool keeps one array of each size per thread and a few per core. A tracer that rents one buffer per
+/// The shared pool keeps one array of each size per thread and a bounded number per core. A tracer that rents one buffer per
 /// action and returns the whole trace's buffers together overflows it, so its next trace misses it and allocates,
 /// after taking a lock per partition it probes. This pool keeps all of them until <see cref="Clear"/> hands them to
 /// the shared pool, so it must only be given arrays it rented. It takes no lock: its owner must not use it from two
 /// threads at once.
 /// </remarks>
-internal sealed class RetainingArrayPool<T> : ArrayPool<T>
+internal sealed class RetainingArrayPool<T> : ArrayPool<T> where T : unmanaged
 {
     private const int BucketCount = 32;
 

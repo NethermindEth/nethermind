@@ -20,6 +20,8 @@ internal struct NativeCallTracerBuffer
 
     private byte[]? _chunk;
     private int _used;
+    // Doubles per chunk; an oversized copy gets a chunk of its own size and does not raise it.
+    private int _chunkLength;
     private ArrayPoolList<byte[]>? _filledChunks;
 
     /// <summary>Copies <paramref name="data"/> into the buffer.</summary>
@@ -42,14 +44,13 @@ internal struct NativeCallTracerBuffer
 
     private byte[] Grow(int length)
     {
-        int chunkLength = MinChunkLength;
         if (_chunk is not null)
         {
             (_filledChunks ??= new ArrayPoolList<byte[]>(4)).Add(_chunk);
-            chunkLength = (int)Math.Min(2L * _chunk.Length, Array.MaxLength);
         }
 
-        _chunk = ArrayPool<byte>.Shared.Rent(Math.Max(length, chunkLength));
+        _chunkLength = _chunkLength == 0 ? MinChunkLength : (int)Math.Min(2L * _chunkLength, Array.MaxLength);
+        _chunk = ArrayPool<byte>.Shared.Rent(Math.Max(length, _chunkLength));
         _used = 0;
         return _chunk;
     }
@@ -75,5 +76,6 @@ internal struct NativeCallTracerBuffer
         }
 
         _used = 0;
+        _chunkLength = 0;
     }
 }
