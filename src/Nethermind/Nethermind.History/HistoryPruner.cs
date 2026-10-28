@@ -64,7 +64,6 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
     private readonly ulong _balRetentionEpochs;
-    private readonly ulong _ancientBarrier;
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
     private readonly ISyncConfig _syncConfig;
@@ -158,10 +157,6 @@ public class HistoryPruner : IHistoryPruner
 
         if (_enabled)
         {
-            if (historyConfig.Pruning == PruningModes.UseAncientBarriers)
-            {
-                _ancientBarrier = ulong.Min(syncConfig.AncientBodiesBarrierCalc, syncConfig.AncientReceiptsBarrierCalc);
-            }
             Metrics.PruningCutoffBlocknumber = CutoffBlockNumber;
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
             // With no pointer yet (pruning just enabled) the first pass starts from the oldest stored block.
@@ -203,7 +198,8 @@ public class HistoryPruner : IHistoryPruner
             }
 
             return _historyConfig.Pruning == PruningModes.UseAncientBarriers
-                ? _ancientBarrier
+                // Keyed on the tree pivot, like the fast-blocks feeds: a CL-discovered pivot never reaches the sync config.
+                ? ulong.Max(1UL, ulong.Min(_blockTree.SyncPivot.BlockNumber, _syncConfig.AncientBodiesBarrier))
                 // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
                 : CalculateRollingCutoff(RetentionEpochs + 1);
         }

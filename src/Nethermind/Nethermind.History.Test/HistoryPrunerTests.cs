@@ -93,7 +93,7 @@ public class HistoryPrunerTests
             /*syncPivot:*/ 20UL, // below BeaconGenesisBlockNumber — sync pivot caps the prune boundary
             /*primeWithOldestRead:*/ true,
             /*expectedPruneBelow:*/ 20UL,
-            /*finalCutoff:*/ BeaconGenesisBlockNumber
+            /*finalCutoff:*/ 20UL
         ).SetName("Prunes_up_to_sync_pivot");
 
         // 5 epochs × 32 slots = 160 blocks of retention > chain length (100) — CalculateRollingCutoff
@@ -555,6 +555,33 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public void Ancient_barriers_cutoff_follows_the_tree_pivot([Values(0UL, 100UL)] ulong configPivotNumber)
+    {
+        // A pivot supplied by the consensus layer reaches only the block tree, after the pruner is built, and never the config.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((configPivotNumber, TestItem.KeccakA));
+        blockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            SnapSync = true,
+            PivotNumber = configPivotNumber,
+            AncientBodiesBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+        };
+
+        HistoryPruner pruner = CreatePruner(
+            blockTree,
+            new TestSpecProvider(new ReleaseSpec()),
+            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0 },
+            syncConfig: syncConfig);
+        blockTree.SyncPivot.Returns((100UL, TestItem.KeccakA));
+
+        // The fast-blocks feeds stop at max(1, min(tree pivot, barrier)), so blocks below it are the ones to prune.
+        Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(BeaconGenesisBlockNumber));
+    }
+
+    [Test]
     public void Geth_retention_upper_bound_preserves_history([Values("4294967295", "\"0xffffffff\"")] string retentionEpochs)
     {
         using MemoryStream genesis = new(Encoding.UTF8.GetBytes($$"""
@@ -603,7 +630,7 @@ public class HistoryPrunerTests
             Assert.DoesNotThrow(action);
     }
 
-    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig, ILogManager logManager = null)
+    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig, ILogManager logManager = null, ISyncConfig syncConfig = null)
     {
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
@@ -618,7 +645,7 @@ public class HistoryPrunerTests
             dbProvider,
             historyConfig,
             BlocksConfig,
-            SyncConfig,
+            syncConfig ?? SyncConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
