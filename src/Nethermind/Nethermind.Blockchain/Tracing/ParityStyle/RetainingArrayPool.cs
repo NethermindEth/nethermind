@@ -19,6 +19,11 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 internal sealed class RetainingArrayPool<T> : ArrayPool<T> where T : unmanaged
 {
     private const int BucketCount = 32;
+    // The shared pool hands out no shorter array, so a smaller request looks for one of these.
+    private const int MinimumArrayLength = 16;
+    // An array from the shared pool is a power of two, so the fitting bucket and the next one give at most four times
+    // the request, or 32 elements; a larger array stays for a request of its own size.
+    private const int BucketsSearched = 2;
 
     private readonly ArrayPoolList<T[]>?[] _buckets = new ArrayPoolList<T[]>?[BucketCount];
 
@@ -27,7 +32,9 @@ internal sealed class RetainingArrayPool<T> : ArrayPool<T> where T : unmanaged
         if (minimumLength <= 0) return Shared.Rent(minimumLength);
 
         // Bucket i holds arrays of at least 2^i elements, so the first non-empty bucket from here fits.
-        for (int i = BitOperations.Log2((uint)minimumLength - 1) + 1; i < BucketCount; i++)
+        int first = BitOperations.Log2((uint)Math.Max(minimumLength, MinimumArrayLength) - 1) + 1;
+        int end = Math.Min(first + BucketsSearched, BucketCount);
+        for (int i = first; i < end; i++)
         {
             ArrayPoolList<T[]>? bucket = _buckets[i];
             if (bucket is { Count: > 0 })
