@@ -46,6 +46,26 @@ tests.Case("arm labels include full flags digest and separate environment", () =
     RpcScriptTests.Assert(first.Label.StartsWith("nethermind_image_BAR_1_", StringComparison.Ordinal) && first.Label != second.Label, "labels collide");
     RpcScriptTests.Assert(first.Environment == "NETHERMIND_FOOCONFIG_BAR=1" && second.Environment == "" && !first.Flags.Contains('#'), "environment leaked");
 });
+tests.Case("identical images get distinct stable arm labels without production changes", () =>
+{
+    var values = EnvironmentValues(); values["CLIENTS"] = "nethermind@repo:same nethermind@repo:same";
+    var arms = new SweepConfiguration(key => values.GetValueOrDefault(key)).Arms;
+    RpcScriptTests.Assert(arms[0].Label == "nethermind_same_a1" && arms[1].Label == "nethermind_same_a2" && arms[0].Image == arms[1].Image && arms.All(arm => arm.Environment == "" && arm.Flags == ""), "A/A changed treatment or collided");
+});
+tests.Case("lookup protocol consumes opt-in tool config without workflow edits", () =>
+{
+    var values = EnvironmentValues(); values["JB_BENCHMARK_CONFIG"] = "transaction-lookups-snapshot"; values["RPS_LIST"] = "100";
+    values["TOOL_CONFIG"] = "{\"lookup_protocol\":true,\"lookup_method\":\"receipt\",\"lookup_targets\":4096,\"lookup_samples\":true}";
+    var config = new SweepConfiguration(key => values.GetValueOrDefault(key));
+    RpcScriptTests.Assert(config.LookupProtocol && config["LOOKUP_METHOD"] == "receipt" && config["LOOKUP_TARGETS"] == "4096" && config["LOOKUP_SAMPLES"] == "true", "tool config lost");
+    foreach (var (key, value) in new[] { ("JB_SEED", "0"), ("RPS_LIST", "100 250"), ("RPS_LIST", "501"), ("LOOKUP_METHOD", "other"), ("LOOKUP_TARGETS", "512"), ("LOOKUP_WARMUP_DURATION", "0"), ("ISO_CONFIGS", "iso.yaml") })
+    {
+        var invalid = new Dictionary<string, string>(values) { [key] = value };
+        try { _ = new SweepConfiguration(name => invalid.GetValueOrDefault(name)); }
+        catch (ArgumentException) { continue; }
+        throw new InvalidOperationException("invalid lookup protocol accepted: " + key);
+    }
+});
 tests.Case("explicit empty rates and tracer survive defaults", () =>
 {
     var values = EnvironmentValues(); values["CORPUS_TRACER"] = "";
@@ -74,11 +94,14 @@ File.AppendAllText(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!, values.
 return Environment.GetEnvironmentVariable("FAIL_START_CLIENT") == values["CLIENT"]!.ToString() ? 1 : 0;
 """);
 File.WriteAllText(Path.Combine(scriptRoot, "stop-node.cs"), """
+File.AppendAllText(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")! + ".phases", "stop\n");
 File.WriteAllText(Environment.GetEnvironmentVariable("LOG_OUT")!, "Nethermind is shut down\n");
 return Environment.GetEnvironmentVariable("FAIL_STOP") == "true" ? 1 : 0;
 """);
 File.WriteAllText(Path.Combine(scriptRoot, "run-json-bench.cs"), """
 var output = Environment.GetEnvironmentVariable("OUT_DIR")!;
+if (Environment.GetEnvironmentVariable("LOOKUP_PREPARE_ONLY") == "true") File.WriteAllText(Environment.GetEnvironmentVariable("RPC_BENCH_TRANSACTION_LOOKUP_MANIFEST")!, "{}");
+File.AppendAllText(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")! + ".phases", (Environment.GetEnvironmentVariable("LOOKUP_PREPARE_ONLY") == "true" ? "prepare" : output.Contains("warmup") ? "warmup" : "measure") + "\n");
 File.WriteAllText(Path.Combine(output, "jsonbench-summary.md"), "summary");
 File.WriteAllText(Path.Combine(output, "summary.json"), "{\"metrics\":{\"http_req_failed\":{\"values\":{\"rate\":0}}}}");
 return Environment.GetEnvironmentVariable("FAIL_CELL") == "true" ? 1 : 0;
@@ -96,7 +119,7 @@ switch (args[0])
 }
 """);
 var bin = Path.Combine(tests.DirectoryPath, "bin"); Directory.CreateDirectory(bin);
-var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\necho sha256:fixture\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var identity = Path.Combine(bin, "id"); File.WriteAllText(identity, "#!/bin/sh\necho 0\n"); File.SetUnixFileMode(identity, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
 var original = changedNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
@@ -106,6 +129,17 @@ try
     Environment.SetEnvironmentVariable("SWEEP_CAPTURE", Path.Combine(tests.DirectoryPath, "capture")); Environment.SetEnvironmentVariable("GITHUB_STEP_SUMMARY", Path.Combine(tests.DirectoryPath, "summary"));
     foreach (var client in new[] { "nethermind-flat", "reth", "geth" }) Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "snapshots", client + "-1"));
     int Run(Dictionary<string, string> values) => new SweepRunner(new SweepConfiguration(name => values.GetValueOrDefault(name))).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+    tests.Case("lookup preparation stops before every matched warmup and ABBA measurement", () =>
+    {
+        var phases = Environment.GetEnvironmentVariable("SWEEP_CAPTURE")! + ".phases"; File.Delete(phases);
+        var values = EnvironmentValues(); values["JB_BENCHMARK_CONFIG"] = "transaction-lookups-snapshot"; values["LOOKUP_PROTOCOL"] = "true"; values["RPS_LIST"] = "100";
+        values["CLIENTS"] = "nethermind@repo:same nethermind@repo:same"; values["ROUNDS"] = "2";
+        RpcScriptTests.Assert(Run(values) == 0, "lookup sweep failed");
+        RpcScriptTests.Assert(File.ReadAllLines(phases).SequenceEqual(new[] { "prepare", "stop", "warmup", "measure", "stop", "warmup", "measure", "stop", "warmup", "measure", "stop", "warmup", "measure", "stop" }), "preparation/warmup lifecycle differs");
+        var rows = File.ReadAllLines(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!).Select(line => JsonNode.Parse(line)!).ToArray();
+        RpcScriptTests.Assert(rows.Length == 5 && rows.Select(row => Path.GetFileName(row["STATE_DIR"]!.ToString())).SequenceEqual(new[] { "lookup-preparation", "nethermind_same_a1", "nethermind_same_a2", "nethermind_same_a2_r2", "nethermind_same_a1_r2" }), "A/A ABBA state collision");
+        File.Delete(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!);
+    });
     tests.Case("ABBA schedule keeps arm flags and environments isolated", () =>
     {
         var values = EnvironmentValues(); values["CLIENTS"] = "nethermind#X=1+--Cache.Path={ARM_SCRATCH} reth+--Flag=two"; values["ROUNDS"] = "2";

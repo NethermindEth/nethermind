@@ -55,6 +55,48 @@ tests.Case("generate deterministic fixed manifest and two equal-weight JSONL fix
     }
     RpcScriptTests.Assert(config.Children[new YamlScalarNode("seed")].ToString() == "42", "override changed");
 });
+tests.Case("larger deterministic pool retains ordinal rotation and full validation", () =>
+{
+    var largePath = Path.Combine(tests.DirectoryPath, "large.json");
+    var large = TransactionLookupWorkload.PrepareAsync(largePath, Rpc, targetCount: 4096).GetAwaiter().GetResult();
+    var second = TransactionLookupWorkload.PrepareAsync(Path.Combine(tests.DirectoryPath, "large-second.json"), Rpc, targetCount: 4096).GetAwaiter().GetResult();
+    RpcScriptTests.Assert(JsonNode.DeepEquals(large, second) && large["entries"]!.AsArray().Count == 4096, "large targets not deterministic");
+    TransactionLookupWorkload.ValidateAsync(large, Rpc, Path.Combine(tests.DirectoryPath, "large-validation.json"), TransactionLookupWorkload.Hash(largePath)).GetAwaiter().GetResult();
+    Reject(() => TransactionLookupWorkload.PrepareAsync(largePath, Rpc).GetAwaiter().GetResult());
+});
+foreach (var preset in new[] { "transaction", "receipt" })
+    tests.Case("method-only fixtures " + preset, () =>
+    {
+        var config = new YamlMappingNode();
+        TransactionLookupWorkload.Fixtures(manifest, tests.DirectoryPath, config, preset);
+        var selected = (YamlSequenceNode)config.Children[new YamlScalarNode("calls")];
+        RpcScriptTests.Assert(selected.Children.Count == 1 && ((YamlMappingNode)selected.Children[0]).Children[new YamlScalarNode("name")].ToString() == TransactionLookupWorkload.SelectedMethods(preset)[0] + " snapshot", "method isolation lost");
+    });
+foreach (var (primary, legacy, layout, encoding) in new (string?, string?, string, string)[]
+{
+    ("0x7fc0", null, "number-prefixed", "compact-no-hashes"),
+    (null, "0x7ea0" + new string('0', 64) + "c0", "legacy-hash", "compact-hash-prefixed"),
+    ("0x7e80c0", null, "number-prefixed", "compact-hash-prefix-empty"),
+    ("0x", "0x7fc0", "legacy-hash", "compact-no-hashes"),
+    (null, null, "legacy-hash", "missing-or-empty")
+})
+    tests.Case("stored receipt encoding probe " + layout + "/" + encoding + "/" + primary, () =>
+    {
+        var probeManifest = (JsonObject)manifest.DeepClone();
+        probeManifest["entries"] = new JsonArray(manifest["entries"]![0]!.DeepClone());
+        var probes = new List<string>();
+        Task<JsonNode?> Probe(string method, JsonArray parameters)
+        {
+            RpcScriptTests.Assert(method == "debug_getFromDb" && parameters[0]!.GetValue<string>() == "ReceiptsBlocks", "unexpected raw DB probe");
+            var key = parameters[1]!.GetValue<string>(); probes.Add(key);
+            return Task.FromResult<JsonNode?>(JsonValue.Create(key.Length == 82 ? primary : legacy));
+        }
+        var path = Path.Combine(tests.DirectoryPath, "encoding.json");
+        TransactionLookupWorkload.QualifyReceiptEncodingAsync(probeManifest, Probe, path, CancellationToken.None).GetAwaiter().GetResult();
+        var record = JsonNode.Parse(File.ReadAllText(path))!["records"]![0]!;
+        RpcScriptTests.Assert(record["keyLayout"]!.GetValue<string>() == layout && record["encoding"]!.GetValue<string>() == encoding, "encoding classification differs");
+        RpcScriptTests.Assert(probes[0] == "0x00000000000026d0" + manifest["entries"]![0]!["blockHash"]!.GetValue<string>()[2..] && probes.Count == (layout == "legacy-hash" ? 2 : 1), "raw key or fallback differs");
+    });
 var manifestHash = TransactionLookupWorkload.Hash(manifestPath);
 var report = Path.Combine(tests.DirectoryPath, "validation.json");
 void Validate() => TransactionLookupWorkload.ValidateAsync(manifest, Rpc, report, manifestHash).GetAwaiter().GetResult();
@@ -140,6 +182,34 @@ tests.Case("strict summary requires complete successful HTTP requests and both c
         return summary;
     }
     TransactionLookupWorkload.CheckSummary(Summary(10, 20, 0, 0));
+    foreach (var preset in new[] { "mixed", "transaction", "receipt" })
+    {
+        var selected = TransactionLookupWorkload.SelectedMethods(preset);
+        var sampled = Summary(10, 20, 0, 0);
+        foreach (var key in sampled["metrics"]!.AsObject().Select(pair => pair.Key).ToArray())
+        {
+            if (TransactionLookupWorkload.Methods.Except(selected).Any(method => key.Contains(method, StringComparison.Ordinal))) sampled["metrics"]!.AsObject().Remove(key);
+            else if (selected.Length == 1 && key.StartsWith("http_reqs{", StringComparison.Ordinal)) sampled["metrics"]![key]!["values"]!["count"] = 10;
+        }
+        TransactionLookupWorkload.CheckSummary(sampled, preset);
+        void Samples(int count, bool invalid = false)
+        {
+            using var file = File.Create(Path.Combine(tests.DirectoryPath, "samples.gz"));
+            using var gzip = new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Compress);
+            using var writer = new StreamWriter(gzip);
+            for (var index = 0; index < count; index++)
+                writer.WriteLine(new JsonObject { ["type"] = "Point", ["metric"] = "http_req_duration", ["data"] = new JsonObject { ["time"] = invalid ? "bad" : "2026-10-28T16:00:00Z", ["value"] = .5, ["tags"] = new JsonObject { ["rpc_method"] = selected[index % selected.Length], ["request_id"] = index.ToString() } } }.ToJsonString());
+        }
+        Samples(10);
+        TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset);
+        foreach (var count in new[] { 0, 9, 11 })
+        {
+            Samples(count);
+            Reject(() => TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset));
+        }
+        Samples(10, invalid: true);
+        Reject(() => TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset));
+    }
     var legacy = Summary(10, 20, 0, 0);
     foreach (var metric in legacy["metrics"]!.AsObject().Select(pair => pair.Key).ToArray())
     {
@@ -184,6 +254,12 @@ tests.Case("strict summary requires complete successful HTTP requests and both c
     }
     foreach (var summary in new JsonObject[] { Summary(0, 0, 0, 0), Summary(10, 19, 1, 0), Summary(10, 20, 0, .1), Summary(10, 0, 0, 0), [] }) Reject(() => TransactionLookupWorkload.CheckSummary(summary));
 });
+tests.Case("capture budget rejects unbounded rate, duration and VUs", () =>
+{
+    TransactionLookupWorkload.CheckSampleBudget("100", "120s", "32");
+    foreach (var (rate, duration, vus) in new[] { ("501", "120s", "32"), ("100", "121s", "32"), ("100", "120s", "257"), ("100", "2m", "32"), ("100", "120s", "") })
+        Reject(() => TransactionLookupWorkload.CheckSampleBudget(rate, duration, vus));
+});
 tests.Case("pinned k6 check patched exactly once and unknown upstream fails closed", () =>
 {
     var original = "const reqMethod = requestData[2]; const payload = requestData[3]; const data = r.json();\n" + TransactionLookupWorkload.OriginalCheck;
@@ -191,6 +267,10 @@ tests.Case("pinned k6 check patched exactly once and unknown upstream fails clos
     RpcScriptTests.Assert(patched.Contains(TransactionLookupWorkload.StrictCheck, StringComparison.Ordinal) && TransactionLookupWorkload.Patch(patched) == patched, "patch not idempotent");
     Reject(() => TransactionLookupWorkload.Patch("unknown upstream"));
     Reject(() => TransactionLookupWorkload.Patch(original + original));
+    var tags = original + "\nconst tags = {\"rpc_method\": reqMethod,};";
+    var identified = TransactionLookupWorkload.Patch(tags, requestIdentity: true);
+    RpcScriptTests.Assert(identified.Contains("\"request_id\": requestData[0],", StringComparison.Ordinal) && TransactionLookupWorkload.Patch(identified, requestIdentity: true) == identified, "request identity patch not idempotent");
+    Reject(() => TransactionLookupWorkload.Patch(original, requestIdentity: true));
     var javascript = tests.Write("check.js", """
         const assert = require('node:assert/strict');
         function valid(data, reqMethod, hash) {

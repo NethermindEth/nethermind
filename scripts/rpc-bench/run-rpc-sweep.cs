@@ -89,6 +89,7 @@ internal sealed partial class SweepConfiguration
     internal SweepArm[] Arms { get; }
     internal long[] Rates { get; }
     internal bool Corpus => this["JB_ETH_CALL_CORPUS"] == "true";
+    internal bool LookupProtocol => this["LOOKUP_PROTOCOL"] == "true";
     internal long Number(string key) => long.Parse(this[key], CultureInfo.InvariantCulture);
     internal string Snapshot(string client) => Path.Combine(this["SNAPSHOT_ROOT"], client == "nethermind" && this["STATE_LAYOUT"] == "flat" ? $"nethermind-flat-{this["SNAPSHOT_BLOCK"]}" : $"{client}-{this["SNAPSHOT_BLOCK"]}");
     internal string Isolation(string client) => this["DB_ISOLATION_ALL"].Length > 0 ? this["DB_ISOLATION_ALL"] : client == "reth" ? "direct" : "overlay";
@@ -100,6 +101,14 @@ internal sealed partial class SweepConfiguration
             var value = environment(key);
             return Values[key] = value is null || (!preserveEmpty && value.Length == 0) ? fallback : value;
         }
+        var toolConfig = JsonNode.Parse(environment("TOOL_CONFIG") ?? "{}") as JsonObject ?? throw new ArgumentException("TOOL_CONFIG must be an object");
+        void Lookup(string key, string fallback) => Values["LOOKUP_" + key.ToUpperInvariant()] = environment("LOOKUP_" + key.ToUpperInvariant()) ?? toolConfig["lookup_" + key]?.ToString() ?? fallback;
+        Lookup("protocol", "false"); Lookup("method", "mixed"); Lookup("targets", "256"); Lookup("warmup_duration", "60s"); Lookup("samples", "false");
+        foreach (var key in new[] { "LOOKUP_PROTOCOL", "LOOKUP_SAMPLES" })
+            if (this[key] is not ("true" or "false")) throw new ArgumentException(key + " must be true or false");
+        if (this["LOOKUP_METHOD"] is not ("mixed" or "transaction" or "receipt") || this["LOOKUP_TARGETS"] is not ("256" or "4096")) throw new ArgumentException("invalid lookup preset");
+        if (!DurationRegex().IsMatch(this["LOOKUP_WARMUP_DURATION"]) || Integer("lookup warmup", this["LOOKUP_WARMUP_DURATION"].TrimEnd('s'), true) > 120) throw new ArgumentException("lookup warmup must be 1..120 seconds");
+        Values["LOOKUP_WARMUP_DURATION"] = this["LOOKUP_WARMUP_DURATION"].TrimEnd('s') + "s";
         foreach (var required in new[] { "OUT_DIR", "STATE_ROOT", "SCRATCH_ROOT", "NM_IMAGE", "SNAPSHOT_BLOCK", "JB_BENCHMARK_CONFIG" })
             if (Set(required).Length == 0) throw new ArgumentException(required + " is required");
         Set("CLIENTS", "nethermind"); Set("ROUNDS", "1"); Set("RPS_LIST", "100 250 500", true); Set("ISO_CONFIGS");
@@ -128,7 +137,12 @@ internal sealed partial class SweepConfiguration
         if (this["CLIENTS"].Contains('\n') || this["CLIENTS"].Contains('\r')) throw new ArgumentException("clients must be a single line");
         Arms = Words(this["CLIENTS"]).Select(entry => SweepArm.Parse(entry, this["NM_IMAGE"])).ToArray();
         if (Arms.Length == 0) throw new ArgumentException("clients must contain at least one entry");
+        var duplicates = Arms.GroupBy(arm => arm.Label).Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+        Arms = Arms.Select((arm, index) => duplicates.Contains(arm.Label) ? arm with { Label = arm.Label + "_a" + (index + 1) } : arm).ToArray();
+        if (Arms.Select(arm => arm.Label).Distinct(StringComparer.Ordinal).Count() != Arms.Length) throw new ArgumentException("sweep arm labels collide");
+        if (LookupProtocol && (Corpus || this["JB_BENCHMARK_CONFIG"] != "transaction-lookups-snapshot" || this["ISO_CONFIGS"].Length > 0 || this["JB_SEED"] == "0")) throw new ArgumentException("lookup protocol requires snapshot lookups, no iso configs/corpus and a nonzero seed");
         Rates = Words(this["RPS_LIST"]).Select(rate => Integer("rps_list entry", rate, true)).ToArray();
+        if (LookupProtocol && (Rates.Length != 1 || Rates[0] > 500)) throw new ArgumentException("lookup protocol requires one rate, at most 500 rps, per fresh-node sweep");
     }
 
     internal static string[] Words(string value) => value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
@@ -159,6 +173,8 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
     private readonly Dictionary<string, long> _records = new(StringComparer.Ordinal);
     private readonly List<(string Corpus, string Label, string Report)> _parityRows = [];
     private readonly Dictionary<string, int> _failures = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _imageIdentities = new(StringComparer.Ordinal);
+    private string _lookupManifestHash = "";
     private string _baselineLabel = "";
     private bool _usingSaved;
     private string[] _corpora = [];
@@ -196,6 +212,11 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         }
         Console.WriteLine($"Sweep: head {Get("SNAPSHOT_BLOCK")}, layout {Get("STATE_LAYOUT")}, seed {Get("JB_SEED")}, rounds {Get("ROUNDS")}");
         LogProvenance();
+        if (configuration.LookupProtocol)
+        {
+            await RunArm(configuration.Arms[0], "lookup-preparation", cancellationToken, preparation: true);
+            if (_failures.Count > 0) return 1;
+        }
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var round = 0L; round < configuration.Number("ROUNDS"); round++)
         {
@@ -211,7 +232,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         return _failures.Count == 0 ? 0 : 1;
     }
 
-    private async Task RunArm(SweepArm arm, string label, CancellationToken cancellationToken)
+    private async Task RunArm(SweepArm arm, string label, CancellationToken cancellationToken, bool preparation = false)
     {
         var flags = arm.Flags;
         var armScratch = "";
@@ -233,13 +254,22 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         }
         var pull = await BenchmarkProcess.RunAsync("docker", ["pull", arm.Image], cancellationToken);
         if (pull.Code != 0) Console.WriteLine($"pull failed — assuming {arm.Image} is local");
+        if (configuration.LookupProtocol)
+        {
+            var inspected = await BenchmarkProcess.RunAsync("docker", ["image", "inspect", "--format", "{{.Id}}", arm.Image], cancellationToken);
+            var identity = inspected.Output.Trim();
+            if (inspected.Code != 0 || !identity.StartsWith("sha256:", StringComparison.Ordinal)) throw new IOException("Cannot resolve lookup node image identity");
+            if (_imageIdentities.TryGetValue(arm.Image, out var previous) && previous != identity) throw new IOException("Lookup image identity changed during sweep");
+            _imageIdentities[arm.Image] = identity;
+            await File.AppendAllTextAsync(Path.Combine(Get("OUT_DIR"), "lookup-images.jsonl"), new JsonObject { ["label"] = label, ["image"] = arm.Image, ["id"] = identity }.ToJsonString() + "\n", cancellationToken);
+        }
         var state = Path.Combine(Get("STATE_ROOT"), label);
         Directory.CreateDirectory(state);
         var container = $"rpcbench-sweep-{label}-{BenchmarkProcess.EnvironmentValue("GITHUB_RUN_ID", "local")}";
         Console.WriteLine($"::group::sweep {label} (type={arm.Client}, image={arm.Image}, isolation={configuration.Isolation(arm.Client)})");
         var environment = new Dictionary<string, string>
         {
-            ["CLIENT"] = arm.Client, ["INSTANCE"] = "primary", ["NODE_IMAGE"] = arm.Image, ["DB_SOURCE"] = configuration.Snapshot(arm.Client),
+            ["CLIENT"] = arm.Client, ["INSTANCE"] = "primary", ["NODE_IMAGE"] = configuration.LookupProtocol ? _imageIdentities[arm.Image] : arm.Image, ["DB_SOURCE"] = configuration.Snapshot(arm.Client),
             ["DB_ISOLATION"] = configuration.Isolation(arm.Client), ["SCRATCH_ROOT"] = Get("SCRATCH_ROOT"), ["STATE_DIR"] = state,
             ["NETWORK"] = Get("NETWORK"), ["JSONRPC_MODULES"] = Get("JSONRPC_MODULES"), ["LAYOUT_FLAGS"] = Get("STATE_LAYOUT") == "flat" ? "--FlatDb.Enabled=true" : "",
             ["ADDITIONAL_FLAGS"] = flags, ["ARM_SCRATCH_DIR"] = armScratch, ["HEALTH_TIMEOUT"] = Get("HEALTH_TIMEOUT"), ["DOTTRACE"] = "false",
@@ -253,9 +283,21 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             Console.WriteLine("::endgroup::");
             return;
         }
-        _labels.Add(label);
+        if (!preparation) _labels.Add(label);
         try
         {
+            if (preparation)
+            {
+                var cell = Path.Combine(Get("OUT_DIR"), "preparation");
+                if (await Cell(Get("JB_BENCHMARK_CONFIG"), configuration.Rates.FirstOrDefault(100), Get("JB_DURATION"), cell, arm.Client, label, "", "", false, cancellationToken, preparation: true) != 0) Fail("lookup preparation failed");
+                return;
+            }
+            if (configuration.LookupProtocol)
+            {
+                var cell = Path.Combine(Get("OUT_DIR"), "warmup", label);
+                if (await Cell(Get("JB_BENCHMARK_CONFIG"), configuration.Rates.FirstOrDefault(100), Get("LOOKUP_WARMUP_DURATION"), cell, arm.Client, label, "", "", true, cancellationToken) != 0)
+                { Fail("lookup warmup failed"); return; }
+            }
             if (configuration.Corpus)
             {
                 foreach (var corpus in _corpora) await RunCorpus(arm, label, container, corpus, cancellationToken);
@@ -281,6 +323,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             // Teardown must finish even when the workflow cancels a cell.
             var stopped = await Script("stop-node.cs", [], new() { ["STATE_DIR"] = state, ["CONTAINER_NAME"] = container, ["OUT_DIR"] = Get("OUT_DIR"), ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
             if (stopped.Code != 0) Fail("stop-node DB-integrity/teardown failures");
+            if (configuration.LookupProtocol && !File.Exists(Path.Combine(state, "node.log"))) Fail("missing lookup node log");
             if (ScanNodeLog(Path.Combine(state, "node.log"), arm.Client, label, configuration.Corpus)) Fail("node health issues");
             Console.WriteLine("::endgroup::");
         }
@@ -294,7 +337,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         if (corpus.Length > 0) ReportFailureRate(cell, label);
     }
 
-    private async Task<int> Cell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, bool warmup, CancellationToken cancellationToken)
+    private async Task<int> Cell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, bool warmup, CancellationToken cancellationToken, bool preparation = false)
     {
         Directory.CreateDirectory(cell);
         var sample = container.Length > 0 && Get("CORPUS_RESOURCE_SAMPLING") == "true";
@@ -307,9 +350,29 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             ["JB_ETH_CALL_CORPUS_FILE"] = corpus, ["CORPUS_METHOD"] = Get("CORPUS_METHOD"), ["CORPUS_TRACER"] = Get("CORPUS_TRACER"), ["CORPUS_TRACE_TYPES"] = Get("CORPUS_TRACE_TYPES"),
             ["RESOURCE_SAMPLER_CONTAINER"] = sample ? container : "", ["RESOURCE_SAMPLER_OUT"] = sample ? Path.Combine(cell, "resources.json") : ""
         };
-        if (config == "transaction-lookups-snapshot") environment["RPC_BENCH_TRANSACTION_LOOKUP_MANIFEST"] = Path.Combine(Get("OUT_DIR"), "transaction-lookup-workload.json");
-        if (warmup) environment["JB_MAX_FAIL_RATE_PCT"] = "100";
-        return (await Script("run-json-bench.cs", [], environment, cancellationToken)).Code;
+        var lookupManifest = Path.Combine(Get("OUT_DIR"), "transaction-lookup-workload.json");
+        if (config == "transaction-lookups-snapshot") environment["RPC_BENCH_TRANSACTION_LOOKUP_MANIFEST"] = lookupManifest;
+        if (configuration.LookupProtocol)
+        {
+            environment["LOOKUP_PREPARE_ONLY"] = preparation ? "true" : "false";
+            environment["LOOKUP_REQUIRE_MANIFEST"] = preparation ? "false" : "true";
+            environment["LOOKUP_METHOD"] = Get("LOOKUP_METHOD");
+            environment["LOOKUP_TARGETS"] = Get("LOOKUP_TARGETS");
+            environment["LOOKUP_SAMPLES"] = Get("LOOKUP_SAMPLES");
+            environment["LOOKUP_EXPORT_MANIFEST"] = "false";
+            environment["JB_REUSE_PREPARED"] = "true";
+            environment["JB_DEEP_CHECK"] = "false";
+        }
+        if (warmup && !configuration.LookupProtocol) environment["JB_MAX_FAIL_RATE_PCT"] = "100";
+        string ManifestHash() => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(lookupManifest)));
+        if (configuration.LookupProtocol && !preparation && (_lookupManifestHash.Length == 0 || ManifestHash() != _lookupManifestHash)) throw new IOException("Lookup manifest changed before cell");
+        var result = (await Script("run-json-bench.cs", [], environment, cancellationToken)).Code;
+        if (configuration.LookupProtocol && result == 0)
+        {
+            if (preparation) _lookupManifestHash = ManifestHash();
+            else if (ManifestHash() != _lookupManifestHash) throw new IOException("Lookup manifest changed during cell");
+        }
+        return result;
     }
 
     private async Task<(double Seconds, double Rate)> Warmup(string corpus, string label, string client, CancellationToken cancellationToken)

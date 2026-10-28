@@ -1063,3 +1063,93 @@ Generation and validation run outside the timed load but warm caches. Repeated
 targets and mixed endpoint calls therefore measure warm/steady-state behavior,
 not isolated first-use or cold storage. Non-null results alone do not establish
 receipt encoding or that a particular selective/cache/fallback path executed.
+
+### Fresh-node lookup control (opt-in)
+
+Set `tool_config.lookup_protocol=true` to run manifest/runner preparation on a
+separate first-arm node, stop it normally, and only then start measured nodes.
+Each measured node receives full pre/post validation around a discarded timed
+warmup, then full pre/post validation around its measured cell. Warmup defaults
+to 60 seconds at the declared cell rate with the same VU limit, and uses seed +
+1,000. Failed warmup fails the arm; it is not included in the matrix summaries.
+Preparation, warmup and measured outputs are separate. Host caches still persist.
+Preparation also reads stored receipts through `debug_getFromDb` and retains
+`receipt-encoding.json` with key layout, marker classification, value length,
+prefix bytes and a value digest for each target block. Empty hash prefixes are
+reported separately. This inspects storage encoding, not executed recovery paths;
+no raw-DB probes are added to measured requests.
+
+These lookup-only keys are read directly from `TOOL_CONFIG` by the sweep, so no
+workflow YAML changes are needed. Environment overrides use the corresponding
+uppercase names (`LOOKUP_PROTOCOL`, etc.):
+
+- `lookup_method`: `mixed` (default), `transaction`, or `receipt`. Method-only
+  timing still validates **both** full reference results before/after each cell.
+- `lookup_targets`: `256` (default) or `4096`, with one transaction per distinct
+  nonempty block and the same ordinal rotation. Scan limit is eight times the
+  target count. Insufficient retained coverage fails without filtering targets.
+  Entries record transaction count and RPC block `size` when available; this is
+  not a measurement of the encoded block-body DB value. Golden results are
+  capped at 128 MiB during generation.
+- `lookup_warmup_duration`: integer seconds, 1..120, default `60s`.
+- `lookup_samples`: `false` (default), or `true` for upstream k6 asynchronous
+  compressed JSON output, `latency-samples.json.gz`, plus the seeded
+  `requests.csv`. Latency points carry timestamp, `rpc_method`, and `request_id`
+  matching the request CSV's first column (not the transaction hash itself).
+  Capture settings are identical in warmup and measurement. Only these runs
+  retain the request CSV; no response bodies are added to the timed hot path.
+
+The protocol requires exactly one rate per sweep (at most 500 rps), no isolated
+configs/eth_call corpus, and a nonzero deterministic seed. Capture additionally
+requires explicit VUs (1..256), rate (1..500), and integer-second duration
+(1..120). This bounds generated requests to at most 66,000 per cell, with a
+256 MiB compressed-file acceptance cap and two-million-record read cap. These
+are protocol/acceptance bounds, **not** an OS disk quota: preflight runner space
+and artifact budgets separately. Every delivered request must have a matching
+latency point, with complete method counts; missing/truncated capture fails.
+Use a short matched capture-on/off pilot to assess capture overhead before a
+primary campaign; do not pool that pilot with primary cells. Request-identity
+tags are present with capture off too, so this pilot estimates output cost on
+the instrumented runner, not total instrumentation cost against the original.
+
+The root manifest is retained only once; cell checksums/reports reference it.
+The sweep checks its digest between cells and never regenerates it per arm.
+`lookup-images.jsonl` records the local Docker image ID for preparation and each
+arm; a changed ID for an image reference fails. Repeating an identical image in
+`clients` assigns `_a1`/`_a2` arm labels automatically, without changing flags or
+environment. Rounds continue to alternate AB/BA with unique `_rN` directories.
+Use a new output root per campaign, and immutable image digests where possible.
+The runner/manifest version is now `lookup-v2`; old v1 manifests are not silently
+upgraded or reused.
+
+Prospective reference A/A configuration (replace the image placeholder with the
+same pinned baseline digest in both entries):
+
+```json
+{
+  "clients": "nethermind@<baseline-image> nethermind@<baseline-image>",
+  "benchmark_config": "transaction-lookups-snapshot",
+  "lookup_protocol": true,
+  "lookup_samples": true,
+  "lookup_method": "mixed",
+  "lookup_targets": 256,
+  "lookup_warmup_duration": "60s",
+  "rps_list": "100",
+  "vus": 32,
+  "seed": 1,
+  "rounds": 6,
+  "duration": "120s",
+  "iso_configs": ""
+}
+```
+
+Use `benchmark_tool=jsonbench-sweep`, explicit snapshot block/layout and the same
+production settings. This is twelve fresh measured nodes plus preparation, with
+three AB and three BA pairs. The six cell pairs, not individual requests, are the
+replication units. For isolated PR sweeps change only the second image to a
+qualified image sharing the production base. Method-only and 4096-target pools
+are separate campaigns; they do not prove native-lease use, receipt encoding,
+selective recovery, cache/fallback coverage, cold I/O, or a cause for tail shifts.
+Retain all startup logs, including native `io_uring` errors, and compare runtime
+backend conditions outside primary timing without suppressing warnings or
+changing privileges. No backend attribution follows from these harness changes.

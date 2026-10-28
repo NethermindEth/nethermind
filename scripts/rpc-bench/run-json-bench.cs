@@ -46,6 +46,10 @@ try
     if (mode is not ("benchmark" or "compare")) throw new ArgumentException($"unknown JB_MODE '{mode}' (expected benchmark | compare)");
     if (mode == "compare" && reference.Length == 0) throw new ArgumentException("JB_MODE=compare needs a reference node");
     var lookup = Get("JB_BENCHMARK_CONFIG") == TransactionLookupWorkload.Name;
+    var lookupPreset = Get("LOOKUP_METHOD", "mixed");
+    var lookupTargets = TransactionLookupWorkload.TargetCount(Get("LOOKUP_TARGETS", "256"));
+    var lookupSamples = lookup && Get("LOOKUP_SAMPLES", "false") == "true";
+    if (lookup) _ = TransactionLookupWorkload.SelectedMethods(lookupPreset);
     var corpus = Get("JB_ETH_CALL_CORPUS", "false");
     if (lookup && (corpus == "true" || mode != "benchmark")) throw new ArgumentException("Snapshot lookups require benchmark mode without an eth_call corpus");
     if (corpus is not ("true" or "false")) throw new ArgumentException("JB_ETH_CALL_CORPUS must be true or false");
@@ -123,15 +127,16 @@ try
     var lookupHash = "";
     if (lookup)
     {
+        if (Get("LOOKUP_REQUIRE_MANIFEST") == "true" && !File.Exists(lookupPath)) throw new IOException("Measured lookup node requires an existing manifest");
         var existingManifest = File.Exists(lookupPath) ? JsonNode.Parse(await File.ReadAllTextAsync(lookupPath, cancellation.Token)) as JsonObject ?? throw new IOException("Invalid lookup manifest") : null;
         var expectedHead = existingManifest is null ? long.Parse(Get("SNAPSHOT_BLOCK"), NumberStyles.None, CultureInfo.InvariantCulture) : Convert.ToInt64(existingManifest["headNumber"]!.GetValue<string>(), 16);
         var expectedHash = existingManifest is null ? null : existingManifest["headHash"]!.GetValue<string>();
         var stableHead = await TransactionLookupWorkload.WaitForHeadAsync(expectedHead, expectedHash, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token);
         if (reference.Length > 0) await TransactionLookupWorkload.WaitForHeadAsync(expectedHead, stableHead["hash"]!.GetValue<string>(), (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, reference, method, parameters, cancellation.Token), cancellation.Token);
-        lookupManifest = await TransactionLookupWorkload.PrepareAsync(lookupPath, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token, stableHead);
+        lookupManifest = await TransactionLookupWorkload.PrepareAsync(lookupPath, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token, stableHead, lookupTargets);
         lookupHash = TransactionLookupWorkload.Hash(lookupPath);
         var exported = Path.Combine(output, "transaction-lookup-workload.json");
-        if (Path.GetFullPath(exported) != Path.GetFullPath(lookupPath)) File.Copy(lookupPath, exported, overwrite: true);
+        if (Get("LOOKUP_EXPORT_MANIFEST", "true") == "true" && Path.GetFullPath(exported) != Path.GetFullPath(lookupPath)) File.Copy(lookupPath, exported, overwrite: true);
         await File.WriteAllTextAsync(Path.Combine(output, "transaction-lookup-workload.sha256"), lookupHash + "\n", cancellation.Token);
     }
     var clients = new YamlSequenceNode { new YamlMappingNode { { "name", label }, { "type", clientType }, { "url", url }, { "timeout", "60s" }, { "max_retries", "3" } } };
@@ -144,13 +149,19 @@ try
         if (configPath.Length > 0 && !File.Exists(configPath)) throw new IOException($"benchmark_config '{benchmarkName}' not found (looked at {configPath})");
         if (corpus == "true" && !prepared) { Directory.CreateDirectory(fixtures); await Script("prepare-eth-call-corpus.cs", [corpusPath, fixtures]); }
         benchmark = Render(configPath, label, reference.Length > 0 ? referenceLabel : "", corpus == "true" ? Path.Combine(fixtures, "classes.json") : "", method, name => Get(name));
-        if (lookup) TransactionLookupWorkload.Fixtures(lookupManifest!, source, benchmark);
+        if (lookup) TransactionLookupWorkload.Fixtures(lookupManifest!, source, benchmark, lookupPreset);
         Save(Path.Combine(io, "benchmark.yaml"), benchmark);
     }
     if (reuse) await File.WriteAllTextAsync(marker, preparationId + "\n", cancellation.Token);
     await Required("chmod", ["-R", "a+rwX", io]);
     await BenchmarkProcess.RunAsync("docker", ["rm", "-fv", container], cancellation.Token);
-    var docker = new List<string> { "run", "--rm", "--name", container, "--network", "host", "-w", "/jb", "-v", source + ":/jb:ro", "-v", io + ":/io", tag, mode };
+    var docker = new List<string> { "run", "--rm", "--name", container, "--network", "host", "-w", "/jb", "-v", source + ":/jb:ro", "-v", io + ":/io" };
+    if (lookupSamples)
+    {
+        TransactionLookupWorkload.CheckSampleBudget(Get("JB_RPS"), Get("JB_DURATION"), Get("JB_VUS"));
+        docker.AddRange(["-e", "K6_OUT=json=/io/out/latency-samples.json.gz", "-e", "K6_SYSTEM_TAGS=scenario,status,check,error,error_code", "-e", "K6_METRIC_SAMPLES_BUFFER_SIZE=1000"]);
+    }
+    docker.AddRange([tag, mode]);
     if (mode == "compare")
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
@@ -171,6 +182,11 @@ try
     var toolLog = corpus == "true" ? Path.Combine(work, "jsonbench-tool.log") : Path.Combine(output, "jsonbench.log");
     int toolCode;
     if (lookup) await ValidateLookups("before");
+    if (lookup && Get("LOOKUP_PREPARE_ONLY") == "true")
+    {
+        await TransactionLookupWorkload.QualifyReceiptEncodingAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), Path.Combine(output, "receipt-encoding.json"), cancellation.Token);
+        return 0;
+    }
     await using (var sampler = new ResourceSamplerSession(Get("RESOURCE_SAMPLER_CONTAINER"), Get("RESOURCE_SAMPLER_OUT")))
     {
         containerOwned = true;
@@ -192,7 +208,7 @@ try
     else
     {
         await BenchmarkProcess.RunAsync("cp", ["-r", Path.Combine(io, "out") + "/.", output + "/"], cancellation.Token);
-        File.Delete(Path.Combine(output, "requests.csv"));
+        if (!lookupSamples) File.Delete(Path.Combine(output, "requests.csv"));
     }
     File.Copy(clientsPath, Path.Combine(output, "clients.yaml"), overwrite: true);
     var summary = new StringBuilder(); double? failPercent = null; int? differences = null; var parseFailed = false;
@@ -236,7 +252,12 @@ try
     {
         if (!Nonempty(Path.Combine(output, "summary.json")) && !Nonempty(Path.Combine(output, "results.csv"))) throw new IOException("json-bench benchmark produced no summary.json or results.csv");
         if (parseFailed) throw new IOException("summary.json exists but could not be parsed");
-        if (lookup) TransactionLookupWorkload.CheckSummary(JsonNode.Parse(File.ReadAllText(Path.Combine(output, "summary.json"))) as JsonObject ?? throw new IOException("Missing lookup summary"));
+        if (lookup)
+        {
+            var lookupSummary = JsonNode.Parse(File.ReadAllText(Path.Combine(output, "summary.json"))) as JsonObject ?? throw new IOException("Missing lookup summary");
+            TransactionLookupWorkload.CheckSummary(lookupSummary, lookupPreset);
+            if (lookupSamples) TransactionLookupWorkload.CheckSamples(Path.Combine(output, "latency-samples.json.gz"), lookupSummary, lookupPreset);
+        }
         if (failPercent > double.Parse(Get("JB_MAX_FAIL_RATE_PCT", "1"), CultureInfo.InvariantCulture)) throw new IOException($"http fail rate {failPercent:F4}% exceeds max_fail_rate_pct={Get("JB_MAX_FAIL_RATE_PCT", "1")}%");
     }
     else if (differences is null || parseFailed) throw new IOException("json-bench compare produced no parseable results");
@@ -246,7 +267,7 @@ try
     void PatchLookupRunner()
     {
         var path = Path.Combine(source, "runner", "generator", "scripts", "k6-script.js");
-        File.WriteAllText(path, TransactionLookupWorkload.Patch(File.ReadAllText(path)));
+        File.WriteAllText(path, TransactionLookupWorkload.Patch(File.ReadAllText(path), requestIdentity: true));
     }
     async Task ValidateLookups(string phase)
     {
