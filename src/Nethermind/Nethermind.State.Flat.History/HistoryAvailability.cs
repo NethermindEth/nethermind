@@ -367,8 +367,8 @@ public sealed class HistoryAvailability
         Span<byte> value = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         _availableBlocks.PutSpan(GlobalFloorKey, value);
-        _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
         Volatile.Write(ref _knownFloor, (long)floor);
+        _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
     }
 
     /// <summary>Refuses on unwindowed v2 data, where a slice is meaningless and stamping would brick the v2 read

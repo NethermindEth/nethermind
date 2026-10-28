@@ -168,6 +168,30 @@ public class HistoryAvailabilityTests
     }
 
     [Test]
+    public void IsBelowGlobalFloor_WhenTheFormatWriteThrowsAfterTheFloorWrite_FollowsTheFloorOnDisk()
+    {
+        FormatWriteFailingDb db = new();
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(batch, MarkedBlock, TestItem.KeccakA, HistoryAvailability.FormatVersion);
+        }
+
+        HistoryAvailability availability = new(db);
+        availability.PublishWatermark(MarkedBlock, HistoryAvailability.FormatVersion);
+        availability.PublishGlobalFloor(MarkedBlock - 2);
+        Assert.That(availability.IsBelowGlobalFloor(MarkedBlock - 1), Is.False, "precondition: the old floor is remembered");
+
+        db.FailFormatWrites = true;
+        Assert.Throws<InvalidOperationException>(() => availability.TryRaiseGlobalFloor(MarkedBlock));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.TryGetGlobalFloor(out ulong onDisk) ? onDisk : 0, Is.EqualTo(MarkedBlock), "precondition: the floor write reached the database");
+            Assert.That(availability.IsBelowGlobalFloor(MarkedBlock - 1), Is.True, "the remembered floor does not stay behind the floor on disk");
+        }
+    }
+
+    [Test]
     public void IsBelowGlobalFloor_AfterTheRecordsRestart_ReadsTheFloorAgain()
     {
         (TestMemDb db, HistoryAvailability availability) = CoveredInMemory();
@@ -333,5 +357,16 @@ public class HistoryAvailabilityTests
         byte[] key = new byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
         return key;
+    }
+
+    private sealed class FormatWriteFailingDb : TestMemDb
+    {
+        public bool FailFormatWrites { get; set; }
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (FailFormatWrites && key.SequenceEqual("history:format"u8)) throw new InvalidOperationException("format write failed");
+            base.Set(key, value, flags);
+        }
     }
 }
