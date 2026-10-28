@@ -22,7 +22,8 @@ public static class Rlp
         RlpWriter writer = RlpWriter.BufferingWriter();
         action(ref writer, ctx);
 
-        byte[] result = new byte[writer.Length];
+        // CopyBufferedTo writes every byte or throws.
+        byte[] result = GC.AllocateUninitializedArray<byte>(writer.Length);
         writer.CopyBufferedTo(result);
         writer.ReturnBuffers();
         return result;
