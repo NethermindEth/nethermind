@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -57,7 +57,6 @@ public class DebugRpcModule(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
-    private readonly IForkInfo _forkInfo = forkInfo;
     private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
@@ -789,13 +788,15 @@ public class DebugRpcModule(
 
     public ResultWrapper<JsonNode> debug_config()
     {
-        ForkActivationsSummary activations = _forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header);
-        ReadOnlySpan<Fork> forkSchedule = _forkInfo.GetAllForks();
+        Fork current = forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header).Current;
+        ReadOnlySpan<Fork> forkSchedule = forkInfo.GetAllForks();
         ForkConfig[] forks = new ForkConfig[forkSchedule.Length];
         for (int index = 0; index < forkSchedule.Length; index++)
         {
-            bool? active = forkSchedule[index].Id.Equals(activations.Current.Id) ? true : null;
-            forks[index] = ForkConfigFactory.Create(forkSchedule[index], specProvider, active);
+            // The summary reports an active genesis fork by timestamp, so the active entry reuses it to match eth_config.
+            forks[index] = forkSchedule[index].Id.Equals(current.Id)
+                ? ForkConfigFactory.Create(current, specProvider, active: true)
+                : ForkConfigFactory.Create(forkSchedule[index], specProvider);
         }
 
         DebugConfigSummary config = new()

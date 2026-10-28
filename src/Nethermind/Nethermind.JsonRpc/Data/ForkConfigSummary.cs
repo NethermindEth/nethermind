@@ -13,12 +13,6 @@ public class ForkConfigSummary
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public required ForkConfig? Last { get; init; }
-
-    /// <summary>
-    /// Contains every configured fork when returned by the debug configuration endpoint.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<ForkConfig>? All { get; init; }
 }
 
 public sealed class DebugConfigSummary

@@ -147,8 +147,7 @@ public partial class EthRpcModuleTests
         JToken result = JToken.Parse(serialized)["result"]!;
 
         Assert.That(result["current"], Is.Not.Null);
-        Assert.That(result["all"], Is.Null);
-        Assert.That(result["appVersion"], Is.Null);
+        Assert.That(result.SelectTokens("$..active"), Is.Empty);
     }
 
     [Test]

@@ -8,6 +8,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -31,7 +32,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -529,37 +529,29 @@ public partial class DebugRpcModuleTests
         public void Dispose() => Blockchain.Dispose();
     }
 
-    [Test]
-    public async Task Debug_config_returns_all_forks()
+    private static IEnumerable<TestCaseData> DebugConfigSpecProviders()
     {
-        using Context ctx = await Context.Create(MainnetSpecProvider.Instance);
-        string serialized = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config");
-        JToken result = JToken.Parse(serialized)["result"]!;
-        JArray forks = (JArray)result["forks"]!;
-        int activeForkCount = 0;
+        yield return new TestCaseData(MainnetSpecProvider.Instance).SetArgDisplayNames("pre-merge genesis");
+        // Cancun is folded into genesis and the next fork is scheduled after the test chain's head.
+        yield return new TestCaseData(new TestSpecProvider(Cancun.Instance) { TransitionActivations = [new ForkActivation(0, 2_000_000_000)] })
+            .SetArgDisplayNames("post-merge genesis");
+    }
 
-        foreach (JToken fork in forks)
-        {
-            JToken? active = fork["active"];
-            if (active is not null)
-            {
-                Assert.That(active.Value<bool>(), Is.True);
-                activeForkCount++;
-            }
-        }
+    [TestCaseSource(nameof(DebugConfigSpecProviders))]
+    public async Task Debug_config_returns_all_forks_with_current_marked_active(ISpecProvider specProvider)
+    {
+        using Context ctx = await Context.Create(specProvider);
+        JArray forks = (JArray)JToken.Parse(await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config"))["result"]!["forks"]!;
+        JToken current = JToken.Parse(await ctx.Blockchain.TestEthRpc("eth_config"))["result"]!["current"]!;
+        string[] scheduledForkIds = ctx.Blockchain.ForkInfo.GetAllForks().ToArray().Select(static fork => fork.Id.HashBytes.ToHexString(true)).ToArray();
+        JObject[] active = forks.Children<JObject>().Where(static fork => fork.ContainsKey("active")).ToArray();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result["current"], Is.Null);
-            Assert.That(result["next"], Is.Null);
-            Assert.That(result["last"], Is.Null);
-            Assert.That(result["all"], Is.Null);
-            Assert.That(forks.Count, Is.EqualTo(ctx.Blockchain.Container.Resolve<IForkInfo>().GetAllForks().Length));
-            Assert.That(forks.Count, Is.GreaterThan(1));
-            Assert.That(activeForkCount, Is.EqualTo(1));
-            Assert.That(forks[0]!["forkId"], Is.Not.Null);
-            Assert.That(result["appVersion"], Is.Null);
-        }
+        Assert.That(forks, Has.Count.GreaterThan(1));
+        Assert.That(forks.Select(static fork => (string?)fork["forkId"]), Is.EqualTo(scheduledForkIds));
+        Assert.That(active, Has.Length.EqualTo(1));
+        Assert.That((bool?)active[0]["active"], Is.True);
+        active[0].Remove("active");
+        Assert.That(active[0], Is.EqualTo(current).Using(JToken.EqualityComparer));
     }
 
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
