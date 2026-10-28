@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using static Nethermind.Evm.GuestWord;
 
@@ -99,6 +100,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
                 ? AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>)
                 : AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>);
+            if (SpecFlags.NetGasMetering(spec) && SpecFlags.Eip2200(spec) && !SpecFlags.Eip8279(spec) && !SpecFlags.Eip8360(spec))
+                lookup[(int)Instruction.SSTORE] = AsTableEntry(&RawCalliHelper.ExecuteSStore);
         }
         if (spec.TransientStorageEnabled)
         {
@@ -1523,6 +1526,94 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, Eip8360>, OffFlag, OffFlag, OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>SSTORE under EIP-2200 and EIP-2929 without EIP-8038, with the key and value read in their stack slots.</summary>
+        /// <remarks>
+        /// The shared handler copies both words off the stack and reads the fork's costs through the spec on every write.
+        /// The costs and refunds are those of <see cref="EvmInstructions.InstructionSStoreMetered{TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929, Eip8279}"/>
+        /// for the same flags. A static frame, a short stack, gas at or below the stipend sentry and traced refunds or
+        /// storage run the shared handler instead, which faults or reports as it does.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteSStore(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+        {
+            VirtualMachine<TGasPolicy> vm = state.Vm;
+            VmState<TGasPolicy> frame = vm.VmState;
+            if (head >= 2 && gas > GasCostOf.CallStipend && !frame.IsStatic && !vm.IsTracingRefunds && !vm.IsTracingOpLevelStorage)
+            {
+                vm.MetricsCounters.IncrementSStore();
+                ref UInt256 key = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
+                ref UInt256 newValue = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 2));
+                StorageCell storageCell = new(frame.Env.ExecutingAccount, in key);
+                // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
+                if (frame.AccessTracker.WarmUp(in storageCell) && !TryCharge(ref gas, GasCostOf.ColdSLoad))
+                    goto OutOfGas;
+
+                IWorldState worldState = vm.WorldState;
+                worldState.Get(in storageCell, out UInt256 currentValue);
+                if (currentValue == newValue)
+                {
+                    if (!TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
+                }
+                else
+                {
+                    SpecGasCosts costs = vm.Spec.GasCosts;
+                    long sClearRefund = (long)costs.SClearRefund;
+                    worldState.GetOriginal(in storageCell, out UInt256 originalValue);
+                    if (originalValue == currentValue)
+                    {
+                        if (currentValue.IsZero)
+                        {
+                            if (!TryCharge(ref gas, GasCostOf.SSet)) goto OutOfGas;
+                        }
+                        else
+                        {
+                            if (!TryCharge(ref gas, costs.SStoreResetCost)) goto OutOfGas;
+                            if (newValue.IsZero) frame.Refund += sClearRefund;
+                        }
+                    }
+                    else
+                    {
+                        if (!TryCharge(ref gas, costs.NetMeteredSStoreCost)) goto OutOfGas;
+                        bool originalIsZero = originalValue.IsZero;
+                        if (!originalIsZero)
+                        {
+                            if (currentValue.IsZero) frame.Refund -= sClearRefund;
+                            if (newValue.IsZero) frame.Refund += sClearRefund;
+                        }
+
+                        if (originalValue == newValue) frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
+                    }
+
+                    worldState.Set(in storageCell, in newValue, in currentValue);
+                    if (newValue.IsZero) vm.MetricsCounters.IncrementStorageDeleted();
+                }
+
+                head -= 2;
+                // Reloaded rather than held across the calls, where each would take a callee-saved register.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                sp = ref SlotAt(ref stack.Bottom, head);
+                ip = ref Unsafe.Add(ref ip, 1);
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+
+            OutOfGas:
+                return ExitChain(ref state, 0, (nint)Unsafe.ByteOffset(ref code, ref ip) + 1, head - 2, EvmExceptionType.OutOfGas);
+            }
+
+            nint shared = Entry(&ExecuteOpcode<SStoreMeteredOpcode<OffFlag, OnFlag, OffFlag, Eip8038Off, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
