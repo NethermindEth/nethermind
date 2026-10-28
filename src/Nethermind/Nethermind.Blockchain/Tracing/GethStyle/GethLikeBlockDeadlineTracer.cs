@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
@@ -26,9 +24,8 @@ internal sealed class GethLikeBlockDeadlineTracer(
     internal bool Expired => _deadline?.Expired == true;
     public bool IsTracingRewards => inner.IsTracingRewards;
 
-    /// <remarks>Other native tracers retain caller-token cancellation without an owned execution deadline.</remarks>
     internal static IBlockTracer<GethLikeTxTrace> Wrap(IBlockTracer<GethLikeTxTrace> tracer, GethTraceOptions options, CancellationToken external) =>
-        options.EnforceExecutionDeadline && options.Tracer is null or "" or NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer
+        options.EnforceExecutionDeadline && (string.IsNullOrEmpty(options.Tracer) || GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer))
             ? new GethLikeBlockDeadlineTracer(tracer, options, external)
             : tracer;
 
