@@ -78,16 +78,19 @@ runs:
         # Self-hosted runners can lack jq, and jq rejects the comments that setup-dotnet accepts.
         # The sed form takes the first match, so it needs "sdk" first.
         sdk_field() {
-          if ! command -v jq > /dev/null || ! jq -r ".sdk.$2 // empty" "$1" 2> /dev/null; then
-            sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" "$1" | head -n1
+          if command -v jq > /dev/null && jq empty "$1" 2> /dev/null; then
+            jq -r ".sdk.$2 // empty" "$1"
+          else
+            sed -E "s#^[[:space:]]*//.*##; s#/[*].*[*]/##" "$1" | sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" | head -n1
           fi
         }
 
         version_from_global_json() {
           local version roll
-          version=$(sdk_field "$1" version)
+          # Native jq.exe on Windows writes CRLF.
+          version=$(sdk_field "$1" version | tr -d '\r')
           [[ -n $version ]] || echo "::error::No usable sdk.version in '$1'." >&2
-          roll=$(sdk_field "$1" rollForward)
+          roll=$(sdk_field "$1" rollForward | tr -d '\r')
           if [[ -n $roll && $version != *-* ]]; then
             case $roll in
               latestFeature) version=${version%.*} ;;
