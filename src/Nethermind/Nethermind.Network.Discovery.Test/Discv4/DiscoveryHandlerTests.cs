@@ -252,8 +252,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             handler.Receive(PooledUdpReceiveResult.Copy(data, _address2));
 
-            Assert.That(forwarded, Has.Count.EqualTo(1));
-            Assert.That(logger.LogList, Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forwarded, Has.Count.EqualTo(1));
+                Assert.That(logger.LogList, Is.Empty);
+            }
         }
 
         [Test]

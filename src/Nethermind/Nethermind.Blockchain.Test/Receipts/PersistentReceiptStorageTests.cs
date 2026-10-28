@@ -704,20 +704,28 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Assert.That(served, Is.EqualTo(useCompactReceipts));
             if (!served) continue;
             receipt.AssertEquivalentTo(expected[i]);
-            Assert.That(txIndex, Is.EqualTo(i));
-            Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(i)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(txIndex, Is.EqualTo(i));
+                Assert.That(logIndexStart, Is.EqualTo(expected.GetBlockLogFirstIndex(i)));
+            }
             if (!fromRlp) Assert.That(block.Transactions[i].SenderAddress, Is.EqualTo(senders[i]));
         }
 
         ClearSendersAndCache();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(_storage.TryGetReceipt(RecoveryBlock(block, fromRlp), TestItem.KeccakH, out _, out _, out _), Is.False, "a transaction outside the block");
+#pragma warning restore NUnit2045
         Assert.That(_storage.TryGetReceipt(RecoveryBlock(block, fromRlp), block.Transactions[0].Hash!, out _, out _, out _), Is.False, "a repeat lookup in one block is served by Get, which caches its receipts");
 
         TxReceipt[] cached = _storage.Get(block);
-        Assert.That(_storage.TryGetReceipt(RecoveryBlock(block, fromRlp), block.Transactions[2].Hash!, out TxReceipt? fromCache, out int cachedIndex, out int cachedLogIndexStart), Is.True);
-        Assert.That(fromCache, Is.SameAs(cached[2]));
-        Assert.That(cachedIndex, Is.EqualTo(2));
-        Assert.That(cachedLogIndexStart, Is.EqualTo(cached.GetBlockLogFirstIndex(2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.TryGetReceipt(RecoveryBlock(block, fromRlp), block.Transactions[2].Hash!, out TxReceipt? fromCache, out int cachedIndex, out int cachedLogIndexStart), Is.True);
+            Assert.That(fromCache, Is.SameAs(cached[2]));
+            Assert.That(cachedIndex, Is.EqualTo(2));
+            Assert.That(cachedLogIndexStart, Is.EqualTo(cached.GetBlockLogFirstIndex(2)));
+        }
 
         void ClearSendersAndCache()
         {
@@ -941,7 +949,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(_storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
         Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Empty);
         receiptStructRef.Logs.AssertEquivalentTo(receipts.First().Logs);
@@ -954,7 +964,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         (Block? block, TxReceipt[] _) = InsertBlock();
 
         _storage.ClearCache();
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
         Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Not.Empty);
         Assert.That(receiptStructRef.Logs, Is.Null.Or.Empty);
@@ -1008,8 +1020,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         WriteStoredReceipts(block, _decoder.EncodeAsBytes(withoutHashes, RlpBehaviors.Storage));
         _blockStore.ClearReceivedCalls();
 
-        Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
-        Assert.That(RecoverFirstLogFields(block).TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
+            Assert.That(RecoverFirstLogFields(block).TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+        }
         _blockStore.Received().GetReceiptRecoveryBlock(block.Number, block.Hash!);
     }
 
@@ -1020,7 +1035,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         _storage.ClearCache();
         _storage.Get(block);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(_storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receiptStructRef), Is.True);
         Assert.That(receiptStructRef.LogsRlp.ToArray(), Is.Empty);
         receiptStructRef.Logs.AssertEquivalentTo(receipts.First().Logs);

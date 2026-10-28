@@ -254,8 +254,11 @@ public class FlatStateActivationPolicyTests
             fastSync: true,
             snapSync: false);
 
-        Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
-        Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.ShouldTurnOnFlatDb(), Is.True);
+            Assert.That(testLogger.LogList.Any(static l => l.Contains("SnapSync=false") && l.Contains("already has flat state")), Is.True);
+        }
     }
 
     private static FlatStateActivationPolicy CreatePolicy(

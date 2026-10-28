@@ -49,8 +49,11 @@ public class PatriciaTreeBulkSetFailureTests
             return (failed, SetOneByOne(CreateTree(db, scheme, root), [write]));
         });
 
-        Assert.That(failure, Is.InstanceOf<MissingTrieNodeException>());
-        Assert.That(actual, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, Is.InstanceOf<MissingTrieNodeException>());
+            Assert.That(actual, Is.EqualTo(expected));
+        }
     }
 
     [Test]
