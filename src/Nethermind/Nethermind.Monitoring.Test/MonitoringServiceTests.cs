@@ -64,6 +64,40 @@ public class MonitoringServiceTests
         await Assert.ThatAsync(async () => await container.DisposeAsync(), Throws.Nothing);
     }
 
+    [Test]
+    public async Task Counters_only_monitoring_runs_update_actions_without_exposing_or_pushing_metrics()
+    {
+        using TcpListener pushGateway = new(IPAddress.Loopback, 0);
+        pushGateway.Start();
+        int exposePort = GetFreePort();
+        MetricsConfig config = new()
+        {
+            Enabled = false,
+            CountersEnabled = true,
+            IntervalSeconds = 1,
+            ExposeHost = "127.0.0.1",
+            ExposePort = exposePort,
+            PushGatewayUrl = $"http://127.0.0.1:{((IPEndPoint)pushGateway.LocalEndpoint).Port}/metrics",
+            InitializeStaticLabels = false
+        };
+        await using IContainer container = BuildMonitoringContainer(config);
+        IMonitoringService monitoringService = container.Resolve<IMonitoringService>();
+        TaskCompletionSource updated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitoringService.AddMetricsUpdateAction(() => updated.TrySetResult());
+        StartMonitoring step = new(monitoringService, LimboLogs.Instance, config);
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(await Task.WhenAny(updated.Task, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(updated.Task),
+            "metrics update actions never ran");
+        using TcpListener exposeListener = new(IPAddress.Loopback, exposePort);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.DoesNotThrow(() => exposeListener.Start(), "metrics server bound the expose port");
+            Assert.That(pushGateway.Pending(), Is.False, "metrics were pushed to the Pushgateway");
+        }
+    }
+
     private static int GetFreePort()
     {
         using TcpListener listener = new(IPAddress.Loopback, 0);
@@ -82,13 +116,16 @@ public class MonitoringServiceTests
             ExposePort = port,
             InitializeStaticLabels = false
         };
-        return new ContainerBuilder()
+        return BuildMonitoringContainer(config);
+    }
+
+    private static IContainer BuildMonitoringContainer(MetricsConfig config) =>
+        new ContainerBuilder()
             .AddModule(new MonitoringModule())
             .AddSingleton<IMetricsConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMetricsController, MetricsController>()
             .Build();
-    }
 
     private static async Task<bool> ServesMetrics(int port)
     {
