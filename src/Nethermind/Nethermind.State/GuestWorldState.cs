@@ -41,7 +41,7 @@ namespace Nethermind.State;
 /// </para>
 /// <para>Does not trace: a commit asked to trace state or storage throws.</para>
 /// </remarks>
-public sealed class GuestWorldState : IWorldState
+public sealed partial class GuestWorldState : IWorldState
 {
     private const byte HeadNone = 0;
     private const byte HeadTouch = 1;
@@ -732,9 +732,10 @@ public sealed class GuestWorldState : IWorldState
         else value = ReadSlot(index);
     }
 
-    public void Set(in StorageCell storageCell, in UInt256 newValue)
+    public void Set(in StorageCell storageCell, in UInt256 newValue) => SetSlot(SlotOf(in storageCell), in newValue);
+
+    private void SetSlot(int index, in UInt256 newValue)
     {
-        int index = SlotOf(in storageCell);
         UInt256 current = ReadSlot(index);
         ref SlotEntry slot = ref _slots[index];
 

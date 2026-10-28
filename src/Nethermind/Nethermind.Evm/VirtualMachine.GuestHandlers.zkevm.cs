@@ -1754,7 +1754,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     goto OutOfGas;
 
                 IWorldState worldState = vm.WorldState;
-                worldState.Get(in storageCell, out UInt256 currentValue);
+                // The guest's own world state reads the value, the original and the write through one lookup of the slot.
+                IGuestSlotStore? slots = worldState as IGuestSlotStore;
+                int slot = 0;
+                UInt256 currentValue, originalValue;
+                if (slots is not null)
+                {
+                    slot = slots.ReadForStore(in storageCell, out currentValue, out originalValue);
+                }
+                else
+                {
+                    worldState.Get(in storageCell, out currentValue);
+                    Unsafe.SkipInit(out originalValue);
+                }
+
                 if (currentValue == newValue)
                 {
                     if (!TryCharge(ref gas, vm.Spec.GasCosts.NetMeteredSStoreCost)) goto OutOfGas;
@@ -1763,7 +1776,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     SpecGasCosts costs = vm.Spec.GasCosts;
                     long sClearRefund = (long)costs.SClearRefund;
-                    worldState.GetOriginal(in storageCell, out UInt256 originalValue);
+                    if (slots is null) worldState.GetOriginal(in storageCell, out originalValue);
                     if (originalValue == currentValue)
                     {
                         if (currentValue.IsZero)
@@ -1789,7 +1802,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if (originalValue == newValue) frame.Refund += (long)costs.RefundFromReversal(originalIsZero);
                     }
 
-                    worldState.Set(in storageCell, in newValue, in currentValue);
+                    if (slots is not null) slots.WriteAt(slot, in newValue);
+                    else worldState.Set(in storageCell, in newValue, in currentValue);
                     if (newValue.IsZero) vm.MetricsCounters.IncrementStorageDeleted();
                 }
 
