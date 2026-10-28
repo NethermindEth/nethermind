@@ -338,6 +338,20 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains(error));
         }
 
+        [Test]
+        public void Keeps_decoding_error_of_wide_v_without_r_and_s_that_end_the_transaction([Values(0, 1, 3)] int itemsAfterV)
+        {
+            byte[] txBytes = BuildLegacyTx([], Bytes.FromHexString("0x020000000000000021"), itemsAfterV);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Not.Contains("Chain id"));
+        }
+
         [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
         public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
         {
@@ -672,10 +686,9 @@ namespace Nethermind.Core.Test.Encoding
             .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
             .TestObject;
 
-        private static byte[] BuildLegacyTx(ReadOnlySpan<byte> nonceBytes, ReadOnlySpan<byte> vBytes = default)
+        private static byte[] BuildLegacyTx(ReadOnlySpan<byte> nonceBytes, ReadOnlySpan<byte> vBytes = default, int emptyItemsAfterV = 2)
         {
             const int emptyItemsBetweenNonceAndV = 5;
-            const int emptyItemsAfterV = 2;
             int payloadLength = GetByteStringRlpLength(nonceBytes) + emptyItemsBetweenNonceAndV + GetByteStringRlpLength(vBytes) + emptyItemsAfterV;
             byte[] txBytes = new byte[1 + payloadLength];
             txBytes[0] = (byte)(Rlp.EmptyListByte + payloadLength);

@@ -531,9 +531,9 @@ namespace Ethereum.Test.Base
         /// </remarks>
         private static IReleaseSpec ParseSpec(string name) =>
             SpecNameParser.Parse(ForkAliases.Resolve(
-                name.EndsWith(BpoIncreaseScenario, StringComparison.Ordinal) || name.EndsWith(BpoDecreaseScenario, StringComparison.Ordinal)
-                    ? name[..^BpoIncreaseScenario.Length]
-                    : name));
+                name.EndsWith(BpoIncreaseScenario, StringComparison.Ordinal) ? name[..^BpoIncreaseScenario.Length]
+                : name.EndsWith(BpoDecreaseScenario, StringComparison.Ordinal) ? name[..^BpoDecreaseScenario.Length]
+                : name));
 
         private const string BpoIncreaseScenario = "BPOIncrease";
         private const string BpoDecreaseScenario = "BPODecrease";

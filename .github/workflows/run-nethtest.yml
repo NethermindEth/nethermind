@@ -543,12 +543,13 @@ jobs:
               exit 1
             fi
             # The transitions into Amsterdam (e.g. for_bpo2toamsterdamattime15k) also cross the
-            # EIP-7928 boundary, so they are linked in beside it as one runner input.
+            # EIP-7928 boundary, so they are linked in beside it as one runner input. The BPO scenarios of
+            # Amsterdam (e.g. for_amsterdambpoincrease, for_amsterdamtobpodecreaseattime15k) keep its rules.
             AMSTERDAM_DIR="$RUNNER_TMP/nethtest-amsterdam-scope"
             rm -rf "$AMSTERDAM_DIR"
             mkdir -p "$AMSTERDAM_DIR"
             ln -s "$SCOPED_DIR" "$AMSTERDAM_DIR/"
-            find "$FIXTURE_DIR" -maxdepth 1 -type d -name '*toamsterdam*' -exec ln -s {} "$AMSTERDAM_DIR/" \;
+            find "$FIXTURE_DIR" -maxdepth 1 -type d \( -name '*toamsterdam*' -o -name 'for_amsterdambpo*' -o -name 'for_amsterdamtobpo*' \) -exec ln -s {} "$AMSTERDAM_DIR/" \;
             if [ "$(find "$AMSTERDAM_DIR" -mindepth 1 -maxdepth 1 | wc -l)" -lt 2 ]; then
               echo "::warning::No Amsterdam transition fixtures found in $FIXTURE_DIR"
             fi

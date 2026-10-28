@@ -30,9 +30,12 @@ public class BlockchainTestConversionTests
         Assert.That(tests.Single().ForkName, Is.EqualTo(network));
     }
 
-    [Test]
+    [TestCase("AmsterdamBPOIncrease", 21, 28, 0xd6f3c4)]
+    [TestCase("AmsterdamToBPOIncreaseAtTime15k", 21, 28, 0xd6f3c4)]
+    [TestCase("AmsterdamBPODecrease", 9, 14, 0x729e16)]
+    [TestCase("AmsterdamToBPODecreaseAtTime15k", 9, 14, 0x729e16)]
     public void ConvertToBlockchainTests_LoadsBpoScenarioAsItsForkWithScenarioBlobSchedule(
-        [Values("AmsterdamBPODecrease", "AmsterdamToBPODecreaseAtTime15k")] string network)
+        string network, int targetBlobCount, int maxBlobCount, int baseFeeUpdateFraction)
     {
         string json = $$"""
             {
@@ -45,6 +48,7 @@ public class BlockchainTestConversionTests
                   "chainid": "0x01",
                   "blobSchedule": {
                     "Amsterdam": { "target": "0x0e", "max": "0x15", "baseFeeUpdateFraction": "0xb24b3f" },
+                    "AmsterdamBPOIncrease": { "target": "0x15", "max": "0x1c", "baseFeeUpdateFraction": "0xd6f3c4" },
                     "AmsterdamBPODecrease": { "target": "0x09", "max": "0x0e", "baseFeeUpdateFraction": "0x729e16" }
                   }
                 }
@@ -58,9 +62,9 @@ public class BlockchainTestConversionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scenario.IsEip7928Enabled, Is.True);
-            Assert.That(scenario.TargetBlobCount, Is.EqualTo(9));
-            Assert.That(scenario.MaxBlobCount, Is.EqualTo(14));
-            Assert.That(scenario.BlobBaseFeeUpdateFraction, Is.EqualTo(0x729e16));
+            Assert.That(scenario.TargetBlobCount, Is.EqualTo(targetBlobCount));
+            Assert.That(scenario.MaxBlobCount, Is.EqualTo(maxBlobCount));
+            Assert.That(scenario.BlobBaseFeeUpdateFraction, Is.EqualTo(baseFeeUpdateFraction));
         }
     }
 }
