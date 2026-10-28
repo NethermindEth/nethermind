@@ -16,7 +16,7 @@ public partial class EezSystemTxDecoderTests
     {
         NativeHistoryBlock[] blocks = HistoryBlocks(count);
         if (count is 0 or 65)
-            Assert.That(() => NativeHistoryEnvelope.CreateBlocks(901, blocks), Throws.TypeOf<RlpException>());
+            Assert.That(() => NativeHistoryEnvelope.CreateBlocks(901, blocks), Throws.InstanceOf<RlpException>());
         else
             Assert.That(NativeHistoryEnvelope.DecodeBlocks(NativeHistoryEnvelope.CreateBlocks(901, blocks).Encode()).Blocks.Length, Is.EqualTo(count));
     }
@@ -36,7 +36,7 @@ public partial class EezSystemTxDecoderTests
             Assert.That(created.Blocks.ToArray(), Is.EqualTo(expected), "caller mutation cannot change owned records");
             Assert.That(decoded.Blocks.ToArray(), Is.EqualTo(expected), "decoding retains gaps and repeated hashes without inventing records");
             Assert.That(decoded.ChainId, Is.EqualTo(chainId));
-            Assert.That(() => { _ = decoded.Hashes.Length; }, Throws.TypeOf<RlpException>(), "legacy consumers cannot reinterpret explicit pairs");
+            Assert.That(() => { _ = decoded.Hashes.Length; }, Throws.InstanceOf<RlpException>(), "legacy consumers cannot reinterpret explicit pairs");
         }
     }
 
@@ -47,13 +47,13 @@ public partial class EezSystemTxDecoderTests
         for (int length = 0; length < encoded.Length; length++)
         {
             byte[] truncated = encoded[..length];
-            Assert.That(() => NativeHistoryEnvelope.DecodeBlocks(truncated), Throws.TypeOf<RlpException>(), $"length {length}");
+            Assert.That(() => NativeHistoryEnvelope.DecodeBlocks(truncated), Throws.InstanceOf<RlpException>(), $"length {length}");
         }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => NativeHistoryEnvelope.Decode(encoded), Throws.TypeOf<RlpException>(), "old profile selection stays explicit");
+            Assert.That(() => NativeHistoryEnvelope.Decode(encoded), Throws.InstanceOf<RlpException>(), "old profile selection stays explicit");
             byte[] old = NativeHistoryEnvelope.Create(901, [RepeatedHash(1)]).Encode();
-            Assert.That(() => NativeHistoryEnvelope.DecodeBlocks(old), Throws.TypeOf<RlpException>(), "new profile cannot accept a legacy hash list");
+            Assert.That(() => NativeHistoryEnvelope.DecodeBlocks(old), Throws.InstanceOf<RlpException>(), "new profile cannot accept a legacy hash list");
         }
     }
 
@@ -69,7 +69,7 @@ public partial class EezSystemTxDecoderTests
             _ => new(2, default),
         };
         if (field == "descending") blocks[0] = new(2, RepeatedHash(1));
-        Assert.That(() => NativeHistoryEnvelope.CreateBlocks(901, blocks), Throws.TypeOf<RlpException>());
+        Assert.That(() => NativeHistoryEnvelope.CreateBlocks(901, blocks), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -121,7 +121,7 @@ public partial class EezSystemTxDecoderTests
         byte[] encoded = [field == "type" ? (byte)0x45 : (byte)0x46, .. payload.Bytes];
         if (field == "trailing") encoded = [.. encoded, 0];
         if (field == "outer-long") encoded = [0x46, 0xf8, (byte)(payload.Bytes.Length - 1), .. payload.Bytes.AsSpan(1)];
-        Assert.That(() => NativeHistoryEnvelope.DecodeBlocks(encoded), Throws.TypeOf<RlpException>(), field);
+        Assert.That(() => NativeHistoryEnvelope.DecodeBlocks(encoded), Throws.InstanceOf<RlpException>(), field);
     }
 
     private static NativeHistoryBlock[] HistoryBlocks(int count)

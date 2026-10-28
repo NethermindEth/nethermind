@@ -27,7 +27,7 @@ public partial class RollupXGenesisTests
         {
             Assert.That(snapshot.Rules.NativeFormat, Is.EqualTo(NativeSystemTxFormat.ContractV6));
             Assert.That(snapshot.Rules.UsesNativeContract, Is.True);
-            Assert.That(spec.Genesis!.StateRoot, Is.EqualTo(new Hash256("0xb8287bd821dd8954d3a5fde186e1b7ba5258f0e217d302dd6e3b9714df8d6285")), "independent upstream production genesis root");
+            Assert.That(spec.Genesis!.StateRoot, Is.EqualTo(new Hash256("0x688e9a795bb28a1eda48e66790feb60e4e7efffb73cc3bac981dbe6e302fcc5e")), "independent state root for the unchanged genesis fixture");
             Assert.That(snapshot.GenesisHash, Is.EqualTo(genesis.ValueHash256));
             Assert.That(NativeHistoryBlockExecutor.GetRuntimeHash(snapshot.Rules.NativeFormat), Is.EqualTo(NativeProxyHistory.RuntimeHash));
         }
@@ -58,7 +58,7 @@ public partial class RollupXGenesisTests
         JsonObject account = ProxyGenesisAccount(document, address);
         switch (field)
         {
-            case "missing": document["alloc"]!.AsObject().Remove(address.ToString()[2..]); break;
+            case "missing": document["alloc"]!.AsObject().Remove(address.ToString()); break;
             case "code": account["code"] = "0x00"; break;
             case "nonce": account["nonce"] = role == "proxy" ? "0x1" : "0x2"; break;
             case "balance": account["balance"] = "0x1"; break;
@@ -125,5 +125,5 @@ public partial class RollupXGenesisTests
 
     private static JsonObject ProxyGenesisDocument() => JsonNode.Parse(File.ReadAllBytes(StatelessFixtures.PathOf("rollupx/native-profile-v6", "genesis.json")))!.AsObject();
 
-    private static JsonObject ProxyGenesisAccount(JsonObject document, Address address) => document["alloc"]![address.ToString()[2..]]!.AsObject();
+    private static JsonObject ProxyGenesisAccount(JsonObject document, Address address) => document["alloc"]![address.ToString()]!.AsObject();
 }

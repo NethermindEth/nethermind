@@ -404,7 +404,7 @@ public class RollupXExecutionDataTests
     [TestCase(ulong.MaxValue, 0UL, 1UL, TestName = "SelectedBlockCount_AnchorOverflow_Rejects")]
     public void SelectedBlockCount_InvalidRange_RejectsBeforeExecution(ulong anchor, ulong from, ulong to) =>
         Assert.That(() => RollupXRecordedExecutionTests.SelectedBlockCount(new Begin { AnchorNumber = anchor }, new Finalize { FromBlock = from, ToBlock = to }),
-            Throws.TypeOf<AssertionException>(), "malformed baseline ranges cannot change or expand execution coverage");
+            Throws.TypeOf<MultipleAssertException>(), "malformed baseline ranges cannot change or expand execution coverage");
 
     [TestCase("../other.json", TestName = "ReadSelected_ParentPath_Rejects")]
     [TestCase("sub/other.json", TestName = "ReadSelected_Subdirectory_Rejects")]

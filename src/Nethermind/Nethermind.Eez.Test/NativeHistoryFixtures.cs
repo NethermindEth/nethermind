@@ -20,7 +20,7 @@ internal static class NativeHistoryFixtures
         foreach (Address address in new[] { EezConstants.L1HistoryAddress, NativeProxyHistory.ImplementationAddress, NativeProxyHistory.AdminAddress })
         {
             state.CreateAccount(address, 0, address == EezConstants.L1HistoryAddress ? 2UL : 1UL);
-            JsonElement account = alloc.GetProperty(address.ToString(false, false));
+            JsonElement account = alloc.GetProperty(address.ToString());
             state.InsertCode(address, Bytes.FromHexString(account.GetProperty("code").GetString()!), Osaka.Instance);
             if (account.TryGetProperty("storage", out JsonElement storage))
                 foreach (JsonProperty entry in storage.EnumerateObject())

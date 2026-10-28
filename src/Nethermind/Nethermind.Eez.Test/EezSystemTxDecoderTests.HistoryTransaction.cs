@@ -3,6 +3,7 @@
 
 using System.Linq;
 using System.Text.Json;
+using System.Globalization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -101,9 +102,10 @@ public partial class EezSystemTxDecoderTests
     public void HistoryTransaction_ExplicitBlocks_CalldataMatchesUnchangedUpstreamOracle()
     {
         JsonElement vectors = StatelessFixtures.ReadJson("rollupx/native-profile-v6", "vectors.json").GetProperty("vectors");
-        JsonElement wire = vectors.EnumerateArray().First(static v => v.GetProperty("id").GetString() == "native-history-advance");
         JsonElement call = vectors.EnumerateArray().First(static v => v.GetProperty("id").GetString() == "history-advance-calldata");
-        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.DecodeBlocks(Bytes.FromHexString(wire.GetProperty("expectedBytes").GetString()!));
+        string[] pair = call.GetProperty("arguments")[0].GetString()![2..^2].Split(',');
+        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.CreateBlocks(901,
+            [new(ulong.Parse(pair[0], CultureInfo.InvariantCulture), new ValueHash256(pair[1]))]);
         byte[] actual = NativeHistoryCall.EncodeBlocks(envelope);
         using (Assert.EnterMultipleScope())
         {

@@ -54,7 +54,7 @@ public partial class EezL2SystemCallsTests
                 Assert.That(state.GetBalance(recipient), Is.EqualTo(blockEnd ? (UInt256)5 : UInt256.Zero),
                     "only block-end cleanup permits spending the existing protocol balance during the block");
                 Assert.That(state.GetBalance(Address.SystemUser), Is.EqualTo(blockEnd ? UInt256.Zero : (UInt256)7));
-                Assert.That(state.GetBalance(manager), Is.Zero);
+                Assert.That(state.GetBalance(manager), Is.EqualTo(UInt256.Zero));
                 Assert.That(state.GetNonce(manager), Is.EqualTo(2UL));
                 Assert.That(state.GetCodeHash(manager), Is.EqualTo(ValueKeccak.Compute(spender)));
                 Assert.That(preserved, Is.EqualTo((UInt256)17));
