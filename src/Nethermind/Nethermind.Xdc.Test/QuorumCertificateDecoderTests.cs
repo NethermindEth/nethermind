@@ -34,7 +34,7 @@ internal class QuorumCertificateDecoderTests
         RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, quorumCert);
         RlpReader ctx = new(bytes);
-        QuorumCertificate decoded = decoder.Decode(ref ctx);
+        QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref ctx);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }
@@ -48,7 +48,7 @@ internal class QuorumCertificateDecoderTests
         RlpWriter writer = new(bytes);
         decoder.Encode(ref writer, quorumCert);
         RlpReader decoderContext = new(bytes);
-        QuorumCertificate decoded = decoder.Decode(ref decoderContext);
+        QuorumCertificate decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(quorumCert).UsingXdcComparer());
     }

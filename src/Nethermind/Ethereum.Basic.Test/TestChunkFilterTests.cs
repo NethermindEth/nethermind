@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Test;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Ethereum.Basic.Test;
 
@@ -54,10 +55,8 @@ public class TestChunkFilterTests
         Assert.That(TestChunkFilter.FilterByChunk(Enumerable.Range(0, 9), chunk), Is.EqualTo(expected));
     }
 
-    [TestCase("8of3")]
-    [TestCase("0of3")]
-    [TestCase("garbage")]
-    public void FilterByChunk_WithInvalidExplicitChunk_Throws(string chunk) =>
+    [Test]
+    public void FilterByChunk_WithInvalidExplicitChunk_Throws([Values("8of3", "0of3", "garbage")] string chunk) =>
         Assert.Throws<ArgumentException>(() => TestChunkFilter.FilterByChunk(Enumerable.Range(0, 9), chunk));
 
     [Test]
@@ -109,15 +108,8 @@ public class TestChunkFilterTests
         }
     }
 
-    [TestCase("0of4")]
-    [TestCase("5of4")]
-    [TestCase("-1of4")]
-    [TestCase("1of0")]
-    [TestCase("1of-1")]
-    [TestCase("badformat")]
-    [TestCase("1of")]
-    [TestCase("of4")]
-    public void TryGetChunkConfig_RejectsInvalidFormat(string invalid)
+    [Test]
+    public void TryGetChunkConfig_RejectsInvalidFormat([Values("0of4", "5of4", "-1of4", "1of0", "1of-1", "badformat", "1of", "of4")] string invalid)
     {
         Environment.SetEnvironmentVariable("TEST_CHUNK", invalid);
 
@@ -145,6 +137,38 @@ public class TestChunkFilterTests
         Environment.SetEnvironmentVariable("TEST_CHUNK", null);
 
         Assert.That(TestChunkFilter.TryGetChunkConfig(), Is.Null);
+    }
+
+    [Test]
+    public void ChunkFilterAttribute_RemovesTestsOutsideChunkAndSuitesItEmpties()
+    {
+        Environment.SetEnvironmentVariable("TEST_CHUNK", "2of3");
+        string[] names = [.. Enumerable.Range(0, 30).Select(static i => $"Nethermind.Tests.Fixture.Method({i})")];
+        string outsideChunk = names.First(static name => !TestChunkFilter.ShouldRunInChunk(name));
+
+        TestSuite root = new("Root");
+        TestSuite fixture = new("Fixture");
+        TestSuite emptiedFixture = new("EmptiedFixture");
+        TestSuite fixtureWithoutTests = new("FixtureWithoutTests");
+        foreach (string name in names)
+        {
+            fixture.Add(CreateTest(name));
+        }
+        emptiedFixture.Add(CreateTest(outsideChunk));
+        root.Add(fixture);
+        root.Add(emptiedFixture);
+        root.Add(fixtureWithoutTests);
+
+        new ChunkFilterAttribute().ApplyToTest(root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.Tests, Is.EqualTo(new[] { fixture, fixtureWithoutTests }));
+            Assert.That(fixture.Tests.Select(static test => test.FullName), Is.EqualTo(names.Where(TestChunkFilter.ShouldRunInChunk)));
+        }
+
+        static TestMethod CreateTest(string fullName) =>
+            new(new MethodWrapper(typeof(TestChunkFilterTests), nameof(TryGetChunkConfig_WhenUnset_ReturnsNull))) { FullName = fullName };
     }
 
     private static IEnumerable<int> CountedRange(int count, Action onEnumerated)

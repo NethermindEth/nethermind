@@ -17,7 +17,7 @@ namespace Nethermind.Stats
 
         private class NodeComparer : IEqualityComparer<Node>
         {
-            public bool Equals(Node x, Node y) => ReferenceEquals(x, y) || x.Id == y.Id;
+            public bool Equals(Node? x, Node? y) => ReferenceEquals(x, y) || (x is not null && y is not null && x.Id == y.Id);
             public int GetHashCode(Node obj) => obj.GetHashCode();
         }
 
@@ -36,7 +36,7 @@ namespace Nethermind.Stats
             _cleanupTimer.Start();
         }
 
-        private void CleanupTimerOnElapsed(object sender, EventArgs e)
+        private void CleanupTimerOnElapsed(object? sender, EventArgs e)
         {
             _cleanupTimer.Stop();
 
@@ -65,13 +65,10 @@ namespace Nethermind.Stats
 
         public INodeStats GetOrAdd(Node node)
         {
-            if (node is null)
-            {
-                return null;
-            }
+            ArgumentNullException.ThrowIfNull(node);
 
             // to avoid allocations
-            if (_nodeStats.TryGetValue(node, out INodeStats stats))
+            if (_nodeStats.TryGetValue(node, out INodeStats? stats))
             {
                 return stats;
             }

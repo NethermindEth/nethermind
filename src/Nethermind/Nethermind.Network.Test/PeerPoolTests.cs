@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -16,6 +17,7 @@ using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -34,6 +36,8 @@ public class PeerPoolTests
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
         TestNodeSource nodeSource = new();
+        TestLogger logger = new();
+        FirstTwoDelaysImmediateTimeProvider timeProvider = new();
         PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
@@ -43,8 +47,9 @@ public class PeerPoolTests
                 MaxActivePeers = 5,
                 MaxCandidatePeerCount = 10
             },
-            LimboLogs.Instance,
-            trustedNodesManager);
+            new OneLoggerLogManager(new ILogger(logger)),
+            trustedNodesManager,
+            timeProvider);
 
         Random rand = new(0);
         PrivateKeyGenerator keyGen = new(new TestRandom((m) => rand.Next(m), (s) =>
@@ -71,9 +76,16 @@ public class PeerPoolTests
             nodeSource.AddNode(node);
         }
 
-        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
-
-        await pool.StopAsync();
+        try
+        {
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
+            await timeProvider.SecondDelayRequested.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(logger.LogList, Has.Exactly(1).EqualTo("Peer cleanup threshold reached. Throttling discovery."));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
     }
 
     [Test]
@@ -248,6 +260,197 @@ public class PeerPoolTests
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
     }
 
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(false, false, true)]
+    public void GetOrAdd_PromotesElevatedFlagsOntoAnAlreadyPooledPeer(bool isStatic, bool isTrusted, bool isBootnode)
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Node persistedNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        Peer pooled = pool.GetOrAdd(persistedNode);
+        Assert.That(pool.StaticPeers, Is.Empty);
+
+        Node configuredNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234)
+        {
+            IsStatic = isStatic,
+            IsTrusted = isTrusted,
+            IsBootnode = isBootnode
+        };
+        Peer resolved = pool.GetOrAdd(configuredNode);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.SameAs(pooled));
+            Assert.That(pooled.Node.IsStatic, Is.EqualTo(isStatic),
+                "a peer that was already pooled from the persisted peers db must gain the elevated status of a later arrival, or it is never treated as such for the whole session");
+            Assert.That(pooled.Node.IsTrusted, Is.EqualTo(isTrusted));
+            Assert.That(pooled.Node.IsBootnode, Is.EqualTo(isBootnode));
+            Assert.That(pool.StaticPeers, isStatic ? Has.Exactly(1).Items : Is.Empty);
+        }
+    }
+
+    [Test]
+    public void GetOrAdd_DoesNotClearElevatedFlagsWhenAPlainArrivalFollows()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Node staticNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsStatic = true };
+        Peer pooled = pool.GetOrAdd(staticNode);
+
+        Node plainNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        Peer resolved = pool.GetOrAdd(plainNode);
+
+        Assert.That(resolved, Is.SameAs(pooled));
+        Assert.That(pooled.Node.IsStatic, Is.True,
+            "promotion is monotonic: a later plain arrival of the same node id must never demote the pooled peer");
+    }
+
+    [Test]
+    public void GetOrAdd_MergesVerifiedEnrStateIntoPersistedPeer()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+        Node persistedNode = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
+        Peer pooled = pool.GetOrAdd(persistedNode);
+        NodeRecord dualStackRecord = CreateSignedEnr(enrSequence: 0, includeIpv6: true);
+        Assert.That(Node.TryFromEnr(dualStackRecord, out Node? discoveredNode), Is.True);
+        Assert.That(discoveredNode!.SetVerifiedEnr(dualStackRecord), Is.True);
+
+        Peer resolved = pool.GetOrAdd(discoveredNode);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.SameAs(pooled));
+            Assert.That(pooled.Node.Address, Is.EqualTo(persistedNode.Address), "merging ENR state must not replace the pooled dial endpoint");
+            Assert.That(pooled.Node.Enr, Is.SameAs(dualStackRecord));
+            Assert.That(pooled.Node.IsVerifiedEnr(dualStackRecord), Is.True);
+            Assert.That(dualStackRecord.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out _), Is.True);
+        }
+    }
+
+    [Test]
+    public void GetOrAdd_UsesCanonicalVerifiedSequenceAndWithdrawalRules()
+    {
+        PeerPool pool = CreatePeerPool(
+            new TestNodeSource(),
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 10);
+        Node persistedNode = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30303);
+        Node originalAlias = pool.GetOrAdd(persistedNode).Node;
+        NodeRecord sequenceZero = CreateSignedEnr(enrSequence: 0, includeIpv6: true);
+        pool.GetOrAdd(CreateEnrNode(sequenceZero, verified: true));
+
+        NodeRecord withdrawal = CreateSignedEnr(enrSequence: 1, includeIpv6: false);
+        pool.GetOrAdd(CreateEnrNode(withdrawal, verified: true));
+        pool.GetOrAdd(CreateEnrNode(sequenceZero, verified: true));
+        NodeRecord sameSequenceReplay = CreateSignedEnr(enrSequence: 1, includeIpv6: true);
+        pool.GetOrAdd(CreateEnrNode(sameSequenceReplay, verified: true));
+        NodeRecord unverifiedNewer = CreateSignedEnr(enrSequence: 2, includeIpv6: true);
+        pool.GetOrAdd(CreateEnrNode(unverifiedNewer, verified: false));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(originalAlias.Address, Is.EqualTo(persistedNode.Address));
+            Assert.That(originalAlias.Enr, Is.SameAs(withdrawal));
+            Assert.That(originalAlias.IsVerifiedEnr(withdrawal), Is.True);
+            Assert.That(originalAlias.HighestObservedEnrSequence, Is.EqualTo(1));
+            Assert.That(withdrawal.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out _), Is.False,
+                "a newer verified withdrawal must not be undone by same/older or merely decoded records");
+        }
+    }
+
+    [TestCase(null, false, 4)]
+    [TestCase(2, true, 4)]
+    [TestCase(8, false, 4)]
+    [TestCase(4, true, 4)]
+    [TestCase(5, true, 5)]
+    [TestCase(2, true, 4, 8)]
+    public void GetOrAdd_RestoresPersistedEnrAndMergesItIntoExistingPeer(int? currentSequence, bool verified, int expectedSequence, int observedSequence = 0)
+    {
+        PeerPool pool = CreatePeerPool(
+            new TestNodeSource(),
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 10);
+        NodeRecord persistedRecord = CreateSignedEnr(enrSequence: 4, includeIpv6: true);
+        Peer existing = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303));
+        if (currentSequence is int sequence)
+        {
+            pool.GetOrAdd(CreateEnrNode(CreateSignedEnr((ulong)sequence, includeIpv6: false), verified));
+        }
+        existing.Node.ObserveEnrSequence((ulong)observedSequence);
+
+        Peer restored = pool.GetOrAdd(new NetworkNode(persistedRecord.ToString()));
+
+        Assert.That(existing.Node.Enr, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored, Is.SameAs(existing));
+            Assert.That(existing.Node.Enr!.EnrSequence, Is.EqualTo(expectedSequence));
+            Assert.That(existing.Node.IsVerifiedEnr(existing.Node.Enr), Is.True);
+            Assert.That(existing.Node.HighestObservedEnrSequence, Is.EqualTo(Math.Max(expectedSequence, observedSequence)));
+        }
+    }
+
+    [Test]
+    public void GetOrAdd_ExistingNetworkNodeDoesNotAllocate([Values] bool enr)
+    {
+        PeerPool pool = CreatePeerPool(
+            new TestNodeSource(),
+            new TrustedNodesManager("trusted-nodes.json", LimboLogs.Instance),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 10);
+        NetworkNode networkNode = enr
+            ? new NetworkNode(CreateSignedEnr(4, includeIpv6: true).ToString())
+            : new NetworkNode(TestItem.PublicKeyA, "8.8.8.8", 30303);
+        Peer existing = pool.GetOrAdd(networkNode);
+        for (int i = 0; i < 1000; i++) pool.GetOrAdd(networkNode);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) pool.GetOrAdd(networkNode);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero);
+            Assert.That(pool.GetOrAdd(networkNode), Is.SameAs(existing));
+        }
+    }
+
+    [Test]
+    public async Task GetOrAdd_ConcurrentAliasesConvergeOnNewestVerifiedEnr()
+    {
+        PeerPool pool = CreatePeerPool(
+            new TestNodeSource(),
+            Substitute.For<ITrustedNodesManager>(),
+            maxActivePeers: 10,
+            maxCandidatePeerCount: 10);
+        Node[] aliases = new Node[16];
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            aliases[i] = CreateEnrNode(CreateSignedEnr((ulong)i, includeIpv6: i % 2 == 1), verified: true);
+        }
+
+        await Task.WhenAll(Array.ConvertAll(aliases, node => Task.Run(() => pool.GetOrAdd(node))));
+        Node pooled = pool.Peers[TestItem.PublicKeyA].Node;
+
+        Assert.That(pooled.Enr, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pooled.Enr!.EnrSequence, Is.EqualTo(15));
+            Assert.That(pooled.HighestObservedEnrSequence, Is.EqualTo(15));
+            Assert.That(pooled.IsVerifiedEnr(pooled.Enr), Is.True);
+            Assert.That(aliases, Has.All.Matches<Node>(node => ReferenceEquals(node.Enr, pooled.Enr)));
+        }
+    }
+
     [Test]
     public void GetOrAdd_NetworkNode_sets_trusted_flag_from_manager()
     {
@@ -260,6 +463,113 @@ public class PeerPoolTests
         Peer peer = pool.GetOrAdd(new NetworkNode(enode));
 
         Assert.That(peer.Node.IsTrusted, Is.True, "GetOrAdd(NetworkNode) marks trusted via the manager");
+    }
+
+    [Test]
+    public void GetOrAdd_NetworkNode_refreshes_the_trusted_flag_of_an_already_pooled_peer()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(false);
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        string enode = new Enode(TestItem.PublicKeyA, IPAddress.Parse("1.2.3.4"), 30303).ToString();
+        Peer pooled = pool.GetOrAdd(new NetworkNode(enode));
+        Assert.That(pooled.Node.IsTrusted, Is.False);
+
+        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
+        Peer resolved = pool.GetOrAdd(new NetworkNode(enode));
+
+        Assert.That(resolved, Is.SameAs(pooled));
+        Assert.That(pooled.Node.IsTrusted, Is.True,
+            "a peer trusted after it was pooled must gain the flag, or admin_addTrustedPeer never takes effect for an already known peer");
+    }
+
+    [Test]
+    public void GetOrAdd_NetworkNode_refreshes_the_trusted_flag_of_an_enr_backed_pooled_peer()
+    {
+        ITrustedNodesManager trustedNodesManager = new TrustedNodesManager("trusted-nodes.json", LimboLogs.Instance);
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        NetworkNode enrNode = new(TestEnrString);
+        Peer pooled = pool.GetOrAdd(new Node(enrNode.NodeId, "1.2.3.4", 1234));
+
+        Peer resolved = pool.GetOrAdd(enrNode);
+
+        Assert.That(resolved, Is.SameAs(pooled),
+            "an ENR has no enode representation, so the trusted refresh must not dereference it - a throw here aborts the whole persistence tick and skips the pending commit");
+    }
+
+    private const string TestEnrString =
+        "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOo" +
+        "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
+        "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
+
+    private static NodeRecord CreateSignedEnr(ulong enrSequence, bool includeIpv6)
+    {
+        NodeRecord record = new() { EnrSequence = enrSequence };
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new IpEntry(IPAddress.Parse("8.8.8.8")));
+        record.SetEntry(new TcpEntry(30303));
+        record.SetEntry(new UdpEntry(30303));
+        if (includeIpv6)
+        {
+            record.SetEntry(new Ip6Entry(IPAddress.Parse("2606:4700:4700::1111")));
+            record.SetEntry(new Tcp6Entry(30304));
+            record.SetEntry(new Udp6Entry(30304));
+        }
+
+        new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyA).Sign(record);
+        return record;
+    }
+
+    private static Node CreateEnrNode(NodeRecord record, bool verified)
+    {
+        Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+        if (verified)
+        {
+            Assert.That(node!.SetVerifiedEnr(record), Is.True);
+        }
+
+        return node!;
+    }
+
+    private sealed class FirstTwoDelaysImmediateTimeProvider : TimeProvider
+    {
+        private readonly TaskCompletionSource _secondDelayRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _delayCount;
+
+        public Task SecondDelayRequested => _secondDelayRequested.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            int delayCount = Interlocked.Increment(ref _delayCount);
+            if (delayCount == 2) _secondDelayRequested.TrySetResult();
+            return delayCount <= 2
+                ? new ImmediateTimer(callback, state, dueTime, period)
+                : TimeProvider.System.CreateTimer(callback, state, dueTime, period);
+        }
+
+        private sealed class ImmediateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period) : ITimer
+        {
+            private readonly ITimer _timer =
+                TimeProvider.System.CreateTimer(callback, state, GetDueTime(dueTime), period);
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) =>
+                _timer.Change(GetDueTime(dueTime), period);
+
+            public void Dispose() => _timer.Dispose();
+
+            public ValueTask DisposeAsync() => _timer.DisposeAsync();
+
+            private static TimeSpan GetDueTime(TimeSpan dueTime) =>
+                dueTime == Timeout.InfiniteTimeSpan ? dueTime : TimeSpan.Zero;
+        }
     }
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(

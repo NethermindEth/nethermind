@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -44,7 +45,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // This test verifies that block gas accounting uses pre-refund gas
         // when EIP-7778 is enabled
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -75,7 +76,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // After the revert (ethereum/execution-specs#2073), receipts show post-refund gas
         // This is what users pay, while block gas accounting uses pre-refund
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -156,7 +157,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // Use block 0 where EIP-7778 is not enabled
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((0, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -180,10 +181,53 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_block_gas_uses_post_refund_gas_until_eip7778_activates([Values] bool eip7778Enabled)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip7778Enabled = eip7778Enabled };
+        TestSpecProvider provider = new(spec);
+
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), UInt256.One);
+        TestState.InsertCode(Recipient, Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done, spec);
+        TestState.Commit(spec);
+
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(100_000)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(TestItem.AddressA))
+            .To(Recipient)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithTransactions(transaction)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+
+        GasConsumed gas = tracer.GasConsumedResult;
+        ulong expectedBlockGas = eip7778Enabled ? gas.OperationGas + gas.GasRefund : gas.OperationGas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gas.GasRefund, Is.GreaterThan(0), "the storage clear must produce a refund");
+            Assert.That(gas.BlockStateGas, Is.Zero, "state gas must not mask the selected execution gas");
+            Assert.That(gas.SpentGas, Is.EqualTo(gas.OperationGas), "the calldata floor must not mask the refund");
+            Assert.That(gas.BlockGas, Is.EqualTo(expectedBlockGas));
+        }
+    }
+
+    [Test]
     public void Receipt_gas_equals_block_gas_when_eip7778_disabled()
     {
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((0, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -314,7 +358,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Set up sender and recipient accounts
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(provider.GetSpec((1, 0)));
 
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -384,7 +428,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Set up sender and storage to clear (triggers refund)
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(provider.GetSpec((1, 0)));
 
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -440,7 +484,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -505,7 +549,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // After the revert, cumulative receipt gas uses post-refund values
         // Set up storage slot that will be cleared for refund
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -569,7 +613,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // Test that Restore(0) properly clears all receipts and resets gas tracking
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
@@ -611,7 +655,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
     {
         // Test restore after multiple transactions with varying refunds
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), new UInt256(new byte[] { 1 }, isBigEndian: true));
         TestState.Commit(SpecProvider.GetSpec((1, 0)));
 
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);

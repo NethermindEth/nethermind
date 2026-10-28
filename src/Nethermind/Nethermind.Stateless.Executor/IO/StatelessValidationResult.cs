@@ -13,5 +13,9 @@ public partial struct StatelessValidationResult
 
     public bool IsSuccess { get; set; }
 
-    public ChainConfig ChainConfig { get; set; }
+    public ulong ChainId { get; set; }
+
+    /// <summary>Gets or sets the schema of the input that was decoded and executed.</summary>
+    /// <remarks>Zero is the sentinel reported when the input bytes cannot be decoded.</remarks>
+    public ushort SchemaId { get; set; }
 }

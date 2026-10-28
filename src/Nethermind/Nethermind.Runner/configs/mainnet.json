@@ -4,18 +4,17 @@
     "ChainSpecPath": "chainspec/foundation.json",
     "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
     "BaseDbPath": "nethermind_db/mainnet",
-    "LogFileName": "mainnet.log",
-    "MemoryHint": 1024000000
+    "LogFileName": "mainnet.log"
   },
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "PivotNumber": 25712000,
-    "PivotHash": "0x76cfeaac1eda4c0e572803cefae863703caedbbb31393a397359e3002ef7bea1",
+    "PivotNumber": 26265000,
+    "PivotHash": "0x9d290329b90c504b4bcc4af3aa11b7370e3b52fa43e7ffc3df2226339a97cad8",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": 10000000000,
-    "AncientReceiptsBarrier": 15537394,
-    "AncientBodiesBarrier": 15537394
+    "AncientReceiptsBarrier": 24600000,
+    "AncientBodiesBarrier": 24600000
   },
   "EthStats": {
     "Server": "wss://ethstats.net/api"

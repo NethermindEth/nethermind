@@ -12,9 +12,8 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.All)]
     public class ReadOnlyDbProviderTests
     {
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Can_clear(bool localChanges)
+        [Test]
+        public void Can_clear([Values] bool localChanges)
         {
             MemDb wrappedDb = new();
             wrappedDb.Set(TestItem.KeccakA, [1, 2, 3]);

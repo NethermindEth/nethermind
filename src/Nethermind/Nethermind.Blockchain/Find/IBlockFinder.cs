@@ -32,6 +32,21 @@ namespace Nethermind.Blockchain.Find
 
         BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options);
 
+        /// <summary>
+        /// Finds the canonical header at <paramref name="blockNumber"/> if <paramref name="bloomMatches"/> accepts its
+        /// logs bloom, which is empty for a zero-length (EIP-7668) bloom.
+        /// </summary>
+        /// <param name="blockNumber">The number of the block.</param>
+        /// <param name="bloomMatches">Tells whether the bloom is a match.</param>
+        /// <param name="found">Whether a canonical header is stored at <paramref name="blockNumber"/>, whether or not its bloom is a match.</param>
+        /// <remarks>The bloom may be tested on the stored encoding, so a header it rejects need not be decoded.</remarks>
+        BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            BlockHeader? header = FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+            found = header is not null;
+            return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
+        }
+
         Hash256? FindBlockHash(ulong blockNumber);
 
         /// <summary>
@@ -105,8 +120,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
-                    ? FindLatestBlock()
+                // Head is read once, so a head change cannot answer for another block.
+                BlockParameterType.BlockHash => Head is { } head && head.Hash == blockParameter.BlockHash
+                    ? head
                     : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),
@@ -143,5 +159,9 @@ namespace Nethermind.Blockchain.Find
         }
 
         public ulong GetLowestBlock();
+
+        /// <summary>The oldest block this node can actually serve - the published boundary floored by the
+        /// download frontier while a backfill is still descending. What eth/69 advertises as earliest.</summary>
+        public ulong LowestServedBlock => GetLowestBlock();
     }
 }

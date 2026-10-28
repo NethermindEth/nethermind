@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -19,6 +20,9 @@ namespace Nethermind.Blockchain.BlockAccessLists;
 public class BlockAccessListStore : IBlockAccessListStore
 {
     private const int KeyLength = 40;
+
+    /// <inheritdoc/>
+    public Lock WriteLock { get; } = new();
 
     private readonly IDb _balDb;
     private readonly BlockAccessListDecoder _balDecoder;
@@ -79,7 +83,7 @@ public class BlockAccessListStore : IBlockAccessListStore
         // Reuse the block's owned encoding. The fallback must also be owned because the overlay and its
         // non-owning read views can outlive this call, so a pool-rented buffer could be returned too early.
         byte[]? rlp = block.EncodedBlockAccessList is { } encoded ? encoded
-            : block.BlockAccessList is { } bal ? BlockAccessListDecoder.EncodeToBytes(bal)
+            : block.BlockAccessList is { } bal && !Exists(block.Number, blockHash) ? BlockAccessListDecoder.EncodeToBytes(bal)
             : null;
 
         block.GeneratedBlockAccessList = null;
@@ -131,6 +135,25 @@ public class BlockAccessListStore : IBlockAccessListStore
         {
             Remove(blockNumber, blockHash);
         }
+    }
+
+    /// <summary>Drops every access list in <c>[fromInclusive, toExclusive)</c> in one operation, draining the
+    /// deferred overlay for the range under its own lock so a queued write cannot resurrect one.</summary>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    {
+        lock (WriteLock)
+        {
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
+            }
+            else
+            {
+                _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
+            }
+        }
+
+        _balDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
     }
 
     [SkipLocalsInit]

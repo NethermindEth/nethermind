@@ -259,7 +259,8 @@ public class Eip8246Tests(bool eip8246Enabled, bool deferredFinalization) : Virt
             Assert.That(TestState.GetBalance(address), Is.EqualTo(expectedBalance), "balance preserved");
             Assert.That(TestState.GetNonce(address), Is.EqualTo(0UL), "nonce reset");
             Assert.That(TestState.IsContract(address), Is.False, "code cleared");
-            Assert.That(TestState.Get(new StorageCell(address, UInt256.Zero)).IsZero(), Is.True, "storage cleared");
+            TestState.Get(new StorageCell(address, UInt256.Zero), out UInt256 storageValue1);
+            Assert.That(storageValue1.IsZero, Is.True, "storage cleared");
         }
     }
 }

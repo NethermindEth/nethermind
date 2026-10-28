@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -14,8 +13,7 @@ namespace Nethermind.Merge.AuRa;
 /// startup walk in <see cref="AuRaBlockFinalizationManager"/>. Pre-merge heads (archive sync
 /// from genesis) still wire so validator-set transitions fire.
 /// </summary>
-public class InitializeBlockchainAuRaMerge(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
-    : InitializeBlockchainAuRa(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : InitializeBlockchainAuRa(api)
 {
     protected override async Task InitBlockchain()
     {

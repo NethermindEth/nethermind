@@ -26,17 +26,67 @@ public class ZkGasTxTracerTests
         return (tracer!, meter);
     }
 
-    private static ExecutionEnvironment Env() => null!;
+    private static readonly ExecutionEnvironment RootEnv =
+        ExecutionEnvironment.Rent(null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+    private static ExecutionEnvironment Env() => RootEnv;
 
     // ── non-spawn opcode ──────────────────────────────────────────────────────
 
     [Test]
-    public void NonSpawnOpcode_ChargedImmediately()
+    public void NonSpawnOpcode_ChargedWhenNextStepStarts()
     {
         (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
 
         tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
         tracer.ReportOperationRemainingGas(97);
+
+        // Held until the VM either reports an error for the step or moves on.
+        Assert.That(meter.TxZkGasUsed, Is.Zero);
+
+        tracer.StartOperation(1, Instruction.STOP, gas: 97, env: Env());
+
+        ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void NonSpawnOpcode_ChargedWhenFrameEnds()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
+        tracer.ReportOperationRemainingGas(97);
+        tracer.ReportActionEnd(97, ReadOnlyMemory<byte>.Empty);
+
+        ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Error_after_a_report_outside_the_step_keeps_the_measured_charge()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
+        tracer.ReportOperationRemainingGas(90);
+        // A second report with no step in progress, as when a call result is pushed on resume.
+        tracer.ReportOperationRemainingGas(90);
+        tracer.ReportOperationError(EvmExceptionType.StackUnderflow);
+        tracer.ReportActionEnd(90, ReadOnlyMemory<byte>.Empty);
+
+        ulong expected = 10UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void NonSpawnOpcode_StackUnderflow_ChargesRevmStaticGas()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.ADD, gas: 100, env: Env());
+        tracer.ReportOperationRemainingGas(100);
+        tracer.ReportOperationError(EvmExceptionType.StackUnderflow);
 
         ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
@@ -52,6 +102,7 @@ public class ZkGasTxTracerTests
 
         tracer.StartOperation(1, Instruction.MUL, gas: 97, env: Env());
         tracer.ReportOperationRemainingGas(94);
+        tracer.ReportActionEnd(94, ReadOnlyMemory<byte>.Empty);
 
         ulong expected = 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x02]
                        + 3UL * ZkGasTestSchedules.OpcodeMultipliers.Span[0x01];
@@ -249,5 +300,8 @@ public class ZkGasTxTracerTests
         (ZkGasTxTracer tracer, ZkGasMeter _) = Make();
         Assert.That(tracer.IsTracingActions, Is.True);
         Assert.That(tracer.IsTracingInstructions, Is.True);
+        Assert.That(tracer.IsTracingStack, Is.True);
+        Assert.That(tracer.IsTracingMemory, Is.True);
+        Assert.That(tracer.IsTracingReturnData, Is.True);
     }
 }

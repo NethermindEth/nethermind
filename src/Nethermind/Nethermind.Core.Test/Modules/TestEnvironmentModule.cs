@@ -9,13 +9,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -35,6 +33,11 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 {
     public const string NodeKey = "NodeKey";
 
+    /// <summary>
+    /// Whether RLPx and discovery run over in-memory channels. When disabled, they use real sockets as in production.
+    /// </summary>
+    public bool InMemoryNetwork { get; init; } = true;
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -45,7 +48,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             // These two don't use the DB provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
-            .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
             .AddSingleton(NodeFilter.AcceptAll) // Disable inbound rate limiting for in-memory channels
 
             .AddSingleton<PseudoNethermindRunner>()
@@ -71,7 +73,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 IChainHeadSpecProvider specProvider = ctx.Resolve<IChainHeadSpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
-                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader)
+                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, ctx.Resolve<IBlockBuildingTracker>())
                 {
                     // It just need to override this.
                     HasSynced = true
@@ -106,7 +108,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 blocksConfig.PreWarming = PreWarmMode.Block;
                 return blocksConfig;
             })
-            .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })
+            .AddSingleton(TestPreBlockCachesConfig.Small)
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {
                 networkConfig.DiscoveryDns = null;
@@ -125,5 +127,10 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
             .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
+
+        if (InMemoryNetwork)
+        {
+            builder.AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig));
+        }
     }
 }

@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.BalRecorder;
 
@@ -31,15 +33,38 @@ public class BalRecordingBranchProcessor(
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
     {
         // Attach replayed BALs before delegating so the prewarmer sees them when it runs.
+        List<Block>? replayed = null;
         if (store.ReplayEnabled)
         {
             foreach (Block block in suggestedBlocks)
             {
-                if (!block.IsGenesis && block.BlockAccessList is null)
-                    block.BlockAccessList = store.Get(block.Number);
+                if (!block.IsGenesis && block.BlockAccessList is null && store.Get(block.Number) is { } bal)
+                {
+                    block.BlockAccessList = bal;
+                    (replayed ??= []).Add(block);
+                }
             }
         }
 
+        try
+        {
+            return ProcessWithSwitch(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
+        }
+        catch (InvalidBlockException e) when (replayed is not null && IsBlockAccessListFailure(e))
+        {
+            // No header commits to a replayed BAL, so a stale or mismatched recording must not make a canonical
+            // block invalid: drop the replayed lists and execute the branch without them.
+            foreach (Block block in replayed) block.BlockAccessList = null;
+            return ProcessWithSwitch(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
+        }
+    }
+
+    private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
+        e is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException
+            or BlockAccessListManager.ParallelExecutionException { InnerException: BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException };
+
+    private Block[] ProcessWithSwitch(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+    {
         bool shouldFlip = ShouldFlip(suggestedBlocks);
         if (shouldFlip) balSwitch.Enabled = true;
         try
@@ -63,6 +88,12 @@ public class BalRecordingBranchProcessor(
             if (replay && block.BlockAccessList is not null) return true;
         }
         return false;
+    }
+
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted
+    {
+        add => inner.BlockExecuted += value;
+        remove => inner.BlockExecuted -= value;
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed

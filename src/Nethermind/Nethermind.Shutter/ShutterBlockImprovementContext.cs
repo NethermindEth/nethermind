@@ -24,7 +24,7 @@ public class ShutterBlockImprovementContextFactory(
     TimeSpan slotLength) : IBlockImprovementContextFactory
 {
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
@@ -47,12 +47,17 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 {
     public Task<Block?> ImprovementTask { get; }
 
-    public Block? CurrentBestBlock { get; private set; }
+    public BlockProductionSnapshot Best => _best;
 
-    public bool Disposed { get; private set; }
+    public bool Disposed => Volatile.Read(ref _disposed) != 0;
     public DateTimeOffset StartDateTime { get; }
 
-    public UInt256 BlockFees => 0;
+    private volatile BlockProductionSnapshot _best;
+    private int _disposed;
+
+    // Test seams for pausing a late build after its Disposed check and a disposer before it pins.
+    internal Action? PassedDisposedCheck;
+    internal Action? Pinning;
 
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private readonly CancellationToken _improvementToken;
@@ -72,7 +77,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         IShutterTxSignal shutterTxSignal,
         IShutterConfig shutterConfig,
         SlotTime time,
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
@@ -89,7 +94,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
         _improvementCancellation = cts;
         _improvementToken = cts.Token;
-        CurrentBestBlock = currentBestBlock;
+        _best = new(currentBestBlock, UInt256.Zero);
         StartDateTime = startDateTime;
         _logger = logManager.GetClassLogger<ShutterBlockImprovementContext>();
         _blockProducer = blockProducer;
@@ -107,8 +112,27 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        Disposed = true;
+        Interlocked.Exchange(ref _disposed, 1);
+        PinBest();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
+    }
+
+    // Swaps in an equal snapshot so a TrySetBest that passed the Disposed check before it was set fails its CAS.
+    // Every disposer pins: one returning early could hand out a snapshot that a pending CAS then replaces.
+    private void PinBest()
+    {
+        Pinning?.Invoke();
+        BlockProductionSnapshot best;
+        do best = _best;
+        while (Interlocked.CompareExchange(ref _best, new(best.CurrentBestBlock, best.BlockFees), best) != best);
+    }
+
+    // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
+    private bool TrySetBest(BlockProductionSnapshot best, BlockProductionSnapshot expected)
+    {
+        if (Disposed) return false;
+        PassedDisposedCheck?.Invoke();
+        return Interlocked.CompareExchange(ref _best, best, expected) == expected;
     }
 
     private async Task<Block?> ImproveBlock()
@@ -125,20 +149,20 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         {
             if (_logger.IsWarn) _logger.Warn($"Could not calculate Shutter building slot: {e}");
             await BuildBlock();
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         bool includedShutterTxs = await TryBuildShutterBlock(slot);
         if (includedShutterTxs)
         {
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         long waitTime = _shutterConfig.MaxKeyDelay - offset;
         if (waitTime <= 0)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot await Shutter decryption keys for slot {slot}, offset of {offset}ms is too late.");
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
         waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
@@ -155,16 +179,16 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
-            Metrics.ShutterKeysMissed++;
+            Metrics.IncrementShutterKeysMissed();
             if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
 
-            return CurrentBestBlock;
+            return _best.CurrentBestBlock;
         }
 
         // should succeed after waiting for transactions
         await TryBuildShutterBlock(slot);
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     private async Task<bool> TryBuildShutterBlock(ulong slot)
@@ -179,7 +203,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, IBlockProducer.Flags.None, _linkedCancellation?.Token ?? default);
         if (result is not null)
         {
-            CurrentBestBlock = result;
+            TrySetBest(new(result, UInt256.Zero), _best);
         }
     }
 }

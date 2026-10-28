@@ -18,6 +18,7 @@ namespace Nethermind.Init.Steps;
 /// Anchors the history floor at genesis: seeds the block-0 changeset from the chain spec allocations when the walk
 /// could not capture genesis (history enabled after the genesis snapshot left memory). Without it, an allocation
 /// never touched since genesis reads as absent at every height. Idempotent: skipped when block 0 is already present.
+/// Skipped too while a snap-pivot image is being written: the history starts at the pivot, not at genesis.
 /// </summary>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockTree)],
@@ -29,6 +30,7 @@ public class SeedFlatHistoryGenesis(
     IBlockTree blockTree,
     HistoryWriter historyWriter,
     HistoryReader historyReader,
+    PivotHistoryImageWriter pivotImageWriter,
     ILogManager logManager) : IStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SeedFlatHistoryGenesis>();
@@ -40,7 +42,12 @@ public class SeedFlatHistoryGenesis(
         // constructor allocations) must follow the backend the policy actually selected.
         if (!activationPolicy.ShouldTurnOnFlatDb()) return Task.CompletedTask;
 
+        // Keyed on the watermark, not on the block-0 marker: a since-block writer removes that marker once it moves on.
         if (historyReader.HasHistoryForBlock(0)) return Task.CompletedTask;
+
+        // A restart with the image unfinished has no watermark yet. A genesis watermark under it would make the image
+        // fail to publish its floor at the pivot, which clears the image and stops capture for good.
+        if (pivotImageWriter.Holds) return Task.CompletedTask;
 
         // On a genuinely fresh DB the genesis header does not exist yet — this step is ordered before
         // InitializeBlockchain, which executes genesis — and that node captures block 0 through the normal walk, so

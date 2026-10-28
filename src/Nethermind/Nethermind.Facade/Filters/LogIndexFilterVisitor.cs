@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db.LogIndex;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Facade.Test")]
 
 namespace Nethermind.Facade.Filters;
 

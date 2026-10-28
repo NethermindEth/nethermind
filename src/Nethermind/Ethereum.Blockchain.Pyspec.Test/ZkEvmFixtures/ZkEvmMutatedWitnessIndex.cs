@@ -17,9 +17,9 @@ namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
 /// <remarks>Relies on RLP <c>blocks[i]</c> aligning 1:1 with engine <c>engineNewPayloads[i]</c>.</remarks>
 internal static class ZkEvmMutatedWitnessIndex
 {
-    private static readonly Lazy<IReadOnlyDictionary<string, MutatedInfo>> MutatedWitnessesByTest = new(Build);
+    internal static readonly Lazy<IReadOnlyDictionary<string, MutatedInfo>> MutatedWitnessesByTest = new(Build);
 
-    private readonly record struct MutatedInfo(int PayloadCount, HashSet<int> MutatedIndices);
+    internal readonly record struct MutatedInfo(int PayloadCount, HashSet<int> MutatedIndices);
 
     public static IEnumerable<BlockchainTest> StampMutatedBlocks(IEnumerable<BlockchainTest> tests)
     {

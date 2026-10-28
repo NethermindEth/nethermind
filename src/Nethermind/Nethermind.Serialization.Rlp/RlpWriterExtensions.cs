@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -63,6 +62,7 @@ public static class RlpWriterExtensions
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteEncodedLength(int value)
         {
             switch (value)
@@ -255,7 +255,7 @@ public static class RlpWriterExtensions
                 writer.WriteByte(0);
                 writer.WriteZero(256);
             }
-            else if (bloom is null)
+            else if (bloom is null || bloom.IsZeroLength)
             {
                 writer.WriteByte(EmptyArrayByte);
             }
@@ -303,7 +303,7 @@ public static class RlpWriterExtensions
                 return;
             }
 
-            int leadingZeroBytes = BitOperations.LeadingZeroCount(value) >> 3;
+            int leadingZeroBytes = Bytes.LeadingZeroBytes(value);
             int valueLength = sizeof(ulong) - leadingZeroBytes;
 
             value = BinaryPrimitives.ReverseEndianness(value);

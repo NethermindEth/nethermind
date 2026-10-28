@@ -45,7 +45,7 @@ internal class Program
             new("--zkevmTest") { Description = "Run as zkEVM stateless-execution test (tests-zkevm fixtures: witness input through StatelessExecutor vs expected output)." };
 
         public static Option<bool> TraceAlways { get; } =
-            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
+            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests). Stderr then carries only the trace, without progress or failure lines." };
 
         public static Option<bool> TraceNever { get; } =
             new("--neverTrace", "-n") { Description = "Set to never trace (by default traces are only generated for failing tests). [Only for State Test]" };
@@ -77,14 +77,17 @@ internal class Program
         public static Option<string> Chunk { get; } =
             new("--chunk", "-c") { Description = "Run only the Nth of M interleaved chunks of the collected fixture files, e.g. '2of8'. Used to split a large fixture set across CI jobs." };
 
-        public static Option<bool> FlatDb { get; } =
-            new("--flatdb") { Description = "Run with the flat state layout (equivalent to setting TEST_USE_FLAT=1)." };
+        public static Option<bool> TrieDb { get; } =
+            new("--triedb") { Description = "Run with the patricia-trie state layout." };
 
         public static Option<bool?> ParallelExecution { get; } =
             new("--parallelExecution") { Description = "Force BAL parallel execution on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
 
         public static Option<bool?> BatchRead { get; } =
             new("--batchRead") { Description = "Force BAL batch-read prewarming on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
+
+        public static Option<string[]> ForkAlias { get; } =
+            new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeatable; needed where separate fixture releases give one fork name incompatible meanings.", AllowMultipleArgumentsPerToken = true };
     }
 
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
@@ -111,9 +114,10 @@ internal class Program
             Options.JsonOutput,
             Options.Workers,
             Options.Chunk,
-            Options.FlatDb,
+            Options.TrieDb,
             Options.ParallelExecution,
             Options.BatchRead,
+            Options.ForkAlias,
         ];
         rootCommand.SetAction(Run);
 
@@ -122,6 +126,13 @@ internal class Program
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
     {
+        bool trace = parseResult.GetValue(Options.TraceAlways);
+
+        // stdout carries only the results document, so every other writer goes to stderr. A traced run
+        // reserves stderr for the trace, which consumers parse line by line as JSON, so other writes are dropped.
+        TextWriter resultsOut = Console.Out;
+        Console.SetOut(trace ? TextWriter.Null : Console.Error);
+
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest);
         bool isEngineTest = parseResult.GetValue(Options.EngineTest);
@@ -131,38 +142,34 @@ internal class Program
         int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
+            Console.Error.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
             return 1;
         }
 
         WhenTrace whenTrace = WhenTrace.WhenFailing;
         if (parseResult.GetValue(Options.TraceNever)) whenTrace = WhenTrace.Never;
-        if (parseResult.GetValue(Options.TraceAlways)) whenTrace = WhenTrace.Always;
+        if (trace) whenTrace = WhenTrace.Always;
 
         string input = parseResult.GetValue(Options.Input);
         if (parseResult.GetValue(Options.Stdin)) input = Console.ReadLine();
-
-        // Rlp's and the decoders' static initializers reach into each other via RegisterDecoders;
-        // racing the first RLP use across parse workers can deadlock class init. Warm it up here.
-        System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(typeof(Nethermind.Serialization.Rlp.Rlp).TypeHandle);
 
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
         string filter = parseResult.GetValue(Options.Filter);
         string chunk = parseResult.GetValue(Options.Chunk);
-        bool trace = parseResult.GetValue(Options.TraceAlways);
         bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
         bool excludeStack = parseResult.GetValue(Options.ExcludeStack);
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
         bool? parallelExecution = parseResult.GetValue(Options.ParallelExecution);
         bool? batchRead = parseResult.GetValue(Options.BatchRead);
 
-        if (parseResult.GetValue(Options.FlatDb))
+        // Set before any fixture is loaded: the parse workers only ever read the table.
+        ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
+
+        if (parseResult.GetValue(Options.TrieDb))
         {
-            // The test fixture bases read TEST_USE_FLAT per test, so setting it here covers
-            // both blockchain/engine and state test runs without plumbing a flag through.
-            Environment.SetEnvironmentVariable("TEST_USE_FLAT", "1");
+            Environment.SetEnvironmentVariable("TEST_USE_TRIE", "1");
         }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
@@ -195,22 +202,22 @@ internal class Program
                     ParallelExecution: parallelExecution,
                     ParallelExecutionBatchRead: batchRead);
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
             {
-                List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                List<EthereumTestResult> results = await RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isTxTest)
             {
                 List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isZkEvmTest)
             {
                 List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
 
             if (!parseResult.GetValue(Options.Stdin)) break;
@@ -268,6 +275,10 @@ internal class Program
 
         void WriteFileExceptionStatus(string name, Exception ex)
         {
+            // A traced run reserves stderr for the JSONL trace; the failure still lands in the results document.
+            if (baseOptions.Trace)
+                return;
+
             Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {UpdateProgress(true)} {name} - {ex.Message}");
             Console.Error.Flush();
         }
@@ -332,7 +343,7 @@ internal class Program
         return combinedResults;
     }
 
-    private static List<EthereumTestResult> RunStateTestFiles(
+    private static async Task<List<EthereumTestResult>> RunStateTestFiles(
         List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,
         ulong chainId, string filter, bool enableWarmup, int workers)
     {
@@ -369,9 +380,15 @@ internal class Program
         }
 
         int completedTests = 0;
+        // With --trace, stderr is the EIP-3155 trace stream that differential fuzzers (e.g. goevmlab --nethbatch)
+        // parse line by line as JSON, so status lines are left out; failures are still in the results document.
+        bool reportProgress = whenTrace != WhenTrace.Always;
         // Keeps stderr alive for CI idle watchdogs; also streams failures as they happen.
         void ReportProgress(EthereumTestResult result)
         {
+            if (!reportProgress)
+                return;
+
             int completed = Interlocked.Increment(ref completedTests);
             if (!result.Pass)
             {
@@ -391,7 +408,7 @@ internal class Program
             foreach ((int index, GeneralStateTest test) in testCases)
             {
                 StateTestsRunner runner = new(whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput: true);
-                EthereumTestResult result = runner.RunSingleTest(test);
+                EthereumTestResult result = await runner.RunSingleTestAsync(test);
                 ReportProgress(result);
                 allResults.Add(result);
             }
@@ -399,13 +416,13 @@ internal class Program
         }
 
         EthereumTestResult[] results = new EthereumTestResult[testCases.Count];
-        Parallel.ForEach(
+        await Parallel.ForEachAsync(
             testCases,
             new ParallelOptions { MaxDegreeOfParallelism = workers },
-            item =>
+            async (item, _) =>
             {
                 StateTestsRunner runner = new(WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
-                EthereumTestResult result = runner.RunSingleTest(item.test);
+                EthereumTestResult result = await runner.RunSingleTestAsync(item.test);
                 results[item.index] = result;
                 ReportProgress(result);
             });

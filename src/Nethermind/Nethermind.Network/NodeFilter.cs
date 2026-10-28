@@ -5,6 +5,7 @@ using System;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 
@@ -23,22 +24,26 @@ public sealed class NodeFilter
     /// </summary>
     public static readonly NodeFilter AcceptAll = new();
 
-    private readonly ClockCache<IpSubnetKey, long>? _cache;
+    private readonly ClockCache<IpSubnetKey, LastSeen>? _cache;
+    private readonly Lock _lock = new();
     private readonly bool _exactMatchOnly;
     private readonly ParsedIPAddress? _parsedCurrentIp;
     private readonly long _timeoutMs;
+    // Null in production: entries are timed with Environment.TickCount64. Tests pass a manual clock.
+    private readonly TimeProvider? _timeProvider;
 
     private NodeFilter() { }
 
     public NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp)
         : this(size, exactMatchOnly, currentIp, DefaultTimeoutMs) { }
 
-    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs)
+    internal NodeFilter(int size, bool exactMatchOnly, IPAddress? currentIp, long timeoutMs, TimeProvider? timeProvider = null)
     {
         _cache = new(size);
         _exactMatchOnly = exactMatchOnly;
         _parsedCurrentIp = currentIp is not null ? ParsedIPAddress.Parse(currentIp) : null;
         _timeoutMs = timeoutMs;
+        _timeProvider = timeProvider;
     }
 
     /// <summary>
@@ -61,16 +66,34 @@ public sealed class NodeFilter
     {
         if (_cache is null) return true;
 
-        long now = Environment.TickCount64;
         IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        if (WasSeenRecently(key, NowMs())) return false;
 
-        // Benign race: two threads may both accept the same key concurrently.
-        // The filter is advisory — a double-accept is harmless.
-        if (_cache.TryGet(key, out long lastSeen) && now - lastSeen < _timeoutMs)
-            return false;
+        using Lock.Scope scope = _lock.EnterScope();
+        // Refresh after waiting for the lock so acceptance starts a full timeout window.
+        long now = NowMs();
+        if (_cache.TryGet(key, out LastSeen lastSeen))
+        {
+            if (now - lastSeen.Timestamp < _timeoutMs)
+                return false;
 
-        _cache.Set(key, now);
+            Volatile.Write(ref lastSeen.Timestamp, now);
+        }
+        else
+        {
+            _cache.Set(key, new LastSeen(now));
+        }
         return true;
+    }
+
+    /// <summary>
+    /// Checks whether an address would be accepted without recording it.
+    /// </summary>
+    internal bool WouldAccept(IPAddress ipAddress, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        return !WasSeenRecently(GetKey(ipAddress, exactOnly), NowMs());
     }
 
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
@@ -80,7 +103,26 @@ public sealed class NodeFilter
             return;
         }
 
-        _cache.Set(GetKey(ipAddress, exactOnly), Environment.TickCount64);
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        using Lock.Scope scope = _lock.EnterScope();
+        long now = NowMs();
+        if (_cache.TryGet(key, out LastSeen lastSeen))
+        {
+            Volatile.Write(ref lastSeen.Timestamp, now);
+        }
+        else
+        {
+            _cache.Set(key, new LastSeen(now));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private long NowMs() => _timeProvider is null ? Environment.TickCount64 : (long)_timeProvider.GetElapsedTime(0).TotalMilliseconds;
+
+    // Mutate the timestamp without replacing ClockCache's dictionary entry on every packet.
+    private sealed class LastSeen(long timestamp)
+    {
+        public long Timestamp = timestamp;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -90,6 +132,10 @@ public sealed class NodeFilter
             : (_parsedCurrentIp is { } current
                 ? IpSubnetKey.CreateNodeFilterKey(ipAddress, in current)
                 : IpSubnetKey.DefaultKey(ipAddress));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool WasSeenRecently(IpSubnetKey key, long now)
+        => _cache!.TryGet(key, out LastSeen lastSeen) && now - Volatile.Read(ref lastSeen.Timestamp) < _timeoutMs;
 
     /// <summary>
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.

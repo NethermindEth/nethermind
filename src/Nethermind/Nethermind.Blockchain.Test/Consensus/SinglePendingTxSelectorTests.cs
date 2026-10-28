@@ -15,6 +15,7 @@ namespace Nethermind.Blockchain.Test.Consensus
     public class SinglePendingTxSelectorTests
     {
         private readonly BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
+        private readonly BlockHeader _anyTargetBlock = Build.A.BlockHeader.TestObject;
 
         [Test, MaxTime(Timeout.MaxTestTime)]
         public void To_string_does_not_throw()
@@ -29,14 +30,14 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             ITxSource txSource = Substitute.For<ITxSource>();
             SinglePendingTxSelector selector = new(txSource);
-            Assert.That(System.Linq.Enumerable.Count(selector.GetTransactions(_anyParent, 1000000)), Is.EqualTo(0));
+            Assert.That(System.Linq.Enumerable.Count(selector.GetTransactions(_anyParent, _anyTargetBlock, 1000000)), Is.EqualTo(0));
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
         public void When_many_transactions_returns_one_with_lowest_nonce_and_highest_timestamp()
         {
             ITxSource txSource = Substitute.For<ITxSource>();
-            txSource.GetTransactions(_anyParent, 1000000).ReturnsForAnyArgs(new[]
+            txSource.GetTransactions(_anyParent, _anyTargetBlock, 1000000).ReturnsForAnyArgs(new[]
             {
                 Build.A.Transaction.WithNonce(6).TestObject,
                 Build.A.Transaction.WithNonce(1).WithTimestamp(7).TestObject,
@@ -45,7 +46,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             });
 
             SinglePendingTxSelector selector = new(txSource);
-            Transaction[] result = selector.GetTransactions(_anyParent, 1000000).ToArray();
+            Transaction[] result = selector.GetTransactions(_anyParent, _anyTargetBlock, 1000000).ToArray();
             Assert.That(result.Length, Is.EqualTo(1));
             Assert.That(result[0].Timestamp, Is.EqualTo((UInt256)8));
             Assert.That(result[0].Nonce, Is.EqualTo(1ul));

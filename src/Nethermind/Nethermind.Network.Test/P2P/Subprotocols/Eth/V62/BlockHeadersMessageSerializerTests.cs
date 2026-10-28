@@ -34,20 +34,15 @@ public class BlockHeadersMessageSerializerTests
     }
 
     [Test]
-    public void Roundtrip_nulls()
+    public void Deserialize_throws_on_null_header()
     {
         using BlockHeadersMessage message = new();
-        message.BlockHeaders = new ArrayPoolList<BlockHeader>(2) { Build.A.BlockHeader.TestObject, null };
+        message.BlockHeaders = new ArrayPoolList<BlockHeader>(2) { Build.A.BlockHeader.TestObject, null! };
 
         BlockHeadersMessageSerializer serializer = new();
         byte[] bytes = serializer.Serialize(message);
 
-        using BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.BlockHeaders.Count, Is.EqualTo(message.BlockHeaders.Count), "length");
-        Assert.That(deserialized.BlockHeaders[0].Hash, Is.EqualTo(message.BlockHeaders[0].Hash), "hash");
-        Assert.That(message.BlockHeaders[1], Is.Null);
-
-        SerializerTester.TestZero(serializer, message);
+        Assert.That(() => serializer.Deserialize(bytes), Throws.TypeOf<RlpException>());
     }
 
     [Test]

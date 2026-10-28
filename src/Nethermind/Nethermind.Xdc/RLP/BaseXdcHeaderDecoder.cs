@@ -32,14 +32,14 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         => (beh & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
 
     protected abstract TH CreateHeader(
-        Hash256? parentHash,
-        Hash256? unclesHash,
-        Address? beneficiary,
+        Hash256 parentHash,
+        Hash256 unclesHash,
+        Address beneficiary,
         UInt256 difficulty,
         ulong number,
         ulong gasLimit,
         ulong timestamp,
-        byte[]? extraData);
+        byte[] extraData);
 
     protected abstract void DecodeHeaderSpecificFields(ref RlpReader decoderContext, TH header, RlpBehaviors rlpBehaviors, int headerCheck);
     protected abstract void EncodeHeaderSpecificFields<TWriter>(ref TWriter writer, TH header, RlpBehaviors rlpBehaviors)
@@ -71,7 +71,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         ulong gasLimit = decoderContext.DecodeULong();
         ulong gasUsed = decoderContext.DecodeULong();
         ulong timestamp = decoderContext.DecodeULong();
-        byte[]? extraData = decoderContext.DecodeByteArray();
+        byte[] extraData = decoderContext.DecodeByteArray();
 
         TH header = CreateHeader(
             parentHash, unclesHash, beneficiary,

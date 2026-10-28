@@ -108,7 +108,7 @@ public class TransactionProcessorTests
             .WithExtraData(new byte[32])
             .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor!.SkipSenderCodeCheck = true;
+        _transactionProcessor!.SkipSenderChecks = true;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
 
         TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
@@ -145,9 +145,8 @@ public class TransactionProcessorTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Transaction_tip_and_base_fee_handling(bool isAnchorTx)
+    [Test]
+    public void Transaction_tip_and_base_fee_handling([Values] bool isAnchorTx)
     {
         ulong gasLimit = 21000;
         UInt256 gasPrice = 20;
@@ -196,9 +195,8 @@ public class TransactionProcessorTests
         Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Transaction did not receive expected base fees");
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Check_fees_with_fee_collector_destroy_coinbase_taiko(bool isOntakeEnabled)
+    [Test]
+    public void Check_fees_with_fee_collector_destroy_coinbase_taiko([Values] bool isOntakeEnabled)
     {
         _spec.FeeCollector = TestItem.AddressC;
         _spec.IsOntakeEnabled = isOntakeEnabled;

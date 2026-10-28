@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if ZK_EVM
-using System.Collections.Generic;
-#endif
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -21,7 +18,7 @@ using Nethermind.Core.Threading;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Db
 {
-    public static class Metrics
+    public static partial class Metrics
     {
         [DetailedMetricOnFlag]
         public static bool DetailedMetricsEnabled { get; set; }
@@ -48,10 +45,29 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Value;
+        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Sum;
         private static CacheLinePaddedLong _mainStateReaderReads;
-        private static CacheLinePaddedLong _otherStateReaderReads;
-        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads.Value : ref _otherStateReaderReads.Value);
+        // Bumped once per state read (StateReader), so every RPC and prewarm thread previously
+        // hit one shared word: a contended cross-core RMW per read. The block-processing thread
+        // keeps its own padded word and is left alone.
+        private static readonly StripedLong _otherStateReaderReads = new();
+        internal static void IncrementStateReaderReads()
+        {
+            if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateReaderReads.Value);
+            else _otherStateReaderReads.Increment();
+        }
+
+        [CounterMetric]
+        [Description("Number of keys whose reads were started ahead of use by an asynchronous prefetch.")]
+        public static long PrefetchedKeys => _prefetchedKeys.Value;
+        private static CacheLinePaddedLong _prefetchedKeys;
+        public static void IncrementPrefetchedKeys(long value) => Interlocked.Add(ref _prefetchedKeys.Value, value);
+
+        [CounterMetric]
+        [Description("Number of state prefetches skipped because every sampled key was already in memory.")]
+        public static long PrefetchesSkippedCached => _prefetchesSkippedCached.Value;
+        private static CacheLinePaddedLong _prefetchesSkippedCached;
+        public static void IncrementPrefetchesSkippedCached() => Interlocked.Increment(ref _prefetchesSkippedCached.Value);
 
         [CounterMetric]
         [Description("Number of state trie writes.")]
@@ -119,9 +135,9 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads => _storageReaderReads.Value;
-        private static CacheLinePaddedLong _storageReaderReads;
-        internal static void IncrementStorageReaderReads() => Interlocked.Increment(ref _storageReaderReads.Value);
+        public static long StorageReaderReads => _storageReaderReads.Sum;
+        private static readonly StripedLong _storageReaderReads = new();
+        internal static void IncrementStorageReaderReads() => _storageReaderReads.Increment();
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]
@@ -134,6 +150,17 @@ namespace Nethermind.Db
         public static long StorageSkippedWrites => _storageSkippedWrites.Value;
         private static CacheLinePaddedLong _storageSkippedWrites;
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
+
+        /// <remarks>
+        /// For an account deleted in the same commit, whether its clear is counted depends on how the address
+        /// reached the pending-root set: one added by a storage write is pruned against <c>AccountExists</c> and
+        /// its clear is dropped, while one added by <c>MarkStorageDestroyed</c> bypasses that pruning and is counted.
+        /// </remarks>
+        [CounterMetric]
+        [Description("Number of contracts whose non-empty persisted storage was explicitly cleared during a committed tree write, including trace/debug RPC state-override commits.")]
+        public static long StorageCleared => _storageCleared.Value;
+        private static CacheLinePaddedLong _storageCleared;
+        internal static void IncrementStorageCleared() => Interlocked.Increment(ref _storageCleared.Value);
 
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
@@ -149,60 +176,13 @@ namespace Nethermind.Db
         private static long _fullPruningCount;
         internal static void IncrementFullPruningCount() => Interlocked.Increment(ref _fullPruningCount);
 
-#if ZK_EVM
-        public static Dictionary<string, long> DbReads { get; } = [];
-        public static Dictionary<string, long> DbWrites { get; } = [];
-        public static Dictionary<string, long> DbSize { get; } = [];
-        public static Dictionary<string, long> DbMemtableSize { get; } = [];
-        public static Dictionary<string, long> DbBlockCacheSize { get; } = [];
-        public static Dictionary<string, long> DbIndexFilterSize { get; } = [];
-        // DbStats and DbCompactionStats omitted: double-valued and unread in the guest.
-#else
-        [GaugeMetric]
-        [Description("Database reads per database")]
-        [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbReads { get; } = new();
-
-        [GaugeMetric]
-        [Description("Database writes per database")]
-        [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbWrites { get; } = new();
-
-        [GaugeMetric]
-        [Description("Database size per database")]
-        [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbSize { get; } = new();
-
-        [GaugeMetric]
-        [Description("Database memtable per database")]
-        [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbMemtableSize { get; } = new();
-
-        [GaugeMetric]
-        [Description("Database block cache size per database")]
-        [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbBlockCacheSize { get; } = new();
-
-        [GaugeMetric]
-        [Description("Database index and filter size per database")]
-        [KeyIsLabel("db")]
-        public static NonBlocking.ConcurrentDictionary<string, long> DbIndexFilterSize { get; } = new();
-
-        [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
-        [KeyIsLabel("db", "metric")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), double> DbStats { get; } = new();
-
-        [Description("Metrics extracted from RocksDB Compaction Stats")]
-        [KeyIsLabel("db", "level", "metric")]
-        public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
-#endif
         [DetailedMetric]
         [Description("Prewarmer get operation times")]
         [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.5, Count = 30, LabelNames = ["part", "is_prewarmer"])]
         public static IMetricObserver PrewarmerGetTime { get; set; } = NoopMetricObserver.Instance;
     }
 
-    public readonly struct PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
+    public sealed class PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IStableMetricLabels
     {
         public string[] Labels { get; } = [part, isPrewarmer ? "true" : "false"];
     }

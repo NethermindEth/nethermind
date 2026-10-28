@@ -45,7 +45,7 @@ public class Eth69ProtocolHandlerTests
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
     private IGossipPolicy _gossipPolicy = null!;
-    private ISpecProvider _specProvider = null!;
+    private IChainHeadSpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
     private Eth69ProtocolHandler _handler = null!;
     private ITxGossipPolicy _txGossipPolicy = null!;
@@ -61,7 +61,7 @@ public class Eth69ProtocolHandlerTests
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
-        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -150,16 +150,8 @@ public class Eth69ProtocolHandlerTests
     {
         const int count = 100;
 
-        TxReceipt[][] receipts = Enumerable.Repeat(
-            Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 10).ToArray(), count
-        ).ToArray();
-        using ReceiptsMessage69 msg = new(0, new(receipts.ToPooledList()));
-
-        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
-        {
-            GetReceiptsMessage66 message = (GetReceiptsMessage66)call[0];
-            msg.RequestId = message.RequestId;
-        });
+        GetReceiptsMessage66? request = null;
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call => request = (GetReceiptsMessage66)call[0]);
 
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts(
@@ -167,11 +159,70 @@ public class Eth69ProtocolHandlerTests
         );
 
         _session.Received(1).DeliverMessage(Arg.Any<GetReceiptsMessage66>());
+        int requested = request!.EthMessage.Hashes.Count;
+        TxReceipt[][] receipts = Enumerable.Repeat(
+            Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 10).ToArray(), requested
+        ).ToArray();
+        using ReceiptsMessage69 msg = new(request.RequestId, new(receipts.ToPooledList()));
         HandleZeroMessage(msg, Eth63MessageCode.Receipts);
 
         IOwnedReadOnlyList<TxReceipt[]>? response = await getReceiptsTask;
 
-        Assert.That(response.Count, Is.EqualTo(count));
+        Assert.That(response.Count, Is.EqualTo(requested));
+    }
+
+    [Test]
+    public async Task Receipts_response_is_checked_against_expected_receipt_counts([Values] bool exceedsCount)
+    {
+        const int count = 3;
+        Func<long> requestId = CaptureSentReceiptsRequestId();
+
+        HandleIncomingStatusMessage();
+        Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts([Keccak.Zero], new[] { count }, CancellationToken.None);
+
+        if (exceedsCount)
+        {
+            UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage, UndecodableResponse.CreateReceipts(requestId(), count + 1), Eth69MessageCode.Receipts);
+            return;
+        }
+
+        TxReceipt[] blockReceipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray();
+        using ReceiptsMessage69 msg = new(requestId(), new(new[] { blockReceipts }.ToPooledList()));
+        HandleZeroMessage(msg, Eth69MessageCode.Receipts);
+
+        using IOwnedReadOnlyList<TxReceipt[]> response = await getReceiptsTask;
+        Assert.That(response[0], Has.Length.EqualTo(count));
+    }
+
+    [Test]
+    public void Late_receipts_response_is_checked_against_the_counts_of_its_cancelled_request()
+    {
+        const int count = 3;
+        Func<long> requestId = CaptureSentReceiptsRequestId();
+        int[] expectedCounts = [count];
+        using CancellationTokenSource cancellation = new();
+
+        HandleIncomingStatusMessage();
+        Task<IOwnedReadOnlyList<TxReceipt[]>> getReceiptsTask = _handler.GetReceipts([Keccak.Zero], expectedCounts, cancellation.Token);
+        cancellation.Cancel();
+        Assert.That(async () => await getReceiptsTask, Throws.InstanceOf<OperationCanceledException>());
+
+        // The cancelled request stays pending for a late response while the caller reuses its buffer.
+        expectedCounts[0] = count + 1;
+        UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage, UndecodableResponse.CreateReceipts(requestId(), count + 1), Eth69MessageCode.Receipts);
+    }
+
+    // A real session disposes a message once it has serialized it.
+    private Func<long> CaptureSentReceiptsRequestId()
+    {
+        long requestId = 0;
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
+        {
+            GetReceiptsMessage66 sent = (GetReceiptsMessage66)call[0];
+            requestId = sent.RequestId;
+            sent.Dispose();
+        });
+        return () => requestId;
     }
 
     [Test]
@@ -234,6 +285,13 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
         Assert.That(action, Throws.TypeOf<SubprotocolException>());
+    }
+
+    [Test]
+    public void Should_reject_unrequested_receipts_before_decoding()
+    {
+        HandleIncomingStatusMessage();
+        UndecodableResponse.AssertRejectedAsUnrequested(_handler.HandleMessage, Eth69MessageCode.Receipts);
     }
 
     [Test]

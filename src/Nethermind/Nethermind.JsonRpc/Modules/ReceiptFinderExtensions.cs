@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -10,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Evm;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -23,29 +23,25 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<Hash256>(blockHash);
         }
 
-        public static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
+        public static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
         {
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<ReceiptForRpc[]?>.Success(null);
-            }
+            return searchResult.IsError
+                ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null)
+                : receiptFinder.GetBlockReceipts(searchResult.Object, specProvider);
+        }
 
-            Block block = searchResult.Object;
-            TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
+        {
+            Transaction[] transactions = block.Transactions;
+            TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            IEnumerable<ReceiptForRpc> result = receipts
-                .Zip(block.Transactions, (r, t) =>
-                {
-                    return new ReceiptForRpc(
-                        t.Hash,
-                        r,
-                        block.Timestamp,
-                        t.GetGasInfo(spec, block.Header),
-                        receipts.GetBlockLogFirstIndex(r.Index));
-                });
-            ReceiptForRpc[] resultAsArray = result.ToArray();
-            return ResultWrapper<ReceiptForRpc[]?>.Success(resultAsArray);
+            UInt256? feePerBlobGas = null;
+            // EIP-8116: logIndex counts within the receipt.
+            ReceiptsForRpc<ReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, transaction, logIndexStart) =>
+                target.Populate(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header, ref feePerBlobGas), logIndexStart));
+
+            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
         }
     }
 }

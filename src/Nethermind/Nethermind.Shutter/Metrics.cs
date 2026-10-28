@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Shutter;
@@ -10,7 +11,9 @@ public class Metrics
 {
     [CounterMetric]
     [Description("Number of keys not received.")]
-    public static ulong ShutterKeysMissed { get; set; }
+    public static ulong ShutterKeysMissed => _shutterKeysMissed;
+    private static ulong _shutterKeysMissed;
+    internal static void IncrementShutterKeysMissed() => Interlocked.Increment(ref _shutterKeysMissed);
 
     [Description("Eon of the latest block.")]
     public static ulong ShutterEon { get; set; }

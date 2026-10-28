@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -8,8 +8,7 @@ namespace Nethermind.Network.Config;
 
 public interface INetworkConfig : IConfig
 {
-    public const int DefaultNettyArenaOrder = -1;
-    public const int MaxNettyArenaOrder = 14;
+    public const int DefaultNettyArenaOrder = 11;
     public const int DefaultMaxNettyArenaCount = 8;
 
     /// <remarks>
@@ -17,21 +16,48 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
+
+    /// <summary>
+    /// Gets or sets the external IPv4 address to advertise.
+    /// </summary>
+    /// <remarks>
+    /// When unset and <see cref="EnableExternalIpResolution"/> is enabled, the external IPv4 address is resolved automatically.
+    /// This address is advertised only when every currently bound inbound transport serves IPv4.
+    /// On platforms with dual-mode wildcard support, leave <see cref="LocalIp"/> unset or set it to
+    /// <c>::</c> to advertise both automatically resolved families.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
+    string? ExternalIpV4 { get; set; }
+
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
+    /// through <c>IIPResolver.Resolve</c>. When unset and <see cref="EnableExternalIpResolution"/> is enabled,
+    /// the external IPv6 address is resolved automatically.
+    /// </remarks>
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
+    string? ExternalIpV6 { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether missing external IPv4 and IPv6 addresses available on active local interfaces are
+    /// resolved through public HTTPS services.
+    /// </summary>
+    [ConfigItem(Description = "Whether to resolve missing external IPv4 and IPv6 addresses available on active local interfaces through public HTTPS services. Disable this for restricted networks; explicit external IP overrides are still used.", DefaultValue = "true")]
+    bool EnableExternalIpResolution { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual local IP must resolve it through
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = "The local IP for inbound listeners. When unset, listeners try a dual-stack wildcard on supported platforms and fall back to IPv4 if it cannot bind; macOS uses IPv4 by default. Set to `0.0.0.0` for IPv4-only, `::` for a dual-stack wildcard, or a specific address to restrict listeners to that address and family.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]
     string? StaticPeers { get; set; }
 
-    [ConfigItem(Description = "Use tree is available through a DNS name. For the default of `<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
+    [ConfigItem(Description = "The EIP-1459 node list to discover peers from, as `enrtree://<signer public key>@<domain>`. A bare domain is also accepted, but then the list signature is not verified. For the default of `all.<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
     string? DiscoveryDns { get; set; }
 
     [ConfigItem(Description = "Whether to use static peers only.", DefaultValue = "false")]
@@ -79,10 +105,10 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable a verbose diagnostic tracing.")]
     bool DiagTracerEnabled { get; set; }
 
-    [ConfigItem(DefaultValue = "-1", Description = "The size of the DotNetty arena order. `-1` to depend on the memory hint.")]
+    [ConfigItem(DefaultValue = "11", Description = "The size of the DotNetty arena order. The chunk size is 4 KiB << order (8 MiB at 11). Negative values use the default.")]
     int NettyArenaOrder { get; set; }
 
-    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
+    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Each arena holds chunks of 4 KiB << `NettyArenaOrder`.")]
     uint MaxNettyArenaCount { get; set; }
 
     [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
@@ -112,7 +138,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
 
-    [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
+    [ConfigItem(DefaultValue = "1000", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
     [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]

@@ -4,29 +4,23 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
 
 public static unsafe partial class Bytes
 {
-    private static readonly byte[] ReverseMask = { 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
-    private static readonly Vector256<byte> ReverseMaskVec;
-
-    static Bytes()
+    private static Vector256<byte> ReverseMaskVec
     {
-        if (Avx2.IsSupported)
-        {
-            fixed (byte* ptr_mask = ReverseMask)
-            {
-                ReverseMaskVec = Avx2.LoadVector256(ptr_mask);
-            }
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Vector256.Create(
+            0x08090a0b0c0d0e0ful,
+            0x0001020304050607ul,
+            0x08090a0b0c0d0e0ful,
+            0x0001020304050607ul).AsByte();
     }
 
     // Internal method that requires AVX2 support - caller must check Avx2.IsSupported before calling
@@ -102,11 +96,50 @@ public static unsafe partial class Bytes
         }
         else
         {
-            // scalar fallback
-            for (int i = 0; i < thisSpan.Length; i++)
-            {
-                Unsafe.Add(ref thisRef, i) |= Unsafe.Add(ref valueRef, i);
-            }
+            OrScalar(thisSpan, valueSpan);
+        }
+    }
+
+    /// <summary>
+    /// The non-SIMD body of <see cref="Or"/>; the caller has checked that the lengths match.
+    /// </summary>
+    /// <remarks>
+    /// Whole words, then a byte tail: the widest access the target has without SIMD.
+    /// Correct at any base; the win needs a word-aligned start, which Bloom's inline 256-byte field has.
+    /// Four words a pass quarters the loop overhead per word.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void OrScalar(Span<byte> thisSpan, ReadOnlySpan<byte> valueSpan)
+    {
+        ref byte thisRef = ref MemoryMarshal.GetReference(thisSpan);
+        ref byte valueRef = ref MemoryMarshal.GetReference(valueSpan);
+
+        int i = 0;
+        for (; i <= thisSpan.Length - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            ref byte value = ref Unsafe.Add(ref valueRef, i);
+            Unsafe.WriteUnaligned(ref destination,
+                Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref value));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 8)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 16)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24),
+                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 24)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 24)));
+        }
+
+        for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            Unsafe.WriteUnaligned(ref destination,
+                Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
+        }
+
+        for (; i < thisSpan.Length; i++)
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            destination = (byte)(destination | Unsafe.Add(ref valueRef, i));
         }
     }
 
@@ -161,9 +194,18 @@ public static unsafe partial class Bytes
             if (i == thisSpan.Length) return;
         }
 
+        // Whole words, then a byte tail, as in Or above.
+        for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
+        {
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            Unsafe.WriteUnaligned(ref destination,
+                Unsafe.ReadUnaligned<ulong>(ref destination) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref valueRef, i)));
+        }
+
         for (; i < thisSpan.Length; i++)
         {
-            Unsafe.Add(ref thisRef, i) ^= Unsafe.Add(ref valueRef, i);
+            ref byte destination = ref Unsafe.Add(ref thisRef, i);
+            destination = (byte)(destination ^ Unsafe.Add(ref valueRef, i));
         }
     }
 
@@ -192,27 +234,6 @@ public static unsafe partial class Bytes
         }
 
         return result;
-    }
-
-    public static int CountLeadingZeroBits(this in Vector256<byte> v)
-    {
-        if (Vector256.IsHardwareAccelerated)
-        {
-            Vector256<byte> cmp = Vector256.Equals(v, Vector256<byte>.Zero);
-            uint nonZeroMask = ~cmp.ExtractMostSignificantBits();
-            if (nonZeroMask == 0)
-                return 256;
-
-            int firstIdx = BitOperations.TrailingZeroCount(nonZeroMask);
-            byte b = v.GetElement(firstIdx);
-            int lzInByte = BitOperations.LeadingZeroCount(b) - 24;
-            return firstIdx * 8 + lzInByte;
-        }
-
-        ref byte first = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
-        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(ref first, Vector256<byte>.Count);
-        UInt256 uint256 = new(span, true);
-        return uint256.CountLeadingZeros();
     }
 
     [StackTraceHidden, DoesNotReturn]

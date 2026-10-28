@@ -4,26 +4,26 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core.Specs;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v2/capabilities</c>, the HTTP/REST equivalent of
+/// Handles <c>GET /engine/v1/capabilities</c>, the HTTP/REST equivalent of
 /// <c>engine_exchangeCapabilities</c>.
 /// </summary>
 /// <remarks>
-/// The response body is fully determined by <see cref="ISpecProvider"/> state, which is
-/// fixed for the lifetime of the EL. The body is built once on first request and reused.
+/// <c>supported_forks</c> lists every SSZ schema implemented by this client, independent of the network's fork
+/// schedule. Callers select a schema on fork-scoped requests with <c>Eth-Execution-Version</c>.
 /// </remarks>
-public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndpointHandlerBase
+public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 {
-    private byte[]? _cachedBody;
+    private static readonly byte[] _responseBody = BuildBody();
 
     public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.Capabilities;
@@ -31,73 +31,35 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
 
     public override Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        byte[] cached = _cachedBody ?? InitializeCachedBody();
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode = StatusCodes.Status200OK;
-        ctx.Response.ContentLength = cached.Length;
-        return ctx.Response.Body.WriteAsync(cached, 0, cached.Length, ctx.RequestAborted);
+        ctx.Response.ContentLength = _responseBody.Length;
+        return ctx.Response.Body.WriteAsync(_responseBody, 0, _responseBody.Length, ctx.RequestAborted);
     }
 
-    private byte[] InitializeCachedBody()
+    private static byte[] BuildBody()
     {
-        // Benign race: two threads may both build the body on first hit; whoever wins the
-        // CompareExchange wins the cache slot. Subsequent requests are lock-free.
-        byte[] built = BuildBody(specProvider);
-        return Interlocked.CompareExchange(ref _cachedBody, built, null) ?? built;
-    }
-
-    private static byte[] BuildBody(ISpecProvider specProvider)
-    {
-        int timestampForkCount = ComputeTimestampForkCount(specProvider);
-
-        string supportedForksJson;
-        if (timestampForkCount == 0)
-        {
-            supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered);
-        }
-        else
-        {
-            int limit = Math.Min(timestampForkCount + 1, SszRestPaths.SupportedForksOrdered.Count);
-            List<string> forkSlice = new(limit);
-            for (int i = 0; i < limit; i++)
-            {
-                forkSlice.Add(SszRestPaths.SupportedForksOrdered[i]);
-            }
-            supportedForksJson = JsonSerializer.Serialize(forkSlice);
-        }
+        string supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IEnumerableString);
+        string forkScopedEndpointsJson = JsonSerializer.Serialize(ForkScopedEndpointNames(), SszRestJsonContext.Default.IEnumerableString);
+        string blobVersionsJson = JsonSerializer.Serialize(BlobVersionNames(), SszRestJsonContext.Default.IEnumerableString);
 
         return Encoding.UTF8.GetBytes(
             $"{{\"supported_forks\":{supportedForksJson}," +
-            $"\"fork_scoped_endpoints\":[\"payloads\",\"forkchoice\",\"bodies\"]," +
-            $"\"independently_versioned\":{{\"blobs\":[\"v1\",\"v2\",\"v3\",\"v4\"]}}," +
-            $"\"unscoped_endpoints\":[\"capabilities\",\"identity\"]," +
+            $"\"fork_scoped_endpoints\":{forkScopedEndpointsJson}," +
+            $"\"independently_versioned\":{{\"{SszRestPaths.Blobs}\":{blobVersionsJson}}}," +
+            $"\"unscoped_endpoints\":[\"{SszRestPaths.Capabilities}\",\"{SszRestPaths.ClientVersion}\"]," +
             $"\"limits\":{{" +
             $"\"bodies.max_count\":{SszRestLimits.MaxBodiesRequest}," +
             $"\"blobs.max_versioned_hashes\":{SszRestLimits.MaxBlobsRequest}," +
             $"\"payload.max_bytes\":{SszMiddleware.MaxBodySize}}}}}");
     }
 
-    private static int ComputeTimestampForkCount(ISpecProvider specProvider)
-    {
-        int count = 0;
-        IReleaseSpec? lastSeen = null;
+    // The spec advertises POST bodies/hash and GET bodies together as one "bodies" family.
+    private static IEnumerable<string> ForkScopedEndpointNames() =>
+        SszRestPaths.ForkScopedEndpoints
+            .Select(static endpoint => endpoint.Resource is SszRestPaths.PayloadBodiesByHash ? SszRestPaths.PayloadBodiesByRange : endpoint.Resource)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
 
-        foreach (ForkActivation fa in specProvider.TransitionActivations)
-        {
-            if (fa.Timestamp is null)
-                continue;
-
-            IReleaseSpec s = specProvider.GetSpec(fa);
-            if (ReferenceEquals(s, lastSeen))
-                continue;
-
-            count++;
-            lastSeen = s;
-
-            if (count >= SszRestPaths.SupportedForksOrdered.Count - 1)
-                break;
-        }
-
-        return count;
-    }
+    private static IEnumerable<string> BlobVersionNames() =>
+        Enumerable.Range(EngineApiVersions.GetBlobs.V1, EngineApiVersions.GetBlobs.Latest - EngineApiVersions.GetBlobs.V1 + 1).Select(static version => $"v{version}");
 }

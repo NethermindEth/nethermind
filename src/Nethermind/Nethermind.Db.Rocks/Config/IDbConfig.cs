@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 
 namespace Nethermind.Db.Rocks.Config;
 
 [ConfigCategory(HiddenFromDocs = true)]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
 public interface IDbConfig : IConfig
 {
+    [ConfigItem(Description = "The size of the block cache shared by the databases that have no block cache of their own, in bytes. The flat state account and storage columns use `FlatDb.BlockCacheSizeBudget` instead.", DefaultValue = "536870912")]
     ulong SharedBlockCacheSize { get; set; }
-    public bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
@@ -88,7 +90,7 @@ public interface IDbConfig : IConfig
     string? CodeDbAdditionalRocksDbOptions { get; set; }
 
 
-    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
+    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.", DefaultValue = "64000000")]
     ulong StateDbWriteBufferSize { get; set; }
     ulong StateDbWriteBufferNumber { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
@@ -170,9 +172,6 @@ public interface IDbConfig : IConfig
     /// <see cref="FlatHistoryAvailableBlocksDbRocksDbOptions"/>.
     /// </summary>
     string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
-
-    string? PreimageDbRocksDbOptions { get; set; }
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 
     string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
     string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }

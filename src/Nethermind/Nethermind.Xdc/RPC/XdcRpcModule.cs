@@ -13,11 +13,12 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
-using Nethermind.Xdc.RLP;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore, IHeaderDecoder headerDecoder) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -100,25 +101,36 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         return ResultWrapper<ulong[]>.Success(epochSwitchNumbers);
     }
 
-    private static IDictionary<(ulong Round, Hash256 Hash), SignerTypes> CalculateSigners<T>(
+    /// <param name="poolKeySelector">
+    /// Renders a pool item as the JSON object name of its bucket. Must reproduce the reference client's
+    /// <c>PoolKey()</c> format, since the tuple key the pool is stored under is not part of the RPC contract.
+    /// </param>
+    private static IDictionary<string, SignerTypes> CalculateSigners<T>(
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pool,
-        Address[] masternodes)
+        Address[] masternodes,
+        Func<T, string> poolKeySelector)
     {
-        Dictionary<(ulong Round, Hash256 Hash), SignerTypes> message = [];
+        Dictionary<string, SignerTypes> message = new(pool.Count);
 
-        foreach (((ulong, Hash256) key, Dictionary<Address, T> objs) in pool)
+        foreach (Dictionary<Address, T> objs in pool.Values)
         {
             List<Address> currentSigners = [];
             HashSet<Address> missingSigners = [.. masternodes];
+            string? poolKey = null;
 
             int num = objs.Count;
-            foreach (Address signer in objs.Keys)
+            foreach ((Address signer, T obj) in objs)
             {
+                //Every item in a bucket shares the same pool key, so any of them names the bucket
+                poolKey ??= poolKeySelector(obj);
                 currentSigners.Add(signer);
                 missingSigners.Remove(signer);
             }
 
-            message[key] = new SignerTypes
+            if (poolKey is null)
+                continue;
+
+            message[poolKey] = new SignerTypes
             {
                 CurrentNumber = num,
                 CurrentSigners = [.. currentSigners],
@@ -151,40 +163,55 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> receivedVotes = voteManager.GetReceivedVotes();
         IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> receivedTimeouts = timeoutCertificateManager.GetReceivedTimeouts();
-        IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> receivedSyncInfo = syncInfoManager.GetReceivedSyncInfos();
 
         PoolStatus info = new();
 
-        info.Timeout = CalculateSigners(receivedTimeouts, masternodes);
-        info.Vote = CalculateSigners(receivedVotes, masternodes);
-        info.SyncInfo = receivedSyncInfo;
+        info.Timeout = CalculateSigners(receivedTimeouts, masternodes,
+            static timeout => $"{timeout.Round}:{timeout.GapNumber}");
+        info.Vote = CalculateSigners(receivedVotes, masternodes,
+            static vote => $"{vote.ProposedBlockInfo.Round}:{vote.GapNumber}:{vote.ProposedBlockInfo.BlockNumber}:{vote.ProposedBlockInfo.Hash}");
 
         return ResultWrapper<PoolStatus>.Success(info);
     }
+
+    /// <summary>
+    /// Resolves the latest block, the committed (finalized) block or a block number to its header, as the reference
+    /// client's <c>getHeaderFromApiBlockNum</c> does.
+    /// </summary>
+    /// <returns><see langword="false"/> when the parameter cannot be resolved; a <see langword="null"/> header otherwise means the block is unknown.</returns>
+    private bool TryFindHeader(BlockParameter? blockParameter, out BlockHeader? header, [NotNullWhen(false)] out string? error)
+    {
+        error = null;
+        header = null;
+
+        switch (blockParameter)
+        {
+            case null or { Type: BlockParameterType.Latest }:
+                header = tree.Head?.Header;
+                return true;
+            case { Type: BlockParameterType.Finalized }:
+                if (tree.FinalizedHash is null)
+                {
+                    error = "No finalized block found from consensus";
+                    return false;
+                }
+
+                header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                return true;
+            case { BlockNumber: ulong number }:
+                header = tree.FindHeader(number);
+                return true;
+            default:
+                error = "Block number is required.";
+                return false;
+        }
+    }
+
     public ResultWrapper<MasternodesStatus> XDPoS_getMasternodesByNumber(BlockParameter blockNumber)
     {
-        BlockHeader? header;
-
-        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
+        if (!TryFindHeader(blockNumber, out BlockHeader? header, out string? error))
         {
-            header = tree.Head?.Header;
-        }
-        else if (blockNumber.Type == BlockParameterType.Finalized)
-        {
-            if (tree.FinalizedHash is null)
-            {
-                return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
-            }
-
-            header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        }
-        else if (blockNumber.BlockNumber is null)
-        {
-            return ResultWrapper<MasternodesStatus>.Fail("Block number is required.");
-        }
-        else
-        {
-            header = tree.FindHeader(blockNumber.BlockNumber.Value);
+            return ResultWrapper<MasternodesStatus>.Fail(error);
         }
 
         if (header is null)
@@ -235,19 +262,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
     public ResultWrapper<PublicApiMissedRoundsMetadata> XDPoS_getMissedRoundsInEpochByBlockNum(BlockParameter blockNumber)
     {
-        BlockHeader? header;
-
-        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
+        if (!TryFindHeader(blockNumber, out BlockHeader? header, out string? error))
         {
-            header = tree.Head?.Header;
-        }
-        else if (blockNumber.BlockNumber is null)
-        {
-            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("Block number is required.");
-        }
-        else
-        {
-            header = tree.FindHeader(blockNumber.BlockNumber.Value);
+            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail(error);
         }
 
         if (header is null)
@@ -330,8 +347,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
             foreach ((string holder, UInt256 amount) in epochReward.DelegatedReward ?? [])
             {
-                totalDelegatedReward.TryGetValue(holder, out UInt256 existing);
-                totalDelegatedReward[holder] = existing + amount;
+                ref UInt256 total = ref CollectionsMarshal.GetValueRefOrAddDefault(totalDelegatedReward, holder, out _);
+                total += amount;
             }
         }
 
@@ -559,7 +576,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         // Encode header to RLP
-        XdcHeaderDecoder headerDecoder = new();
         byte[] encodedBytes;
         try
         {
@@ -587,18 +603,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
     public ResultWrapper<V2BlockInfo> XDPoS_getV2BlockByNumber(BlockParameter blockNumber)
     {
-        BlockHeader header;
-        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
+        if (!TryFindHeader(blockNumber, out BlockHeader? header, out string? error))
         {
-            header = tree.Head?.Header;
-        }
-        else if (blockNumber.BlockNumber is null)
-        {
-            return ResultWrapper<V2BlockInfo>.Fail("Block number is required.");
-        }
-        else
-        {
-            header = tree.FindHeader(blockNumber.BlockNumber.Value);
+            return ResultWrapper<V2BlockInfo>.Fail(error);
         }
         return (header is null) ?
             ResultWrapper<V2BlockInfo>.Fail("Unknown block") :

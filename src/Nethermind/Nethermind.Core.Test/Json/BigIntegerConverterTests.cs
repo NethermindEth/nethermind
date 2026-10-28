@@ -19,10 +19,9 @@ public class BigIntegerConverterTests : ConverterTestBase<BigInteger>
     [TestCaseSource(nameof(RoundtripTestCases))]
     public void Test_roundtrip(BigInteger value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
 
+    // The int.MaxValue roundtrip lives in Serializes_as_decimal_string.
     static IEnumerable<TestCaseData> RoundtripTestCases =
     [
-        new TestCaseData((BigInteger)int.MaxValue)
-            .SetName("int.MaxValue"),
         new TestCaseData(BigInteger.One)
             .SetName("One"),
         new TestCaseData(BigInteger.Zero)
@@ -36,4 +35,8 @@ public class BigIntegerConverterTests : ConverterTestBase<BigInteger>
         BigInteger result = JsonSerializer.Deserialize<BigInteger>(json, options);
         Assert.That(result, Is.EqualTo(BigInteger.Parse(expected)));
     }
+
+    [Test]
+    public void Serializes_as_decimal_string() =>
+        TestConverter((BigInteger)int.MaxValue, "\"2147483647\"", converter, static (a, b) => a.Equals(b));
 }

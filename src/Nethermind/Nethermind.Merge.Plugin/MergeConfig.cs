@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Merge.Plugin.GC;
+using Nethermind.Core.Memory;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -27,9 +27,13 @@ namespace Nethermind.Merge.Plugin
 
         public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
 
-        public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
+        public GcCompaction CompactMemory { get; set; } = GcCompaction.No;
 
         public int CollectionsPerDecommit { get; set; } = 25;
+
+        public int DecommitMemoryLoadPercent { get; set; } = 70;
+
+        public int CollectionsPerUnconditionalDecommit { get; set; } = 300;
 
         public const int DefaultNewPayloadBlockProcessingTimeout = 7000;
 

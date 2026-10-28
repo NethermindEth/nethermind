@@ -11,6 +11,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -70,11 +71,19 @@ public sealed class SnapServer(
                 continue;
             }
 
-            byte[]? code = codeDb[codeHash.Bytes];
-            if (code is not null)
+            // Code keys are hashes, so a cached block holds no likely next request.
+            Span<byte> code = codeDb.GetSpan(codeHash.Bytes, ReadFlags.HintCacheMiss);
+            try
             {
-                writer.WriteValue(code);
-                currentByteCount += code.Length;
+                if (!code.IsNull())
+                {
+                    writer.WriteValue(code);
+                    currentByteCount += code.Length;
+                }
+            }
+            finally
+            {
+                codeDb.DangerousReleaseMemory(code);
             }
         }
 

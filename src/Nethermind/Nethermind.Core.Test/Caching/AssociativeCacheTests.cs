@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Caching;
 using NUnit.Framework;
@@ -40,6 +42,39 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
         // Set with null triggers Delete
         Assert.That(_cache.Set(in key, null!), Is.True);
         Assert.That(_cache.Get(in key), Is.Null);
+    }
+
+    [Test]
+    public void TryAdd_adds_only_an_absent_key([Values] bool alreadyCached)
+    {
+        AddressAsKey key = _keys[0];
+        if (alreadyCached) _cache.Set(in key, _accounts[0]);
+
+        bool added = _cache.TryAdd(in key, _accounts[1]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(added, Is.EqualTo(!alreadyCached));
+            Assert.That(_cache.Get(in key), Is.SameAs(alreadyCached ? _accounts[0] : _accounts[1]));
+            Assert.That(_cache.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void TryRemove_removes_only_the_expected_value([Values] bool replacedSinceInsert)
+    {
+        AddressAsKey key = _keys[0];
+        _cache.TryAdd(in key, _accounts[0]);
+        if (replacedSinceInsert) _cache.Set(in key, _accounts[1]);
+
+        bool removed = _cache.TryRemove(in key, _accounts[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(!replacedSinceInsert));
+            Assert.That(_cache.Get(in key), Is.SameAs(replacedSinceInsert ? _accounts[1] : null));
+            Assert.That(_cache.Count, Is.EqualTo(replacedSinceInsert ? 1 : 0));
+        }
     }
 
     [Test]
@@ -128,6 +163,66 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
             AddressAsKey key = _keys[i];
             if (cache.TryGet(in key, out Account? val))
                 Assert.That(val, Is.EqualTo(_accounts[i]));
+        }
+    }
+
+    /// <remarks>
+    /// Re-caching the stored instance never locks the entry, so readers cannot miss. Replacing the value locks it;
+    /// readers spin through the write, but a writer preempted mid-write can still cost them a miss, so only the
+    /// values they return are checked.
+    /// </remarks>
+    [Test]
+    public void TryGet_returns_stored_values_while_a_key_is_rewritten([Values] bool sameInstance)
+    {
+        const int readsPerReader = 200_000;
+        TimeSpan joinTimeout = TimeSpan.FromSeconds(30);
+        AddressAsKey key = _keys[0];
+        Account first = _accounts[0];
+        Account second = sameInstance ? first : _accounts[1];
+        _cache.Set(in key, first);
+
+        int misses = 0;
+        int wrongValues = 0;
+        bool readersDone = false;
+        Task writer = Task.Factory.StartNew(() =>
+        {
+            for (int i = 0; !Volatile.Read(ref readersDone); i++)
+                _cache.Set(in key, (i & 1) == 0 ? second : first);
+        }, TaskCreationOptions.LongRunning);
+
+        Task[] readers = new Task[Math.Max(2, Environment.ProcessorCount - 1)];
+        for (int r = 0; r < readers.Length; r++)
+        {
+            readers[r] = Task.Factory.StartNew(() =>
+            {
+                for (int i = 0; i < readsPerReader; i++)
+                {
+                    if (!_cache.TryGet(in key, out Account? value))
+                        Interlocked.Increment(ref misses);
+                    else if (value != first && value != second)
+                        Interlocked.Increment(ref wrongValues);
+                }
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        bool readersFinished;
+        bool writerFinished;
+        try
+        {
+            readersFinished = Task.WaitAll(readers, joinTimeout);
+        }
+        finally
+        {
+            Volatile.Write(ref readersDone, true);
+            writerFinished = writer.Wait(joinTimeout);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readersFinished, Is.True);
+            Assert.That(writerFinished, Is.True);
+            Assert.That(wrongValues, Is.Zero);
+            if (sameInstance) Assert.That(misses, Is.Zero);
         }
     }
 

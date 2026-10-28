@@ -266,6 +266,16 @@ public class TaikoChainSpecEngineParametersTests
         }
     }
 
+    [TestCase("surge-hoodi.json", ExpectedResult = true)]
+    [TestCase("taiko-hoodi.json", ExpectedResult = false)]
+    [TestCase("taiko-alethia.json", ExpectedResult = false)]
+    public bool Chainspec_enables_anchor_v4_with_signal_slots_only_on_Surge(string chainSpecFileName)
+    {
+        (ChainSpec chainSpec, TaikoChainSpecEngineParameters parameters) = LoadChainSpec(chainSpecFileName);
+        TaikoChainSpecBasedSpecProvider provider = new(chainSpec, parameters, LimboLogs.Instance);
+        return ((ITaikoReleaseSpec)provider.GetFinalSpec()).IsAnchorV4WithSignalSlotsEnabled;
+    }
+
     private static Dictionary<string, PropertyInfo> GetEipFlags(IReleaseSpec spec)
     {
         Dictionary<string, PropertyInfo> flags = [];
@@ -314,7 +324,7 @@ public class TaikoChainSpecEngineParametersTests
         }";
 
         TaikoChainSpecEngineParameters parameters =
-            new EthereumJsonSerializer().Deserialize<TaikoChainSpecEngineParameters>(json);
+            new EthereumJsonSerializer().Deserialize<TaikoChainSpecEngineParameters>(json)!;
 
         Assert.That(parameters.UnzenZkGasSchedules, Is.Not.Null);
         Assert.That(parameters.UnzenZkGasSchedules!, Has.Count.EqualTo(1));

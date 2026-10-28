@@ -8,8 +8,9 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// The single axis for per-transaction adapter selection: the block-processing scope registers the default
 /// (<see cref="ExecuteTransactionProcessorAdapter"/>) and derives the scoped <see cref="ITransactionProcessorAdapter"/>
 /// from it, so a scope that overrides this factory (block production, trace, proof, simulate) changes both the main
-/// path and the EIP-7928 BAL pool's per-worker adapters at once. The one exception is debug, which registers its
-/// runtime-mutable <see cref="ChangeableTransactionProcessorAdapter"/> directly and keeps the default behaviour on
-/// the BAL path.
+/// path and the EIP-7928 BAL pool's per-worker adapters at once. Debug registers its runtime-mutable
+/// <see cref="ChangeableTransactionProcessorAdapter"/> as the scoped adapter and a factory
+/// (<see cref="ChangeableTransactionProcessorAdapter.ForProcessor"/>) that mirrors that adapter's Execute↔Trace
+/// mode onto each worker, so the BAL pool honours the tracer's runtime swap too.
 /// </remarks>
 public delegate ITransactionProcessorAdapter TransactionProcessorAdapterFactory(ITransactionProcessor transactionProcessor);

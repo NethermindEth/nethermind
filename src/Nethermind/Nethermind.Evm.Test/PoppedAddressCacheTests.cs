@@ -1,7 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -20,7 +25,7 @@ public class PoppedAddressCacheTests
         Address second = cache.GetOrCreate(AddressA);
 
         Assert.That(second, Is.SameAs(first));
-        Assert.That(first.Bytes.ToArray(), Is.EqualTo(AddressA));
+        Assert.That(first.Bytes, Is.SequenceEqualTo(AddressA));
     }
 
     [Test]
@@ -32,8 +37,8 @@ public class PoppedAddressCacheTests
         Address second = cache.GetOrCreate(AddressB);
 
         Assert.That(second, Is.Not.SameAs(first));
-        Assert.That(first.Bytes.ToArray(), Is.EqualTo(AddressA));
-        Assert.That(second.Bytes.ToArray(), Is.EqualTo(AddressB));
+        Assert.That(first.Bytes, Is.SequenceEqualTo(AddressA));
+        Assert.That(second.Bytes, Is.SequenceEqualTo(AddressB));
     }
 
     [Test]
@@ -45,7 +50,7 @@ public class PoppedAddressCacheTests
         {
             byte[] expected = (i & 1) == 0 ? AddressA : AddressB;
             Address address = cache.GetOrCreate(expected);
-            Assert.That(address.Bytes.ToArray(), Is.EqualTo(expected));
+            Assert.That(address.Bytes, Is.SequenceEqualTo(expected));
         }
     }
 
@@ -84,19 +89,94 @@ public class PoppedAddressCacheTests
     }
 
     [Test]
-    public void GetOrCreate_FifthDistinctAddress_EvictsLeastRecentlyUsed()
+    public void GetOrCreate_WorkingSetInDistinctSlots_ReusesAllInstances()
     {
         PoppedAddressCache cache = new();
-        Address firstA = cache.GetOrCreate(AddressA);
-        cache.GetOrCreate(AddressB);
-        cache.GetOrCreate(AddressC);
-        cache.GetOrCreate(AddressD);
+        byte[][] workingSet = [AddressA, AddressB, AddressC, AddressD, AddressE];
+        Assume.That(workingSet.Select(SlotOf).Distinct().Count(), Is.EqualTo(workingSet.Length));
+        Address[] firstRound = workingSet.Select(bytes => cache.GetOrCreate(bytes)).ToArray();
 
-        cache.GetOrCreate(AddressE);
+        for (int round = 0; round < 3; round++)
+        {
+            for (int i = 0; i < workingSet.Length; i++)
+            {
+                Assert.That(cache.GetOrCreate(workingSet[i]), Is.SameAs(firstRound[i]));
+            }
+        }
+    }
+
+    [Test]
+    public void GetOrCreate_SlotCollision_ReplacesTheOlderAddress()
+    {
+        PoppedAddressCache cache = new();
+        byte[] colliding = Enumerable.Range(1, 100_000)
+            .Select(n => Address.FromNumber((UInt256)(ulong)n).Bytes.ToArray())
+            .First(bytes => SlotOf(bytes) == SlotOf(AddressA) && !bytes.AsSpan().SequenceEqual(AddressA));
+        Address firstA = cache.GetOrCreate(AddressA);
+
+        Address other = cache.GetOrCreate(colliding);
         Address secondA = cache.GetOrCreate(AddressA);
 
+        Assert.That(other.Bytes, Is.SequenceEqualTo(colliding));
         Assert.That(secondA, Is.Not.SameAs(firstA));
-        Assert.That(secondA.Bytes.ToArray(), Is.EqualTo(AddressA));
+        Assert.That(secondA.Bytes, Is.SequenceEqualTo(AddressA));
+    }
+
+    private static int SlotOf(byte[] bytes) => PoppedAddressCache.Slot(
+        BinaryPrimitives.ReadUInt64BigEndian(bytes.AsSpan(12)),
+        BinaryPrimitives.ReadUInt64BigEndian(bytes.AsSpan(4)),
+        BinaryPrimitives.ReadUInt32BigEndian(bytes));
+
+    [Test]
+    public void GetOrCreate_rejects_non_address_lengths([Values(0, 19, 21, 32)] int length)
+    {
+        PoppedAddressCache cache = new();
+        Assert.Throws<System.ArgumentException>(() => cache.GetOrCreate(new byte[length]));
+    }
+
+    [Test]
+    public void Native_key_ignores_discarded_bits([Range(160, 255)] int bit)
+    {
+        PoppedAddressCache cache = new();
+        UInt256 original = new(0x0123456789abcdef, 0xfedcba9876543210, 0x89abcdef, 0);
+        Address first = cache.GetOrCreate(in original);
+        UInt256 changed = original | (UInt256.One << bit);
+
+        Assert.That(cache.GetOrCreate(in changed), Is.SameAs(first));
+    }
+
+    [Test]
+    public void Native_key_preserves_every_address_bit([Range(0, 159)] int bit)
+    {
+        PoppedAddressCache cache = new();
+        Address zero = cache.GetOrCreate(in UInt256.Zero);
+        UInt256 value = UInt256.One << bit;
+        Address actual = cache.GetOrCreate(in value);
+        byte[] expected = new byte[Address.Size];
+        expected[Address.Size - 1 - bit / 8] = (byte)(1 << (bit % 8));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.Not.SameAs(zero));
+            Assert.That(actual.Bytes, Is.SequenceEqualTo(expected));
+            Assert.That(cache.GetOrCreate(expected), Is.SameAs(actual));
+        }
+    }
+
+    [Test]
+    public void Native_key_and_byte_lookup_share_entries()
+    {
+        PoppedAddressCache cache = new();
+        UInt256[] values = [UInt256.Zero, UInt256.One, new(0, 1, 0, 0), UInt256.MaxValue];
+        Address[] addresses = new Address[values.Length];
+        for (int i = 0; i < values.Length; i++) addresses[i] = cache.GetOrCreate(in values[i]);
+        Assume.That(addresses.Select(a => SlotOf(a.Bytes.ToArray())).Distinct().Count(), Is.EqualTo(values.Length));
+        for (int i = 0; i < values.Length; i++)
+            Assert.That(cache.GetOrCreate(addresses[i].Bytes), Is.SameAs(addresses[i]));
+
+        UInt256 fifth = new(5);
+        cache.GetOrCreate(in fifth);
+        Assert.That(cache.GetOrCreate(in values[0]), Is.SameAs(addresses[0]));
     }
 
     private static readonly byte[] AddressC = Address.FromNumber(0x3000).Bytes.ToArray();

@@ -129,13 +129,20 @@ namespace Nethermind.Facade.Filters
                 GetAddress(addresses),
                 GetTopicsFilter(topics));
 
-        public void RemoveFilter(int filterId)
+        public bool RemoveFilter(int filterId)
         {
-            _filters.TryRemove(filterId, out _);
+            if (!_filters.TryRemove(filterId, out _))
+            {
+                return false;
+            }
+
             FilterRemoved?.Invoke(this, new FilterEventArgs(filterId));
+            return true;
         }
 
         public event EventHandler<FilterEventArgs>? FilterRemoved;
+
+        internal event EventHandler<FilterEventArgs>? FilterSaved;
 
         public void SaveFilter(FilterBase filter)
         {
@@ -148,6 +155,8 @@ namespace Nethermind.Facade.Filters
             {
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
+
+            FilterSaved?.Invoke(this, new FilterEventArgs(filter.Id));
         }
 
         private int GetFilterId(bool generateId)

@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -43,8 +44,7 @@ namespace Nethermind.TxPool.Test.Collections
         public void Setup()
         {
             CollectAndFinalize();
-            _finalizedCount = 0;
-            _allCount = 0;
+            ResetCounts();
 
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -82,9 +82,8 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(pool.Count, Is.EqualTo(expectedCount));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
+        [Test]
+        public void Same_transactions_are_all_replaced_with_highest_gas_price([Values] bool gasPriceAscending)
         {
             TxDistinctSortedPool pool = new(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
@@ -101,22 +100,32 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(pool.GetSnapshot().First().GasPrice, Is.EqualTo((UInt256)(Capacity - 1)));
         }
 
-        private static int _finalizedCount;
-        private static int _allCount;
+        private static FinalizerCounts _counts = new();
+        private static int _finalizedCount => _counts.Finalized;
+        private static int _allCount => _counts.All;
+
+        private static void ResetCounts() => _counts = new();
+
+        private sealed class FinalizerCounts
+        {
+            public int All;
+            public int Finalized;
+        }
 
         private class WithFinalizer
         {
+            private readonly FinalizerCounts _owner = _counts;
             public int Index { get; }
 
-            public WithFinalizer() => Index = Interlocked.Increment(ref _allCount);
+            public WithFinalizer() => Index = Interlocked.Increment(ref _owner.All);
 
             public WithFinalizer(int index)
             {
                 Index = index;
-                Interlocked.Increment(ref _allCount);
+                Interlocked.Increment(ref _owner.All);
             }
 
-            ~WithFinalizer() => Interlocked.Increment(ref _finalizedCount);
+            ~WithFinalizer() => Interlocked.Increment(ref _owner.Finalized);
         }
 
         private class WithFinalizerComparer : IEqualityComparer<WithFinalizer>
@@ -266,6 +275,27 @@ namespace Nethermind.TxPool.Test.Collections
             int expectedAllCount = Capacity * capacityMultiplier * 3;
             Assert.That(_allCount, Is.EqualTo(expectedAllCount));
             Assert.That(_finalizedCount, Is.GreaterThanOrEqualTo(expectedAllCount - Capacity));
+        }
+
+        [Test]
+        public void Previous_generation_finalizers_do_not_change_current_counts()
+        {
+            CreateValueAcrossCountsReset();
+            CollectAndFinalize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_allCount, Is.Zero);
+                Assert.That(_finalizedCount, Is.Zero);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void CreateValueAcrossCountsReset()
+        {
+            WithFinalizer value = new();
+            ResetCounts();
+            GC.KeepAlive(value);
         }
 
         private static void CollectAndFinalize()

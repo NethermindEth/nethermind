@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -96,7 +96,9 @@ namespace Nethermind.Core
         }
         public override bool Equals(object? obj) => Equals(obj as Account);
         public static bool operator ==(Account? left, Account? right) => left?.Equals(right) ?? right is null;
-        public override int GetHashCode() => (int)BitOperations.Crc32C((uint)CodeHash.GetHashCode(), (ulong)Nonce.GetHashCode() << 8 | (uint)Balance.GetHashCode()) ^ StorageRoot.GetHashCode();
+        public override int GetHashCode() => (int)SpanExtensions.MumFold(
+            (uint)CodeHash.ValueHash256.GetChainedHashCode(Nonce),
+            (uint)StorageRoot.ValueHash256.GetChainedHashCode((uint)Balance.GetHashCode()));
         public static bool operator !=(Account? left, Account? right) => !(left == right);
         public Account WithChangedBalance(in UInt256 newBalance) => new(this, Nonce, newBalance);
         public Account WithChangedNonce(in ulong newNonce) => new(this, newNonce, Balance);
@@ -150,6 +152,12 @@ namespace Nethermind.Core
                   Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in CodeHash)) |
                   Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
         }
+
+        /// <summary>Materializes these account values, reusing canonical hashes for empty storage and code.</summary>
+        public Account ToAccount() =>
+            new(_nonce, _balance,
+                IsStorageEmpty ? Keccak.EmptyTreeHash : _storageRoot.ToCommitment(),
+                HasCode ? CodeHash.ToCommitment() : Keccak.OfAnEmptyString);
 
         public bool Equals(AccountStruct other) =>
             _nonce == other.Nonce &&

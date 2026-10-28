@@ -210,7 +210,7 @@ public class NodeHealthTrackerTests
         public IEnumerable<RoutingTableBucket<int, int>> IterateBuckets() =>
             throw new NotSupportedException();
 
-        public int GetByHash(int nodeId) => throw new NotSupportedException();
+        public bool TryGet(in int hash, out int node) => throw new NotSupportedException();
 
         public void LogDebugInfo() => throw new NotSupportedException();
 
@@ -226,12 +226,6 @@ public class NodeHealthTrackerTests
             remove { }
         }
 
-        public int Size
-        {
-            get
-            {
-                lock (AddCalls) return AddCalls.Count;
-            }
-        }
+        public RoutingTableOccupancy GetOccupancy() => throw new NotSupportedException();
     }
 }

@@ -13,15 +13,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public override int PacketType => Eth63MessageCode.Receipts;
         public override string Protocol => "eth";
 
-        private static ReceiptsMessage? _empty;
-        public static ReceiptsMessage Empty => _empty ??= new ReceiptsMessage(null);
-
-        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Count ?? 0})";
+        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts.Count})";
 
         public override void Dispose()
         {
             base.Dispose();
-            TxReceipts?.Dispose();
+            TxReceipts.Dispose();
         }
     }
 }

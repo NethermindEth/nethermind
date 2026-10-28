@@ -13,9 +13,7 @@ public partial class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
 
     private Ripemd160Precompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(3);
-
-    public static string Name => "RIPEMD160";
+    public string Name => "RIPEMD160";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 600UL;
 

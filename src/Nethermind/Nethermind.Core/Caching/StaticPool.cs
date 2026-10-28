@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core.Resettables;
 
@@ -14,7 +13,7 @@ namespace Nethermind.Core.Caching;
 /// The pooled type. Must be a reference type that implements <see cref="IResettable"/> and
 /// has a public parameterless constructor.
 /// </typeparam>
-public static class StaticPool<T> where T : class, IResettable, new()
+public static partial class StaticPool<T> where T : class, IResettable, new()
 {
     private const int DefaultMaxPooledCount = 4096;
 
@@ -31,11 +30,6 @@ public static class StaticPool<T> where T : class, IResettable, new()
     /// callers, so reservations may briefly exceed a smaller new cap.
     /// </summary>
     public static void SetMaxPooledCount(int maxPooledCount) => _maxPooledCount = maxPooledCount;
-
-    /// <summary>
-    /// Global pool shared between threads.
-    /// </summary>
-    private static readonly ConcurrentQueue<T> _pool = [];
 
     /// <summary>
     /// Manual count of items in the queue.
@@ -59,8 +53,9 @@ public static class StaticPool<T> where T : class, IResettable, new()
     /// </returns>
     public static T Rent()
     {
-        // Try to pop from the global pool — this is only hit when a thread
-        // has exhausted its own fast slot or is cross-thread renting.
+        // Every rent reaches the shared queue: there is no per-thread tier here, unlike
+        // Nethermind.Evm's EvmObjectPool, so each rent and return costs a contended atomic. Hosting
+        // this on that pool would extend the same win to StackList and the block-access-list pool.
         if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out T? item))
         {
             // We track count manually with Interlocked ops instead of using queue.Count.

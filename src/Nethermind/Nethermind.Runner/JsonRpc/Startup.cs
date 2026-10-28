@@ -18,6 +18,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -34,10 +36,8 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
-using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -51,8 +51,15 @@ public class Startup : IStartup
     private const string ApplicationJsonContentType = "application/json";
     private static readonly StringValues JsonContentTypeHeader = new(ApplicationJsonContentType);
 
+    // Rendered straight into the client-visible JSON-RPC error, so it must not carry transport-layer detail.
+    private const string MalformedRequestBodyMessage = "Invalid request body.";
+
+    // Kestrel's own 408 names MinRequestBodyDataRate. AddServerHeader is false for the same reason, so the server
+    // stack must not be re-advertised through an error this endpoint serves unauthenticated.
+    private const string RequestBodyTimeoutMessage = "Request body read timed out.";
+
     private JsonRpcProcessor _jsonRpcProcessor = null!;
-    private JsonRpcService _jsonRpcService = null!;
+    private IJsonRpcService _jsonRpcService = null!;
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
@@ -63,7 +70,7 @@ public class Startup : IStartup
 
     internal Startup(
         JsonRpcProcessor jsonRpcProcessor,
-        JsonRpcService jsonRpcService,
+        IJsonRpcService jsonRpcService,
         IJsonRpcLocalStats jsonRpcLocalStats,
         EthereumJsonSerializer jsonSerializer,
         IJsonRpcConfig jsonRpcConfig,
@@ -96,6 +103,7 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
+        services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
         services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -125,10 +133,7 @@ public class Startup : IStartup
 
         services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
-        services.AddCors(options => options.AddDefaultPolicy(builder => builder
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .WithOrigins(jsonRpcConfig.CorsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(CreateCorsPolicy(jsonRpcConfig)));
 
         services.AddResponseCompression(options =>
         {
@@ -141,6 +146,12 @@ public class Startup : IStartup
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
 
+    internal static CorsPolicy CreateCorsPolicy(IJsonRpcConfig jsonRpcConfig) => new CorsPolicyBuilder()
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .WithOrigins(jsonRpcConfig.CorsOrigins)
+        .Build();
+
     public void Configure(IApplicationBuilder app)
     {
         IServiceProvider services = app.ApplicationServices;
@@ -148,17 +159,14 @@ public class Startup : IStartup
             app,
             services.GetRequiredService<IWebHostEnvironment>(),
             services.GetRequiredService<JsonRpcProcessor>(),
-            services.GetRequiredService<JsonRpcService>(),
+            services.GetRequiredService<IJsonRpcService>(),
             services.GetRequiredService<IJsonRpcLocalStats>(),
             services.GetRequiredService<EthereumJsonSerializer>(),
             services.GetRequiredService<ApplicationLifetime>());
     }
 
-    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
-        EthereumJsonSerializer.AddTypeInfoResolver(FacadeJsonContext.Default, JsonTypeInfoResolverPriority.Facade);
-        EthereumJsonSerializer.AddTypeInfoResolver(EthRpcJsonContext.Default, JsonTypeInfoResolverPriority.EthRpc);
-        EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default, JsonTypeInfoResolverPriority.JsonRpcResponse);
 
         EthereumJsonSerializer.WarmupSerializer(
             new JsonRpcSuccessResponse { Id = 0 },
@@ -194,14 +202,14 @@ public class Startup : IStartup
 
         TrustedCidr[] additionalTrustedNetworks = ParseTrustedNetworks(jsonRpcConfig.AdditionalTrustedNetworks, logger);
 
-        // Trusted JSON-RPC HTTP POSTs dispatch directly, skipping routing, CORS,
-        // compression, and WebSocket middleware. Authentication is still enforced
+        // Trusted non-browser JSON-RPC HTTP POSTs dispatch directly, skipping routing,
+        // CORS, compression, and WebSocket middleware. Authentication is still enforced
         // inside the handler for authenticated endpoints.
         app.Use((ctx, next) =>
         {
             if (!TryGetTrustedHttpJsonRpcUrl(ctx, jsonRpcUrlCollection, additionalTrustedNetworks, out JsonRpcUrl? jsonRpcUrl))
             {
-                return next();
+                return next(ctx);
             }
 
             return ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
@@ -221,12 +229,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            app.UseWebSockets(new WebSocketOptions());
-            app.UseWhen(ctx =>
-                ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder => builder.UseWebSocketsModules());
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -273,6 +276,25 @@ public class Startup : IStartup
         }
     }
 
+    /// <summary>
+    /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
+    /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
+    /// </summary>
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
+    {
+        CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
+        app.UseWebSockets(new WebSocketOptions());
+        app.UseWhen(ctx =>
+            ctx.WebSockets.IsWebSocketRequest &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+        builder =>
+        {
+            builder.UseWebSocketOriginFilter(corsPolicy, logger);
+            builder.UseWebSocketsModules();
+        });
+    }
+
     private static bool IsLocalhost(IPAddress remoteIp)
         => IPAddress.IsLoopback(remoteIp);
 
@@ -282,9 +304,12 @@ public class Startup : IStartup
         TrustedCidr[] additionalTrustedNetworks,
         [NotNullWhen(true)] out JsonRpcUrl? jsonRpcUrl)
     {
+        // Browser requests carry an Origin header and must take the regular pipeline
+        // so the CORS middleware can emit Access-Control-Allow-Origin on the response.
         if (ctx.Request.Method == "POST" &&
             jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out jsonRpcUrl) &&
             jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http) &&
+            StringValues.IsNullOrEmpty(ctx.Request.Headers.Origin) &&
             IsTrustedSource(ctx, additionalTrustedNetworks) &&
             IsJsonContentType(ctx.Request.ContentType))
         {
@@ -295,16 +320,16 @@ public class Startup : IStartup
         return false;
     }
 
-    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, Func<Task> next, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection)
     {
         if (ctx.GetEndpoint() is not null)
         {
-            return next();
+            return next(ctx);
         }
 
         if (!IsJsonContentType(ctx.Request.ContentType))
         {
-            return next();
+            return next(ctx);
         }
 
         string method = ctx.Request.Method;
@@ -478,7 +503,11 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+            JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
+            {
+                RemoteAddress = ctx.Connection.RemoteIpAddress,
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
+            };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(
@@ -487,6 +516,13 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (Exception e) when (responseSink is { BytesWritten: > 0 })
+        {
+            bool responseStarted = ctx.Response.HasStarted;
+            responseSink.Abort(abortTransport: responseStarted);
+            if (!responseStarted || (e is not OperationCanceledException && e.InnerException is not OperationCanceledException)) throw;
+            if (_logger.IsDebug) _logger.Debug("Aborted an incomplete JSON-RPC response after cancellation.");
         }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {
@@ -500,9 +536,17 @@ public class Startup : IStartup
             if (_logger.IsDebug) LogBadRequest(_logger, e);
             ctx.Response.Headers.ContentType = JsonContentTypeHeader;
             ctx.Response.StatusCode = e.StatusCode;
-            JsonRpcErrorResponse errResp = _jsonRpcService.GetErrorResponse(
-                e.StatusCode == StatusCodes.Status413PayloadTooLarge ? ErrorCodes.LimitExceeded : ErrorCodes.InvalidRequest,
-                e.Message);
+            // Kestrel raises this for its own body-phase rejections too - a MinRequestBodyDataRate 408, a malformed
+            // trailer - and those messages name the server stack or echo the caller's bytes. Only the size limit is
+            // ours to disclose, so every other status answers with a message this repo authored.
+            (int errorCode, string message) = e.StatusCode switch
+            {
+                // ThrowRequestBodyTooLarge below: the configured limit is exactly what the caller needs back.
+                StatusCodes.Status413PayloadTooLarge => (ErrorCodes.LimitExceeded, e.Message),
+                StatusCodes.Status408RequestTimeout => (ErrorCodes.InvalidRequest, RequestBodyTimeoutMessage),
+                _ => (ErrorCodes.InvalidRequest, MalformedRequestBodyMessage),
+            };
+            JsonRpcErrorResponse errResp = _jsonRpcService.GetErrorResponse(errorCode, message);
             await _jsonSerializer.SerializeAsync(ctx.Response.BodyWriter, errResp);
             await ctx.Response.CompleteAsync();
         }
@@ -554,7 +598,29 @@ public class Startup : IStartup
         {
             while (true)
             {
-                ReadResult readResult = await bodyReader.ReadAsync(cancellationToken);
+                ReadResult readResult;
+                try
+                {
+                    readResult = await bodyReader.ReadAsync(cancellationToken);
+                }
+                catch (IOException e) when (e.GetType() == typeof(IOException))
+                {
+                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a *bare*
+                    // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
+                    //
+                    // The exact-type test is deliberate. Everything Kestrel surfaces from the body pipe derives from
+                    // IOException, including BadHttpRequestException (already handled below) and the genuine
+                    // transport failures - ConnectionResetException, a mid-body TLS or stream error, an IOException
+                    // wrapping a socket error. Reframing those as a client error would blame the caller for a
+                    // dropped connection and, because the handler below logs at Debug, would leave a real I/O
+                    // failure with no trace at default log level. They keep propagating instead.
+                    //
+                    // The message is a constant on purpose, even though the handler below no longer echoes an
+                    // arbitrary one: the real transport-layer message stays on the inner exception, which
+                    // LogBadRequest writes at Debug.
+                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(MalformedRequestBodyMessage, StatusCodes.Status400BadRequest, e);
+                }
+
                 ReadOnlySequence<byte> buffer = readResult.Buffer;
 
                 long newBytesRead = collectedBody.BytesRead + buffer.Length;

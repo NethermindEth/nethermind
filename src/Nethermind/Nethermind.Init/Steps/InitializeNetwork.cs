@@ -23,17 +23,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
-public static class NettyMemoryEstimator
-{
-    private const uint PageSize = 8192;
-
-    public static void SetPageSize() =>
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-
-    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
-}
-
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
@@ -147,13 +136,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await InitPeer().ContinueWith(initPeerTask =>
+        try
         {
-            if (initPeerTask.IsFaulted)
-            {
-                _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
-            }
-        });
+            await InitPeer();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to init the peer manager.", e);
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -173,13 +163,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await StartDiscovery().ContinueWith(initDiscoveryTask =>
+        try
         {
-            if (initDiscoveryTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
-            }
-        });
+            await StartDiscovery();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to start the discovery protocol.", e);
+        }
 
         try
         {
@@ -236,18 +227,21 @@ public class InitializeNetwork : IStep
         };
     }
 
-    private Task StartDiscovery()
+    private async Task StartDiscovery()
     {
         if (!_initConfig.DiscoveryEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
-            return Task.CompletedTask;
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
-        _ = _discoveryApp.StartAsync();
+        await _discoveryApp.StartAsync();
+        if (!_networkConfig.DisableDiscV4DnsFeeder)
+        {
+            _ = _enrDiscoveryAppFeeder.Run();
+        }
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
-        return Task.CompletedTask;
     }
 
     private void StartPeer()
@@ -255,6 +249,7 @@ public class InitializeNetwork : IStep
         if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
@@ -290,12 +285,6 @@ public class InitializeNetwork : IStep
     {
         // Force creation so the protocols manager subscribes to session events before the RLPx listener starts.
         _ = _protocolsManager.Value;
-
-        if (!_networkConfig.DisableDiscV4DnsFeeder)
-        {
-            // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _ = _enrDiscoveryAppFeeder.Run();
-        }
 
         // Capabilities must be resolved before the RLPx listener accepts peers. Otherwise
         // early sessions can negotiate only the default ETH version and never upgrade.

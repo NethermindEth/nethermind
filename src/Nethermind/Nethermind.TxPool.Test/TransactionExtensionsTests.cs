@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -25,6 +27,75 @@ namespace Nethermind.TxPool.Test
 
             UInt256 payableGasPrice = tx.CalculateAffordableGasPrice(test.IsEip1559Enabled, test.BaseFee, test.AccountBalance);
             Assert.That(payableGasPrice, Is.EqualTo(test.ExpectedPayableGasPriceResult));
+        }
+
+        private const long DisplacedCost = 7_000;
+        private const long KeyedCost = 5_000;
+
+        /// <remarks>Ascending nonce order lets the walk stop at the entry the incoming transaction displaces, but
+        /// an EIP-8250 domain past that cut is an independent liability, so the exit only holds before activation.</remarks>
+        [TestCase(false, 0L, TestName = "before activation the walk stops at the transaction it displaces")]
+        [TestCase(true, KeyedCost, TestName = "after activation the keyed liability past it is still summed")]
+        public void IsOverflowWhenSummingSenderBucket_walks_past_the_displaced_transaction_only_after_activation(bool keyedNoncesEnabled, long expected)
+        {
+            Transaction displaced = OrdinaryTx(nonce: 1, DisplacedCost, TestItem.KeccakA);
+            Transaction incoming = OrdinaryTx(nonce: 1, DisplacedCost, TestItem.KeccakC);
+
+            bool overflow = incoming.IsOverflowWhenSummingSenderBucket(
+                FrameTxFilterTestPools.Pool(blobs: false, displaced, KeyedTx(nonce: 2, KeyedCost, TestItem.KeccakB)),
+                accountNonce: 1, unreservedOnly: false, keyedNoncesEnabled, out UInt256 cumulativeCost);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(overflow, Is.False);
+                Assert.That(cumulativeCost, Is.EqualTo((UInt256)expected));
+            }
+        }
+
+        /// <remarks>The control: with no keyed domain in the bucket the two readings must agree, so the guard
+        /// above changes only what it is meant to.</remarks>
+        [Test]
+        public void IsOverflowWhenSummingSenderBucket_is_unchanged_by_activation_over_an_account_domain_bucket([Values] bool keyedNoncesEnabled)
+        {
+            const long aheadCost = 3_000;
+            Transaction ahead = OrdinaryTx(nonce: 0, aheadCost, TestItem.KeccakA);
+            Transaction displaced = OrdinaryTx(nonce: 1, DisplacedCost, TestItem.KeccakB);
+            Transaction later = OrdinaryTx(nonce: 2, DisplacedCost, TestItem.KeccakD);
+            Transaction incoming = OrdinaryTx(nonce: 1, DisplacedCost, TestItem.KeccakC);
+
+            bool overflow = incoming.IsOverflowWhenSummingSenderBucket(
+                FrameTxFilterTestPools.Pool(blobs: false, ahead, displaced, later),
+                accountNonce: 0, unreservedOnly: false, keyedNoncesEnabled, out UInt256 cumulativeCost);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(overflow, Is.False);
+                Assert.That(cumulativeCost, Is.EqualTo((UInt256)aheadCost));
+            }
+        }
+
+        private static Transaction OrdinaryTx(ulong nonce, long cost, Hash256 hash) =>
+            Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(nonce)
+                .WithGasLimit(1)
+                .WithGasPrice((UInt256)cost)
+                .WithValue(0)
+                .WithHash(hash)
+                .TestObject;
+
+        /// <summary>A frame transaction in its own EIP-8250 domain, priced at what admission recorded.</summary>
+        private static Transaction KeyedTx(ulong nonce, long cost, Hash256 hash)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.FrameTx)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(nonce)
+                .WithNonceKeys([(UInt256)1])
+                .WithHash(hash)
+                .TestObject;
+            tx.PayerExposure = (UInt256)cost;
+            return tx;
         }
 
         public class TransactionPayableGasPrice
@@ -222,6 +293,43 @@ namespace Nethermind.TxPool.Test
                     AccountBalance = 10000,
                     ExpectedPayableGasPriceResult = 10
                 };
+            }
+        }
+
+        // Frame transactions carry no max_fee_per_blob_gas: the max_fee budget must cover the blob gas instead.
+        [TestCase(2 * Eip4844Constants.GasPerBlob, ExpectedResult = true, TestName = "CanPayForBlobGas_FrameTx_BudgetCoversBlobGas")]
+        [TestCase(2 * Eip4844Constants.GasPerBlob - 1, ExpectedResult = false, TestName = "CanPayForBlobGas_FrameTx_BudgetShortOfBlobGas")]
+        public bool CanPayForBlobGas_FrameTx(ulong maxFee)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                BlobVersionedHashes = [new byte[32]],
+                MaxFee = maxFee,
+            };
+
+            Assert.That(tx.IsBelowBlobBaseFee(2), Is.Not.EqualTo(tx.CanPayForBlobGas(2)), "the pool gates and the broadcast gate agree");
+            return tx.CanPayForBlobGas(currentPricePerBlobGas: 2);
+        }
+
+        // max_fee bounds the whole fee of a frame transaction, blob gas included.
+        [Test]
+        public void IsOverflowInTxCostAndValue_FrameTx_IsTheBudgetPlusValue()
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                GasLimit = 1_000,
+                BlobVersionedHashes = [new byte[32]],
+                MaxFee = 5_000,
+                DecodedMaxFeePerGas = 5,
+                Value = 7,
+            };
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.IsOverflowInTxCostAndValue(out UInt256 cost), Is.False);
+                Assert.That(cost, Is.EqualTo((UInt256)5_007));
             }
         }
     }

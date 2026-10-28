@@ -1,11 +1,19 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core;
 
 public static class Eip7251Constants
 {
     public const string ContractAddressKey = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS";
 
-    public static readonly Address ConsolidationRequestPredeployAddress = new("0x0000BBdDc7CE488642fb579F8B00f3a590007251");
+    // 0x0000BBdDc7CE488642fb579F8B00f3a590007251
+    public static readonly Address ConsolidationRequestPredeployAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0xbb, 0xdd, 0xc7, 0xce, 0x48, 0x86, 0x42, 0xfb, 0x57, 0x9f, 0x8b, 0x00, 0xf3, 0xa5, 0x90, 0x00, 0x72, 0x51]);
+
+    /// <summary> Keccak-256 of the canonical consolidation request predeploy bytecode. </summary>
+    // 0x78c6cb5202685228bbcbfb992b1c4e116c7ec5ef11e25b8e92716cfc628ddd60
+    public static readonly ValueHash256 CodeHash = new((ReadOnlySpan<byte>)[0x78, 0xc6, 0xcb, 0x52, 0x02, 0x68, 0x52, 0x28, 0xbb, 0xcb, 0xfb, 0x99, 0x2b, 0x1c, 0x4e, 0x11, 0x6c, 0x7e, 0xc5, 0xef, 0x11, 0xe2, 0x5b, 0x8e, 0x92, 0x71, 0x6c, 0xfc, 0x62, 0x8d, 0xdd, 0x60]);
 }

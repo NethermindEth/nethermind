@@ -16,7 +16,6 @@ using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
-using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -24,6 +23,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Logging.Microsoft;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Shutter;
 
@@ -101,7 +101,7 @@ public class ShutterP2P : IShutterP2P
     public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
         IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
-        string listenAddress = $"/ip4/{ip.ExternalIp}/tcp/{_cfg.P2PPort}";
+        string listenAddress = NetworkHelper.ToTcpMultiaddress(ip.ExternalIp, _cfg.P2PPort);
 
         await _peer.StartListenAsync([listenAddress], cancellationToken);
         await _router.StartAsync(_peer, cancellationToken);
@@ -183,21 +183,35 @@ public class ShutterP2P : IShutterP2P
     {
         if (_logger.IsTrace) _logger.Trace("Processing Shutter P2P message.");
 
+        if (TryParseDecryptionKeys(msg, _logger, out Dto.DecryptionKeys? decryptionKeys))
+        {
+            onKeysReceived(decryptionKeys).ContinueWith(
+                t => { if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys handler failed: {t.Exception}"); },
+                TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
+
+    /// <summary>Parses a gossip message into decryption keys; any peer can publish, so no parse failure may escape.</summary>
+    internal static bool TryParseDecryptionKeys(byte[] msg, ILogger logger, [NotNullWhen(true)] out Dto.DecryptionKeys? decryptionKeys)
+    {
+        decryptionKeys = null;
         try
         {
             Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-            if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
+            // Message and the Gnosis oneof are null when absent, which is a peer error, not ours.
+            if (envelope.Message is not null && envelope.Message.TryUnpack(out Dto.DecryptionKeys keys) && keys.Gnosis is not null)
             {
-                _ = onKeysReceived(decryptionKeys);
+                decryptionKeys = keys;
+                return true;
             }
-            else if (_logger.IsDebug)
-            {
-                _logger.Debug($"Could not parse Shutter decryption keys: protobuf type names did not match.");
-            }
+
+            if (logger.IsDebug) logger.Debug("Could not parse Shutter decryption keys: envelope does not contain Gnosis decryption keys.");
         }
-        catch (InvalidProtocolBufferException e)
+        catch (Exception e)
         {
-            _logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
+            logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
+
+        return false;
     }
 }

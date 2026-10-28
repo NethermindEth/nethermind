@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -68,6 +69,7 @@ namespace Nethermind.Db
             private const byte PreambleIndex = 0;
             private const byte PreambleValue = 0;
 
+            [return: NotNullIfNotNull(nameof(bytes))]
             private static byte[]? Compress(byte[]? bytes) => bytes is null ? null : Compress(bytes, stackalloc byte[bytes.Length]).ToArray();
 
             private static ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> bytes, Span<byte> compressed)
@@ -90,6 +92,7 @@ namespace Nethermind.Db
             }
 
 
+            [return: NotNullIfNotNull(nameof(bytes))]
             private static byte[]? Decompress(byte[]? bytes)
             {
                 if (bytes is null || bytes.Length == 0 || (bytes[PreambleIndex] != PreambleValue))
@@ -120,7 +123,7 @@ namespace Nethermind.Db
                 wrapped.GetAllKeys(ordered);
 
             public IEnumerable<byte[]> GetAllValues(bool ordered = false) =>
-                wrapped.GetAllValues(ordered).Select(Decompress);
+                wrapped.GetAllValues(ordered).Select(static value => Decompress(value));
 
             public void Remove(ReadOnlySpan<byte> key) => wrapped.Remove(key);
 

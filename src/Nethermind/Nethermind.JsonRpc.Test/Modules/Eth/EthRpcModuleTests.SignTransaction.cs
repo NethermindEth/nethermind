@@ -49,16 +49,26 @@ public partial class EthRpcModuleTests
 
     [TestCase(LockedAccount, null, TestName = "WrongAccount")]
     [TestCase(null, "from", TestName = "FromMissing")]
-    public async Task SignTransaction_WhenSenderNotUnlocked_ReturnsAuthError(string? fromOverride, string? omitField)
+    public async Task SignTransaction_WhenSenderNotHeld_ReturnsUnknownAccount(string? fromOverride, string? omitField)
     {
-        // Missing-from defaults to Address.Zero; both paths fail the IsUnlocked check with the same response.
+        // Missing-from defaults to Address.Zero, which no wallet holds.
         TransactionForRpc rpcTx = BuildTx(TxType.Legacy, omitField, fromOverride);
         string response = await SignTransaction(rpcTx);
 
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
             "wallet lookup failure surfaces as -32000 to align with keystore error handling");
-        Assert.That(response, Does.Contain("authentication needed: password or unlock"),
+        Assert.That(response, Does.Contain("unknown account"),
             "wording must match keystore error so tools that text-match keep working");
+    }
+
+    [TestCase("gas", "gas not specified", TestName = "GasMissingFromUnknownAccount")]
+    [TestCase("gasPrice", FeeFieldsMissingMessage, TestName = "FeesMissingFromUnknownAccount")]
+    [TestCase("nonce", "nonce not specified", TestName = "NonceMissingFromUnknownAccount")]
+    public async Task SignTransaction_WhenRequiredFieldMissing_ReportsItBeforeTheAccount(string omitField, string expectedMessage)
+    {
+        string response = await SignTransaction(BuildTx(TxType.Legacy, omitField, LockedAccount));
+
+        Assert.That(response, Does.Contain(expectedMessage));
     }
 
     [Test]
@@ -98,13 +108,36 @@ public partial class EthRpcModuleTests
             "blob signing without commitments must surface a precise error so callers know what to add");
     }
 
-    [TestCase(false, typeof(EIP1559TransactionForRpc), TestName = "WithoutExplicitType_PromotedToEip1559")]
-    [TestCase(true, typeof(LegacyTransactionForRpc), TestName = "WithExplicitLegacyType_StaysLegacy")]
-    public async Task SignTransaction_LegacyShapeJson_RespectsExplicitTypePinning(bool withExplicitType, Type expectedEchoType)
+    [Test]
+    public async Task SignTransaction_WhenBlobTxHasZeroMaxFeePerBlobGas_ReturnsInvalidInput()
     {
-        // Bypasses BuildTx because constructed C# instances always serialize the `type` field;
-        // we need raw JSON that omits it to drive HasExplicitType=false on the server.
-        string typeLine = withExplicitType ? "\"type\": \"0x0\"," : "";
+        byte[] versionedHash = new byte[32];
+        versionedHash[0] = 0x01;
+        BlobTransactionForRpc rpcTx = new()
+        {
+            From = new Address(UnlockedTestAccount),
+            To = new Address("0x2d44c0e097f6cd0f514edac633d82e01280b4a5c"),
+            Gas = 0x76c0,
+            Nonce = 0UL,
+            MaxFeePerGas = (UInt256)0x9184e72a000,
+            MaxPriorityFeePerGas = (UInt256)0x3b9aca00,
+            MaxFeePerBlobGas = UInt256.Zero,
+            BlobVersionedHashes = [versionedHash],
+        };
+
+        string response = await SignTransaction(rpcTx);
+
+        Assert.That(response, Does.Contain(RpcTransactionErrors.ZeroMaxFeePerBlobGas),
+            "a call may leave its blob gas unpriced, but a transaction to sign must carry a non-zero blob fee cap");
+    }
+
+    [TestCase("", "\"gasPrice\": \"0x9184e72a000\"", typeof(LegacyTransactionForRpc), "0x0", TestName = "GasPrice_WithoutType_SignsLegacy")]
+    [TestCase("\"type\": \"0x0\",", "\"gasPrice\": \"0x9184e72a000\"", typeof(LegacyTransactionForRpc), "0x0", TestName = "GasPrice_WithType0_SignsLegacy")]
+    [TestCase("\"type\": \"0x2\",", "\"gasPrice\": \"0x9184e72a000\"", typeof(LegacyTransactionForRpc), "0x0", TestName = "GasPrice_WithType2_SignsLegacy")]
+    [TestCase("\"type\": \"0x0\",", "\"maxFeePerGas\": \"0x9184e72a000\", \"maxPriorityFeePerGas\": \"0x1\"", typeof(EIP1559TransactionForRpc), "0x2", TestName = "DynamicFees_WithType0_SignsEip1559")]
+    public async Task SignTransaction_FieldsPickTheEnvelope(string typeLine, string feeFields, Type expectedEchoType, string expectedJsonType)
+    {
+        // Raw JSON, because constructed C# instances always serialize the `type` field.
         string txJson = $$"""
             {
                 {{typeLine}}
@@ -112,7 +145,7 @@ public partial class EthRpcModuleTests
                 "to": "0x2d44c0e097f6cd0f514edac633d82e01280b4a5c",
                 "value": "0x9184e72a",
                 "gas": "0x76c0",
-                "gasPrice": "0x9184e72a000",
+                {{feeFields}},
                 "nonce": "0x0"
             }
             """;
@@ -124,8 +157,14 @@ public partial class EthRpcModuleTests
         JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         Assert.That(response.Result, Is.Not.Null, "precondition: signing must succeed for valid input");
 
-        Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType),
-            "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
+        // The echo is read back through the converter, which picks the class from the fields, so check the raw type too.
+        using JsonDocument echo = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result!.Tx, Is.TypeOf(expectedEchoType), "the fields pick the envelope, as in geth");
+            Assert.That(echo.RootElement.GetProperty("result").GetProperty("tx").GetProperty("type").GetString(),
+                Is.EqualTo(expectedJsonType));
+        }
     }
 
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]

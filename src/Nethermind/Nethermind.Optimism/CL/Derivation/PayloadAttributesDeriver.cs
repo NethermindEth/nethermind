@@ -102,6 +102,7 @@ public class PayloadAttributesDeriver(
             Withdrawals = [],
             PrevRandao = l1Origin.MixHash,
             EIP1559Params = systemConfig.EIP1559Params,
+            MinBaseFee = systemConfig.MinBaseFee,
             SuggestedFeeRecipient = SequencerFeeVault,
             Transactions = txs
         };

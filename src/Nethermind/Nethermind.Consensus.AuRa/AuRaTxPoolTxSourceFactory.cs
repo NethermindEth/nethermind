@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Receipts;
@@ -33,7 +34,8 @@ internal sealed class AuRaTxPoolTxSourceFactory(
     ITransactionComparerProvider transactionComparerProvider,
     IBlocksConfig blocksConfig,
     IDisposableStack disposeStack,
-    ILogManager logManager) : IBlockProducerTxSourceFactory
+    ILogManager logManager,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator) : IBlockProducerTxSourceFactory
 {
     public ITxSource Create()
     {
@@ -82,7 +84,8 @@ internal sealed class AuRaTxPoolTxSourceFactory(
                 prioritiesContractDataStore,
                 specProvider,
                 transactionComparerProvider,
-                blocksConfig);
+                blocksConfig,
+                specChangeTxValidator);
         }
         else
         {
@@ -93,7 +96,7 @@ internal sealed class AuRaTxPoolTxSourceFactory(
                 .WithHeadTxFilter()
                 .Build;
 
-            return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, blocksConfig);
+            return new TxPoolTxSource(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, blocksConfig, specChangeTxValidator);
         }
     }
 }

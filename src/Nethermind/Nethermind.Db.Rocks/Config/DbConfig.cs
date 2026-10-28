@@ -9,8 +9,7 @@ public class DbConfig : IDbConfig
 {
     public static DbConfig Default = new();
 
-    public ulong SharedBlockCacheSize { get; set; } = 256UL.MiB;
-    public bool SkipMemoryHintSetting { get; set; } = false;
+    public ulong SharedBlockCacheSize { get; set; } = 512UL.MiB;
 
     public bool WriteAheadLogSync { get; set; } = false;
     public bool EnableDbStatistics { get; set; } = false;
@@ -44,6 +43,11 @@ public class DbConfig : IDbConfig
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
+        // EXPERIMENTAL RocksDB option (default false upstream): enabled here to reduce foreground WAL rotation latency.
+        // RocksDB sanitizes it off when WAL recycling is enabled.
+        "async_wal_precreate=true;" +
+        // Defer eligible cleanup from latency-sensitive calling threads.
+        "avoid_unnecessary_blocking_io=true;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -161,8 +165,11 @@ public class DbConfig : IDbConfig
         "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong? CodeDbRowCacheSize { get; set; } = 16UL.MiB;
+    // Off: code is cached above as CodeInfo, and every row-cache insert copies the value, up to 64 KiB.
+    public ulong? CodeDbRowCacheSize { get; set; }
     public string CodeDbRocksDbOptions { get; set; } =
+        // Snappy decodes byte runs in 64-byte copies; LZ4 reads large repetitive code about twice as fast
+        "compression=kLZ4Compression;" +
         "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "optimize_filters_for_hits=false;" +
@@ -183,7 +190,7 @@ public class DbConfig : IDbConfig
     public ulong StateDbWriteBufferSize { get; set; } = 64UL.MB;
     public ulong StateDbWriteBufferNumber { get; set; } = 4;
     public bool? StateDbVerifyChecksum { get; set; } = true;
-    public ulong? StateDbRowCacheSize { get; set; }
+    public ulong? StateDbRowCacheSize { get; set; } = 128UL.MiB;
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
     public string StateDbRocksDbOptions { get; set; } =
@@ -353,6 +360,10 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
+        // Hashed account keys are 20-byte Keccak prefixes and are near-uniform. Auto selects interpolation when the
+        // key-gap coefficient of variation is below this dimensionless threshold, and otherwise uses binary search.
+        "block_based_table_factory.index_block_search_type=kAuto;" +
+        "block_based_table_factory.uniform_cv_threshold=0.2;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
@@ -430,9 +441,6 @@ public class DbConfig : IDbConfig
     // The replay-sized write buffers matter only for the two bulky value columns.
     public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
-
-    public string? PreimageDbRocksDbOptions { get; set; } = "";
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 
     public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
     public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }

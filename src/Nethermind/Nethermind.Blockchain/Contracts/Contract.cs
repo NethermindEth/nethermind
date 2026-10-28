@@ -166,7 +166,8 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transaction">Transaction to be executed.</param>
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
-        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
+        /// <exception cref="AbiException">Thrown when there is an exception during execution.</exception>
+        /// <exception cref="ContractCallFailedException">Thrown when <see cref="StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
@@ -193,7 +194,7 @@ namespace Nethermind.Blockchain.Contracts
 
             if (failure)
             {
-                throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
+                throw new ContractCallFailedException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
             }
             else
             {

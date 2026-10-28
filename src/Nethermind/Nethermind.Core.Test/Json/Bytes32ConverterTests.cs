@@ -21,5 +21,13 @@ namespace Nethermind.Core.Test.Json
                 values,
                 static (before, after) => Bytes.AreEqual(before.WithoutLeadingZeros(), after.WithoutLeadingZeros()),
                 new Bytes32Converter());
+
+        [TestCase(new byte[] { 1 }, "\"0x0000000000000000000000000000000000000000000000000000000000000001\"")]
+        [TestCase(new byte[] { 0, 1 }, "\"0x0000000000000000000000000000000000000000000000000000000000000001\"")]
+        public void Serializes_as_padded_prefixed_hex(byte[] value, string expectedJson) => TestConverter(
+                value,
+                expectedJson,
+                new Bytes32Converter(),
+                static (before, after) => Bytes.AreEqual(before.WithoutLeadingZeros(), after.WithoutLeadingZeros()));
     }
 }

@@ -147,13 +147,40 @@ public class TestingRpcModuleTests
             .SetName("Returns_fork_specific_payload_for_amsterdam");
     }
 
+    [Test]
+    public async Task Returns_invalid_params_for_blob_transaction_without_cell_proofs([Values] bool amsterdam)
+    {
+        IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(
+            spec: spec, slotNumber: amsterdam ? 1UL : null);
+        Transaction transaction = Core.Test.Builders.Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(blobCount: 1, isMempoolTx: false).SignedAndResolved().TestObject;
+        byte[][] txRlps = EncodeTransactions([transaction], out _);
+
+        string json = await RpcTest.TestSerializedRequest<ITestingRpcModule>(
+            module,
+            nameof(ITestingRpcModule.testing_buildBlockV1),
+            parentHash,
+            CreateDefaultPayloadAttributes(parentHeader, slotNumber: amsterdam ? 2UL : null),
+            txRlps);
+
+        using JsonDocument doc = JsonDocument.Parse(json);
+        JsonElement error = doc.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain("network wrapper data"));
+            Assert.That(doc.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
     [TestCase(true, 1, Description = "null txRlps uses mempool")]
     [TestCase(false, 0, Description = "empty txRlps builds empty block")]
     public async Task Tx_source_behavior(bool useNull, int expectedTxCount)
     {
         Transaction mempoolTx = BuildSignedTransactions(1)[0];
         ITxSource txSource = Substitute.For<ITxSource>();
-        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns(new[] { mempoolTx });
 
         (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(txSource: txSource);
@@ -166,9 +193,9 @@ public class TestingRpcModuleTests
         Assert.That(((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Length, Is.EqualTo(expectedTxCount));
 
         if (useNull)
-            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), true);
+            txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), true);
         else
-            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+            txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
     }
 
     [Test]
@@ -372,7 +399,7 @@ public class TestingRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockTree tree = blockTree ?? Substitute.For<IBlockTree>();
 
-        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        TestingRpcModule module = new(blockProducerEnvFactory, mainStateBlockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, tree, Substitute.For<IProcessExitSource>(), Substitute.For<IBlockProcessingQueue>(), LimboLogs.Instance);
         _disposables.Add(module);
         return (module, tree, blockFinder, parentHeader);
     }

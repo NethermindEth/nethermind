@@ -118,7 +118,8 @@ namespace Nethermind.AuRa.Test.Validators
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChangeCallable(parent).Returns(emitInitChangeCallable);
             context.ContractBasedValidator.ValidatorContract.EmitInitiateChange().Returns(initChangeTransaction);
 
-            Transaction[] transactions = context.Validator.GetTransactions(parent, 3000000).ToArray();
+            BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
+            Transaction[] transactions = context.Validator.GetTransactions(parent, targetBlock, 3000000).ToArray();
             ulong gap = parentBlockNumber.SaturatingSub(startReportBlockNumber);
             int addedMaliciousTransactions = (int)Math.Min((ulong)validatorsToReport, gap);
             Assert.That(transactions.Length, Is.EqualTo(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) + (initChangeTransactionAdded ? 1 : 0)));

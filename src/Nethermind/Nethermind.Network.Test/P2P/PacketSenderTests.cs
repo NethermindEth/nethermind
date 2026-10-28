@@ -67,6 +67,51 @@ namespace Nethermind.Network.Test.P2P
             await context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         }
 
+        [Test]
+        public void Returns_buffer_when_delay_cannot_complete([Values(-2, 60000)] int delayMilliseconds)
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage testMessage) = SetupChannel(isActive: true);
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(131072);
+            buffer.WriteZero(131072);
+            serializer.ZeroSerialize(testMessage, Arg.Any<IByteBufferAllocator>()).Returns(buffer);
+            PacketSender packetSender = new(serializer, LimboLogs.Instance, TimeSpan.FromMilliseconds(delayMilliseconds));
+            packetSender.HandlerAdded(context);
+            try
+            {
+                packetSender.Enqueue(testMessage);
+                packetSender.HandlerRemoved(context);
+
+                Assert.That(() => buffer.ReferenceCount, Is.Zero.After(1000, 10));
+                context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+            }
+            finally
+            {
+                if (buffer.ReferenceCount > 0) buffer.SafeRelease();
+            }
+        }
+
+        [Test]
+        public void Does_not_release_buffer_after_pipeline_handoff([Values] bool writeFails)
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage testMessage) = SetupChannel(isActive: true);
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(2);
+            serializer.ZeroSerialize(testMessage, Arg.Any<IByteBufferAllocator>()).Returns(buffer);
+            context.WriteAndFlushAsync(buffer).Returns(writeFails ? Task.FromException(new InvalidOperationException()) : Task.CompletedTask);
+            PacketSender packetSender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            packetSender.HandlerAdded(context);
+            try
+            {
+                packetSender.Enqueue(testMessage);
+                packetSender.HandlerRemoved(context);
+
+                context.Received(1).WriteAndFlushAsync(buffer);
+                Assert.That(buffer.ReferenceCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                if (buffer.ReferenceCount > 0) buffer.SafeRelease();
+            }
+        }
         private class TestMessage : P2PMessage
         {
             public override int PacketType { get; } = 0;

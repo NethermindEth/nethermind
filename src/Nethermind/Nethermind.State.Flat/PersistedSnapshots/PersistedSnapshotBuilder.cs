@@ -7,9 +7,11 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -55,7 +57,7 @@ public static class PersistedSnapshotBuilder
 
     // Sorts slot entries by raw Address bytes then by slot value, so per-address slices are
     // contiguous and slot keys within a slice are in sorted big-endian order.
-    private static readonly Comparison<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> StoragesByAddressComparer = (a, b) =>
+    private static readonly Comparison<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> StoragesByAddressComparer = (a, b) =>
     {
         int cmp = a.Key.Addr.AsSpan.SequenceCompareTo(b.Key.Addr.AsSpan);
         if (cmp != 0) return cmp;
@@ -67,17 +69,19 @@ public static class PersistedSnapshotBuilder
 
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
         // (off-heap) and re-fetch the TrieNode value from the source ConcurrentDictionary
         // at write time. PooledSet is used for the small Address dedup map so its
         // backing entry array is pool-rented rather than freshly allocated each block.
         NativeMemoryList<TreePath> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
-        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = null!;
+        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages = null!;
         NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
         // Parallel extraction + sort: three independent jobs over disjoint dictionaries.
-        Parallel.Invoke(
+        Action[] jobs =
+        [
             () =>
             {
                 NativeMemoryList<TreePath> top = new(0);
@@ -85,7 +89,7 @@ public static class PersistedSnapshotBuilder
                 NativeMemoryList<TreePath> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
                 {
-                    if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+                    if (kv.Value.IsHashOnlyPlaceholder()) continue;
                     TreePath path = kv.Key;
                     if (path.Length <= TopPathThreshold) top.Add(path);
                     else if (path.Length <= CompactPathThreshold) compact.Add(path);
@@ -93,10 +97,8 @@ public static class PersistedSnapshotBuilder
                     kv.Value.IsPersisted = true;
                     kv.Value.PrunePersistedRecursively(1);
                 }
-                Parallel.Invoke(
-                    () => top.Sort(StateNodeComparer),
-                    () => compact.Sort(StateNodeComparer),
-                    () => fallback.Sort(StateNodeComparer));
+                ParallelUnbalancedWork.For(0, 3, i =>
+                    (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StateNodeComparer));
                 stateTopKeys = top; stateCompactKeys = compact; stateFallbackKeys = fallback;
             },
             () =>
@@ -106,7 +108,7 @@ public static class PersistedSnapshotBuilder
                 NativeMemoryList<(ValueHash256, TreePath)> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
                 {
-                    if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
+                    if (kv.Value.IsHashOnlyPlaceholder()) continue;
                     (Hash256 addr, TreePath path) = kv.Key.Key;
                     ValueHash256 addrHash = addr.ValueHash256;
                     if (path.Length <= TopPathThreshold) top.Add((addrHash, path));
@@ -115,10 +117,8 @@ public static class PersistedSnapshotBuilder
                     kv.Value.IsPersisted = true;
                     kv.Value.PrunePersistedRecursively(1);
                 }
-                Parallel.Invoke(
-                    () => top.Sort(StorageNodeComparer),
-                    () => compact.Sort(StorageNodeComparer),
-                    () => fallback.Sort(StorageNodeComparer));
+                ParallelUnbalancedWork.For(0, 3, i =>
+                    (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StorageNodeComparer));
                 storTopKeys = top; storCompactKeys = compact; storFallbackKeys = fallback;
             },
             () =>
@@ -129,9 +129,9 @@ public static class PersistedSnapshotBuilder
                 foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
                     seen.Add(kv.Key);
 
-                NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> storages =
+                NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
                     new(Math.Max(1, snapshot.StoragesCount));
-                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
                 {
                     (Address addr, UInt256 slot) = kv.Key.Key;
                     storages.Add(((new ValueAddress(addr.Bytes), slot), kv.Value));
@@ -147,7 +147,13 @@ public static class PersistedSnapshotBuilder
 
                 sortedStorages = storages;
                 uniqueAddresses = addresses;
-            });
+            }
+        ];
+        ParallelUnbalancedWork.For(0, jobs.Length, jobs, static (i, actions) =>
+        {
+            actions[i]();
+            return actions;
+        });
 
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
@@ -198,7 +204,7 @@ public static class PersistedSnapshotBuilder
 
     private static void WritePerAddress<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
-        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
+        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages,
         NativeMemoryList<ValueAddress> uniqueAddresses,
         BloomFilter bloom) where TWriter : IByteBufferWriter
     {
@@ -249,13 +255,13 @@ public static class PersistedSnapshotBuilder
             while (storageIdx < sortedStorages.Count &&
                 sortedStorages[storageIdx].Key.Addr.AsSpan.SequenceEqual(addressBytes))
             {
-                SlotValue? value = sortedStorages[storageIdx].Value;
+                UInt256? value = sortedStorages[storageIdx].Value;
                 sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
                 bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
                 // Present values are RLP-wrapped; null/deleted slots keep an empty payload so the
                 // length-0 = absent sentinel survives.
                 ReadOnlySpan<byte> payload = value.HasValue
-                    ? rlpBuffer[..Rlp.Encode(value.Value.AsReadOnlySpan.WithoutLeadingZeros(), rlpBuffer)]
+                    ? rlpBuffer[..BaseFlatPersistence.EncodeSlotValue(value.Value, true, rlpBuffer)]
                     : [];
                 int len = PersistedSnapshotKey.WriteSlotKey(keyBuf, addressBytes, slotKey);
                 table.Add(keyBuf[..len], payload);

@@ -104,7 +104,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+            if (peer.SyncPeer is IXdcConsensusPeer xdcProtocol)
                 xdcProtocol.SendTimeout(timeout);
         }
     }
@@ -218,7 +218,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
                 SyncInfo syncInfo = GetSyncInfo();
                 foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
                 {
-                    if (peerInfo.SyncPeer is XdcProtocolHandler xdcProtocolHandler)
+                    if (peerInfo.SyncPeer is IXdcConsensusPeer xdcProtocolHandler)
                         xdcProtocolHandler.SendSyncInfo(syncInfo);
                 }
             }
@@ -289,7 +289,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return isKnownSigner;
     }
 
-    internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);
+    internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC, isMine: true);
 
     private void SendTimeout(ulong currentRound)
     {

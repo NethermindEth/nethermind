@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
@@ -26,9 +28,14 @@ public readonly struct ValueAddress : IEquatable<ValueAddress>
     public ValueAddress(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length != Address.Size)
-            throw new ArgumentException($"{nameof(ValueAddress)} must be exactly {Address.Size} bytes, got {bytes.Length}.", nameof(bytes));
-        bytes.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes)), Address.Size));
+            ThrowInvalidLength(bytes.Length, nameof(bytes));
+        // A fixed-size struct copy rather than a Memmove call.
+        _bytes = Unsafe.As<byte, Bytes20>(ref MemoryMarshal.GetReference(bytes));
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidLength(int length, string paramName) =>
+        throw new ArgumentException($"{nameof(ValueAddress)} must be exactly {Address.Size} bytes, got {length}.", paramName);
 
     /// <summary>Exposes the 20 backing bytes as a read-only span over the struct's storage.</summary>
     public ReadOnlySpan<byte> AsSpan
@@ -46,7 +53,9 @@ public readonly struct ValueAddress : IEquatable<ValueAddress>
 
     public override bool Equals(object? obj) => obj is ValueAddress other && Equals(other);
 
-    public override int GetHashCode() => AsSpan.FastHash();
+    // Always 20 bytes, so skip the length-dispatching FastHash. Must stay equal to
+    // Address.GetHashCode: the two wrap the same bytes and are used interchangeably.
+    public override int GetHashCode() => unchecked((int)SpanExtensions.FastHash64For20Bytes(ref Unsafe.As<Bytes20, byte>(ref Unsafe.AsRef(in _bytes))));
 
     public static bool operator ==(in ValueAddress left, in ValueAddress right) => left.Equals(right);
 

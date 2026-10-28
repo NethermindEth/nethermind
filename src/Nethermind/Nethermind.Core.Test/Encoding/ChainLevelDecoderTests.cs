@@ -11,9 +11,8 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class ChainLevelDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode)
+    [Test]
+    public void Can_do_roundtrip([Values] bool valueDecode)
     {
         BlockInfo blockInfo = new(TestItem.KeccakA, 1);
         blockInfo.WasProcessed = true;
@@ -26,7 +25,7 @@ public class ChainLevelDecoderTests
 
         Rlp rlp = Rlp.Encode(chainLevelInfo);
 
-        ChainLevelInfo decoded = valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo decoded = (valueDecode ? Rlp.Decode<ChainLevelInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<ChainLevelInfo>(rlp))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -42,7 +41,7 @@ public class ChainLevelDecoderTests
     public void Can_handle_nulls()
     {
         Rlp rlp = Rlp.Encode((ChainLevelInfo)null!);
-        ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
+        ChainLevelInfo? decoded = Rlp.Decode<ChainLevelInfo>(rlp);
         Assert.That(decoded, Is.Null);
     }
 }

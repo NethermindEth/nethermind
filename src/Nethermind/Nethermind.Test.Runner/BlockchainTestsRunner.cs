@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -25,7 +26,9 @@ public readonly record struct BlockchainTestsRunnerOptions(
 
 public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
 {
-    protected override ILogManager? ComponentLogManagerOverride => _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
+    // Component logs write to stderr, which a traced run reserves for the JSONL trace.
+    protected override ILogManager? ComponentLogManagerOverride =>
+        _trace ? LimboLogs.Instance : _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
     protected override bool? ParallelExecutionOverride => _parallelExecution;
     protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
@@ -97,13 +100,17 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
 
         try
         {
+            if (!_trace)
+                return await RunTest(test);
+
+            ISpecProvider specProvider = CreateSpecProvider(test);
             // Intentionally created per test: each test emits an independent JSONL trace,
             // so the tracer's block counter resetting between tests is by design.
-            using BlockchainTestStreamingTracer? tracer = _trace
-                ? new BlockchainTestStreamingTracer(new() { EnableMemory = _traceMemory, DisableStack = _excludeStack })
-                : null;
+            using BlockchainTestStreamingTracer tracer = new(
+                new() { EnableMemory = _traceMemory, DisableStack = _excludeStack },
+                specProvider);
 
-            return await RunTest(test, tracer: tracer);
+            return await RunTest(test, tracer: tracer, specProvider: specProvider);
         }
         catch (Exception ex)
         {
@@ -113,6 +120,11 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
 
     private void ReportResult(EthereumTestResult result)
     {
+        // A traced run reserves stderr for the JSONL trace that consumers parse line by line;
+        // the result itself still lands in the results document.
+        if (_trace)
+            return;
+
         if (_suppressOutput)
         {
             ReportSuppressedResult(result);

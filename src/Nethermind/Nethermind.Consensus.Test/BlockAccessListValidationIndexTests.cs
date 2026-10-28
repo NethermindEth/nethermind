@@ -3,12 +3,13 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -17,6 +18,8 @@ namespace Nethermind.Consensus.Test;
 
 public class BlockAccessListValidationIndexTests
 {
+    private static readonly BlockHeader Header = Build.A.BlockHeader.TestObject;
+
     private BlockAccessListValidationIndex.AddressIndex _addressIndex = null!;
 
     [SetUp]
@@ -135,6 +138,41 @@ public class BlockAccessListValidationIndexTests
     }
 
     [Test]
+    public void Build_rejects_change_past_post_execution_index([Values] ChangeKind kind, [Values] bool pastPostExecution)
+    {
+        const int txCount = 1;
+        uint index = txCount + (pastPostExecution ? 2u : 1u);
+        ReadOnlyBlockAccessList suggested = Bal(kind switch
+        {
+            ChangeKind.Balance => Account(TestItem.AddressA, balance: new BalanceChange(index, 1)),
+            ChangeKind.Nonce => Account(TestItem.AddressA, nonce: new NonceChange(index, 1)),
+            ChangeKind.Code => Account(TestItem.AddressA, code: new CodeChange(index, [1])),
+            _ => Account(TestItem.AddressA, storage: (1, new StorageChange(index, 1))),
+        });
+
+        Action build = () => BlockAccessListValidationIndex.Build(suggested, Header, txCount, _addressIndex).Dispose();
+
+        Assert.That(build, pastPostExecution
+            ? Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("exceeds allowed range")
+            : Throws.Nothing);
+    }
+
+    // EIP-8298: a code change matches only in the same form, so adopted code recorded as bytecode is rejected.
+    [Test]
+    public void ChangesEqual_compares_code_change_form([Values] bool suggestedAdopted, [Values] bool generatedAdopted)
+    {
+        byte[] code = [1, 2, 3];
+        ReadOnlyBlockAccessList suggested = Bal(Account(TestItem.AddressC, code: CodeChangeOf(suggestedAdopted)));
+        ReadOnlyBlockAccessList generated = Bal(Account(TestItem.AddressC, code: CodeChangeOf(generatedAdopted)));
+
+        BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 3, out BlockAccessListValidationIndex suggestedIndex);
+
+        Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 2), Is.EqualTo(suggestedAdopted == generatedAdopted));
+
+        CodeChange CodeChangeOf(bool adopted) => adopted ? CodeChange.Adopted(2, ValueKeccak.Compute(code), code) : new CodeChange(2, code);
+    }
+
+    [Test]
     public void ChangesEqual_does_not_detect_surplus_read_only_account_in_generated()
     {
         // Read-only accounts produce no lane rows, so the column-index can't see a surplus
@@ -143,7 +181,7 @@ public class BlockAccessListValidationIndexTests
         ReadOnlyBlockAccessList suggested = Bal(
             Account(TestItem.AddressA, balance: new BalanceChange(1, 1)));
 
-        BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount: 1, _addressIndex);
+        BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 1, _addressIndex);
         BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
 
         // Generated slice: AddressA matches, AddressB has only a read.
@@ -191,13 +229,37 @@ public class BlockAccessListValidationIndexTests
         });
     }
 
+    [Test]
+    public void Disabling_read_tracking_preserves_write_validation([Values] bool trackStorageReads, [Values] bool incorrectWrite)
+    {
+        ReadOnlyBlockAccessList suggested = Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+            .WithStorageReads(1)
+            .WithStorageChanges(3, new StorageChange(1, 7u))
+            .WithStorageChanges(2, new StorageChange(1, 5u)).TestObject);
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, 1, _addressIndex);
+        using BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex,
+            suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads);
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        slice.AddStorageChange(TestItem.AddressA, 3, before: 0, after: incorrectWrite ? 8u : 7u);
+        slice.AddStorageChange(TestItem.AddressA, 2, before: 0, after: 5);
+        generatedIndex.Add(slice);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.EqualTo(!incorrectWrite));
+            Assert.That(generatedIndex.FindStructuralMismatch(suggested, out _, out _), Is.EqualTo(trackStorageReads
+                ? BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                : BlockAccessListValidationIndex.StructuralMismatchKind.None));
+        }
+    }
+
     private BlockAccessListValidationIndex BuildPair(
         ReadOnlyBlockAccessList suggested,
         ReadOnlyBlockAccessList generated,
         int txCount,
         out BlockAccessListValidationIndex suggestedIndex)
     {
-        suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount, _addressIndex);
+        suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount, _addressIndex);
         BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
         // BlockAccessListValidationIndex.Add only accepts per-tx slices (one BlockAccessListAtIndex
         // per block-access index). Tests phrase the generated side as a full ReadOnlyBlockAccessList
@@ -210,12 +272,15 @@ public class BlockAccessListValidationIndexTests
             foreach (NonceChange nc in acc.NonceChanges)
                 GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, nc.Value);
             foreach (CodeChange cc in acc.CodeChanges)
-                GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: [], after: cc.Code);
+            {
+                if (cc.IsAdopted) GetSlice(slicesByIndex, cc.Index).AddAdoptedCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code, cc.CodeHash);
+                else GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code);
+            }
             foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
             {
                 foreach (StorageChange ch in slot.Changes)
                 {
-                    UInt256 value = ToUInt256(ch.Value);
+                    UInt256 value = ch.Value;
                     GetSlice(slicesByIndex, ch.Index).AddStorageChange(acc.Address, slot.Key, before: value + UInt256.One, after: value);
                 }
             }
@@ -231,12 +296,6 @@ public class BlockAccessListValidationIndexTests
                 slices[index] = slice;
             }
             return slice;
-        }
-
-        static UInt256 ToUInt256(EvmWord beValue)
-        {
-            EvmWord leBytes = beValue.ByteSwap();
-            return Unsafe.As<EvmWord, UInt256>(ref leBytes);
         }
     }
 
@@ -316,5 +375,13 @@ public class BlockAccessListValidationIndexTests
         IncorrectNonce,
         IncorrectCode,
         IncorrectStorage
+    }
+
+    public enum ChangeKind
+    {
+        Balance,
+        Nonce,
+        Code,
+        Storage
     }
 }

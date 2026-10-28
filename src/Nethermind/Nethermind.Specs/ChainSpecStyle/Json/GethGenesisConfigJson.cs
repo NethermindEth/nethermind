@@ -35,7 +35,6 @@ public class GethGenesisConfigJson : IHasNamedForks
 
     public ulong? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
-    public bool? DaoForkSupport { get; set; }
 
     // EIP-level overrides — not fork labels, kept as plain typed properties.
     public ulong? Eip150Block { get; set; }
@@ -60,6 +59,21 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? PragueTime { get => GetTime(); set => SetTime(value); }
     public ulong? OsakaTime { get => GetTime(); set => SetTime(value); }
     public ulong? AmsterdamTime { get => GetTime(); set => SetTime(value); }
+    // Devnet fork on top of Amsterdam. The genesis generator emits this as bogotaTime; the fork
+    // class is Bogota.
+    public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8250PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-8272 recent roots, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8272PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-7906 transaction outcome assertions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip7906PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for the bogota-devnet-2 EIP set, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? BogotaDevnet2Time { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
@@ -71,6 +85,23 @@ public class GethGenesisConfigJson : IHasNamedForks
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
+
+    /// <summary>The accounts the EIP-8253 transition sets to nonce 1; <c>null</c> when the chain lists none.</summary>
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
+
+    /// <summary>
+    /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.
+    /// </summary>
+    /// <remarks>
+    /// Not part of EIP-7949; mirrors <c>params.beaconChainGenesisTimestamp</c> of Parity-style chainspecs.
+    /// </remarks>
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
+
+    /// <summary>
+    /// Nethermind's minimum history retention, in epochs; <c>null</c> uses <see cref="HistoryRetentionConstants.MinEpochsForBlockRequests"/>.
+    /// </summary>
+    public ulong? MinHistoryRetentionEpochs { get; set; }
+
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;

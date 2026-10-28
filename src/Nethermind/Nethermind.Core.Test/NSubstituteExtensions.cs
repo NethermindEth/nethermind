@@ -13,6 +13,16 @@ namespace Nethermind.Core.Test;
 public static class NSubstituteExtensions
 {
     /// <summary>
+    /// Completes a substituted <c>Try…</c> call: stores <paramref name="result"/> in the <c>out</c> parameter at
+    /// <paramref name="outIndex"/> and reports success.
+    /// </summary>
+    public static bool Succeed(this CallInfo call, int outIndex, object result)
+    {
+        call[outIndex] = result;
+        return true;
+    }
+
+    /// <summary>
     /// Checks if a substitute received matching calls without throwing exceptions.
     /// Suitable for polling scenarios with Is.True.After().
     /// </summary>

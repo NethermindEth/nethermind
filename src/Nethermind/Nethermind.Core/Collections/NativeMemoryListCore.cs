@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -19,7 +18,7 @@ namespace Nethermind.Core.Collections;
 // bounds-checks against count. FreeBuffer is always called with the exact (ptr, pooledArray,
 // pinHandle) triple returned by the matching AllocateBuffer call — pool-backed and
 // native-allocated buffers are never crossed, so the right free path runs in every case.
-internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
+internal static unsafe partial class NativeMemoryListCore<T> where T : unmanaged
 {
     // Buffers requested below this byte size route through ArrayPool<T>.Shared (pinned)
     // instead of NativeMemory.Alloc, to avoid per-allocation malloc round-trips on hot,
@@ -44,15 +43,7 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     // `false` here would make the AlignedAlloc/AlignedFree branches unreachable
     // and trip CS0162 (warnings-as-errors). The JIT still folds the constant get
     // body and drops the dead branch per generic instantiation.
-    private static bool UseAlignedAlloc
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#if ZK_EVM
-        get => false;
-#else
-        get => BitOperations.IsPow2(sizeof(T));
-#endif
-    }
+    private static partial bool UseAlignedAlloc { get; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T* AllocateBuffer(int capacity, out T[]? pooledArray, out GCHandle pinHandle, out int actualCapacity)

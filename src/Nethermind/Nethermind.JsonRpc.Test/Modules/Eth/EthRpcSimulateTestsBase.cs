@@ -30,7 +30,7 @@ public class EthRpcSimulateTestsBase
 {
     public static readonly Address GasProbeContractAddress = new("0xc200000000000000000000000000000000000000");
 
-    private const string GasProbeBytecode = "0x5a60005260206000f3";
+    public const string GasProbeBytecode = "0x5a60005260206000f3";
 
     public static SimulatePayload<TransactionForRpc> CreateGasProbePayload(ulong? requestGas = null)
     {
@@ -146,11 +146,14 @@ public class EthRpcSimulateTestsBase
             chain.NonceManager,
             chain.EthereumEcdsa);
 
-        (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        (Hash256? hash, AcceptTxResult? code) = await txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         Assert.That(code, Is.EqualTo(AcceptTxResult.Accepted));
+        Hash256 acceptedHash = hash ?? throw new AssertionException("Accepted transaction has no hash.");
 
         Transaction[] txs = chain.TxPool.GetPendingTransactions();
-        HashSet<Hash256> expectedHashes = txs.Select((tx) => tx.Hash!).ToHashSet();
+        HashSet<Hash256> expectedHashes = txs
+            .Select(static pendingTx => pendingTx.Hash ?? throw new AssertionException("Pending transaction has no hash."))
+            .ToHashSet();
 
         IBlockProducer blockProducer = chain.BlockProducer;
         IBlockTree blockTree = chain.BlockTree;
@@ -163,28 +166,32 @@ public class EthRpcSimulateTestsBase
 
             if (block is not null)
             {
-                HashSet<Hash256> blockTxs = block.Transactions.Select((tx) => tx.Hash!).ToHashSet();
+                HashSet<Hash256> blockTxs = block.Transactions
+                    .Select(static blockTx => blockTx.Hash ?? throw new AssertionException("Block transaction has no hash."))
+                    .ToHashSet();
                 if (expectedHashes.All((tx) => blockTxs.Contains(tx)) && expectedHashes.Count == blockTxs.Count) break;
             }
 
             await Task.Yield();
-            if (iteration > 0)
-            {
-                await Task.Delay(100);
-            }
-            else if (iteration > 3)
+            // Bounded, so a block that never carries the transactions fails the test instead of hanging the run.
+            if (iteration > 100)
             {
                 Assert.Fail("Did not produce expected block");
+            }
+            else if (iteration > 0)
+            {
+                await Task.Delay(100);
             }
             iteration++;
         }
         Assert.That(blockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
 
         TxReceipt? createContractTxReceipt = null;
-        while (createContractTxReceipt is null)
+        for (int attempt = 0; createContractTxReceipt is null; attempt++)
         {
+            if (attempt > 100) Assert.Fail($"Contract transaction {tx.Hash!} got no receipt.");
             await Task.Delay(100);
-            createContractTxReceipt = chain.Bridge.GetReceipt(hash);
+            createContractTxReceipt = chain.Bridge.GetReceipt(acceptedHash);
         }
 
         Assert.That(createContractTxReceipt.ContractAddress, Is.Not.Null, $"Contract transaction {tx.Hash!} was not deployed.");

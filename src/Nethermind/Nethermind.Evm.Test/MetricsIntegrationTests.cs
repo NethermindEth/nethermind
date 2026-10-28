@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -87,7 +88,7 @@ public class MetricsIntegrationTests
         Address contract = TestItem.AddressC;
         _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
         _harness.DeployCode(contract, Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.PUSH0).Op(Instruction.SSTORE).Done);
-        _harness.WorldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
+        _harness.WorldState.Set(new StorageCell(contract, 0), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         long startDeleted = Metrics.MainThreadStorageDeleted;
@@ -113,6 +114,50 @@ public class MetricsIntegrationTests
         _harness.ExecuteTx(tx, _harness.CreateBlock(tx));
 
         Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.GreaterThanOrEqualTo(1));
+    }
+
+    [Test]
+    public void Reverted_contract_creation_does_not_increment_code_write_metrics()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        Address contract = TestItem.AddressC;
+        _harness.WorldState.CreateAccount(sender.Address, 10.Ether);
+        _harness.DeployCode(contract, Prepare.EvmCode
+            .Create(Prepare.EvmCode.ForInitOf([1, 2, 3]).Done, 0)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done);
+        // Fold the deployment above into the globals so the deltas below cover the transaction only.
+        _harness.WorldState.Commit(Prague.Instance);
+
+        long startCodeWrites = Metrics.MainThreadCodeWrites;
+        long startCodeBytesWritten = Metrics.MainThreadCodeBytesWritten;
+
+        Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(200_000)
+            .SignedAndResolved(_harness.Ecdsa, sender, true).TestObject;
+        _harness.ExecuteTx(tx, _harness.CreateBlock(tx));
+
+        Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
+        Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
+    }
+
+    [Test]
+    public void Code_staged_when_a_scope_ends_is_not_reported_as_written()
+    {
+        long startCodeWrites = Metrics.MainThreadCodeWrites;
+        long startCodeBytesWritten = Metrics.MainThreadCodeBytesWritten;
+
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        using (EvmTestHarness harness = new())
+        {
+            // Staged for CodeDb and never committed: closing the scope drops the whole batch, so this
+            // must be unwound before the scope folds its counters into the globals.
+            harness.DeployCode(TestItem.AddressC, code);
+        }
+
+        Assert.That(Metrics.MainThreadCodeWrites - startCodeWrites, Is.Zero);
+        Assert.That(Metrics.MainThreadCodeBytesWritten - startCodeBytesWritten, Is.Zero);
     }
 
     [Test]

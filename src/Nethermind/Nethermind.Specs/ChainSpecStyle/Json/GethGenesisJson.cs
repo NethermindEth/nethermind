@@ -15,7 +15,15 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// </summary>
 public class GethGenesisJson
 {
-    public GethGenesisConfigJson Config { get; set; }
+    /// <summary>Optional chain name used in logging.</summary>
+    /// <remarks>Nethermind extension to EIP-7949.</remarks>
+    public string? Name { get; set; }
+
+    /// <summary>Optional bootnodes as enode URLs or ENR strings; <c>null</c> loads no bootnodes.</summary>
+    /// <remarks>Nethermind extension to EIP-7949. Invalid records are logged and skipped.</remarks>
+    public string[]? Bootnodes { get; set; }
+
+    public GethGenesisConfigJson? Config { get; set; }
 
     public Dictionary<Address, GethGenesisAllocJson>? Alloc { get; set; }
 

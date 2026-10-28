@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -13,7 +14,7 @@ namespace Ethereum.Legacy.Blockchain.Test;
 public class RevertTest : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
+    public async Task Test(GeneralStateTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
@@ -23,4 +24,3 @@ public class RevertTest : GeneralStateTestBase
         return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern)));
     }
 }
-

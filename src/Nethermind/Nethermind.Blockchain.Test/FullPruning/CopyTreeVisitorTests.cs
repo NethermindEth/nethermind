@@ -25,12 +25,9 @@ namespace Nethermind.Blockchain.Test.FullPruning;
 [TestFixture(INodeStorage.KeyScheme.Hash)]
 public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
 {
-    [TestCase(0, 1)]
-    [TestCase(0, 8)]
-    [TestCase(1, 1)]
-    [TestCase(1, 8)]
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void copies_state_between_dbs(int fullPruningMemoryBudgetMb, int maxDegreeOfParallelism)
+    public void copies_state_between_dbs([Values(0, 1)] int fullPruningMemoryBudgetMb, [Values(1, 8)] int maxDegreeOfParallelism)
     {
         TestMemDb trieDb = new();
         TestMemDb clonedDb = new();
@@ -101,7 +98,7 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
             copyTreeVisitor.Finish();
         }
 
-        return pruningContext;
+        return pruningContext!;
     }
 
     private static IPruningContext StartPruning(MemDb trieDb, MemDb clonedDb)
@@ -110,7 +107,8 @@ public class CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
         dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(trieDb, clonedDb);
 
         FullPruningDb fullPruningDb = new(new DbSettings("test", "test"), dbFactory);
-        fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
-        return pruningContext;
+        bool pruningStarted = fullPruningDb.TryStartPruning(out IPruningContext? pruningContext);
+        Assert.That(pruningStarted, Is.True);
+        return pruningContext!;
     }
 }

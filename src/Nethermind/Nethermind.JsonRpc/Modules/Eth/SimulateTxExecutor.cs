@@ -23,14 +23,17 @@ public class SimulateTxExecutor<TTrace>(
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
-    ulong? secondsPerSlot = null)
-    : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
-    SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
+    ulong? secondsPerSlot = null,
+    bool readLoneBlobFeeCapAsAbsent = true,
+    bool callSemantics = false)
 {
+    private readonly IBlockchainBridge _blockchainBridge = blockchainBridge;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
+    private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
@@ -45,16 +48,22 @@ public class SimulateTxExecutor<TTrace>(
                 if (blockStateCall.Calls is not null)
                 {
                     calls = new TransactionWithSourceDetails[blockStateCall.Calls.Length];
+                    // The calls convert against the fork of the block they are simulated in, which the
+                    // normalized block overrides number and time.
+                    BlockOverride overrides = blockStateCall.BlockOverrides!;
+                    IReleaseSpec spec = specProvider.GetSpec(overrides.Number!.Value, overrides.Time);
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
+                        TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
+                            : blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        IReleaseSpec spec = specProvider.GetSpec(header);
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, gasCap: _rpcConfig.GasCap, spec: spec);
+                        Result<Transaction> txResult = callTransactionModel.ToCallTransaction(spec, _rpcConfig.GasCap,
+                            validateUserInput: call.Validation, validateFeeCapOrder: call.Validation);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -65,6 +74,8 @@ public class SimulateTxExecutor<TTrace>(
                         calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };
@@ -89,7 +100,7 @@ public class SimulateTxExecutor<TTrace>(
         };
     }
 
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -171,9 +182,9 @@ public class SimulateTxExecutor<TTrace>(
                 if (blockToSimulate.StateOverrides is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
-                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    foreach ((Address address, AccountOverride? accountOverride) in blockToSimulate.StateOverrides)
                     {
-                        if (accountOverride.MovePrecompileToAddress is null) continue;
+                        if (accountOverride?.MovePrecompileToAddress is null) continue;
 
                         if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
                             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -187,15 +198,21 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-
-        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
-        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-            : Execute(header.Clone(), data, stateOverride, timeout.Token);
+        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        try
+        {
+            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+                : Execute(header.Clone(), data, stateOverride, timeout.Token);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        }
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
         BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx,
         Dictionary<Address, AccountOverride>? stateOverride,
@@ -244,23 +261,7 @@ public class SimulateTxExecutor<TTrace>(
     {
         if (txResult.Error != TransactionResult.ErrorType.None)
         {
-            return txResult.Error switch
-            {
-                TransactionResult.ErrorType.BlockGasLimitExceeded => ErrorCodes.BlockGasLimitReached,
-                TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => ErrorCodes.IntrinsicGas,
-                TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
-                    or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
-                TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
-                    or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
-                TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.SenderIsNotEoa,
-                TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
-                _ => ErrorCodes.InternalError
-            };
+            return TransactionErrorCodes.Get(txResult.Error) ?? ErrorCodes.InternalError;
         }
 
         return MapEvmExceptionType(txResult.EvmExceptionType);

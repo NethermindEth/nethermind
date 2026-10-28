@@ -121,7 +121,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [Test]
         [CancelAfter(10000)]
-        public void AddPersistedNodes_Should_Propagate_Cancellation(CancellationToken cancellationToken)
+        public async Task AddPersistedNodes_Should_Propagate_Cancellation(CancellationToken cancellationToken)
         {
             // A non-cancellation exception is swallowed (above), but a cancelled ping is lifecycle
             // shutdown and must stop the load promptly rather than be swallowed.
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             _discv4Adapter.Ping(Arg.Is<Node>(n => n.Id.Equals(NodeA.NodeId)), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<bool>(new OperationCanceledException()));
 
-            Assert.ThrowsAsync<OperationCanceledException>(
+            await Assert.ThrowsAsync<OperationCanceledException>(
                 async () => await _persistenceManager.LoadPersistedNodes(cancellationToken));
         }
 
@@ -169,6 +169,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     n.Port == 30303 &&
                     n.DiscoveryPort == 30304),
                 Arg.Any<CancellationToken>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Use_Protocol_Node_Factory(CancellationToken cancellationToken)
+        {
+            NetworkNode persistedNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("192.168.1.1"), 30303, 30304));
+            Node restoredNode = new(TestItem.PublicKeyA, IPAddress.Parse("2001:db8::1").ToString(), 30305, 30306);
+            _networkStorage.UpdateNodes([persistedNode]);
+
+            await _persistenceManager.LoadPersistedNodes(
+                cancellationToken,
+                node => node.NodeId.Equals(persistedNode.NodeId) ? restoredNode : null);
+
+            await _discv4Adapter.Received(1).Ping(restoredNode, Arg.Any<CancellationToken>());
         }
 
         [Test]

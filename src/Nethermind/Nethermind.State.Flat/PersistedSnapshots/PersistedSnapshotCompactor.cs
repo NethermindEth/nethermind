@@ -66,15 +66,15 @@ public class PersistedSnapshotCompactor(
     /// <inheritdoc/>
     public async ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
-        // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
-        _ = EnsureStarted();
         try
         {
+            // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
+            _ = EnsureStarted();
             // Awaits a free slot on the bounded queue, providing backpressure without blocking a thread;
             // the caller's token releases the wait on shutdown.
             await _compactPersistedJobs.Writer.WriteAsync((batch, persistedBlockNumber), cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
             // The batch never entered the channel, so dispose the handoff we still own.
             batch.Dispose();
@@ -87,6 +87,8 @@ public class PersistedSnapshotCompactor(
         // Guard against concurrent EnqueueAsync callers spawning duplicate worker sets.
         lock (_startLock)
         {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+
             _compactPersistedTask ??= RunPersistedCompactor(_shutdownToken);
             if (_boundaryCompactorTasks is null)
             {
@@ -214,7 +216,11 @@ public class PersistedSnapshotCompactor(
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_startLock)
+        {
+            if (_disposed != 0) return;
+            _disposed = 1;
+        }
         // Complete and drain the persisted stage first so any boundary jobs it produces are written
         // before the boundary channel is completed; on process exit the shared token has already
         // cancelled both stages, so these awaits return promptly instead of draining.
@@ -372,7 +378,7 @@ public class PersistedSnapshotCompactor(
             // their respective base snapshots were converted).
             //
             // reservation still holds only the writer's Complete() lease and mergedBloom is owned by no
-            // snapshot yet, so a throw from Fsync / catalog.Add / the snapshot ctor (e.g. disk-full) must free
+            // snapshot yet, so a throw from Fsync / the snapshot ctor (e.g. disk-full) must free
             // both here — the outer finally disposes only the read sessions, and over repeated IO errors the
             // leak exhausts native memory. Both disposes are safe on the ctor-internal-throw path too: the
             // ctor releases only its own lease (not this Complete() one), and BloomFilter.Dispose is idempotent.
@@ -380,7 +386,6 @@ public class PersistedSnapshotCompactor(
             try
             {
                 reservation.Fsync();
-                _catalog.Add(new CatalogEntry(from, to, location, tier));
                 compacted = new(from, to, reservation, blobs, tier, new RefCountedBloomFilter(mergedBloom));
             }
             catch
@@ -393,7 +398,19 @@ public class PersistedSnapshotCompactor(
             using (compacted)
             {
                 reservation.Dispose();
-                snapshotRepository.AddPersistedSnapshot(compacted, tier);
+                // Recorded only once the snapshot is built, and rolled back if indexing it fails: the enclosing
+                // using frees its region, which no row may still point at. The Add replaced the row of any snapshot
+                // already at (to, tier), so the rollback leaves that one unrecorded: missing after a restart, not stale.
+                _catalog.Add(new CatalogEntry(from, to, location, tier));
+                try
+                {
+                    snapshotRepository.AddPersistedSnapshot(compacted, tier);
+                }
+                catch
+                {
+                    _catalog.Remove(to, tier);
+                    throw;
+                }
                 if (!_schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !_schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber))
                 {
                     // Sub-CompactSize intermediate. The bundle priority means this is never queried

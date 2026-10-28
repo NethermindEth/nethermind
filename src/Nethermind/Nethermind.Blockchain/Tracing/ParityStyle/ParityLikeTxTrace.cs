@@ -26,5 +26,6 @@ public class ParityLikeTxTrace
 
     public ParityTraceAction? Action { get; set; }
 
+    [JsonPropertyName("stateDiff")]
     public Dictionary<Address, ParityAccountStateChange>? StateChanges { get; set; }
 }

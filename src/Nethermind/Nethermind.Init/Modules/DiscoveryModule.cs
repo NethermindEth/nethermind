@@ -24,6 +24,11 @@ namespace Nethermind.Init.Modules;
 
 public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfig) : Module
 {
+    /// <summary>
+    /// The public key that signs the ethdisco.net node lists, as published by the Ethereum Foundation and used by geth.
+    /// </summary>
+    private const string EthDiscoTreeSigner = "AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE";
+
     protected override void Load(ContainerBuilder builder)
     {
         builder.Register(static context => new NodesLoaderOptions(
@@ -67,12 +72,18 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddDecorator<INetworkConfig>((ctx, networkConfig) =>
             {
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
-                IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
 
                 if (networkConfig.DiscoveryDns == null)
                 {
                     string chainName = BlockchainIds.GetBlockchainName(chainSpec!.NetworkId).ToLowerInvariant();
-                    networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
+                    networkConfig.DiscoveryDns = $"enrtree://{EthDiscoTreeSigner}@all.{chainName}.ethdisco.net";
+                }
+
+                IDiscoveryConfig discoveryConfig = ctx.Resolve<IDiscoveryConfig>();
+                if (discoveryConfig.Bootnodes.Length > 0)
+                {
+                    ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<DiscoveryModule>();
+                    if (logger.IsWarn) logger.Warn($"Discovery.{nameof(IDiscoveryConfig.Bootnodes)} is deprecated and will be removed. Use Network.{nameof(INetworkConfig.Bootnodes)} instead.");
                 }
 
                 networkConfig.Bootnodes = [.. networkConfig.Bootnodes, .. discoveryConfig.Bootnodes, .. chainSpec.Bootnodes];
@@ -105,6 +116,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             builder
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
+                .AddSingleton<SnapEnrAdvertisement>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
                 .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)

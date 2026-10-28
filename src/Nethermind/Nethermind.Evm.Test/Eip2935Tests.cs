@@ -28,9 +28,8 @@ public class Eip2935Tests : VirtualMachineTestsBase
     }
 
 
-    [TestCase(MainnetSpecProvider.CancunBlockTimestamp)]
-    [TestCase(MainnetSpecProvider.PragueBlockTimestamp)]
-    public void CorrectBlockhashBeingUsed(ulong timestamp)
+    [Test]
+    public void CorrectBlockhashBeingUsed([Values(MainnetSpecProvider.CancunBlockTimestamp, MainnetSpecProvider.PragueBlockTimestamp)] ulong timestamp)
     {
         const ulong blockNumber = 256;
         byte[] bytecode =

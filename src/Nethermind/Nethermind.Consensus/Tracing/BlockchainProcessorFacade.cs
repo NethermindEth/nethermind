@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -31,7 +32,13 @@ public sealed class BlockchainProcessorFacade(
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-        (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
+        // Mirror BranchProcessor: a traced block runs the sequential EIP-7928 BAL path, because parallel workers
+        // trace into their own pooled receipts tracers rather than the caller's tracer.
+        ProcessingOptions blockOptions = tracer == NullBlockTracer.Instance
+            ? options
+            : options | ProcessingOptions.ForceSequentialBlockAccessList;
+
+        (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, blockOptions, tracer, spec, token);
         return processedBlock;
     }
 }

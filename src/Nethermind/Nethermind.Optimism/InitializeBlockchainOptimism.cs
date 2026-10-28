@@ -4,24 +4,20 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Optimism.Rpc;
-using Nethermind.TxPool;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api) : InitializeBlockchain(api)
 {
     protected override async Task InitBlockchain()
     {
         await base.InitBlockchain();
 
-        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new LegacyTxDecoder(allowEmptySignature: true), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
-
-    protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>
-        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(chainHeadInfoProvider);
 }

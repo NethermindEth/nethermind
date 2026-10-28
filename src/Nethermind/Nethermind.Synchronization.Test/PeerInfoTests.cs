@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -22,6 +25,7 @@ namespace Nethermind.Synchronization.Test
             AllocationContexts.Headers,
             AllocationContexts.Bodies,
             AllocationContexts.State,
+            AllocationContexts.BlockAccessLists,
             AllocationContexts.All,
         ];
 
@@ -33,10 +37,15 @@ namespace Nethermind.Synchronization.Test
             AllocationContexts.State,
             AllocationContexts.Snap,
             AllocationContexts.ForwardHeader,
+            AllocationContexts.BlockAccessLists,
         ];
 
-        private static PeerInfo NewPeer(AllocationAllowances? allowances = null) =>
-            new(Substitute.For<ISyncPeer>(), allowances);
+        private static PeerInfo NewPeer(AllocationAllowances? allowances = null)
+        {
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+            return new(syncPeer, allowances);
+        }
 
         /// <summary>
         /// Bumps weakness up to (but not including) the threshold, then once more so all
@@ -203,7 +212,7 @@ namespace Nethermind.Synchronization.Test
         public void Free_clamps_at_allowance()
         {
             // Spurious frees (no prior TryAllocate) must not push the slot above its configured allowance.
-            AllocationAllowances allowances = new(headers: 2, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1);
+            AllocationAllowances allowances = new(headers: 2, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1, blockAccessLists: 1);
             PeerInfo peer = NewPeer(allowances);
 
             peer.Free(AllocationContexts.Headers);
@@ -309,27 +318,53 @@ namespace Nethermind.Synchronization.Test
             // verifying the lock-free CAS loop in TryAllocate neither loses nor duplicates slots.
             const byte slots = 8;
             const int threads = 32;
-            AllocationAllowances allowances = new(headers: slots, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1);
+            AllocationAllowances allowances = new(headers: slots, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1, blockAccessLists: 1);
             PeerInfo peer = NewPeer(allowances);
             int succeeded = 0;
             using Barrier barrier = new(threads);
+            ConcurrentQueue<Exception> failures = new();
 
-            Task[] tasks = new Task[threads];
+            // Dedicated threads: thread-pool threads parked on the barrier would starve the rest of the process until
+            // the pool has injected enough of them.
+            Thread[] racers = new Thread[threads];
             for (int t = 0; t < threads; t++)
             {
-                tasks[t] = Task.Run(() =>
+                racers[t] = new Thread(() =>
                 {
                     barrier.SignalAndWait();
-                    if (peer.TryAllocate(AllocationContexts.Headers))
-                        Interlocked.Increment(ref succeeded);
+                    // An exception on a raw thread would end the test host, so collect it for the assert below.
+                    try
+                    {
+                        if (peer.TryAllocate(AllocationContexts.Headers))
+                            Interlocked.Increment(ref succeeded);
+                    }
+                    catch (Exception e)
+                    {
+                        failures.Enqueue(e);
+                    }
                 });
+                racers[t].Start();
             }
-            Task.WaitAll(tasks);
+            foreach (Thread racer in racers) racer.Join();
 
+            Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
             Assert.That(succeeded, Is.EqualTo(slots));
             Assert.That(peer.AvailableAllocationSlots.Headers, Is.EqualTo(0));
             Assert.That(peer.IsAllocationFull(AllocationContexts.Headers), Is.True);
         }
 
+        /// <summary>
+        /// Regression test for #8271: a value present in <see cref="NodeClientType"/> but absent from the
+        /// switch in <see cref="PeerInfoExtensions.MaxHeadersPerRequest"/> used to throw, aborting the sync
+        /// loop when a peer ran e.g. Nimbus. A bare [Values] covers every enum member, future ones included.
+        /// </summary>
+        [Test]
+        public void Header_request_limit_is_defined_for_every_client_type([Values] NodeClientType clientType)
+        {
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.ClientType.Returns(clientType);
+
+            Assert.That(new PeerInfo(syncPeer).MaxHeadersPerRequest(), Is.Positive);
+        }
     }
 }

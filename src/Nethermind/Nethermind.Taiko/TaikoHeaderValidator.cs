@@ -12,6 +12,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -34,11 +35,12 @@ public class TaikoHeaderValidator(
 
     private static readonly UInt256 ShastaInitialBaseFee = 25_000_000;
     private static readonly UInt256 MinBaseFeeShasta = 5_000_000;
+    private static readonly UInt256 MinBaseFeeShastaMainnet = 10_000_000;
     private static readonly UInt256 MaxBaseFeeShasta = 1_000_000_000;
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
     {
         if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {
@@ -54,16 +56,16 @@ public class TaikoHeaderValidator(
             return false;
         }
 
-        return base.Validate<TOrphaned>(header, parent, isUncle, out error);
+        return base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash);
     }
 
     protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataLen })
+        if (taikoSpec.IsShastaEnabled && header.ExtraData.Length != TaikoHeaderHelper.ShastaExtraDataLen)
         {
-            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
+            error = $"ExtraData must be {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
             if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
             return false;
         }
@@ -108,7 +110,8 @@ public class TaikoHeaderValidator(
         }
 
         // Calculate expected base fee using EIP-4396
-        UInt256 expectedBaseFee = CalculateEip4396BaseFee(parent, parentBlockTime, spec);
+        UInt256 minBaseFee = _specProvider.ChainId == BatchLookupThresholds.TaikoMainnetChainId ? MinBaseFeeShastaMainnet : MinBaseFeeShasta;
+        UInt256 expectedBaseFee = CalculateEip4396BaseFee(parent, parentBlockTime, spec, minBaseFee);
 
         if (header.BaseFeePerGas != expectedBaseFee)
         {
@@ -121,7 +124,7 @@ public class TaikoHeaderValidator(
         return true;
     }
 
-    private static UInt256 CalculateEip4396BaseFee(BlockHeader parent, ulong parentBlockTime, IReleaseSpec spec)
+    private static UInt256 CalculateEip4396BaseFee(BlockHeader parent, ulong parentBlockTime, IReleaseSpec spec, in UInt256 minBaseFee)
     {
         // If the parent is genesis, use the initial base fee for the first post-genesis block
         if (parent.Number == 0)
@@ -183,14 +186,14 @@ public class TaikoHeaderValidator(
         }
 
         // Clamp the base fee to be within min and max limits for Shasta blocks
-        return ClampEip4396BaseFeeShasta(baseFee);
+        return ClampEip4396BaseFeeShasta(baseFee, minBaseFee);
     }
 
-    private static UInt256 ClampEip4396BaseFeeShasta(UInt256 baseFee)
+    private static UInt256 ClampEip4396BaseFeeShasta(UInt256 baseFee, in UInt256 minBaseFee)
     {
-        if (baseFee < MinBaseFeeShasta)
+        if (baseFee < minBaseFee)
         {
-            return MinBaseFeeShasta;
+            return minBaseFee;
         }
 
         return baseFee > MaxBaseFeeShasta ? MaxBaseFeeShasta : baseFee;
@@ -288,7 +291,7 @@ public class TaikoHeaderValidator(
         return base.ValidateRequestsHash(header, spec, ref error);
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
@@ -318,6 +321,9 @@ public class TaikoHeaderValidator(
             return true;
         }
 
-        return base.ValidateBlobGasFields(header, parent, spec, ref error);
+        return base.ValidateBlobGasFields(header, spec, ref error);
     }
+
+    protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) =>
+        ((ITaikoReleaseSpec)spec).IsUnzenEnabled || base.ValidateExcessBlobGas(header, parent, spec, ref error);
 }

@@ -8,14 +8,19 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class SnapSyncRunner(Func<CancellationToken, Task> runDispatcher, ISnapTrieFactory snapTrieFactory) : ISnapSyncRunner
+public class SnapSyncRunner(
+    Func<CancellationToken, Task> runDispatcher,
+    ISnapTrieFactory snapTrieFactory,
+    ProgressTracker progressTracker) : ISnapSyncRunner
 {
-    public SnapSyncRunner(SimpleDispatcher<SnapSyncBatch> dispatcher, ISnapTrieFactory snapTrieFactory)
-        : this(dispatcher.Run, snapTrieFactory) { }
+    public SnapSyncRunner(SimpleDispatcher<SnapSyncBatch> dispatcher, ISnapTrieFactory snapTrieFactory, ProgressTracker progressTracker)
+        : this(dispatcher.Run, snapTrieFactory, progressTracker) { }
 
     public async Task Run(CancellationToken token)
     {
         snapTrieFactory.EnsureInitialize();
+        progressTracker.Reset();
+        progressTracker.LoadProgress();
         try
         {
             await runDispatcher(token);
@@ -24,6 +29,8 @@ public class SnapSyncRunner(Func<CancellationToken, Task> runDispatcher, ISnapTr
         {
             // Always finalize — FinalizeSync is idempotent and we want partial writes flushed on cancel/throw.
             snapTrieFactory.FinalizeSync();
+            // The dispatcher only returns once every request has stopped, so a shutdown leaves nothing unaccounted for.
+            if (token.IsCancellationRequested) progressTracker.SaveCheckpointAtShutdown();
         }
     }
 }

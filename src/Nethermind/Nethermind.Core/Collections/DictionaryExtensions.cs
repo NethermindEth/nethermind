@@ -18,22 +18,6 @@ public static class DictionaryExtensions
         res++;
     }
 
-    extension<TKey, TValue>(Dictionary<TKey, TValue>? dictionary) where TKey : notnull
-    {
-        /// <summary>Null-safe <see cref="Dictionary{TKey,TValue}.TryGetValue"/>: returns
-        /// <see langword="false"/> with a default <paramref name="value"/> when the dictionary
-        /// itself is <see langword="null"/>.</summary>
-        public bool TryGetValueOrNull(TKey key, [MaybeNullWhen(false)] out TValue value)
-        {
-            if (dictionary is null)
-            {
-                value = default;
-                return false;
-            }
-            return dictionary.TryGetValue(key, out value);
-        }
-    }
-
     extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull
     {
         /// <summary>
@@ -84,7 +68,7 @@ public static class DictionaryExtensions
     /// <param name="dictionary">The dictionary whose values will be returned and cleared.</param>
     /// <typeparam name="TKey">The type of the keys in the dictionary.</typeparam>
     /// <typeparam name="TValue">The type of the values in the dictionary, which must implement <see cref="IReturnable"/>.</typeparam>
-    extension<TKey, TValue>(IDictionary<TKey, TValue> dictionary) where TValue : class, IReturnable
+    extension<TKey, TValue>(Dictionary<TKey, TValue> dictionary) where TKey : notnull where TValue : class, IReturnable
     {
         /// <summary>
         /// Returns all values in the dictionary to their pool by calling <see cref="IReturnable.Return"/> on each value,

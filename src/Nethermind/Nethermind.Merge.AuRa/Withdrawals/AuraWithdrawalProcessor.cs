@@ -3,12 +3,13 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
@@ -34,31 +35,42 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         if (!spec.WithdrawalsEnabled || block.IsGenesis || block.Withdrawals is null)
             return;
 
-        if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
+        if (_logger.IsTrace) TraceApplyingWithdrawals(block);
 
-        int count = block.Withdrawals.Length;
+        Withdrawal[] withdrawals = block.Withdrawals;
+        int count = withdrawals.Length;
         using ArrayPoolList<ulong> amounts = new(count);
         using ArrayPoolList<Address> addresses = new(count);
 
         for (int i = 0; i < count; i++)
         {
-            Withdrawal withdrawal = block.Withdrawals[i];
+            Withdrawal withdrawal = withdrawals[i];
 
             addresses.Add(withdrawal.Address);
             amounts.Add(withdrawal.AmountInGwei);
 
-            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
+            if (_logger.IsTrace) TraceWithdrawal(withdrawal);
         }
 
         try
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
         }
-        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException)
+        // Any other exception (e.g. a wrapped state read failure) is a node-local fault and must not invalidate the block.
+        catch (ContractCallFailedException ex)
         {
             throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
+        if (_logger.IsTrace) TraceWithdrawalsApplied(block);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceApplyingWithdrawals(Block block) => _logger.Trace($"Applying withdrawals for block {block}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceWithdrawal(Withdrawal withdrawal) => _logger.Trace($"  {(BigInteger)withdrawal.AmountInWei / (BigInteger)Unit.Ether:N3}GNO to account {withdrawal.Address}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceWithdrawalsApplied(Block block) => _logger.Trace($"Withdrawals applied for block {block}");
 }

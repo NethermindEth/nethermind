@@ -49,6 +49,20 @@ public class DepositTransactionForRpcTests
         ValidateSchema(json);
     }
 
+    // L2Api reads block transactions back through the polymorphic converter, where only `type` identifies a deposit.
+    [TestCaseSource(nameof(Transactions))]
+    public void Serialized_deposit_keeps_its_type(Transaction transaction)
+    {
+        string serialized = _serializer.Serialize(TransactionForRpc.FromTransaction(transaction));
+
+        Assert.That(_serializer.Deserialize<TransactionForRpc>(serialized), Is.TypeOf<DepositTransactionForRpc>());
+    }
+
+    [Test]
+    public void Explicit_deposit_type_rejects_a_field_a_deposit_lacks() =>
+        Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(
+            """{"type":"0x7e","maxFeePerGas":"0x1","gas":"0x1234","sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001"}"""));
+
     private static void ValidateSchema(JsonElement json)
     {
         Assert.That(json.GetProperty("type").GetString(), Does.Match("^0x7[eE]$"));
@@ -82,7 +96,7 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(MalformedJsonTransactions))]
     public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
     {
-        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json)!;
         Assert.That(rpcTx, Is.Not.Null);
 
         Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();
@@ -97,7 +111,7 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(ValidJsonTransactions))]
     public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
     {
-        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        DepositTransactionForRpc rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json)!;
         Assert.That(rpcTx, Is.Not.Null);
 
         Func<Result<Transaction>> toTransaction = () => rpcTx.ToTransaction();

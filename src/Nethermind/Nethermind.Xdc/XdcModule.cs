@@ -4,7 +4,6 @@
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
@@ -16,10 +15,13 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -30,10 +32,12 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.P2P.Messages;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 using Nethermind.Xdc.Discovery;
+using System;
 
 namespace Nethermind.Xdc;
 
@@ -46,8 +50,10 @@ public class XdcModule : Module
         builder
             .AddModule(new XdcHeaderModule())
             .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
-            .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
-            .AddStep(typeof(InitializeBlockchainXdc))
+            .AddProtocolHandler<P2P.XdcProtocolHandler>() // One factory per version; each intercepts the ETH protocol at its own version number
+            .AddProtocolHandler<P2P.Xdc164ProtocolHandler>()
+            .AddProtocolHandler<P2P.Xdc165ProtocolHandler>()
+            .AddSingleton<ITxPool>(CreateTxPool)
             .Intercept<ChainSpec>(CreateChainSpecLoader().ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
@@ -119,10 +125,13 @@ public class XdcModule : Module
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
+            .AddSingleton<IForkInfo, XdcForkInfo>()
+            .AddSingleton<XdcConsensusMessageHandler.Factory>()
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
+            .AddMessageSerializer<XdcGetPooledTransactionsMessage, XdcGetPooledTransactionsMessageSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()
@@ -135,10 +144,15 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
-            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
-            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>();
+            // Keeps eth_gasPrice from suggesting a price MinGasPriceFilter would then reject
+            .AddDecorator<IGasPriceOracle, XdcGasPriceOracle>()
 
-        RegisterRewardCalculatorSource(builder);
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
+            .RegisterSingletonJsonRpcModule<IXdcExtendedEthRpcModule, XdcExtendedEthModule>()
+            .RegisterSingletonJsonRpcModule<IXdcMasternodeEthRpcModule, XdcMasternodeEthModule>()
+            .OnBuild(static _ => XdcBlockParameterConverter.Register());
+
+        RegisterRewardCalculator(builder);
         builder.RegisterType<RewardsStore>().As<IRewardsStore>().As<IStartable>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SnapshotManager>().As<ISnapshotManager>().WithAttributeFiltering().SingleInstance();
         builder.RegisterType<SignTransactionManager>().As<ISignTransactionManager>().As<IStartable>().SingleInstance();
@@ -150,8 +164,43 @@ public class XdcModule : Module
 
     protected virtual XdcChainSpecLoader CreateChainSpecLoader() => new();
 
-    protected virtual void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
-        builder.AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>();
+    protected virtual void RegisterRewardCalculator(ContainerBuilder builder) =>
+        builder.AddScoped<IRewardCalculator, XdcRewardCalculator>();
+
+    private static ITxPool CreateTxPool(IComponentContext ctx)
+    {
+        // Non-trivial cast: ISpecProvider -> XdcChainSpecBasedSpecProvider.
+        // Safe in the XDC context because XDC nodes are always configured with
+        // XdcChainSpecBasedSpecProvider. Throws early at startup if the DI
+        // container is mis-configured rather than silently returning null.
+        ISpecProvider registeredSpecProvider = ctx.Resolve<ISpecProvider>();
+        XdcChainSpecBasedSpecProvider specProvider = registeredSpecProvider as XdcChainSpecBasedSpecProvider
+            ?? throw new InvalidOperationException(
+                $"Expected {nameof(XdcChainSpecBasedSpecProvider)} but got {registeredSpecProvider.GetType().Name}. " +
+                "Ensure the DI container registers XdcChainSpecBasedSpecProvider for ISpecProvider.");
+        IChainHeadInfoProvider chainHeadInfoProvider = ctx.Resolve<IChainHeadInfoProvider>();
+        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+        ILogManager logManager = ctx.Resolve<ILogManager>();
+
+        return new Nethermind.TxPool.TxPool(ctx.Resolve<IEthereumEcdsa>(),
+            ctx.Resolve<IBlobTxStorage>(),
+            chainHeadInfoProvider,
+            ctx.Resolve<ITxPoolConfig>(),
+            ctx.Resolve<ITxValidator>(),
+            ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
+            logManager,
+            new XdcTransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(),
+            ctx.Resolve<FrameTxWidthLedger>(),
+            ctx.Resolve<ITxGossipPolicy>(),
+            [
+                new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), blockTree, specProvider),
+                new BlackListedAddressFilter(chainHeadInfoProvider, specProvider, logManager),
+                new MinGasPriceFilter(chainHeadInfoProvider, specProvider, logManager)
+            ],
+            true,
+            frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+            stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
+    }
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,

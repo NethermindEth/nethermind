@@ -1,15 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -19,6 +29,19 @@ namespace Ethereum.Transaction.Test;
 [Parallelizable(ParallelScope.Self)]
 public class TransactionJsonTest : GeneralStateTestBase
 {
+    private static readonly Address Recipient = new("0x67eb8fcbef83a0662b030f8bc89a10070c167a66");
+    private static readonly Address Coinbase = new("0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba");
+    private static readonly UInt256 SenderBalance = 1_000_000;
+    private static readonly UInt256 RecipientBalance = 1;
+    private static readonly UInt256 CoinbaseBalance = 1;
+    private static readonly UInt256 TransferredValue = 1_000;
+
+    /// <summary>
+    /// In range for every signature validator - r and s are non-zero and below the curve order, and
+    /// v is 27 - yet no public key recovers from it.
+    /// </summary>
+    private static readonly Signature UnrecoverableSignature = new(5, 1, 27);
+
     [Test]
     public void Can_load_access_lists()
     {
@@ -54,7 +77,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     }
 
     [Test]
-    public void Amsterdam_state_test_without_env_slot_number_defaults_to_zero()
+    public async Task Amsterdam_state_test_without_env_slot_number_defaults_to_zero()
     {
         Address contract = new("0x0000000000000000000000707690000000008024");
         using PrivateKey senderKey = new("0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8");
@@ -94,11 +117,11 @@ public class TransactionJsonTest : GeneralStateTestBase
                     Balance = UInt256.Parse("0xffffffffff"),
                 }
             },
-            PostHash = new Hash256("0x2806dd1651e0d1df9ef17fa3c80b302d8e7f34de76eb207ca43e86b22ad231ca"),
+            PostHash = new Hash256("0xbb8e5ab8df3709e0abf2d53bb3bdbbea8159d35ea16d2c7fb5921fbc3de31ef6"),
             Transaction = transaction,
         };
 
-        EthereumTestResult result = RunTest(test);
+        EthereumTestResult result = await RunTest(test);
 
         Assert.That(result.Pass, Is.True);
         Assert.That(result.StateRoot, Is.EqualTo(test.PostHash));
@@ -111,7 +134,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
     [Test]
-    public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
+    public async Task Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
         Address sender = new("0x1ad9bc24818784172ff393bb6f89f094d4d2ca29");
         Address recipient = new("0x67eb8fcbef83a0662b030f8bc89a10070c167a66");
@@ -164,10 +187,182 @@ public class TransactionJsonTest : GeneralStateTestBase
             Transaction = transaction,
         };
 
-        EthereumTestResult result = RunTest(test);
+        EthereumTestResult result = await RunTest(test);
 
         Assert.That(result.StateRoot, Is.EqualTo(test.PostHash), "invalid AccessList tx on pre-Berlin fork should not mutate state");
         Assert.That(result.Pass, Is.True);
     }
 
+    /// <summary>
+    /// A state-test fixture names its sender, but the account that executes has to be the one the
+    /// fixture's own signature recovers to. An in-range yet unrecoverable signature recovers to
+    /// nobody, so the transaction must be rejected rather than run as the funded account the fixture
+    /// names: no value moves and the sender's nonce stays put.
+    /// </summary>
+    /// <remarks>
+    /// The recoverable case is the control - the same fixture shape does transfer and does advance the
+    /// nonce, so the rejection is attributable to the signature alone. Mirrors upstream
+    /// <c>frontier/validation/test_transaction.py::test_unrecoverable_signature</c>.
+    /// </remarks>
+    [Test]
+    public async Task Fixture_transaction_executes_only_as_the_sender_its_signature_recovers([Values] bool signatureRecovers)
+    {
+        using PrivateKey senderKey = new("0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8");
+
+        Nethermind.Core.Transaction pinned = new()
+        {
+            Nonce = 0,
+            GasPrice = UInt256.Zero,
+            GasLimit = GasCostOf.Transaction,
+            To = Recipient,
+            Value = TransferredValue,
+        };
+
+        if (signatureRecovers)
+        {
+            new EthereumEcdsa(BlockchainIds.Mainnet).Sign(senderKey, pinned, isEip155Enabled: false);
+        }
+        else
+        {
+            pinned.Signature = UnrecoverableSignature;
+        }
+
+        PostStateJson postStateJson = new()
+        {
+            ExpectException = "TransactionException.INVALID_SIGNATURE_VRS",
+            Txbytes = Rlp.Encode(pinned, RlpBehaviors.SkipTypedWrapping).Bytes,
+        };
+        TransactionJson transactionJson = new() { Sender = senderKey.Address };
+
+        Dictionary<Address, AccountState> pre = Accounts(senderKey.Address, SenderBalance, senderNonce: 0, RecipientBalance);
+        Dictionary<Address, AccountState> expectedPost = signatureRecovers
+            ? Accounts(senderKey.Address, SenderBalance - TransferredValue, senderNonce: 1, RecipientBalance + TransferredValue)
+            : pre;
+
+        GeneralStateTest test = new()
+        {
+            Name = nameof(Fixture_transaction_executes_only_as_the_sender_its_signature_recovers),
+            Category = "state",
+            Fork = Frontier.Instance,
+            ForkName = Frontier.Instance.Name,
+            CurrentCoinbase = Coinbase,
+            CurrentDifficulty = new UInt256(0x020000),
+            CurrentGasLimit = 1_000_000,
+            CurrentNumber = 1,
+            CurrentTimestamp = 1000,
+            PreviousHash = Keccak.Zero,
+            Pre = pre,
+            PostHash = StateRootOf(expectedPost),
+            Transaction = JsonToEthereumTest.Convert(postStateJson, transactionJson, BlockchainIds.Mainnet),
+        };
+
+        EthereumTestResult result = await RunTest(test);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StateRoot, Is.EqualTo(test.PostHash),
+                "the signature, not the fixture's named sender, decides whether value moves and the nonce advances");
+            Assert.That(result.Error,
+                Is.EqualTo(signatureRecovers ? null : TransactionResult.SenderNotSpecified.ErrorDescription),
+                "an unrecoverable signature leaves the transaction with no sender to execute as");
+        }
+    }
+
+    /// <summary>
+    /// A state-test fixture carries an EIP-8141 frame transaction's frames and sender only in its txbytes,
+    /// with no secret key, so conversion must decode them whether or not the fixture expects a rejection.
+    /// </summary>
+    [Test]
+    public void Frame_transaction_is_converted_from_txbytes([Values] bool expectException)
+    {
+        Nethermind.Core.Transaction frameTx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = BlockchainIds.Mainnet,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 50_000, 0, default),
+                new TxFrame(FrameMode.Sender, FrameFlags.None, Recipient, 50_000, TransferredValue, default),
+            ],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 7,
+        };
+
+        PostStateJson postStateJson = new()
+        {
+            Indexes = new IndexesJson(),
+            ExpectException = expectException ? "TransactionException.TYPE_6_INVALID_FRAME_FORMAT" : null,
+            Txbytes = Rlp.Encode(frameTx, RlpBehaviors.SkipTypedWrapping).Bytes,
+        };
+        TransactionJson transactionJson = new() { Sender = TestItem.AddressA };
+
+        Nethermind.Core.Transaction converted = JsonToEthereumTest.Convert(postStateJson, transactionJson);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(converted.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(converted.SenderAddress, Is.EqualTo(TestItem.AddressA));
+            Assert.That(converted.Frames, Has.Length.EqualTo(2));
+            Assert.That(converted.Frames![1].Value, Is.EqualTo(TransferredValue));
+        }
+    }
+
+    /// <summary>
+    /// EIP-8141 and EIP-8250 static-validity fixtures put a field past its width in the template of a frame
+    /// transaction they expect to be rejected. The file must still load, and the case must still be rejected:
+    /// its txbytes carry the same over-wide field and do not decode. The txbytes are the fixtures' own; the secret
+    /// key is not, and is there so that the template, which cannot describe a frame transaction, could be signed.
+    /// </summary>
+    [TestCase("0x00", "0x00", "0x010000000000000000000000000000000000000000000000000000000000000000",
+        "0x06f8ab018094f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ffcfce010380c8830186a083061a808080f85cf85a0194f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff80b841009c80b16aee0bf0804316732a0e3fafb554c455db959553027e7deced90bd9ce542e74d1e5f322cd0984c55792388b399512c04eee2f6e07dc2e5a6aaf149b55fe480a101000000000000000000000000000000000000000000000000000000000000000080c0",
+        TestName = "max_fee_overflow")]
+    [TestCase("0x00", "0x010000000000000000000000000000000000000000000000000000000000000000", "0x07",
+        "0x06f8ab018094f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ffcfce010380c8830186a083061a808080f85cf85a0194f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff80b841006d3d6a531c3d8e8b70f7cbf21693a924d3d2edb33ba25970a65e2d5bfbdc3e15034838e8cb171dee386b0edc6ce52361448257c189648aa52a8512b840173e55e4a10100000000000000000000000000000000000000000000000000000000000000000780c0",
+        TestName = "priority_fee_overflow")]
+    [TestCase("0x010000000000000000", "0x00", "0x07",
+        "0x06f89701c382beef8901000000000000000094f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ffcfce010380c8830186a083061a808080f85cf85a0194f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff80b841005aa230bd4a1e8ad082a462c3fc49d6ed35fc08f21efa8a9396e392983a9319604982ffe6a2f241b19450f180ab16345bb52fdd1683f444f2cdcee84bd99bc52bc3800780c0",
+        TestName = "seq_beyond_width")]
+    public void Frame_transaction_with_field_beyond_its_width_loads_and_is_rejected(
+        string nonce, string maxPriorityFeePerGas, string maxFeePerGas, string txbytes)
+    {
+        string json = $$"""
+            {
+              "beyond_width": {
+                "env": { "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba", "currentGasLimit": "0x07270e00",
+                         "currentNumber": "0x01", "currentTimestamp": "0x03e8", "currentDifficulty": "0x00", "currentBaseFee": "0x07" },
+                "pre": {},
+                "transaction": { "nonce": "{{nonce}}", "maxPriorityFeePerGas": "{{maxPriorityFeePerGas}}", "maxFeePerGas": "{{maxFeePerGas}}",
+                                 "gasLimit": ["0x07270e00"], "to": "0x00000000000000000000000000000000000000aa", "value": ["0x00"],
+                                 "data": ["0x"], "sender": "0xf6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff",
+                                 "secretKey": "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8" },
+                "post": { "Osaka": [{ "hash": "{{Keccak.Zero}}", "logs": "{{Keccak.Zero}}", "indexes": { "data": 0, "gas": 0, "value": 0 },
+                                      "txbytes": "{{txbytes}}", "expectException": "TransactionException.TYPE_6_INVALID_FRAME_FORMAT" }] }
+              }
+            }
+            """;
+
+        GeneralStateTest test = JsonToEthereumTest.ConvertStateTest(json).Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.LoadFailure, Is.Null);
+            Assert.That(test.Transaction!.SenderAddress, Is.EqualTo(Address.Zero), "an undecodable frame transaction must be rejected");
+        }
+    }
+
+    private static Dictionary<Address, AccountState> Accounts(Address sender, UInt256 senderBalance, ulong senderNonce, UInt256 recipientBalance) => new()
+    {
+        [sender] = new() { Balance = senderBalance, Nonce = senderNonce },
+        [Recipient] = new() { Balance = recipientBalance },
+        [Coinbase] = new() { Balance = CoinbaseBalance },
+    };
+
+    private static Hash256 StateRootOf(Dictionary<Address, AccountState> accounts)
+    {
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(null);
+        InitializeTestState(accounts, worldState, MainnetSpecProvider.Instance);
+        return worldState.StateRoot;
+    }
 }

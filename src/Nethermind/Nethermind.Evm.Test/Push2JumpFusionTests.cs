@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -66,7 +67,8 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         // Exact-gas assertion catches the PUSH2+JUMP fusion double-charge regression:
         // without the `programCounter++` past JUMPDEST, the dispatch loop re-executes the
         // JUMPDEST opcode and charges 1 extra gas.
-        AssertGas(r, 41018);
+        AssertGas(r, 43118);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(7), "opcode count");
     }
 
     [Test]
@@ -100,16 +102,21 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput r = Execute(code);
         AssertStorage(0, (UInt256)0x42);
-        AssertGas(r, 41023);
+        AssertGas(r, 43123);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(8), "opcode count");
     }
 
+    /// <remarks>
+    /// A not-taken JUMPI never validates its destination, so the fused path must fall through the same way
+    /// whether it is the JUMPDEST, a byte that is not one, or beyond the code.
+    /// </remarks>
     [Test]
-    public void PUSH2_JUMPI_not_taken_falls_through()
+    public void PUSH2_JUMPI_not_taken_falls_through([Values(0x000C, 0x000D, 0xFFFF)] int destination)
     {
         // Condition = 0: the fused PUSH2+JUMPI path must skip over the 2-byte immediate
         // and the JUMPI opcode, resuming at the instruction that follows.
         //   [0] PUSH1 0x00       (condition = false)
-        //   [2] PUSH2 0x000C
+        //   [2] PUSH2 destination
         //   [5] JUMPI
         //   [6] PUSH1 0x11       (fall-through, MUST execute)
         //   [8] PUSH1 0x00
@@ -120,7 +127,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         //   [15] PUSH1 0x00
         //   [17] SSTORE
         //   [18] STOP
-        byte[] dest = [0x00, 0x0C];
+        byte[] dest = [(byte)(destination >> 8), (byte)destination];
         byte[] code = Prepare.EvmCode
             .PushData((byte)0x00)
             .PushData(dest)
@@ -140,7 +147,8 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         AssertStorage(0, (UInt256)0x11);
         // Not-taken JUMPI: JUMPDEST is never entered, so double-charge wouldn't fire here.
         // Gas still pinned to catch unrelated regressions.
-        AssertGas(r, 41022);
+        AssertGas(r, 43122);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(7), "opcode count");
     }
 
     [Test]
@@ -170,5 +178,29 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         AssertStorage(0, (UInt256)0);
         // InvalidJumpDestination consumes all remaining gas per EVM spec.
         AssertGas(r, 100000);
+        Assert.That(Machine.OpCodeCount, Is.EqualTo(2), "opcode count");
+    }
+
+    [TestCase(GasCostOf.Transaction + GasCostOf.VeryLow - 1, 1)]
+    [TestCase(GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Jump - 1, 2)]
+    [TestCase(GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.Jump, 3)]
+    public void PUSH2_fused_gas_boundaries_preserve_opcode_count(ulong gasLimit, int expectedOpcodeCount)
+    {
+        byte[] destination = [0x00, 0x05];
+        byte[] code = Prepare.EvmCode
+            .PushData(destination)
+            .Op(Instruction.JUMP)
+            .Op(Instruction.STOP)
+            .Op(Instruction.JUMPDEST)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput r = Execute(Activation, gasLimit, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertGas(r, gasLimit);
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(expectedOpcodeCount), "opcode count");
+        }
     }
 }

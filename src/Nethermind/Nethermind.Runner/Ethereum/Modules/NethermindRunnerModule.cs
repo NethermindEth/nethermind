@@ -7,14 +7,15 @@ using System.Linq;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Grpc;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
+using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -28,6 +29,7 @@ namespace Nethermind.Runner.Ethereum.Modules;
 /// <param name="configProvider"></param>
 /// <param name="processExitSource"></param>
 /// <param name="plugins"></param>
+/// <param name="command">The standalone command to run instead of the node, or <c>null</c> to start a node.</param>
 /// <param name="logManager"></param>
 public class NethermindRunnerModule(
     EthereumJsonSerializer jsonSerializer,
@@ -35,6 +37,7 @@ public class NethermindRunnerModule(
     IConfigProvider configProvider,
     IProcessExitSource processExitSource,
     IEnumerable<INethermindPlugin> plugins,
+    string? command,
     ILogManager logManager
 ) : Module
 {
@@ -60,7 +63,7 @@ public class NethermindRunnerModule(
             .Bind<IApiWithStores, INethermindApi>()
             .Bind<IBasicApi, INethermindApi>()
 
-            .AddModule(new StartRpcStepsModule(configProvider.GetConfig<IGrpcConfig>()))
+            .AddStep(typeof(StartRpc))
             .AddModule(new NethermindInvariantChecks())
 
             .AddSingleton<EthereumRunner>()
@@ -76,6 +79,9 @@ public class NethermindRunnerModule(
             .AddSingleton<IJsonSerializer>(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
+
+        if (command is not null)
+            builder.AddSingleton(new StepCommandSelection(command));
 
         foreach (INethermindPlugin plugin in plugins)
         {

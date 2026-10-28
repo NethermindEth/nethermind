@@ -5,14 +5,23 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.BlockAccessLists;
 
+/// <summary>Stores block access lists by block number and hash.</summary>
+/// <remarks>
+/// Sync holds <see cref="WriteLock"/> around its pruning-cutoff check and insert. Implementations hold the same lock
+/// while deleting a range, releasing it before storage reclaim. Decorators must forward the underlying store's lock.
+/// </remarks>
 public interface IBlockAccessListStore
 {
+    /// <summary>The shared lock serializing sync insertion with range deletion.</summary>
+    Lock WriteLock { get; }
+
     void InsertFromBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? ThrowMissingBlockHash(nameof(block));
@@ -21,7 +30,7 @@ public interface IBlockAccessListStore
         {
             Insert(block.Number, blockHash, block.EncodedBlockAccessList);
         }
-        else if (block.BlockAccessList is not null)
+        else if (block.BlockAccessList is not null && !Exists(block.Number, blockHash))
         {
             Insert(block.Number, blockHash, block.BlockAccessList);
         }
@@ -43,6 +52,9 @@ public interface IBlockAccessListStore
     ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash);
     bool Exists(ulong blockNumber, Hash256 blockHash);
     void Delete(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Drops every access list in <c>[fromInclusive, toExclusive)</c> in one operation.</summary>
+    void DeleteRange(ulong fromInclusive, ulong toExclusive);
 
     [DoesNotReturn, StackTraceHidden]
     private static Hash256 ThrowMissingBlockHash(string paramName) =>

@@ -12,7 +12,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Xdc.RLP;
 
@@ -577,7 +576,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         {
             Id = GenerateForensicsId(ancestorHash, lowerRoundQc, higherRoundQc),
             ForensicsType = "QC",
-            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
+            Content = TypeInfoJsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
         };
 
         if (_logger.IsInfo) _logger.Info($"Forensics proof generated: {forensicsProof.Content}");
@@ -606,7 +605,7 @@ internal class ForensicsProcessor(IBlockTree blockTree, IEpochSwitchManager epoc
         {
             Id = GenerateVoteEquivocationId(signer, smallerRoundVote.ProposedBlockInfo.Round, largerRoundVote.ProposedBlockInfo.Round),
             ForensicsType = "Vote",
-            Content = JsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
+            Content = TypeInfoJsonSerializer.Serialize(content, EthereumJsonSerializer.JsonOptions)
         };
 
         if (_logger.IsInfo) _logger.Info($"Forensics vote-equivocation proof generated: {forensicsProof.Content}");

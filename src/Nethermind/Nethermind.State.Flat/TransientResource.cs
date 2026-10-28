@@ -44,6 +44,19 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
     /// <summary>
+    /// Waits until this retired resource is held only by its owner, so in-flight warmer reads have drained before
+    /// retirement scans its caches.
+    /// </summary>
+    internal void WaitForExclusiveLease()
+    {
+        SpinWait spinWait = default;
+        while (Volatile.Read(ref _leases) != RefCountingLease.Single)
+        {
+            spinWait.SpinOnce();
+        }
+    }
+
+    /// <summary>
     /// Releases one lease; the final release returns the resource to the pool it was checked out from.
     /// </summary>
     /// <remarks>
@@ -83,7 +96,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
             BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
             oldFilter.Dispose();
         }
-        else
+        else if (PrewarmedAddresses.Count != 0)
         {
             PrewarmedAddresses.Clear();
         }
@@ -92,21 +105,29 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public bool ShouldPrewarm(Address address, UInt256? slot) => ShouldPrewarm(address.Bytes, slot);
 
-    public bool ShouldPrewarm(in ValueAddress address, UInt256? slot) => ShouldPrewarm(address.AsSpan, slot);
-
     private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)
     {
-        long hash = SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetReference(addressBytes));
-        if (slot is not null)
-        {
-            UInt256 slotValue = slot.Value;
-            hash ^= SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<UInt256, byte>(ref slotValue));
-        }
-
-        ulong bloomKey = (ulong)hash;
+        ulong bloomKey = PrewarmKey(addressBytes, slot);
         if (PrewarmedAddresses.MightContain(bloomKey)) return false;
         PrewarmedAddresses.Add(bloomKey);
         return true;
+    }
+
+    /// <summary>The deduplication key for an account, or for one of its storage slots.</summary>
+    /// <remarks>
+    /// Equal by construction to <see cref="AddressAsKey.GetHashCode64"/> and
+    /// <see cref="StorageCell.GetHashCode64"/>, which is what <c>PrewarmKey_MatchesTheKeyTypesOwnHashes</c>
+    /// pins. The filter mixes this key with a bijection, so it can relocate collisions but never remove them:
+    /// the key it is handed is the only thing that decides how often it lies. Hashing the address and the slot
+    /// in one keyed chain is what stops a pair chosen together from colliding on purpose.
+    /// </remarks>
+    internal static ulong PrewarmKey(ReadOnlySpan<byte> addressBytes, UInt256? slot)
+    {
+        ref byte address = ref MemoryMarshal.GetReference(addressBytes);
+        if (slot is null) return (ulong)SpanExtensions.FastHash64For20Bytes(ref address);
+
+        UInt256 slotValue = slot.Value;
+        return (ulong)SpanExtensions.FastHash64ForAddressAndSlot(ref address, ref Unsafe.As<UInt256, byte>(ref slotValue));
     }
 
     public void Dispose() => PrewarmedAddresses.Dispose();
@@ -118,6 +139,12 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
+
+    /// <summary>Looks a state or storage node up by the shard and hash from <see cref="TrieNodeCache.GetShardAndHashCode"/>.</summary>
+    public bool TryGetNode(int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(shardIdx, hashCode, hash, out node);
+
+    /// <summary>Adds a state or storage node by the shard and hash from <see cref="TrieNodeCache.GetShardAndHashCode"/>, or returns the one already cached with the same hash.</summary>
+    public TrieNode GetOrAddNode(int shardIdx, int hashCode, TrieNode trieNode) => Nodes.GetOrAdd(shardIdx, hashCode, trieNode);
 
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 

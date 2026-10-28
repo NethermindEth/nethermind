@@ -166,10 +166,8 @@ public class PortfolioViewerMiddlewareTests
         scanner.Received(1).RequestScan(1, Arg.Any<Address>());
     }
 
-    [TestCase("/portfolio-ipfs/../portfolio")]
-    [TestCase("/portfolio-ipfs/foo%20bar")]
-    [TestCase("/portfolio-ipfs")]
-    public async Task Ipfs_InvalidRef_Returns400(string path)
+    [Test]
+    public async Task Ipfs_InvalidRef_Returns400([Values("/portfolio-ipfs/../portfolio", "/portfolio-ipfs/foo%20bar", "/portfolio-ipfs")] string path)
     {
         (DefaultHttpContext ctx, _) = CreateContext(Port, path: path);
 

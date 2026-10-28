@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api.Monitoring;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -28,6 +31,7 @@ public class FlatHistoryModuleTests
             .AddSingleton<IColumnsDb<FlatDbColumns>>(columns)
             .AddSingleton<IColumnsDb<FlatHistoryColumns>>(historyColumns)
             .AddSingleton<IFlatDbConfig>(new FlatDbConfig { HistoryEnabled = true })
+            .AddSingleton<ISyncConfig>(new SyncConfig())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())
             .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
@@ -41,6 +45,46 @@ public class FlatHistoryModuleTests
             Assert.That(container.Resolve<IFlatDbManager>(), Is.InstanceOf<HistoricalFlatDbManager>());
             // The PersistenceManager's optional capture hook resolves to the history writer.
             Assert.That(container.Resolve<IFlatPersistenceCaptureHook>(), Is.InstanceOf<HistoryWriter>());
+        }
+    }
+
+    // The hold reaches the PersistenceManager through the capture hook, and the image reads the state through the
+    // registered persistence; both must resolve to the same writer the startup step starts.
+    [Test]
+    public void A_pivot_image_left_by_a_restart_holds_the_flat_persist_through_the_registered_graph()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
+        StateId pivot = new(1000, Keccak.Compute("pivot"));
+        new HistoryAvailability(historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks))
+            .WritePendingPivotImage(new PendingPivotImage(pivot.BlockNumber, pivot.StateRoot, 512));
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(pivot);
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatHistoryModule())
+            .AddSingleton<IFlatDbManager>(_ => Substitute.For<IFlatDbManager>())
+            .AddSingleton<IColumnsDb<FlatDbColumns>>(columns)
+            .AddSingleton<IColumnsDb<FlatHistoryColumns>>(historyColumns)
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { HistoryEnabled = true })
+            .AddSingleton<ISyncConfig>(new SyncConfig())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IPersistence>(persistence)
+            .AddSingleton<IPersistenceManager>(_ => Substitute.For<IPersistenceManager>())
+            .AddSingleton<ITrieNodeCache>(_ => Substitute.For<ITrieNodeCache>())
+            .AddSingleton<IResourcePool>(_ => Substitute.For<IResourcePool>())
+            .AddSingleton<IMetricsConfig>(_ => Substitute.For<IMetricsConfig>())
+            .Build();
+
+        IFlatPersistenceCaptureHook hook = container.Resolve<IFlatPersistenceCaptureHook>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hook.HoldsFlatPersist, Is.True);
+            Assert.That(container.Resolve<PivotHistoryImageWriter>().Holds, Is.True, "the step starts the writer the hook delegates to");
         }
     }
 

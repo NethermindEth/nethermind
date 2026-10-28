@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.IO.Pipelines;
 using System.Net.Mime;
@@ -33,9 +35,7 @@ public sealed class SszMiddleware
     private readonly ILogger _logger;
     private readonly CancellationToken _processExitToken;
 
-    // Path: /engine/v2/{resource}[/{extra}]. Since execution-apis#793 the fork is no longer a
-    // path segment — fork-scoped endpoints select their container shape via the request header below.
-    private const string EnginePrefix = "/engine/v2/";
+    private const string EnginePrefix = SszRestPaths.BasePath;
 
     /// <summary>
     /// Request header that selects the fork (and thus the SSZ container shape) for fork-scoped
@@ -67,6 +67,9 @@ public sealed class SszMiddleware
     private readonly FrozenSet<string> _multiSegmentResources;
     private readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> _multiSegmentLookup;
 
+    // Resources carrying a path parameter between a fixed head and tail ("payloads/{payloadId}/witness").
+    private readonly (string Head, string Tail, string Resource)[] _templatedResources;
+
     private enum SszRequestKind { NotEngine, EngineWrongMediaType, EngineOk }
 
     public SszMiddleware(
@@ -91,6 +94,15 @@ public sealed class SszMiddleware
         foreach (string resource in _getRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
         _multiSegmentResources = multiSegment.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
         _multiSegmentLookup = _multiSegmentResources.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        List<(string Head, string Tail, string Resource)> templated = [];
+        foreach (string resource in multiSegment)
+        {
+            int open = resource.IndexOf("/{", StringComparison.Ordinal);
+            int close = resource.IndexOf("}/", StringComparison.Ordinal);
+            if (open > 0 && close > open) templated.Add((resource[..open], resource[(close + 2)..], resource));
+        }
+        _templatedResources = [.. templated];
     }
 
     private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
@@ -181,13 +193,13 @@ public sealed class SszMiddleware
             if (endpointNotAvailableForFork)
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                    $"Fork '{fork}' does not support {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    $"Fork '{fork}' does not support {ctx.Request.Method} {EnginePrefix}{pathSegment.Span}",
                     MergeErrorCodes.UnsupportedFork);
             }
             else
             {
                 await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                    $"Unknown method: {ctx.Request.Method} /engine/v2/{pathSegment.Span}",
+                    $"Unknown method: {ctx.Request.Method} {EnginePrefix}{pathSegment.Span}",
                     SszRestErrorCodes.MethodNotFound);
             }
         }
@@ -201,8 +213,8 @@ public sealed class SszMiddleware
             if (_logger.IsTrace)
             {
                 _logger.Trace(extra.IsEmpty
-                    ? $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}"
-                    : $"SSZ-REST {ctx.Request.Method} /engine/v2/{pathSegment.Span}/{extra.Span}");
+                    ? $"SSZ-REST {ctx.Request.Method} {EnginePrefix}{pathSegment.Span}"
+                    : $"SSZ-REST {ctx.Request.Method} {EnginePrefix}{pathSegment.Span}/{extra.Span}");
             }
 
             await DispatchAsync(ctx, handler!, version, extra);
@@ -331,11 +343,19 @@ public sealed class SszMiddleware
         error = null;
 
         StringValues headerValues = ctx.Request.Headers[ForkHeaderName];
+        if (headerValues.Count > 1)
+        {
+            error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                $"Request carries {headerValues.Count} '{ForkHeaderName}' headers, expected exactly one",
+                SszRestErrorCodes.InvalidRequest);
+            return false;
+        }
+
         string? headerValue = headerValues.Count == 1 ? headerValues[0] : null;
         if (string.IsNullOrEmpty(headerValue))
         {
             error = SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
-                $"Request must carry exactly one '{ForkHeaderName}' header", SszRestErrorCodes.InvalidRequest);
+                $"Request must carry an '{ForkHeaderName}' header", MergeErrorCodes.UnsupportedFork);
             return false;
         }
 
@@ -373,6 +393,13 @@ public sealed class SszMiddleware
             {
                 resource = pathSegment[..firstSlash];
                 extraMem = pathSegment[(firstSlash + 1)..];
+
+                // A templated resource ("payloads/{payloadId}/witness") passes its parameter on as the path extra.
+                if (TryMatchTemplate(resource.Span, extraMem, out string? templated, out ReadOnlyMemory<char> parameter))
+                {
+                    resource = templated.AsMemory();
+                    extraMem = parameter;
+                }
             }
         }
 
@@ -422,6 +449,28 @@ public sealed class SszMiddleware
         return false;
     }
 
+    /// <summary>Matches a <paramref name="head"/> and an <paramref name="extra"/> of <c>{parameter}/{tail}</c> against the templated resources.</summary>
+    private bool TryMatchTemplate(ReadOnlySpan<char> head, ReadOnlyMemory<char> extra,
+        [NotNullWhen(true)] out string? resource, out ReadOnlyMemory<char> parameter)
+    {
+        foreach ((string templateHead, string tail, string templated) in _templatedResources)
+        {
+            int tailStart = extra.Length - tail.Length;
+            if (tailStart > 1
+                && extra.Span[tailStart - 1] == '/'
+                && head.Equals(templateHead, StringComparison.OrdinalIgnoreCase)
+                && extra.Span[tailStart..].Equals(tail, StringComparison.OrdinalIgnoreCase))
+            {
+                resource = templated;
+                parameter = extra[..(tailStart - 1)];
+                return true;
+            }
+        }
+
+        resource = null;
+        parameter = default;
+        return false;
+    }
 
     private SszRequestKind ClassifySszRequest(HttpContext ctx)
     {
@@ -457,25 +506,62 @@ public sealed class SszMiddleware
                 if (IsDiagnosticGetPath(path))
                     return SszRequestKind.EngineOk;
 
-                foreach (string? v in ctx.Request.Headers.Accept)
-                {
-                    if (v is not null && v.Contains(
-                        MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                        return SszRequestKind.EngineOk;
-                }
-
-                return SszRequestKind.NotEngine;
+                return AcceptsOctetStream(ctx)
+                    ? SszRequestKind.EngineOk
+                    : SszRequestKind.EngineWrongMediaType;
 
             default:
                 return SszRequestKind.NotEngine;
         }
     }
 
+    /// <summary>Whether the request's <c>Accept</c> header allows an SSZ response body.</summary>
+    /// <remarks>An absent header means any type is acceptable (RFC 9110 §12.5.1).</remarks>
+    private static bool AcceptsOctetStream(HttpContext ctx)
+    {
+        bool anyValue = false;
+        foreach (string? v in ctx.Request.Headers.Accept)
+        {
+            if (string.IsNullOrWhiteSpace(v)) continue;
+            anyValue = true;
+
+            foreach (Range r in v.AsSpan().Split(','))
+            {
+                ReadOnlySpan<char> range = v.AsSpan()[r].Trim();
+                if (range.IsEmpty) continue;
+
+                int semicolon = range.IndexOf(';');
+                ReadOnlySpan<char> mediaType = (semicolon < 0 ? range : range[..semicolon]).TrimEnd();
+                if (!mediaType.Equals(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase)
+                    && !mediaType.Equals("application/*", StringComparison.OrdinalIgnoreCase)
+                    && !mediaType.Equals("*/*", StringComparison.Ordinal))
+                    continue;
+
+                if (!IsRejectedByQualityValue(semicolon < 0 ? default : range[(semicolon + 1)..]))
+                    return true;
+            }
+        }
+        return !anyValue;
+    }
+
+    /// <summary>Whether <paramref name="parameters"/> carries <c>q=0</c>, which refuses the media range.</summary>
+    private static bool IsRejectedByQualityValue(ReadOnlySpan<char> parameters)
+    {
+        foreach (Range r in parameters.Split(';'))
+        {
+            ReadOnlySpan<char> parameter = parameters[r].Trim();
+            if (!parameter.StartsWith("q=", StringComparison.OrdinalIgnoreCase)) continue;
+
+            return double.TryParse(parameter[2..], CultureInfo.InvariantCulture, out double quality) && quality <= 0d;
+        }
+        return false;
+    }
+
     private static bool IsDiagnosticGetPath(string path)
     {
         ReadOnlySpan<char> span = path.AsSpan();
-        const string capabilitiesPath = "/engine/v2/capabilities";
-        const string identityPath = "/engine/v2/identity";
+        const string capabilitiesPath = $"{EnginePrefix}{SszRestPaths.Capabilities}";
+        const string identityPath = $"{EnginePrefix}{SszRestPaths.ClientVersion}";
 
         return span.Equals(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase)
             || (span.StartsWith(capabilitiesPath.AsSpan(), StringComparison.OrdinalIgnoreCase) && span.Length > capabilitiesPath.Length && span[capabilitiesPath.Length] == '/')

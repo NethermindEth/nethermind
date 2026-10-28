@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -14,6 +20,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -40,6 +47,27 @@ public class PersistedSnapshotCompactorTests
         try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task EnqueueAsync_FailedHandoff_ReturnsBatchToPool(bool disposed)
+    {
+        using FlatTestContainer tier = new();
+        using CancellationTokenSource cancellation = new();
+        ArrayPool<StateId> pool = Substitute.For<ArrayPool<StateId>>();
+        StateId[] rented = new StateId[1];
+        pool.Rent(1).Returns(rented);
+        using ArrayPoolList<StateId> batch = new(pool, 1) { new StateId(1, Keccak.EmptyTreeHash) };
+
+        if (disposed)
+            await tier.Compactor.DisposeAsync();
+        else
+            await cancellation.CancelAsync();
+
+        Type exceptionType = disposed ? typeof(ObjectDisposedException) : typeof(OperationCanceledException);
+        Assert.That(async () => await tier.Compactor.EnqueueAsync(batch, 0, cancellation.Token), Throws.InstanceOf(exceptionType));
+        pool.Received(1).Return(rented, Arg.Any<bool>());
+    }
+
     /// <summary>
     /// Regression for large-tier compactions where N approaches the typical
     /// <c>compactSize/CompactSize</c> ceiling (~32). Each source carries a unique account
@@ -49,10 +77,8 @@ public class PersistedSnapshotCompactorTests
     /// here flag mis-cached keys, missed bound refresh after <c>MoveNext</c>, or
     /// destruct-barrier/slot-bound mismatches in <c>MergeEntries</c>.
     /// </summary>
-    [TestCase(8)]
-    [TestCase(16)]
-    [TestCase(32)]
-    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots(int n)
+    [Test]
+    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots([Values(8, 16, 32)] int n)
     {
         // CompactSize=4. n is a power of 2 in {8, 16, 32}, so n & -n == n: block n's natural
         // window covers the whole (0, n] range and DoCompactSnapshot triggers a single merge.
@@ -73,7 +99,7 @@ public class PersistedSnapshotCompactorTests
             // a distinct slot — drives matchCount == N through MergeEntries,
             // and the slot merge sees N inputs with N unique slot keys.
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
+            c.Storages[(TestItem.AddressA, (UInt256)i)] = (UInt256)((byte)i) << 248;
             tier.ConvertToPersistedBase(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
             prev = next;
         }
@@ -97,10 +123,9 @@ public class PersistedSnapshotCompactorTests
 
             for (int i = 1; i <= n; i++)
             {
-                SlotValue slot = default;
-                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
+                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, out UInt256? slot), Is.True,
                     $"Slot {i} must survive merge");
-                Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
+                Assert.That(slot, Is.EqualTo((UInt256)((byte)i) << 248),
                     $"Slot {i} value mismatch");
             }
         }
@@ -134,7 +159,7 @@ public class PersistedSnapshotCompactorTests
 
         SnapshotContent c0 = new();
         c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
-        c0.Storages[(TestItem.AddressA, slotIndex)] = new SlotValue(new byte[] { 0x42 });
+        c0.Storages[(TestItem.AddressA, slotIndex)] = (UInt256)(0x42) << 248;
         c0.StorageNodes[(addrHash256, topPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
         c0.StorageNodes[(addrHash256, compactPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x81]);
         c0.StorageNodes[(addrHash256, fallbackPath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x82]);
@@ -331,13 +356,13 @@ public class PersistedSnapshotCompactorTests
             TreePath storagePath = new(Hash256.Zero, 4);
             SnapshotContent c0 = new();
             c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
-            c0.Storages[(TestItem.AddressA, 1)] = new SlotValue(new byte[] { 0x42 });
+            c0.Storages[(TestItem.AddressA, 1)] = (UInt256)(0x42) << 248;
             c0.SelfDestructedStorageAddresses[TestItem.AddressB] = true;
             c0.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC0, 0x80]);
             c0.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             SnapshotContent c1 = new();
             c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)200).TestObject;
-            c1.Storages[(TestItem.AddressA, 2)] = new SlotValue(new byte[] { 0x99 });
+            c1.Storages[(TestItem.AddressA, 2)] = (UInt256)(0x99) << 248;
             c1.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             c1.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
             yield return new TestCaseData(
@@ -347,13 +372,11 @@ public class PersistedSnapshotCompactorTests
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
 
-                    SlotValue slot1 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
-                    Assert.That(slot1.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x42 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
+                    Assert.That(slot1, Is.EqualTo((UInt256)(0x42) << 248));
 
-                    SlotValue slot2 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
-                    Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
+                    Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
 
                     Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressB), Is.Not.Null,
                         "Self-destruct flag for B (set in c0) must be present after compaction");
@@ -413,19 +436,17 @@ public class PersistedSnapshotCompactorTests
         // Older slot cleared by self-destruct, newer slot + flag preserved.
         {
             SnapshotContent c0 = new();
-            c0.Storages[(TestItem.AddressA, 1)] = new SlotValue(new byte[] { 0x42 });
+            c0.Storages[(TestItem.AddressA, 1)] = (UInt256)(0x42) << 248;
             SnapshotContent c1 = new();
             c1.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
-            c1.Storages[(TestItem.AddressA, 2)] = new SlotValue(new byte[] { 0x99 });
+            c1.Storages[(TestItem.AddressA, 2)] = (UInt256)(0x99) << 248;
             yield return new TestCaseData(
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    SlotValue slot1 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
-                    SlotValue slot2 = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
-                    Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.False, "Older slot must be cleared by newer destruct");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
+                    Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
                     Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");
@@ -482,8 +503,7 @@ public class PersistedSnapshotCompactorTests
                 {
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100), "Account-only EOA copied verbatim");
-                    SlotValue slotA = default;
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slotA), Is.False, "EOA has no slots");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slotA), Is.False, "EOA has no slots");
 
                     Assert.That(s.TryGetAccount(TestItem.AddressC, out Account? c), Is.True);
                     Assert.That(c!.Balance, Is.EqualTo((UInt256)300), "Account survives verbatim copy");
@@ -750,9 +770,8 @@ public class PersistedSnapshotCompactorTests
     /// runs for every cursor address. Newest-wins on Account / first-non-empty on Address
     /// preimage / TryAdd on SD must all hold after the staged DenseByteIndex round-trips.
     /// </summary>
-    [TestCase(40)]
-    [TestCase(120)]
-    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips(int accountCount)
+    [Test]
+    public void Compact_MultiSourceMerge_NoStorageFastPath_RoundTrips([Values(40, 120)] int accountCount)
     {
         using FlatTestContainer tier = new(
             arenaFileSizeBytes: 256 * 1024,
@@ -878,6 +897,49 @@ public class PersistedSnapshotCompactorTests
         compactor.DoCompactSnapshot(new StateId(4, Keccak.Compute("b4")));
 
         Assert.That(tier.Repository.PersistedSnapshotCount, Is.EqualTo(0), "no compaction should have run");
+    }
+
+    // A compaction whose snapshot fails to build or to register frees its region, so it must not leave a catalog
+    // row: the next restart would reload that row over the freed region.
+    [Test]
+    public async Task DoCompactSnapshot_Failure_LeavesNoCatalogRow([Values] bool failRegistration)
+    {
+        using FlatTestContainer tier = NewTier(compactSize: 4);
+        StateId prev = new(0, Keccak.EmptyTreeHash);
+        for (int i = 1; i <= 2; i++)
+        {
+            StateId to = new((ulong)i, Keccak.Compute($"p{i}"));
+            SnapshotContent c = new();
+            c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]);
+            using (Snapshot snapshot = new(prev, to, c, _pool, ResourcePool.Usage.MainBlockProcessing))
+                tier.ConvertToPersistedBase(snapshot).Dispose();
+            prev = to;
+        }
+
+        await using (ILifetimeScope scope = tier.BeginScope(builder =>
+        {
+            builder.AddSingleton<PersistedSnapshotCompactor>();
+            if (failRegistration)
+            {
+                ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+                repository.PersistedSnapshotCount.Returns(_ => tier.Repository.PersistedSnapshotCount);
+                repository.AssemblePersistedSnapshotsForCompaction(Arg.Any<StateId>(), Arg.Any<ulong>())
+                    .Returns(call => tier.Repository.AssemblePersistedSnapshotsForCompaction(call.ArgAt<StateId>(0), call.ArgAt<ulong>(1)));
+                repository.When(r => r.AddPersistedSnapshot(Arg.Any<PersistedSnapshot>(), Arg.Any<SnapshotTier>()))
+                    .Do(_ => throw new InvalidOperationException());
+                builder.AddSingleton(repository);
+            }
+            else
+            {
+                // Without the bases' blob arena, the compacted snapshot fails to lease it.
+                builder.AddSingleton(new BlobArenaManager(Path.Combine(_memArenaDir, "blob"), 4 * 1024 * 1024));
+            }
+        }))
+        {
+            Assert.That(() => scope.Resolve<PersistedSnapshotCompactor>().DoCompactSnapshot(prev), Throws.InvalidOperationException);
+        }
+
+        Assert.That(tier.Resolve<ISnapshotCatalog>().Load().Select(e => e.Tier), Is.All.EqualTo(SnapshotTier.PersistedBase));
     }
 
     [Test]

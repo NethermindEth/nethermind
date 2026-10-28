@@ -16,13 +16,14 @@ public partial class Bls12381FpToG1Precompile : IPrecompile<Bls12381FpToG1Precom
 
     private Bls12381FpToG1Precompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(0x10);
-
-    public static string Name => "BLS12_MAP_FP_TO_G1";
+    public string Name => "BLS12_MAP_FP_TO_G1";
 
     public ulong BaseGasCost(IReleaseSpec _) => 5500UL;
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
+
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        ValidateInputLength(inputData) ? inputData : ReadOnlyMemory<byte>.Empty;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

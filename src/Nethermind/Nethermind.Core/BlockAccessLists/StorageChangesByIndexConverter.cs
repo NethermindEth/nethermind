@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -29,7 +30,7 @@ public class StorageChangesByIndexConverter : JsonConverter<StorageChange[]>
 
             // Property name is the index — we read it from the StorageChange itself, not the key.
             reader.Read();
-            StorageChange change = JsonSerializer.Deserialize<StorageChange>(ref reader, options);
+            StorageChange change = TypeInfoJsonSerializer.Deserialize<StorageChange>(ref reader, options);
             result.Add(change);
         }
 
@@ -42,7 +43,7 @@ public class StorageChangesByIndexConverter : JsonConverter<StorageChange[]>
         foreach (StorageChange change in value)
         {
             writer.WritePropertyName(change.Index.ToString(CultureInfo.InvariantCulture));
-            JsonSerializer.Serialize(writer, change, options);
+            TypeInfoJsonSerializer.Serialize(writer, change, options);
         }
         writer.WriteEndObject();
     }

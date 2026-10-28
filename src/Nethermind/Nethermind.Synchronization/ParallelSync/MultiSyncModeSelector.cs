@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (IsTheModeSwitchWorthMentioning(current, newModes))
                             {
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Changing sync {current} to {newModes} at {BuildStateString(best)}");
+                                    _logger.Info($"Changing sync {current.ToFlagsString()} to {newModes.ToFlagsString()} at {BuildStateString(best)}");
                             }
                         }
                         catch (InvalidAsynchronousStateException)
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Changing state to {newModes} | {reason}");
+                _logger.Trace($"Changing state to {newModes.ToFlagsString()} | {reason}");
             }
 
             SyncMode previous = Current;
@@ -593,6 +593,13 @@ namespace Nethermind.Synchronization.ParallelSync
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
             Snapshot best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
+
+            // A pre-merge reorg to a shorter, heavier branch lowers the best header between the reads.
+            // Recalculating then would reset the pointers by number, back onto the lighter branch.
+            if (IsSnapshotInvalid(best))
+            {
+                best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
+            }
 
             if (IsSnapshotInvalid(best))
             {

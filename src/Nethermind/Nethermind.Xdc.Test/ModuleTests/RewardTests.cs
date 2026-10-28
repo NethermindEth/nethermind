@@ -51,8 +51,7 @@ public class RewardTests
         XdcBlockHeader checkpointHeader = builder.TestObject;
         IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
         spec.SwitchBlock.Returns(0UL);
-        XdcRewardCalculatorSource source = CreateRewardCalculatorSource(isSubnet);
-        XdcRewardCalculator rewardCalculator = (XdcRewardCalculator)source.Get(
+        XdcRewardCalculator rewardCalculator = CreateRewardCalculator(isSubnet,
             CreateXdcTransactionProcessor(Substitute.For<ISpecProvider>(), Substitute.For<IMasternodeVotingContract>()));
 
         HashSet<Address> masternodes = rewardCalculator.GetRewardMasternodes(checkpointHeader, spec);
@@ -764,7 +763,7 @@ public class RewardTests
             .TestObject;
     }
 
-    private static XdcRewardCalculatorSource CreateRewardCalculatorSource(bool isSubnet)
+    private static XdcRewardCalculator CreateRewardCalculator(bool isSubnet, ITransactionProcessor transactionProcessor)
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -773,8 +772,8 @@ public class RewardTests
         IMintedRecordContract mintedRecordContract = Substitute.For<IMintedRecordContract>();
         ISigningTxCache signingTxCache = Substitute.For<ISigningTxCache>();
         return isSubnet
-            ? new XdcSubnetRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache)
-            : new XdcRewardCalculatorSource(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache);
+            ? new XdcSubnetRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, transactionProcessor)
+            : new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, transactionProcessor);
     }
 
     private static XdcTransactionProcessor CreateXdcTransactionProcessor(
@@ -789,9 +788,9 @@ public class RewardTests
             LimboLogs.Instance,
             masternodeVotingContract);
 
-    private static UInt256 ReadStorageUInt256(IWorldState worldState, Address address, UInt256 slot)
+    private static UInt256 ReadStorageUInt256(IWorldState worldState, Address address, in UInt256 slot)
     {
-        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(address, slot));
-        return value.Length == 0 ? UInt256.Zero : new UInt256(value, isBigEndian: true);
+        worldState.Get(new StorageCell(address, slot), out UInt256 value);
+        return value;
     }
 }

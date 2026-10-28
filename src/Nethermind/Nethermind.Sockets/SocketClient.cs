@@ -39,8 +39,8 @@ public class SocketClient<TStream>(
         if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
             string.IsNullOrWhiteSpace(message.Client))
         {
-            await _jsonSerializer.SerializeAsync(_stream, new { type = message.Type, client = ClientName, data = message.Data }, CancellationToken.None, indented: false, leaveOpen: true);
-            await _stream.WriteEndOfMessageAsync();
+            await _jsonSerializer.SerializeAsync(_stream, new SocketsMessage(message.Type, ClientName, message.Data), CancellationToken.None, indented: false, leaveOpen: true);
+            await _stream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
     }
 
@@ -96,7 +96,6 @@ public class SocketClient<TStream>(
         }
         finally
         {
-            await _stream.DisposeAsync();
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }

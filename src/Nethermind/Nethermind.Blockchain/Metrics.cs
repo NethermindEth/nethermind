@@ -27,7 +27,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Total number of blocks processed")]
-    public static ulong Blocks { get; set; }
+    public static ulong Blocks;
 
     [CounterMetric]
     [Description("Total number of chain reorganizations")]
@@ -57,6 +57,74 @@ public static class Metrics
     [Description("Total number of failed block seals")]
     public static long FailedBlockSeals { get; set; }
 
+    [CounterMetric]
+    [Description("Transactions block processing took over from their pre-warm run")]
+    public static long PrewarmHandoffs { get; set; }
+
+    [CounterMetric]
+    [Description("Mempool pre-warm sessions a block stopped between passes, without waiting for them to end")]
+    public static long PrewarmSpeculativeStopsWithoutWaiting { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed because state their pre-warm run read had changed")]
+    public static long PrewarmHandoffsRejected { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed for lack of a usable pre-warm run")]
+    public static long PrewarmHandoffsMissing { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed after their pre-warm run failed to apply")]
+    public static long PrewarmHandoffFailures { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-warm runs taken to be refreshed because an earlier transaction leaves a slot they read at another value")]
+    public static long PrewarmRefreshes { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes not run: a slot the run read is not tracked, or none of them moved")]
+    public static long PrewarmRefreshesSkipped { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes stopped because block processing reached their transaction")]
+    public static long PrewarmRefreshesCancelled { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes whose run left no footprint")]
+    public static long PrewarmRefreshesFailed { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshed pre-warm runs stored for block processing to take over")]
+    public static long PrewarmRefreshesStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a refreshed pre-warm run")]
+    public static long PrewarmRefreshesTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
+    public static long PrewarmMempoolRunsStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
+    public static long PrewarmMempoolRunsTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions whose reads past the pre-block caches started a storage discovery while block processing executed them")]
+    public static long PrewarmInFlightStarted { get; set; }
+
+    [CounterMetric]
+    [Description("Discovery rounds run for transactions block processing was executing")]
+    public static long PrewarmInFlightRounds;
+
+    [CounterMetric]
+    [Description("Storage cells discovered and read for transactions block processing was executing")]
+    public static long PrewarmInFlightCells;
+
+    [CounterMetric]
+    [Description("Reads past the pre-block caches block processing made in a transaction after its in-flight discovery started")]
+    public static long PrewarmInFlightLateMisses { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
@@ -85,13 +153,13 @@ public static class Metrics
     [GaugeMetric]
     [Description("The current height of the canonical chain.")]
     [DataMember(Name = "ethereum_blockchain_height")]
-    public static ulong BlockchainHeight { get; set; }
+    public static ulong BlockchainHeight;
 
     //EIP-2159: Common Prometheus Metrics Names for Clients
     [GaugeMetric]
     [Description("The estimated highest block available.")]
     [DataMember(Name = "ethereum_best_known_block_number")]
-    public static ulong BestKnownBlockNumber { get; set; }
+    public static ulong BestKnownBlockNumber;
 
     [GaugeMetric]
     [Description("Number of invalid blocks.")]
@@ -100,6 +168,10 @@ public static class Metrics
     [GaugeMetric]
     [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
     public static long BadBlocksByNethermindNodes;
+
+    [CounterMetric]
+    [Description("Number of blocks rejected for their block access list by parallel validation.")]
+    public static long ParallelBlockAccessListRejections;
 
     [GaugeMetric]
     [Description("State root calculation time")]

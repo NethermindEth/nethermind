@@ -17,9 +17,9 @@ namespace Nethermind.Optimism;
 /// <remarks>
 /// <see cref="OptimismCL"/> is a long-running background service; it is started fire-and-forget here and disposed by
 /// the container. A step is used (rather than an activation hook) so the driver only starts once the blockchain,
-/// block producer and network are initialized.
+/// block producer and network are initialized, and the blocks left unprocessed at the last shutdown are processed.
 /// </remarks>
-[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork))]
+[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
 public class StartOptimismCl(OptimismCL optimismCl, ILogManager logManager) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
