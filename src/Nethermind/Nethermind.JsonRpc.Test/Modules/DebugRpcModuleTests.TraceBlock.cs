@@ -2128,14 +2128,19 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
+    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay(
+        [Values] bool streaming, [Values] bool bodyAvailable, [Values] bool historyPruned)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         BlockHeader genesis = chain.BlockTree.Genesis!;
+        // The default ancient-body barrier is one; use explicit archive/pruned bounds for genesis.
+        chain.BlockTree.NewOldestBlock(0);
+        chain.BlockTree.UpdateLowestServedBlock(historyPruned ? 1UL : 0UL);
         if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(chain.BlockTree.LowestServedBlock, Is.EqualTo(historyPruned ? 1UL : 0UL));
             Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
             Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
         }
@@ -2144,9 +2149,10 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual["result"], Is.Null);
-            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound));
-            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
-                ? "genesis is not traceable" : $"block {genesis.Hash} not found"));
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput
+                : historyPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable ? "genesis is not traceable"
+                : historyPruned ? ErrorMessages.PrunedHistoryUnavailable : $"block {genesis.Hash} not found"));
         }
     }
 
