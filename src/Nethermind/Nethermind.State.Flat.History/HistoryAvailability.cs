@@ -54,8 +54,9 @@ public sealed class HistoryAvailability
     // Monotonic fast path: never used to refuse (a miss re-reads), so a reader instance cannot lag the writer.
     private long _observedWatermark = -1;
 
-    // Refusing early is safe because the floor only moves up; an accept always re-reads the DB.
-    private long _observedFloor = -1;
+    // Every floor write goes through this instance, under the floor lock, and so does the first load; -1 until loaded.
+    // A write updates it before the pruner drains scopes, so a scope admitted after the drain began sees the new floor.
+    private long _knownFloor = -1;
 
     // Bumped once a capture batch is durable and always before the persist that supersedes the live column, so a
     // reader that sees it unchanged across its live read knows no row can have appeared under it.
@@ -64,6 +65,13 @@ public sealed class HistoryAvailability
     // Generation-guarded: a scan only publishes if its generation is still current, so a racing write wins.
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
+
+    // A whole-block trace checks the same (block, root) once per transaction scope. Only a match at or below the
+    // observed watermark is kept, where no capture walk rewrites the marker; every other marker write or removal bumps
+    // the generation once visible, which voids every slot stamped before. Generation 0 marks an empty slot.
+    private const int MatchedRootSlots = 64;
+    private readonly MatchedRoot[] _matchedRoots = new MatchedRoot[MatchedRootSlots];
+    private long _matchedRootsGeneration = 1;
 
     internal long CaptureGeneration => Volatile.Read(ref _captureGeneration);
 
@@ -175,6 +183,22 @@ public sealed class HistoryAvailability
     /// independent of coverage.</summary>
     public bool RootMatches(ulong block, in ValueHash256 stateRoot)
     {
+        ref MatchedRoot slot = ref _matchedRoots[(int)(block & (MatchedRootSlots - 1))];
+        long generation = Volatile.Read(ref _matchedRootsGeneration);
+        if (slot.Matches(block, stateRoot, generation)) return true;
+
+        long observedWatermark = Volatile.Read(ref _observedWatermark);
+        if (!ReadRootMatches(block, stateRoot)) return false;
+
+        if (observedWatermark >= 0 && block <= (ulong)observedWatermark) slot.Publish(block, stateRoot, generation);
+        return true;
+    }
+
+    /// <summary>Voids every remembered root match. Call once a marker removal or overwrite is visible.</summary>
+    internal void ForgetMatchedRoots() => Interlocked.Increment(ref _matchedRootsGeneration);
+
+    private bool ReadRootMatches(ulong block, in ValueHash256 stateRoot)
+    {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
         Span<byte> capturedRoot = stackalloc byte[RootBytes];
@@ -206,16 +230,25 @@ public sealed class HistoryAvailability
         }
 
         floor = BinaryPrimitives.ReadUInt64BigEndian(value);
-        Volatile.Write(ref _observedFloor, (long)floor);
         return true;
     }
 
     /// <summary>Whether <paramref name="block"/> sits below the published global floor (has been pruned).</summary>
     public bool IsBelowGlobalFloor(ulong block)
     {
-        long observed = Volatile.Read(ref _observedFloor);
-        if (observed >= 0 && block < (ulong)observed) return true; // refuse fast path only, see field comment
-        return TryGetGlobalFloor(out ulong floor) && block < floor;
+        long floor = Volatile.Read(ref _knownFloor);
+        if (floor < 0) floor = LoadFloor();
+        return block < (ulong)floor;
+    }
+
+    private long LoadFloor()
+    {
+        lock (_floorLock)
+        {
+            long floor = TryGetGlobalFloor(out ulong published) ? (long)published : 0;
+            Volatile.Write(ref _knownFloor, floor);
+            return floor;
+        }
     }
 
     /// <summary>Publish before deleting anything below the floor, so a crash between the two leaves the floor
@@ -287,8 +320,13 @@ public sealed class HistoryAvailability
     public void ForgetObservedRecords()
     {
         Interlocked.Increment(ref _recordsGeneration);
+        ForgetMatchedRoots();
         Volatile.Write(ref _observedWatermark, -1);
-        Volatile.Write(ref _observedFloor, -1);
+        lock (_floorLock)
+        {
+            Volatile.Write(ref _knownFloor, -1);
+        }
+
         Volatile.Write(ref _cachedScopes, null);
     }
 
@@ -336,6 +374,7 @@ public sealed class HistoryAvailability
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         _availableBlocks.PutSpan(GlobalFloorKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
+        Volatile.Write(ref _knownFloor, (long)floor);
     }
 
     /// <summary>Refuses on unwindowed v2 data, where a slice is meaningless and stamping would brick the v2 read
@@ -546,5 +585,36 @@ public sealed class HistoryAvailability
         BinaryPrimitives.WriteUInt64BigEndian(value, watermark);
         _availableBlocks.PutSpan(WatermarkKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
+    }
+
+    /// <summary>A sequence lock: odd while a writer fills the slot, so a reader that sees the same even sequence on
+    /// both sides of its field reads saw no torn root.</summary>
+    private struct MatchedRoot
+    {
+        private int _sequence;
+        private long _generation;
+        private ulong _block;
+        private ValueHash256 _root;
+
+        public bool Matches(ulong block, in ValueHash256 root, long generation)
+        {
+            int sequence = Volatile.Read(ref _sequence);
+            if ((sequence & 1) != 0) return false;
+
+            bool matches = _generation == generation && _block == block && _root == root;
+            Interlocked.MemoryBarrier();
+            return matches && Volatile.Read(ref _sequence) == sequence;
+        }
+
+        public void Publish(ulong block, in ValueHash256 root, long generation)
+        {
+            int sequence = Volatile.Read(ref _sequence);
+            if ((sequence & 1) != 0 || Interlocked.CompareExchange(ref _sequence, sequence + 1, sequence) != sequence) return;
+
+            _generation = generation;
+            _block = block;
+            _root = root;
+            Volatile.Write(ref _sequence, sequence + 2);
+        }
     }
 }
