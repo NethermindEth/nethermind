@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -66,7 +67,7 @@ public partial class Bls12381PairingCheckPrecompile
             dstOffset += Eip2537.LenG2Trimmed;
         }
 
-        Accelerators.Status status = Accelerators.Bls12381Pairing(decoded, (nuint)pairCount, out bool verified);
+        Accelerators.Status status = CurveAccelerators.Bls12381Pairing(decoded, (nuint)pairCount, out bool verified);
 
         if (status == Accelerators.Status.OK)
         {
