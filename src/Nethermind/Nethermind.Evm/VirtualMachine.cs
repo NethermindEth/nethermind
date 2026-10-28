@@ -391,10 +391,32 @@ public partial class VirtualMachine<TGasPolicy>(
         _previousCallOutputDestination = UInt256.Zero;
         _previousCallOutputWindowLength = 0;
         nuint previousCallOutputLength = 0;
+        RunFrames<TTracingInst>(baseDepth: 0, ref previousCallOutputLength, out TransactionSubstate substate);
+        return substate;
+    }
 
+    /// <summary>
+    /// Processes call frames until the top-level call completes or, when the frames above <paramref name="baseDepth"/>
+    /// on the state stack have all finished, their caller resumes.
+    /// </summary>
+    /// <param name="baseDepth">The state stack depth below which the caller of the frames run here sits; zero for a transaction.</param>
+    /// <param name="previousCallOutputLength">The length of the output the resumed frame still has to copy.</param>
+    /// <param name="substate">The transaction's substate, once the top-level call completes.</param>
+    /// <returns>Whether the top-level call completed; otherwise the caller of the frames above the base resumes.</returns>
+    [SkipLocalsInit]
+    private bool RunFrames<TTracingInst>(int baseDepth, scoped ref nuint previousCallOutputLength, out TransactionSubstate substate)
+        where TTracingInst : struct, IFlag
+    {
         // Main execution loop: processes call frames until the top-level transaction completes.
         while (true)
         {
+            // Every frame above the base has finished, so the caller that ran them resumes itself.
+            if (_stateStack.Count < baseDepth)
+            {
+                substate = default;
+                return false;
+            }
+
             // For non-continuation frames, clear any previously stored return data.
             if (!_currentState.IsContinuation)
             {
@@ -450,11 +472,11 @@ public partial class VirtualMachine<TGasPolicy>(
                     // Handle exceptions raised during the call execution.
                     if (callResult.IsException)
                     {
-                        TransactionSubstate substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
+                        substate = HandleException(in callResult, ref previousCallOutputLength, out bool terminate);
                         if (terminate)
                         {
                             _currentState = null!;
-                            return substate;
+                            return true;
                         }
                         // Continue execution if the exception did not immediately finalize the transaction.
                         continue;
@@ -465,13 +487,13 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (_currentState.IsTopLevel)
                 {
                     // Restore reverted EIP-8037 state gas before the tracer observes the final gas remaining.
-                    TransactionSubstate substate = PrepareTopLevelSubstate(in callResult);
+                    substate = PrepareTopLevelSubstate(in callResult);
                     if (IsTracingActions)
                     {
                         TraceTransactionActionEnd(_currentState, callResult);
                     }
                     _currentState = null!;
-                    return substate;
+                    return true;
                 }
 
                 // For nested call frames, merge the results and restore the previous execution state.
@@ -558,11 +580,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
             // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
-            TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutputLength, out bool shouldExit);
+            substate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutputLength, out bool shouldExit);
             if (shouldExit)
             {
                 _currentState = null!;
-                return failSubstate;
+                return true;
             }
         }
     }
