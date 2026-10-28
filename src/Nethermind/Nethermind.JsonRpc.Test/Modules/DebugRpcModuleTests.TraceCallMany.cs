@@ -8,8 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -18,6 +20,9 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test.Modules.Eth;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -86,8 +91,21 @@ public partial class DebugRpcModuleTests
 
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
         Assert.That(result, Has.Count.EqualTo(1));
+#pragma warning restore NUnit2045
         Assert.That((JArray)result[0], Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_ignores_traceCall_transaction_index([Values] bool streaming, [Values(0UL, ulong.MaxValue)] ulong index)
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        TransactionBundle[] bundles = [CreateBundle(CreateTransaction())];
+        JArray expected = await RunTraceCallManyAsJson(ctx, bundles);
+        JArray actual = await RunTraceCallManyAsJson(ctx, bundles, new GethTraceOptions { TxIndex = index });
+        Assert.That(JToken.DeepEquals(actual, expected), Is.True, actual.ToString());
     }
 
     [Test]
@@ -122,10 +140,13 @@ public partial class DebugRpcModuleTests
         Assert.That(result.Select(r => ((JArray)r).Count), Is.EqualTo([1]));
 
         JToken trace = result[0][0]!;
-        Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
-        Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
-        Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
-        Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)trace["failed"]!, Is.True, "insufficient balance must surface as failed:true");
+            Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
+            Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
+            Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+        }
     }
 
     [Test]
@@ -167,7 +188,7 @@ public partial class DebugRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }
@@ -191,7 +212,9 @@ public partial class DebugRpcModuleTests
         };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+#pragma warning disable NUnit2045 // The nested collection shape must be checked before taking its first element.
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+#pragma warning restore NUnit2045
         Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
@@ -209,8 +232,45 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
+#pragma warning disable NUnit2045 // The nested collection shape must be checked before taking its first element.
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+#pragma warning restore NUnit2045
         Assert.That(result.Data.First().First(), Is.Not.Null);
+    }
+
+    // A bundle with overrides runs through the simulate executor, which must still reject a lone blob fee cap: only the
+    // simulate endpoints read one as absent.
+    [Test]
+    public async Task Debug_traceCallMany_rejects_a_lone_blob_fee_cap([Values] bool blockOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208", maxFeePerBlobGas = "0x0" };
+        object bundle = blockOverride
+            ? new { transactions = new[] { call }, blockOverride = new { } }
+            : new { transactions = new[] { call } };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
+
+        Assert.That(response, Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes));
+    }
+
+    [Test]
+    public async Task Debug_trace_calls_reject_a_withdrawals_block_override([Values] bool many)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208" };
+        object withdrawals = new { withdrawals = new[] { new { index = "0x0", validatorIndex = "0x0", address = TestItem.AddressC.ToString(), amount = "0x1" } } };
+
+        string response = many
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call }, blockOverride = withdrawals } }, "latest")
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { blockOverrides = withdrawals });
+
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(many ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput));
+            Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
+        }
     }
 
     [Test]
@@ -273,8 +333,11 @@ public partial class DebugRpcModuleTests
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
 
-        Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
-        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
+            Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
+        }
     }
 
     [Test]
@@ -311,6 +374,45 @@ public partial class DebugRpcModuleTests
         Assert.That(gasAvailable, Is.GreaterThan(0UL));
     }
 
+    [Test]
+    public async Task Debug_traceCallMany_enforces_eip8037_total_cap(
+        [Values] bool stream,
+        [Values(0UL, 1_000_000_000_000UL)] ulong gasCap,
+        [Values(null, Eip8037Constants.TxMaxTotalGasLimit + 1)] ulong? requestGas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance) { AllowTestChainOverride = false });
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.EnableTracingStreamMode = stream;
+        config.GasCap = gasCap;
+        TransactionBundle bundle = CreateBundle(new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            Gas = requestGas,
+            GasPrice = UInt256.Zero
+        });
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
+
+        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_resolves_calls_against_the_options_block_override([Values] bool stream, [Values] bool dynamicFees)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = stream;
+        TransactionForRpc call = dynamicFees
+            ? new EIP1559TransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction, MaxFeePerGas = UInt256.Zero }
+            : new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction };
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Number = 0 } };
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(call)], options);
+
+        // Overridden to a Berlin block, a call without fee fields still runs, and one with dynamic fees is rejected.
+        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(dynamicFees), result.ToString());
+    }
+
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
     public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(ulong? requestGas, ulong? configuredGasCap, bool uncapped)
     {
@@ -328,12 +430,70 @@ public partial class DebugRpcModuleTests
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
         if (uncapped)
         {
-            Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
-            Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.Failed, Is.False, "GasCap=0 should leave simulate execution uncapped rather than forcing zero gas");
+                Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
+            }
         }
         else
         {
             Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_overrides_enforces_eip8037_total_cap(
+        [Values(0UL, 1_000_000_000_000UL)] ulong gasCap)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance) { AllowTestChainOverride = false });
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;
+
+        // State overrides route the request through the simulate path, which takes the gas-less default at face value.
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([CreateGasProbeBundle()], BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.Zero, result.Result.Error);
+        GethLikeTxTrace trace = result.Data.First().First();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(trace.ReturnValue.ToUInt256(), Is.GreaterThan(UInt256.Zero));
+            Assert.That(trace.ReturnValue.ToUInt256(), Is.LessThanOrEqualTo((UInt256)Eip8037Constants.TxMaxTotalGasLimit));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_with_overrides_caps_default_gas_by_the_executing_block_spec(
+        [Values(1UL, 2UL)] ulong blockGap)
+    {
+        const ulong amsterdamTimestamp = 2_000_000_000;
+        CustomSpecProvider specProvider = new(
+            ((ForkActivation)0, Osaka.Instance),
+            (ForkActivation.TimestampOnly(amsterdamTimestamp), Amsterdam.Instance));
+        using Context ctx = await Context.Create(specProvider);
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().GasCap = 1_000_000_000_000UL;
+        ulong secondsPerSlot = ctx.Blockchain.Container.Resolve<IBlocksConfig>().SecondsPerSlot;
+        ulong headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+
+        // The first bundle runs pre-fork; the second lands exactly on activation through the derived clock,
+        // after blockGap - 1 filler blocks.
+        TransactionBundle preFork = CreateGasProbeBundle();
+        preFork.BlockOverride = new BlockOverride { Time = amsterdamTimestamp - blockGap * secondsPerSlot };
+        TransactionBundle activation = CreateGasProbeBundle();
+        activation.BlockOverride = new BlockOverride { Number = headNumber + 1 + blockGap };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([preFork, activation], BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.Zero, result.Result.Error);
+        GethLikeTxTrace[] traces = [.. result.Data.Select(static bundle => bundle.Single())];
+        Assert.That(traces, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Select(static trace => trace.Failed), Is.All.False);
+            Assert.That(traces[0].ReturnValue.ToUInt256(), Is.GreaterThan((UInt256)Eip8037Constants.TxMaxTotalGasLimit),
+                "pre-fork bundle must be clamped by neither EIP-7825's cap, which the processor never enforces, nor EIP-8037's, which is not active yet");
         }
     }
 }

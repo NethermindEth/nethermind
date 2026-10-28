@@ -14,8 +14,6 @@ using Nethermind.Shutter.Contracts;
 using Nethermind.Shutter.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using System.IO;
-using Nethermind.Abi;
 using Nethermind.Facade.Find;
 using System.Runtime.CompilerServices;
 
@@ -29,7 +27,6 @@ public class ShutterTxLoader(
     SlotTime time,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
-    IAbiEncoder abiEncoder,
     ILogManager logManager)
 {
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
@@ -37,8 +34,7 @@ public class ShutterTxLoader(
     private readonly ShutterLogScanner _logScanner = new(
                 new(new Address(cfg.SequencerContractAddress!)),
                 logFinder,
-                logManager,
-                abiEncoder);
+                logManager);
 
     private readonly ShutterEventQueue _events = new(cfg.EncryptedGasLimit, logManager);
     private ulong _txPointer = ulong.MaxValue;
@@ -182,18 +178,19 @@ public class ShutterTxLoader(
         {
             _logger.DebugError("Could not recover Shutter transaction sender address", e);
         }
-        catch (InvalidDataException e)
-        {
-            _logger.DebugError("Decrypted Shutter transaction had no signature", e);
-        }
-
         return null;
     }
 
-    private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
+    private Transaction? DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
         Transaction tx = TxRlpDecoder.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
-        tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
+        if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, true))
+        {
+            if (_logger.IsDebug) _logger.Debug("Decrypted Shutter transaction sender address is not recoverable.");
+            return null;
+        }
+
+        tx.SenderAddress = senderAddress;
         return tx;
     }
 

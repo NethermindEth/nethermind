@@ -3,15 +3,18 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Utils;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
@@ -73,16 +76,24 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private void HandleRlpException<T>(int dataLength, RlpException e) where T : P2PMessage
         {
-            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session}, with exception {e}");
+            if (Logger.IsTrace) TraceRlpException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
         }
 
         private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
         {
             Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
-            if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name} on session {Session} due to rlp limits, with exception {e}");
+            if (Logger.IsTrace) TraceRlpLimitException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization limit exception", dataLength);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRlpException(string messageType, RlpException exception) =>
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session}, with exception {exception}");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRlpLimitException(string messageType, RlpLimitException exception) =>
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session} due to rlp limits, with exception {exception}");
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
@@ -176,6 +187,54 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
+        private protected void HandleCorrelatedResponse<TRequest, TResponse, TData>(
+            MessageDictionary<TRequest, TData> requests,
+            IByteBuffer content,
+            int size,
+            Func<TResponse, int, TData> selectData,
+            Action<IByteBuffer, TRequest>? validate = null)
+            where TRequest : P2PMessage, IEth66Message
+            where TResponse : P2PMessage, IEth66Message
+        {
+            bool lateResponse = false;
+            long lateResponseId = 0;
+            using (MessageDictionary<TRequest, TData>.ResponseScope response = requests.BeginResponse(content))
+            {
+                if (response.IsExpired)
+                {
+                    lateResponse = true;
+                    lateResponseId = response.RequestId;
+                }
+                else
+                {
+                    validate?.Invoke(content, response.Message);
+                    TResponse responseMessage = Deserialize<TResponse>(content);
+                    bool dataSelected = false;
+                    try
+                    {
+                        ReportIn(responseMessage, size);
+                        TData data = selectData(responseMessage, size);
+                        dataSelected = true;
+                        response.Complete(responseMessage.RequestId, data, size);
+                    }
+                    catch
+                    {
+                        if (!dataSelected)
+                        {
+                            responseMessage.TryDispose();
+                        }
+
+                        throw;
+                    }
+                }
+            }
+
+            if (lateResponse)
+            {
+                requests.TraceLateResponse(lateResponseId);
+            }
+        }
+
         /// <summary>
         /// Deserializes <paramref name="message"/> into <typeparamref name="TReq"/> and schedules
         /// <paramref name="handle"/> on the background task scheduler.
@@ -200,7 +259,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle, typeof(TReq).Name);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {

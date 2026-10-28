@@ -143,7 +143,7 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
             }
             byte[][] raw = new byte[value.Length][];
             for (int i = 0; i < value.Length; i++)
-                raw[i] = value[i].Bytes ?? [];
+                raw[i] = value[i].Bytes.ToByteArray();
             Inner.Transactions = raw;
         }
     }
@@ -266,7 +266,7 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
     public byte[] BlockAccessList
     {
         get => Inner.BlockAccessList ?? [];
-        set => Inner.BlockAccessList = value.Length > 0 ? value : null;
+        set => Inner.BlockAccessList = value;
     }
 
     public ulong SlotNumber

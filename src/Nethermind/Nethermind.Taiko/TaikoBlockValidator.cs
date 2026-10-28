@@ -113,12 +113,14 @@ public class TaikoBlockValidator(
 
         // We don't set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
         // from getting their sender address recovered
-        Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
-
+        Address? senderAddress = tx.SenderAddress;
         if (senderAddress is null)
         {
-            errorMessage = "Anchor transaction sender address is not recoverable";
-            return false;
+            if (!ecdsa.TryRecoverAddress(tx, out senderAddress))
+            {
+                errorMessage = "Anchor transaction sender address is not recoverable";
+                return false;
+            }
         }
 
         if (!senderAddress.Equals(GoldenTouchAccount))
@@ -138,12 +140,12 @@ public class TaikoBlockValidator(
             _logger.Debug($"Anchor selector: 0x{Convert.ToHexString(selector)}, " +
                 $"IsUnzenEnabled={spec.IsUnzenEnabled}, IsShastaEnabled={spec.IsShastaEnabled}, " +
                 $"IsPacayaEnabled={spec.IsPacayaEnabled}, IsOntakeEnabled={spec.IsOntakeEnabled}. " +
-                $"Expected: {(spec.IsShastaEnabled ? $"V4=0x{Convert.ToHexString(AnchorV4Selector)} or V4WithSignalSlots=0x{Convert.ToHexString(AnchorV4WithSignalSlotsSelector)}" : spec.IsPacayaEnabled ? $"V3=0x{Convert.ToHexString(AnchorV3Selector)}" : $"V1=0x{Convert.ToHexString(AnchorSelector)} or V2=0x{Convert.ToHexString(AnchorV2Selector)}")}");
+                $"Expected: {(spec.IsShastaEnabled ? $"V4=0x{Convert.ToHexString(AnchorV4Selector)}{(spec.IsAnchorV4WithSignalSlotsEnabled ? $" or V4WithSignalSlots=0x{Convert.ToHexString(AnchorV4WithSignalSlotsSelector)}" : "")}" : spec.IsPacayaEnabled ? $"V3=0x{Convert.ToHexString(AnchorV3Selector)}" : $"V1=0x{Convert.ToHexString(AnchorSelector)} or V2=0x{Convert.ToHexString(AnchorV2Selector)}")}");
         }
 
         if (spec.IsShastaEnabled)
             return AnchorV4Selector.AsSpan().SequenceEqual(selector)
-                || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(selector);
+                || (spec.IsAnchorV4WithSignalSlotsEnabled && AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(selector));
 
         if (spec.IsPacayaEnabled)
             return AnchorV3Selector.AsSpan().SequenceEqual(selector);

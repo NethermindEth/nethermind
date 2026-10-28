@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using Autofac;
 using BenchmarkDotNet.Attributes;
-using DotNetty.Common.Utilities;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -64,7 +63,7 @@ public class WorldStateBenchmarks
         {
             rand.NextBytes(randomBuffer);
             Address account = new(randomBuffer.ToArray());
-            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextLong() + 1, _releaseSpec);
+            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextInt64() + 1, _releaseSpec);
             _accounts[i] = account;
         }
 
@@ -73,7 +72,7 @@ public class WorldStateBenchmarks
         {
             rand.NextBytes(randomBuffer);
             Address account = new(randomBuffer.ToArray());
-            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextLong() + 1, _releaseSpec);
+            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextInt64() + 1, _releaseSpec);
             _contracts[i] = account;
         }
 
@@ -81,9 +80,9 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _slotsCount; i++)
         {
             Address account = _contracts[rand.Next(0, _contracts.Length)];
-            UInt256 slot = (UInt256)rand.NextLong();
+            UInt256 slot = (UInt256)rand.NextInt64();
             rand.NextBytes(randomBuffer);
-            worldState.Set(new StorageCell(account, slot), randomBuffer.ToArray());
+            worldState.Set(new StorageCell(account, slot), new UInt256(randomBuffer, isBigEndian: true));
             _slots[i] = (account, slot);
         }
 
@@ -93,10 +92,10 @@ public class WorldStateBenchmarks
         _bigContractSlots = new UInt256[_bigContractSlotsCount];
         for (int i = 0; i < _bigContractSlotsCount; i++)
         {
-            UInt256 slot = (UInt256)rand.NextLong();
+            UInt256 slot = (UInt256)rand.NextInt64();
             rand.NextBytes(randomBuffer);
             _bigContractSlots[i] = slot;
-            worldState.Set(new StorageCell(_bigContract, slot), randomBuffer.ToArray());
+            worldState.Set(new StorageCell(_bigContract, slot), new UInt256(randomBuffer, isBigEndian: true));
         }
 
         worldState.Commit(_releaseSpec);
@@ -129,7 +128,7 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _loopSize; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
-            scope.CreateStorageTree(slot.Account).Get(in slot.Slot);
+            scope.CreateStorageTree(slot.Account).Get(in slot.Slot, out _);
         }
     }
 
@@ -142,7 +141,7 @@ public class WorldStateBenchmarks
 
         for (int i = 0; i < _loopSize; i++)
         {
-            storageTree.Get(in _bigContractSlots[rand.Next(0, _bigContractSlots.Length)]);
+            storageTree.Get(in _bigContractSlots[rand.Next(0, _bigContractSlots.Length)], out _);
         }
     }
 
@@ -168,7 +167,7 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _slots.Length; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[i];
-            scope.CreateStorageTree(slot.Account).Get(in slot.Slot);
+            scope.CreateStorageTree(slot.Account).Get(in slot.Slot, out _);
         }
     }
 
@@ -180,7 +179,7 @@ public class WorldStateBenchmarks
 
         for (int i = 0; i < _bigContractSlots.Length; i++)
         {
-            storageTree.Get(in _bigContractSlots[i]);
+            storageTree.Get(in _bigContractSlots[i], out _);
         }
     }
 
@@ -202,12 +201,12 @@ public class WorldStateBenchmarks
     public void SlotFirstRead()
     {
         IWorldState worldState = _globalWorldState;
-        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        using IDisposable scope = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _slots.Length; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[i];
-            worldState.Get(new StorageCell(slot.Account, slot.Slot));
+            worldState.Get(new StorageCell(slot.Account, slot.Slot), out _);
         }
 
         worldState.Reset();
@@ -217,11 +216,11 @@ public class WorldStateBenchmarks
     public void SameContractFirstRead()
     {
         IWorldState worldState = _globalWorldState;
-        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        using IDisposable scope = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _bigContractSlots.Length; i++)
         {
-            worldState.Get(new StorageCell(_bigContract, _bigContractSlots[i]));
+            worldState.Get(new StorageCell(_bigContract, _bigContractSlots[i]), out _);
         }
 
         worldState.Reset();
@@ -271,12 +270,12 @@ public class WorldStateBenchmarks
     {
         Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        using IDisposable scope = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
-            worldState.Get(new StorageCell(slot.Account, slot.Slot));
+            worldState.Get(new StorageCell(slot.Account, slot.Slot), out _);
         }
 
         worldState.Reset();
@@ -287,7 +286,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        using IDisposable scope = worldState.BeginScope(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
         for (int i = 0; i < _loopSize; i++)
@@ -295,12 +294,12 @@ public class WorldStateBenchmarks
             (Address Account, UInt256 Slot) slot = _slots[rand.Next(0, _slots.Length)];
             if (rand.NextDouble() < 0.5)
             {
-                worldState.Get(new StorageCell(slot.Account, slot.Slot));
+                worldState.Get(new StorageCell(slot.Account, slot.Slot), out _);
             }
             else
             {
                 rand.NextBytes(randomBuffer);
-                worldState.Set(new StorageCell(slot.Account, slot.Slot), randomBuffer.ToArray());
+                worldState.Set(new StorageCell(slot.Account, slot.Slot), new UInt256(randomBuffer, isBigEndian: true));
             }
         }
 
@@ -314,12 +313,12 @@ public class WorldStateBenchmarks
     {
         Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        using IDisposable scope = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
             UInt256 slot = _bigContractSlots[rand.Next(0, _bigContractSlots.Length)];
-            worldState.Get(new StorageCell(_bigContract, slot));
+            worldState.Get(new StorageCell(_bigContract, slot), out _);
         }
 
         worldState.Reset();
@@ -330,7 +329,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new(1);
         IWorldState worldState = _globalWorldState;
-        using IDisposable _ = worldState.BeginScope(_baseBlock);
+        using IDisposable scope = worldState.BeginScope(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
         for (int i = 0; i < _loopSize; i++)
@@ -338,12 +337,12 @@ public class WorldStateBenchmarks
             UInt256 slot = _bigContractSlots[rand.Next(0, _bigContractSlots.Length)];
             if (rand.NextDouble() < 0.5)
             {
-                worldState.Get(new StorageCell(_bigContract, slot));
+                worldState.Get(new StorageCell(_bigContract, slot), out _);
             }
             else
             {
                 rand.NextBytes(randomBuffer);
-                worldState.Set(new StorageCell(_bigContract, slot), randomBuffer.ToArray());
+                worldState.Set(new StorageCell(_bigContract, slot), new UInt256(randomBuffer, isBigEndian: true));
             }
         }
 

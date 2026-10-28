@@ -31,8 +31,13 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
-            _ = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            byte[]? direct = memDb.Get(TestItem.KeccakA);
+            KeyValuePair<byte[], byte[]>[] batch = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(direct, Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(batch[0].Value, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            }
         }
 
         [Test]
@@ -49,7 +54,7 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
+            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1, 2, 3 }));
         }
 
         [Test]
@@ -80,8 +85,11 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, _sampleValue);
-            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.True);
-            Assert.That(memDb.KeyExists(TestItem.KeccakB), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.True);
+                Assert.That(memDb.KeyExists(TestItem.KeccakB), Is.False);
+            }
         }
 
         [Test]
@@ -110,9 +118,12 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
             Assert.That(result, Has.Length.EqualTo(3));
-            Assert.That(result[0].Value, Is.Not.Null);
-            Assert.That(result[1].Value, Is.Not.Null);
-            Assert.That(result[2].Value, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result[0].Value, Is.Not.Null);
+                Assert.That(result[1].Value, Is.Not.Null);
+                Assert.That(result[2].Value, Is.Null);
+            }
         }
 
         [Test]
@@ -134,20 +145,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            MemDb memDb = new();
-            memDb.Dispose();
-        }
-
-        [Test]
-        public void Flush_does_not_cause_trouble()
-        {
-            MemDb memDb = new();
-            memDb.Flush();
-        }
-
-        [Test]
         public void Can_get_all_ordered()
         {
             MemDb memDb = new();
@@ -158,7 +155,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Set(TestItem.KeccakD, _sampleValue);
 
-            IEnumerable<KeyValuePair<byte[], byte[]?>> orderedItems = memDb.GetAll(true);
+            IEnumerable<KeyValuePair<byte[], byte[]>> orderedItems = memDb.GetAll(true);
 
             Assert.That(System.Linq.Enumerable.Count(orderedItems), Is.EqualTo(5));
 

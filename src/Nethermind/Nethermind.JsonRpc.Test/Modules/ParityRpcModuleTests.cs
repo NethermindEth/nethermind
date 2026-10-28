@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,6 +33,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Text.Json;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -73,13 +75,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
+            TxPoolConfig txPoolConfig = new();
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider) { HasSynced = true },
-                new TxPoolConfig(),
+                txPoolConfig,
                 new TxValidator(specProvider.ChainId),
+                new SpecChangeTxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
+                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer(),
+                TestFrameTxWidthLedger.For(txPoolConfig));
 
             _receiptStorage = new InMemoryReceiptStorage();
 
@@ -193,7 +198,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.OutSession.RemoteNodeId.Returns(TestItem.PublicKeyA);
 
             IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler, ISyncPeer>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.Eth, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = protocolHandler;
                 return true;
@@ -209,7 +214,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.OutSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -242,7 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peer.InSession.RemoteNodeId.Returns(TestItem.PublicKeyB);
 
             IProtocolHandler p2PProtocolHandler = Substitute.For<IProtocolHandler, IP2PProtocolHandler>();
-            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler>()).Returns(x =>
+            peer.InSession.TryGetProtocolHandler(Protocol.P2P, out Arg.Any<IProtocolHandler?>()).Returns(x =>
             {
                 x[1] = p2PProtocolHandler;
                 return true;
@@ -256,8 +261,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             return peer;
         }
 
-        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null) => new ParityRpcModule(_ethereumEcdsa,
-                _txPool,
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null, ITxPool? txPool = null) => new ParityRpcModule(_ethereumEcdsa,
+                txPool ?? _txPool,
                 _blockTree,
                 _receiptStorage,
                 new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
@@ -293,6 +298,42 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(serialized, Is.EqualTo(expectedResult));
         }
 
+        /// <remarks>
+        /// An EIP-8141 frame transaction is accepted with no envelope signature, and every pending transaction
+        /// is mapped through the same constructor, so one of them in the pool used to throw the whole request.
+        /// </remarks>
+        [Test]
+        public async Task parity_pendingTransactions_maps_a_pool_holding_a_frame_transaction()
+        {
+            Transaction ordinary = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+                .WithSenderAddress(TestItem.AddressD).TestObject;
+            ordinary.Signature!.V = 37;
+
+            Transaction frameTx = FrameTxTestFrames.FrameTx(TestItem.AddressA, [], FrameTxTestFrames.SelfVerify());
+            frameTx.ChainId = MainnetSpecProvider.Instance.ChainId;
+            frameTx.To = null;
+
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.GetPendingTransactions().Returns([ordinary, frameTx]);
+
+            string serialized = await RpcTest.TestSerializedRequest(CreateParityRpcModule(txPool: txPool), "parity_pendingTransactions");
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            JsonElement frame = document.RootElement.GetProperty("result")[1];
+            using (Assert.EnterMultipleScope())
+            {
+                // The explicit chain id of the signed payload, which is the only place it survives.
+                Assert.That(frame.GetProperty("chainId").GetString(), Is.EqualTo("0x1"));
+                // Absent rather than a fabricated zero-value signature.
+                Assert.That(frame.GetProperty("r").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(frame.GetProperty("s").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(frame.GetProperty("v").GetString(), Is.EqualTo("0x0"));
+                Assert.That(frame.GetProperty("standardV").GetString(), Is.EqualTo("0x0"));
+                Assert.That(frame.TryGetProperty("publicKey", out _), Is.False, "no envelope key to recover");
+                Assert.That(frame.GetProperty("creates").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
+        }
+
         [Test]
         public async Task parity_getBlockReceipts()
         {
@@ -314,9 +355,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(_signerStore.CanSign, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(_signerStore.CanSign, Is.True);
+            }
         }
 
         [Test]
@@ -324,9 +368,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(_signerStore.CanSign, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(_signerStore.CanSign, Is.True);
+            }
         }
 
         [Test]
@@ -335,9 +382,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
-            Assert.That(serialized, Is.EqualTo(expectedResult));
-            Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
-            Assert.That(_signerStore.CanSign, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(expectedResult));
+                Assert.That(_signerStore.Address, Is.EqualTo(Address.Zero));
+                Assert.That(_signerStore.CanSign, Is.False);
+            }
         }
 
         [Test]
@@ -387,11 +437,23 @@ namespace Nethermind.JsonRpc.Test.Modules
                 """;
 
             EthereumJsonSerializer serializer = new();
-            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
+            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json)!;
 
             Assert.That(tx.PublicKey, Is.Not.Null);
             Assert.That(tx.PublicKey.Bytes.Length, Is.EqualTo(64));
             Assert.That(tx.PublicKey.Bytes, Is.EqualTo(fullPublicKeyBytes));
+        }
+
+        [Test]
+        public void ParityTransaction_WithLeadingZeroPublicKey_SerializesFullWidth()
+        {
+            // The first hex digit is zero. A public key is DATA per EIP-1474. All 128 digits must survive.
+            const string leadingZeroKeyHex = "0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+            ParityTransaction tx = new() { PublicKey = new PublicKey(leadingZeroKeyHex) };
+
+            string json = new EthereumJsonSerializer().Serialize(tx);
+
+            Assert.That(json, Does.Contain($"\"publicKey\":\"0x{leadingZeroKeyHex}\""));
         }
     }
 }

@@ -8,8 +8,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -28,6 +28,8 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base
 {
@@ -55,13 +57,16 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
+        protected Task<EthereumTestResult> RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+                Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            }
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
@@ -76,11 +81,19 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            // Patricia by default (the production default); opt into the flat state layout with
-            // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1";
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
+            // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the
+            // run, and a fire-and-forget background convert from one test can race another test's files. Long
+            // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+            flatDbConfig.EnableLongFinality = false;
+            // Every test builds its own container, so the default budget allocates a production-sized trie node
+            // cache on the large object heap per test.
+            flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
-            using IContainer container = new ContainerBuilder()
+            // Some registered services (e.g. the main processing context) are IAsyncDisposable only;
+            // disposing the container synchronously makes Autofac block on them and trace a warning per test.
+            await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
@@ -131,12 +144,13 @@ namespace Ethereum.Test.Base
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
-                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
-                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork.IsEip4844Enabled ? 0ul : null),
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot ?? (spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null),
+                ExcessBlobGas = spec.IsEip4844Enabled ? test.CurrentExcessBlobGas ?? 0ul : null,
                 SlotNumber = test.CurrentSlotNumber ?? (test.Fork.IsEip7843Enabled ? 0ul : null),
-                BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
+                BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(test.Transaction) : null,
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
                 BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,
+                Bloom = spec.IsEip7668Enabled ? Bloom.ZeroLength : null,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 ReceiptsRoot = test.PostReceiptsRoot,
             };
@@ -150,7 +164,14 @@ namespace Ethereum.Test.Base
 
             if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                try
+                {
+                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                }
+                catch (InvalidDataException e)
+                {
+                    blockValidationError = e.Message;
+                }
             }
             else
             {
@@ -216,14 +237,15 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                        new UInt256(storageItem.Value, isBigEndian: true));
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
             }
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+            // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
+            stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
         }

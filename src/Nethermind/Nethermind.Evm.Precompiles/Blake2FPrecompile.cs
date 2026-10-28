@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
@@ -17,15 +16,12 @@ public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 {
     private const int RequiredInputLength = 213;
     private static readonly ReadOnlyMemory<byte> InvalidLengthInput = ReadOnlyMemory<byte>.Empty;
-    private static readonly ReadOnlyMemory<byte> InvalidFlagInput = new byte[RequiredInputLength].WithValueAt(212, 0xFF);
 
     public static Blake2FPrecompile Instance { get; } = new();
 
     private Blake2FPrecompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(9);
-
-    public static string Name => "BLAKE2F";
+    public string Name => "BLAKE2F";
 
     public ulong BaseGasCost(IReleaseSpec _) => 0UL;
 

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -17,8 +18,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,26 +63,60 @@ public class DbTrackerTests
     }
 
     [Parallelizable(ParallelScope.None)]
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TestUpdateDbMetric(bool isProcessing)
+    [Test]
+    public void TestUpdateDbMetric()
     {
-        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
-        (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
-        using IContainer _ = container;
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater();
+        using IContainer _disposable = container;
 
         Metrics.DbReads["TestDb"] = 0;
 
-        if (isProcessing)
-        {
-            container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
-            queue.IsEmpty.Returns(false);
-            queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
-        }
+        updateAction!();
+
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [TestCase(2 * 60 * 1000, 0L)]
+    [TestCase(11 * 60 * 1000, 10L)]
+    public void PausedProcessingHonoursHoldoff(int stalenessMs, long expectedReads)
+    {
+        (IContainer container, Action updateAction, DbMonitoringModule.DbTracker tracker) = ConfigurePausedMetricUpdater();
+        using IContainer _ = container;
+
+        tracker.LastDbMetricsUpdate = Environment.TickCount64 - stalenessMs;
+        Metrics.DbReads["TestDb"] = 0;
 
         updateAction!();
 
-        Assert.That(Metrics.DbReads["TestDb"], isProcessing ? Is.EqualTo(0) : Is.EqualTo(10));
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(expectedReads));
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void PublishesMetricsWhenDbIsCreated()
+    {
+        IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();
+        fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(new FakeDb(new IDbMeta.DbMetric { TotalReads = 42 }));
+
+        (IContainer container, _) = BuildTrackerContainer(fakeDbFactory, new MetricsConfig { Enabled = true });
+        using IContainer _disposable = container;
+
+        container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
+
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(42));
+    }
+
+    private (IContainer, Action, DbMonitoringModule.DbTracker) ConfigurePausedMetricUpdater()
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
+
+        container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
+        queue.IsEmpty.Returns(false);
+        queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
+
+        return (container, updateAction, container.Resolve<DbMonitoringModule.DbTracker>());
     }
 
     [Test]
@@ -122,7 +155,9 @@ public class DbTrackerTests
 
         updateAction!();
 
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(Metrics.DbReads.ContainsKey("GoodDb"), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Metrics.DbReads["GoodDb"], Is.EqualTo(42));
     }
 
@@ -151,7 +186,9 @@ public class DbTrackerTests
         tracker.AddDb("PrunedState", pruningDb);
 
         updateAction!();
+#pragma warning disable NUnit2045 // The size precondition is checked before starting a pruning cycle.
         Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(100));
+#pragma warning restore NUnit2045
 
         // Trigger and commit a full pruning cycle; pruningDb._currentDb now points to the second inner DB.
         Assert.That(pruningDb.TryStartPruning(out IPruningContext context), Is.True);
@@ -199,9 +236,12 @@ public class DbTrackerTests
 
         Action invoke = () => updateAction!();
         Assert.That(invoke, Throws.Nothing);
-        Assert.That(invoke, Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(invoke, Throws.Nothing);
 
-        Assert.That(testLogger.LogList, Is.Empty);
+            Assert.That(testLogger.LogList, Is.Empty);
+        }
     }
 
     /// <summary>

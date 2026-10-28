@@ -27,7 +27,8 @@ public class TrustedNodesManagerTests
         await File.WriteAllTextAsync(path, "[]");
         TrustedNodesManager manager = new(path, LimboLogs.Instance);
         Enode enode = new(EnodeString);
-        await manager.AddAsync(enode, updateFile: false);
+        // Persist the node so the persistent remove below actually reaches the (cancelled) file write.
+        await manager.AddAsync(enode, updateFile: true);
 
         bool nodeRemovedFired = false;
         manager.NodeRemoved += (_, _) => nodeRemovedFired = true;
@@ -37,8 +38,11 @@ public class TrustedNodesManagerTests
 
         Assert.That(async () => await manager.RemoveAsync(enode, updateFile: true, cts.Token), Throws.InstanceOf<System.OperationCanceledException>(), "the pre-cancelled token must abort SaveFileAsync");
 
-        Assert.That(nodeRemovedFired, Is.True, "NodeRemoved must fire before the file write, so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected via the missed disconnect event chain");
-        Assert.That(manager.Nodes, Has.None.Matches<NetworkNode>(n => n.NodeId == enode.PublicKey), "the in-memory dict must already be cleared before the cancellation point, so an aborted file write cannot leave the peer trusted in memory");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeRemovedFired, Is.True, "NodeRemoved must fire before the file write, so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected via the missed disconnect event chain");
+            Assert.That(manager.Nodes, Has.None.Matches<NetworkNode>(n => n.NodeId == enode.PublicKey), "the in-memory dict must already be cleared before the cancellation point, so an aborted file write cannot leave the peer trusted in memory");
+        }
     }
 
     [Test]

@@ -3,9 +3,14 @@
 
 using System;
 using System.Globalization;
+using System.IO;
 using Nethermind.Int256;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Numerics;
@@ -16,18 +21,45 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class UInt256ConverterTests : ConverterTestBase<UInt256>
 {
+    [Test]
+    public void Storage_fields_preserve_json_values()
+    {
+        EthereumJsonSerializer serializer = new();
+        UInt256 value = UInt256.MaxValue;
+        AssertField(new StorageCell(TestItem.AddressA, value), "index");
+        AssertField(new ReadOnlySlotChanges(value), "key");
+        AssertField(new GeneratedSlotChanges(value), "key");
+        AssertField(new BalanceChange(3, value), "value");
+        SlotChangeAtIndex slot = new(value, new StorageChange(3, value));
+        AssertField(slot, "key");
+        using JsonDocument document = JsonDocument.Parse(serializer.Serialize(slot));
+        Assert.That(document.RootElement.GetProperty("change").GetProperty("value").GetString(), Is.EqualTo("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
+
+        void AssertField<T>(T item, string name)
+        {
+            using JsonDocument json = JsonDocument.Parse(serializer.Serialize(item));
+            Assert.That(json.RootElement.GetProperty(name).GetString(), Is.EqualTo("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
+        }
+    }
+
     static readonly UInt256Converter converter = new();
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
     static bool Equals(UInt256 integer, UInt256 bigInteger) => integer.Equals(bigInteger);
 
-    [TestCase(NumberConversion.Hex)]
-    [TestCase(NumberConversion.Decimal)]
-    [TestCase(NumberConversion.Raw)]
-    public void Test_roundtrip(NumberConversion numberConversion)
+    [Test]
+    public void Test_roundtrip([Values(NumberConversion.Hex, NumberConversion.Decimal, NumberConversion.Raw)] NumberConversion numberConversion)
     {
-        TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-        TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        ForcedNumberConversion.Value = numberConversion;
+        try
+        {
+            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [Test]
@@ -42,12 +74,16 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
 
         Container? deserialized = JsonSerializer.Deserialize<Container>($"{{ \"Number\" : {asString} }}", deserializeOptions);
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(deserialized, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(Equals(item, deserialized.Number));
 
         UInt256? deserializedUint256 = JsonSerializer.Deserialize<UInt256>(asString, deserializeOptions);
 
+#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
         Assert.That(deserializedUint256, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(Equals(item, deserializedUint256.Value));
     }
 
@@ -61,6 +97,55 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         yield return int.MaxValue;
         yield return UInt256.One;
         yield return UInt256.Zero;
+    }
+
+    private static IEnumerable<UInt256> DecimalWriteValues()
+    {
+        yield return UInt256.Zero;
+        yield return new UInt256(ulong.MaxValue);
+        yield return new UInt256(0, 1);
+        yield return UInt256.MaxValue;
+    }
+
+    [Test]
+    public void Write_DecimalAndRaw_PreservesJsonTypeAndEncoder(
+        [ValueSource(nameof(DecimalWriteValues))] UInt256 value,
+        [Values(NumberConversion.Decimal, NumberConversion.Raw)] NumberConversion conversion,
+        [Values] bool propertyName,
+        [Values] bool restrictEncoder)
+    {
+        JavaScriptEncoder encoder = restrictEncoder ? JavaScriptEncoder.Create(UnicodeRanges.None) : JavaScriptEncoder.Default;
+        string decimalText = ((BigInteger)value).ToString(CultureInfo.InvariantCulture);
+        string quotedText = JsonSerializer.Serialize(decimalText, new JsonSerializerOptions { Encoder = encoder });
+        if (restrictEncoder)
+            Assert.That(quotedText, Does.Contain("\\u"), "the restrictive encoder must exercise escaped decimal digits");
+        string expected = propertyName ? $"{{{quotedText}:1}}" : conversion == NumberConversion.Raw ? quotedText : decimalText;
+        NumberConversion previous = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = conversion;
+        try
+        {
+            using MemoryStream stream = new();
+            using Utf8JsonWriter writer = new(stream, new JsonWriterOptions { Encoder = encoder });
+            if (propertyName)
+            {
+                writer.WriteStartObject();
+                converter.WriteAsPropertyName(writer, value, options);
+                writer.WriteNumberValue(1);
+                writer.WriteEndObject();
+            }
+            else
+            {
+                converter.Write(writer, value, options);
+            }
+            writer.Flush();
+
+            Assert.That(System.Text.Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(expected),
+                "decimal numbers, raw strings and property names must retain their exact JSON and encoder behavior");
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previous;
+        }
     }
 
     public static IEnumerable<string> FormatsCaseSource()
@@ -135,10 +220,8 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     public void Throws_on_null() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<UInt256>("null", options));
 
-    [TestCase("\"0x0b\"")]
-    [TestCase("\"0x00\"")]
-    [TestCase("\"0x0ff\"")]
-    public void StrictQuantity_rejects_leading_zero(string json)
+    [Test]
+    public void StrictQuantity_rejects_leading_zero([Values("\"0x0b\"", "\"0x00\"", "\"0x0ff\"")] string json)
     {
         JsonSerializerOptions strictOpts = new() { Converters = { new UInt256Converter(strictQuantity: true) } };
         Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, strictOpts), Throws.InstanceOf<FormatException>());
@@ -160,9 +243,8 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         Assert.That(result, Is.EqualTo((UInt256)expected));
     }
 
-    [TestCase("\"0x0000\"")]
-    [TestCase("\"0x0b\"")]
-    public void Lenient_accepts_leading_zero(string json) =>
+    [Test]
+    public void Lenient_accepts_leading_zero([Values("\"0x0000\"", "\"0x0b\"")] string json) =>
         Assert.That(() => JsonSerializer.Deserialize<UInt256>(json, options), Throws.Nothing);
 
     // "0x" with no hex digits is not a valid QUANTITY in any mode

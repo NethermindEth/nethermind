@@ -13,9 +13,7 @@ public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 
     private Sha256Precompile() { }
 
-    public static Address Address { get; } = Address.FromNumber(2);
-
-    public static string Name => "SHA256";
+    public string Name => "SHA256";
 
     public ulong BaseGasCost(IReleaseSpec releaseSpec) => 60UL;
 

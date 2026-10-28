@@ -12,8 +12,8 @@ namespace Nethermind.Blockchain.Receipts;
 public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
-    private static readonly IRlpDecoder<TxReceipt> _decoder = Rlp.GetDecoder<TxReceipt>(RlpDecoderKey.Trie)!;
-    private static readonly ReceiptMessageDecoder _skipStateDecoder = new(skipStateAndStatus: true);
+    private static IRlpDecoder<TxReceipt> _decoder => field ??= Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
+    private static ReceiptMessageDecoder _skipStateDecoder => field ??= new(skipStateAndStatus: true);
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {

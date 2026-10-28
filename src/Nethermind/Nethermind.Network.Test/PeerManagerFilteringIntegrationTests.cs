@@ -62,8 +62,11 @@ public class PeerManagerFilteringIntegrationTests
 
             await trackingMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-            Assert.That(trackingMock.CallsToConnectAsync, Is.Not.Empty);
-            Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trackingMock.CallsToConnectAsync, Is.Not.Empty);
+                Assert.That(trackingMock.CallsToShouldContact, Is.Not.Empty, "ShouldContact should have been called before ConnectAsync");
+            }
         }
         finally
         {
@@ -90,6 +93,31 @@ public class PeerManagerFilteringIntegrationTests
 
         await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.That(ctx.RlpxMock.ConnectedNodeIds, Is.Not.Empty, "Privileged peer should bypass the subnet filter and trigger ConnectAsync");
+    }
+
+    [Test]
+    public async Task OwnRecord_IsRejectedBeforeTheIpFilterSeesIt()
+    {
+        await using Context ctx = new();
+        Node self = new(TestItem.PublicKeyA, "203.0.113.50", 30303);
+        Node other = new(new PrivateKeyGenerator().Generate().PublicKey, "198.51.100.7", 30303) { IsStatic = true };
+
+        ctx.TestNodeSource.AddNode(self);
+        ctx.TestNodeSource.AddNode(other);
+
+        ctx.PeerPool.Start();
+        ctx.PeerManager.Start();
+
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Contain(other.Address.Address),
+            "the dial of the other peer has to reach the filter, otherwise the assertion below passes for the wrong reason - the peer is static because this mock filter only accepts privileged dials");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Not.Contain(self.Address.Address),
+                "the IP filter records every address it accepts, so our own record must be rejected before it reaches the filter - otherwise it keeps re-arming it for our own subnet and locks out real peers there");
+            Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(self.Id));
+        }
     }
 
     [Test]
@@ -128,8 +156,11 @@ public class PeerManagerFilteringIntegrationTests
         ctx.PeerManager.Start();
 
         Node connected = await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        Assert.That(connected.Id, Is.EqualTo(staticNode.Id), "First peer connected should be the static one");
-        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(connected.Id, Is.EqualTo(staticNode.Id), "First peer connected should be the static one");
+            Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(regularNode.Id), "Regular peer should be blocked by the IP filter");
+        }
     }
 
     private class Context : IAsyncDisposable
@@ -178,11 +209,16 @@ public class PeerManagerFilteringIntegrationTests
     private class FilterRejectingRlpxMock : IRlpxHost
     {
         public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
         public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+        {
+            CallsToShouldContact.Add(ip);
+            return exactOnly;
+        }
 
-        public Task<bool> ConnectAsync(Node node)
+        public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
         {
             ConnectedNodeIds.Add(node.Id);
             FirstConnect.TrySetResult(node);
@@ -212,7 +248,7 @@ public class PeerManagerFilteringIntegrationTests
             return true;
         }
 
-        public Task<bool> ConnectAsync(Node node)
+        public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
         {
             CallsToConnectAsync.Add(node);
             FirstConnect.TrySetResult(node);

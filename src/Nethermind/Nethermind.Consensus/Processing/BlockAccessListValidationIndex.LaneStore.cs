@@ -32,6 +32,12 @@ internal sealed partial class BlockAccessListValidationIndex
         public readonly Span<int> Storage = storage;
     }
 
+    /// <summary>A code change as the code lane compares it: its hash and, per EIP-8298, whether it was adopted.</summary>
+    private readonly record struct CodeLaneValue(ValueHash256 CodeHash, bool IsAdopted)
+    {
+        public CodeLaneValue(in CodeChange change) : this(change.CodeHash, change.IsAdopted) { }
+    }
+
     /// <summary>
     /// Carve <paramref name="source"/> into four equal <paramref name="chunkSize"/>-sized
     /// per-lane spans.
@@ -52,7 +58,7 @@ internal sealed partial class BlockAccessListValidationIndex
     {
         private readonly Lane<UInt256> _balance;
         private readonly Lane<ulong> _nonce;
-        private readonly Lane<ValueHash256> _code;
+        private readonly Lane<CodeLaneValue> _code;
         private readonly StorageLane _storage;
 
         /// <summary>Build the immutable lane storage from per-row counters.</summary>
@@ -62,7 +68,7 @@ internal sealed partial class BlockAccessListValidationIndex
             {
                 _balance = Lane<UInt256>.CreateImmutable(counts.Balance);
                 _nonce = Lane<ulong>.CreateImmutable(counts.Nonce);
-                _code = Lane<ValueHash256>.CreateImmutable(counts.Code);
+                _code = Lane<CodeLaneValue>.CreateImmutable(counts.Code);
                 _storage = StorageLane.CreateImmutable(counts.Storage);
             }
             catch
@@ -79,7 +85,7 @@ internal sealed partial class BlockAccessListValidationIndex
             {
                 _balance = Lane<UInt256>.CreateMutableLike(other._balance);
                 _nonce = Lane<ulong>.CreateMutableLike(other._nonce);
-                _code = Lane<ValueHash256>.CreateMutableLike(other._code);
+                _code = Lane<CodeLaneValue>.CreateMutableLike(other._code);
                 _storage = StorageLane.CreateMutableLike(other._storage);
             }
             catch
@@ -121,10 +127,10 @@ internal sealed partial class BlockAccessListValidationIndex
             ScalarLaneEqualAt(_code, other._code, row, ordinal) &&
             _storage.SlotsEqualAt(other._storage, row, ordinal);
 
-        public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, value);
+        public bool TryAddBalance(int row, int ordinal, in UInt256 value) => _balance.Add(row, ordinal, in value);
         public bool TryAddNonce(int row, int ordinal, ulong value) => _nonce.Add(row, ordinal, value);
-        public bool TryAddCode(int row, int ordinal, in ValueHash256 hash) => _code.Add(row, ordinal, hash);
-        public bool TryAddStorage(int row, int ordinal, in UInt256 key, in EvmWord value) => _storage.Add(row, ordinal, key, value);
+        public bool TryAddCode(int row, int ordinal, in CodeChange change) => _code.Add(row, ordinal, new CodeLaneValue(change));
+        public bool TryAddStorage(int row, int ordinal, in UInt256 key, in UInt256 value) => _storage.Add(row, ordinal, in key, in value);
 
         /// <summary>
         /// Walk every account in <paramref name="accounts"/>, assign it an ordinal via
@@ -155,7 +161,7 @@ internal sealed partial class BlockAccessListValidationIndex
 
                 _balance.FillFromChanges<BalanceChange>(account.BalanceChanges, c.Balance, accountOrdinal, lastIndex, static b => b.Value);
                 _nonce.FillFromChanges<NonceChange>(account.NonceChanges, c.Nonce, accountOrdinal, lastIndex, static n => n.Value);
-                _code.FillFromChanges<CodeChange>(account.CodeChanges, c.Code, accountOrdinal, lastIndex, static cc => cc.CodeHash);
+                _code.FillFromChanges<CodeChange>(account.CodeChanges, c.Code, accountOrdinal, lastIndex, static cc => new CodeLaneValue(cc));
                 _storage.FillFromStorageChanges(account.StorageChanges, c.Storage, accountOrdinal, lastIndex);
             }
         }
@@ -368,7 +374,7 @@ internal sealed partial class BlockAccessListValidationIndex
         public int[] Order;
         public int[] Account;
         public UInt256[] Keys;
-        public EvmWord[] Values;
+        public UInt256[] Values;
 
         public StorageScratch()
         {
@@ -385,7 +391,7 @@ internal sealed partial class BlockAccessListValidationIndex
             Order = PooledArrays.Rent<int>(length);
             Account = PooledArrays.Rent<int>(length);
             Keys = PooledArrays.Rent<UInt256>(length);
-            Values = PooledArrays.Rent<EvmWord>(length);
+            Values = PooledArrays.Rent<UInt256>(length);
         }
 
         public readonly void Return()
@@ -426,7 +432,7 @@ internal sealed partial class BlockAccessListValidationIndex
                 MutableBookkeeping.ForRowCount(rowCount));
         }
 
-        public void Fill(int row, Span<int> cursors, int accountOrdinal, TValue value)
+        public void Fill(int row, Span<int> cursors, int accountOrdinal, in TValue value)
         {
             int offset = cursors[row]++;
             AccountOrdinals[offset] = accountOrdinal;
@@ -447,7 +453,7 @@ internal sealed partial class BlockAccessListValidationIndex
                 if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, select(change));
         }
 
-        public bool Add(int row, int accountOrdinal, TValue value)
+        public bool Add(int row, int accountOrdinal, in TValue value)
         {
             int offset = ReserveNextOffset(row);
             if (offset < 0) return false;
@@ -509,12 +515,12 @@ internal sealed partial class BlockAccessListValidationIndex
     private sealed class StorageLane(
         int[] rowStarts, int rowStartsLength,
         int[] accountOrdinals, int entriesLength,
-        UInt256[] keys, EvmWord[] values,
+        UInt256[] keys, UInt256[] values,
         MutableBookkeeping? mutable)
         : LaneBase(rowStarts, rowStartsLength, accountOrdinals, entriesLength, mutable)
     {
         private readonly UInt256[] _keys = keys;
-        private readonly EvmWord[] _values = values;
+        private readonly UInt256[] _values = values;
         private StorageScratch _scratch = new();
 
         public static StorageLane CreateImmutable(ReadOnlySpan<int> counts)
@@ -523,7 +529,7 @@ internal sealed partial class BlockAccessListValidationIndex
             return new(
                 rowStarts, counts.Length + 1,
                 PooledArrays.Rent<int>(total), total,
-                PooledArrays.Rent<UInt256>(total), PooledArrays.Rent<EvmWord>(total),
+                PooledArrays.Rent<UInt256>(total), PooledArrays.Rent<UInt256>(total),
                 mutable: null);
         }
 
@@ -535,11 +541,11 @@ internal sealed partial class BlockAccessListValidationIndex
             return new(
                 CloneRowStarts(other.RowStarts, rowStartsLength), rowStartsLength,
                 PooledArrays.Rent<int>(entries), entries,
-                PooledArrays.Rent<UInt256>(entries), PooledArrays.Rent<EvmWord>(entries),
+                PooledArrays.Rent<UInt256>(entries), PooledArrays.Rent<UInt256>(entries),
                 MutableBookkeeping.ForRowCount(rowCount));
         }
 
-        public void Fill(int row, Span<int> cursors, int accountOrdinal, UInt256 key, EvmWord value)
+        public void Fill(int row, Span<int> cursors, int accountOrdinal, in UInt256 key, in UInt256 value)
         {
             int offset = cursors[row]++;
             AccountOrdinals[offset] = accountOrdinal;
@@ -560,7 +566,7 @@ internal sealed partial class BlockAccessListValidationIndex
                     if (TryGetRow(change.Index, lastIndex, out int row)) Fill(row, cursors, accountOrdinal, slotChanges.Key, change.Value);
         }
 
-        public bool Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
+        public bool Add(int row, int accountOrdinal, in UInt256 key, in UInt256 value)
         {
             int offset = ReserveNextOffset(row);
             if (offset < 0) return false;

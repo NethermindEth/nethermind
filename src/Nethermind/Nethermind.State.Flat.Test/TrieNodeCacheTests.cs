@@ -33,8 +33,11 @@ public class TrieNodeCacheTests
 
         bool found = _cache.TryGet(null, in path, hash, out TrieNode? node);
 
-        Assert.That(found, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -46,8 +49,11 @@ public class TrieNodeCacheTests
 
         bool found = _cache.TryGet(address, in path, hash, out TrieNode? node);
 
-        Assert.That(found, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -78,8 +84,33 @@ public class TrieNodeCacheTests
 
         bool found = _cache.TryGet(null, in path, hash, out TrieNode? retrievedNode);
 
+#pragma warning disable NUnit2045 // The lookup must succeed before dereferencing the returned value.
         Assert.That(found, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(retrievedNode!.Keccak, Is.EqualTo(hash));
+    }
+
+    [Test]
+    public void TryGet_WithPrecomputedShardAndHash_FindsWhatThePathLookupFinds([Values] bool storage)
+    {
+        Hash256? address = storage ? Keccak.Compute([0xaa, 0xbb]) : null;
+        TreePath path = TreePath.FromHexString("1234");
+        Hash256 hash = Keccak.Compute([3, 4, 5]);
+        TrieNode trieNode = new(NodeType.Branch, hash);
+        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.Nodes.Set(address, in path, trieNode);
+        _cache.Add(transientResource);
+
+        (int shardIdx, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, in path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transientResource.TryGetNode(shardIdx, hashCode, hash, out TrieNode? fromTransient), Is.True);
+            Assert.That(fromTransient, Is.SameAs(trieNode));
+            Assert.That(_cache.TryGet(address, in path, shardIdx, hashCode, hash, out TrieNode? fromCache), Is.True);
+            Assert.That(fromCache, Is.SameAs(trieNode));
+            Assert.That(_cache.TryGet(address, in path, shardIdx, hashCode, Keccak.Compute([9]), out _), Is.False, "a different hash at the same slot is a miss");
+        }
     }
 
     [Test]
@@ -97,7 +128,9 @@ public class TrieNodeCacheTests
 
         bool found = _cache.TryGet(address, in path, hash, out TrieNode? retrievedNode);
 
+#pragma warning disable NUnit2045 // The lookup must succeed before dereferencing the returned value.
         Assert.That(found, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(retrievedNode!.Keccak, Is.EqualTo(hash));
     }
 
@@ -119,8 +152,11 @@ public class TrieNodeCacheTests
 
         bool found = zeroCache.TryGet(null, in path, hash, out TrieNode? retrievedNode);
 
-        Assert.That(found, Is.False);
-        Assert.That(retrievedNode, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(retrievedNode, Is.Null);
+        }
     }
 
     [Test]
@@ -141,9 +177,12 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
+            Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
+            Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+        }
     }
 
     [Test]
@@ -162,8 +201,11 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
-        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
+            Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+        }
     }
 
     [Test]
@@ -181,8 +223,11 @@ public class TrieNodeCacheTests
 
         bool found = _cache.TryGet(null, in path, queryHash, out TrieNode? retrievedNode);
 
-        Assert.That(found, Is.False);
-        Assert.That(retrievedNode, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(retrievedNode, Is.Null);
+        }
     }
 
     [Test]
@@ -202,8 +247,11 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource2);
 
-        Assert.That(_cache.TryGet(null, in path, hash1, out _), Is.False);
-        Assert.That(_cache.TryGet(null, in path, hash2, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in path, hash1, out _), Is.False);
+            Assert.That(_cache.TryGet(null, in path, hash2, out _), Is.True);
+        }
     }
 
     [Test]
@@ -220,8 +268,11 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
+            Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
+        }
     }
 
     [Test]
@@ -240,8 +291,11 @@ public class TrieNodeCacheTests
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(address1, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(address2, in path2, hash2, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(address1, in path1, hash1, out _), Is.True);
+            Assert.That(_cache.TryGet(address2, in path2, hash2, out _), Is.True);
+        }
     }
 
     [Test]
@@ -264,17 +318,23 @@ public class TrieNodeCacheTests
         _cache.Add(transientResource);
 
         // Verify nodes are cached
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
-        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.True);
+            Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.True);
+            Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.True);
+        }
 
         // Clear the cache
         _cache.Clear();
 
         // Verify all nodes are removed
-        Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.False);
-        Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.False);
-        Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in path1, hash1, out _), Is.False);
+            Assert.That(_cache.TryGet(null, in path2, hash2, out _), Is.False);
+            Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.False);
+        }
     }
 
     [Test]
@@ -294,15 +354,21 @@ public class TrieNodeCacheTests
         _cache.Add(transientResource);
 
         // Verify nodes are cached
-        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
-        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.True);
+            Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.True);
+        }
 
         // Clear the cache
         _cache.Clear();
 
         // Verify all nodes are removed
-        Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.False);
-        Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryGet(null, in statePath, stateHash, out _), Is.False);
+            Assert.That(_cache.TryGet(storageAddress, in storagePath, storageHash, out _), Is.False);
+        }
     }
 }
 
@@ -322,8 +388,11 @@ public class ChildCacheTests
 
         bool found = _cache.TryGet(null, in path, hash, out TrieNode? node);
 
-        Assert.That(found, Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -337,8 +406,11 @@ public class ChildCacheTests
 
         bool found = _cache.TryGet(null, in path, hash, out TrieNode? retrievedNode);
 
-        Assert.That(found, Is.True);
-        Assert.That(retrievedNode, Is.SameAs(trieNode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(retrievedNode, Is.SameAs(trieNode));
+        }
     }
 
     [Test]
@@ -353,8 +425,11 @@ public class ChildCacheTests
 
         bool found = _cache.TryGet(address, in path, hash, out TrieNode? retrievedNode);
 
-        Assert.That(found, Is.True);
-        Assert.That(retrievedNode, Is.SameAs(trieNode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(retrievedNode, Is.SameAs(trieNode));
+        }
     }
 
     [Test]
@@ -369,8 +444,11 @@ public class ChildCacheTests
 
         bool found = _cache.TryGet(null, in path, queryHash, out TrieNode? retrievedNode);
 
-        Assert.That(found, Is.False);
-        Assert.That(retrievedNode, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(retrievedNode, Is.Null);
+        }
     }
 
     [Test]
@@ -396,8 +474,11 @@ public class ChildCacheTests
 
         TrieNode result = _cache.GetOrAdd(null, in path, newNode);
 
-        Assert.That(result, Is.SameAs(newNode));
-        Assert.That(_cache.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.SameAs(newNode));
+            Assert.That(_cache.Count, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -430,6 +511,39 @@ public class ChildCacheTests
         Assert.That(_cache.Count, Is.EqualTo(0));
         bool found = _cache.TryGet(null, in path, hash, out _);
         Assert.That(found, Is.False);
+    }
+
+    [Test]
+    public void Reset_AfterGetOrAddOnly_ClearsCache()
+    {
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([1, 2, 3]);
+        _cache.GetOrAdd(null, in path, new TrieNode(NodeType.Leaf, hash));
+        Assert.That(_cache.Count, Is.EqualTo(1), "precondition: GetOrAdd into an empty bucket is counted");
+
+        _cache.Reset();
+
+        Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False, "a node added only through GetOrAdd must not survive Reset");
+    }
+
+    [Test]
+    public void Reset_WhenUnused_LeavesAnEmptyUsableCache()
+    {
+        int capacity = _cache.Capacity;
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([1, 2, 3]);
+
+        _cache.Reset();
+        _cache.Set(null, in path, new TrieNode(NodeType.Leaf, hash));
+        _cache.Reset();
+        _cache.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Capacity, Is.EqualTo(capacity), "resetting an unused cache must not resize it");
+            Assert.That(_cache.Count, Is.EqualTo(0), "the cache is empty after Reset");
+            Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False, "a reset after a reset must not resurrect a node");
+        }
     }
 
     [Test]
@@ -491,9 +605,12 @@ public class ChildCacheTests
         bool foundState = _cache.TryGet(null, in path, stateHash, out TrieNode? retrievedState);
         bool foundStorage = _cache.TryGet(storageAddress, in path, storageHash, out TrieNode? retrievedStorage);
 
-        Assert.That(foundState, Is.True);
-        Assert.That(foundStorage, Is.True);
-        Assert.That(retrievedState, Is.SameAs(stateNode));
-        Assert.That(retrievedStorage, Is.SameAs(storageNode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundState, Is.True);
+            Assert.That(foundStorage, Is.True);
+            Assert.That(retrievedState, Is.SameAs(stateNode));
+            Assert.That(retrievedStorage, Is.SameAs(storageNode));
+        }
     }
 }

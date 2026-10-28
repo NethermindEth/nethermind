@@ -27,10 +27,10 @@ namespace Nethermind.Test.Runner
 
         public int Depth { get; set; }
 
-        public int Refund { get; set; }
+        public long Refund { get; set; }
 
         [JsonPropertyName("opName")]
-        public string? OperationName { get; set; }
+        public string OperationName { get; set; } = string.Empty;
 
         public string? Error { get; set; } = string.Empty;
 

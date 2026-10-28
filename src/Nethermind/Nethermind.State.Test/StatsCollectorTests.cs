@@ -27,7 +27,7 @@ namespace Nethermind.Store.Test
             MemDb stateDb = new();
             NodeStorage nodeStorage = new(stateDb);
             TestRawTrieStore trieStore = new(nodeStorage);
-            WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, LimboLogs.Instance), LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStoreScopeProvider(trieStore, codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
             BlockHeader baseBlock;
 
@@ -42,7 +42,7 @@ namespace Nethermind.Store.Test
                 for (int i = 0; i < 1000; i++)
                 {
                     StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
-                    stateProvider.Set(storageCell, new byte[] { (byte)i });
+                    stateProvider.Set(storageCell, new UInt256(new byte[] { (byte)i }, isBigEndian: true));
                 }
 
                 stateProvider.Commit(Istanbul.Instance);

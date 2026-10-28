@@ -28,6 +28,7 @@ public sealed class GCScheduler
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
     private readonly Timer? _sustainedSweepTimer;
+    private readonly MallocHelper _mallocHelper;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
     private bool _isNextGcBlocking = false;
@@ -43,19 +44,26 @@ public sealed class GCScheduler
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
 
-    private GCScheduler() : this(sustainedSweepEnabled: true)
+    private GCScheduler() : this(sustainedSweepEnabled: true, MallocHelper.Instance)
     {
     }
 
     // Test ctor: a private instance without the sweep timer cannot race assertions on its state.
-    internal GCScheduler(bool sustainedSweepEnabled)
+    internal GCScheduler(bool sustainedSweepEnabled, MallocHelper? mallocHelper = null)
     {
+        _mallocHelper = mallocHelper ?? MallocHelper.Instance;
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
         if (sustainedSweepEnabled)
         {
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
+    }
+
+    internal void SetNextGcForTest(bool blocking, bool compacting)
+    {
+        _isNextGcBlocking = blocking;
+        _isNextGcCompacting = compacting;
     }
 
     /// <summary>
@@ -142,7 +150,7 @@ public sealed class GCScheduler
     /// <summary>
     /// Determines and performs the appropriate type of garbage collection.
     /// </summary>
-    private void PerformFullGC()
+    internal void PerformFullGC()
     {
         if (Interlocked.Exchange(ref _skipNextGC, false))
         {
@@ -159,8 +167,6 @@ public sealed class GCScheduler
         {
             // Collect all generations
             generation = GC.MaxGeneration;
-            // Compact large object heap
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             // Release memory back to the OS
             mode = GCCollectionMode.Aggressive;
         }
@@ -186,7 +192,10 @@ public sealed class GCScheduler
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
     /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
-    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting)
+    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
+        GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
+
+    internal bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory, bool compactLoh = false)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {
@@ -206,9 +215,16 @@ public sealed class GCScheduler
         {
             Volatile.Write(ref _sweepBaselineAllocatedBytes, GC.GetTotalAllocatedBytes(precise: false));
         }
+        if (compactLoh)
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
-        // Also trim native memory used by Db
-        MallocHelper.Instance.MallocTrim((uint)1.MiB);
+        if (trimNativeMemory)
+        {
+            // Also trim native memory used by Db
+            _mallocHelper.MallocTrim((uint)1.MiB);
+        }
         // Indicate that GC has finished
         MarkGCResumed();
 
@@ -236,7 +252,7 @@ public sealed class GCScheduler
         long allocated = GC.GetTotalAllocatedBytes(precise: false);
         if (allocated - Volatile.Read(ref _sweepBaselineAllocatedBytes) < SustainedSweepAllocationBytes) return;
 
-        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false);
+        GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false, trimNativeMemory: false);
     }
 
     internal long SweepBaselineAllocatedBytes

@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -180,8 +181,11 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
 
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        Assert.That(request, Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request, Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        }
     }
 
     [Test]
@@ -228,8 +232,11 @@ public class ReceiptsSyncFeedTests
         LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
         Assert.That(request, Is.Not.Null);
-        Assert.That(request!.MinNumber, Is.EqualTo(1024));
-        Assert.That(request.Prioritized, Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request!.MinNumber, Is.EqualTo(1024));
+            Assert.That(request.Prioritized, Is.EqualTo(true));
+        }
     }
 
     [Test]
@@ -239,9 +246,12 @@ public class ReceiptsSyncFeedTests
         _syncConfig.DownloadReceiptsInFastSync = false;
 
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        Assert.That(request, Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
-        Assert.That(_progressLogger.HasEnded, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request, Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_progressLogger.HasEnded, Is.True);
+        }
     }
 
     [TestCase(1UL, 1024UL, false, null, false)]
@@ -330,7 +340,7 @@ public class ReceiptsSyncFeedTests
     private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
 
-    private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
+    private void LoadScenario(Scenario scenario, ISyncConfig syncConfig, ISpecProvider? specProvider = null)
     {
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber;
@@ -339,7 +349,7 @@ public class ReceiptsSyncFeedTests
         _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
-            _specProvider,
+            specProvider ?? _specProvider,
             _blockTree,
             _receiptStorage,
             _syncPointers,
@@ -376,6 +386,24 @@ public class ReceiptsSyncFeedTests
                     : null);
 
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns((ulong?)null);
+    }
+
+    [Test]
+    public async Task Progress_reaches_exactly_the_total_when_finished([Values(1UL, 512UL)] ulong barrier)
+    {
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _syncConfig.AncientReceiptsBarrier = barrier;
+        LoadScenario(_1024BodiesWithOneTxEach);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(barrier);
+
+        using ReceiptsSyncBatch? _ = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_progressLogger.TargetValue, Is.EqualTo(_pivotNumber - barrier));
+            Assert.That(_progressLogger.CurrentValue, Is.EqualTo(_progressLogger.TargetValue));
+        }
     }
 
     [Test]
@@ -430,6 +458,29 @@ public class ReceiptsSyncFeedTests
         _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
     }
 
+    [Test]
+    public async Task Validates_receipts_root_with_timestamp_activated_eip7668()
+    {
+        // A number-only lookup misses a timestamp fork, so it would expect 256-byte blooms in the root.
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(static ci => ci.Arg<ForkActivation>().Timestamp is null
+            ? Bogota.Instance
+            : new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true });
+        LoadScenario(new Scenario(specProvider, 1024, 1), _syncConfig, specProvider);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        batch!.ResponseSourcePeer = peerInfo;
+        int requested = batch.Infos.Length;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
     private static void FillBatchResponses(ReceiptsSyncBatch batch)
     {
         ArrayPoolList<TxReceipt[]?> response = new(batch.Infos.Length, batch.Infos.Length);
@@ -442,6 +493,51 @@ public class ReceiptsSyncFeedTests
     }
 
     [Test]
+    public async Task Inserts_receipts_when_the_block_number_index_has_no_entry()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        // Given no block number, the block tree resolves one from the block number index first, so a body whose
+        // index entry is missing is only reachable when the number the feed already knows is passed along.
+        _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<ulong?>(2) is null
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        int requested = batch!.Infos.Length;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
+    public async Task If_header_is_missing_locally_then_does_not_report_breach_of_protocol_or_drop_the_rest_of_the_batch()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        Hash256 missingHeaderHash = batch!.Infos[0]!.BlockHash;
+        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<Hash256>(0) == missingHeaderHash
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
+
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        batch.ResponseSourcePeer = peerInfo;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+        _receiptStorage.Received(batch.Infos.Length - 1).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
     public async Task Can_sync_final_batch()
     {
         LoadScenario(_64BodiesWithOneTxEach);
@@ -450,9 +546,12 @@ public class ReceiptsSyncFeedTests
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
-        Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
 
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        }
     }
 
     [Test]

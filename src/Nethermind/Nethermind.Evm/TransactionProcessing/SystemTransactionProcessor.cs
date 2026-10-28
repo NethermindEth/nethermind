@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using System;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -31,6 +32,10 @@ public class SystemTransactionProcessor<TGasPolicy>(
     /// EIP-7928 excludes the SYSTEM_ADDRESS caller from BALs for system contract calls;
     /// engines that surface the system user (e.g. AuRa) override to return false.
     /// </summary>
+    /// <remarks>
+    /// Only the processor's own sender handling is suppressed: EIP-7928 still records SYSTEM_ADDRESS
+    /// when the executed code accesses it, e.g. <c>BALANCE(CALLER)</c>.
+    /// </remarks>
     protected virtual bool ShouldSuppressSystemAccountReads(Transaction tx) =>
         tx.SenderAddress == Address.SystemUser;
 
@@ -53,8 +58,6 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {
-        using IDisposable? systemAccountReadSuppression = ShouldSuppressSystemAccountReads(tx) ? WorldState.BeginSystemAccountReadSuppression() : null;
-
         OnBeforeSystemTransaction();
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
@@ -103,23 +106,36 @@ public class SystemTransactionProcessor<TGasPolicy>(
         return new IntrinsicGas<TGasPolicy>(intrinsicGas, intrinsicGas);
     }
 
-    protected override TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
+    protected override TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
     {
         if (tx is SystemCall)
         {
-            gasAvailable = TGasPolicy.CreateSystemTransactionAvailableGas(tx.GasLimit, intrinsicGas.Standard, spec);
-            return TransactionResult.Ok;
+            return TGasPolicy.TryCreateSystemTransactionAvailableGas(tx.GasLimit, intrinsicGas.Standard, spec, out gasAvailable)
+                ? TransactionResult.Ok
+                : TransactionResult.GasLimitBelowIntrinsicGas;
         }
 
-        return base.CalculateAvailableGas(tx, spec, in intrinsicGas, out gasAvailable);
+        Debug.Assert(TGasPolicy.GetStateReservoir(intrinsicGas.Standard) == 0,
+            "System transactions other than SystemCall bypass minimum-gas validation and must have no intrinsic state reservoir.");
+        return base.CalculateAvailableGas(tx, spec, opts, in intrinsicGas, out gasAvailable);
+    }
+
+    protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
+    {
+        using IDisposable? systemAccountReadSuppression = BeginSystemAccountReadSuppression(tx);
+        return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
+        using IDisposable? systemAccountReadSuppression = BeginSystemAccountReadSuppression(tx);
         Address? sender = tx.SenderAddress;
         return (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 
     protected override void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec) { }
+
+    private IDisposable? BeginSystemAccountReadSuppression(Transaction tx) =>
+        ShouldSuppressSystemAccountReads(tx) ? WorldState.BeginSystemAccountReadSuppression() : null;
 }

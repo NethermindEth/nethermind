@@ -1,213 +1,279 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Text.Json.Serialization;
-using System.Text.Json;
-using Nethermind.Blockchain.Contracts.Json;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
+using System.Numerics;
+using System.Text;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
-namespace Nethermind.Abi
+namespace Nethermind.Abi;
+
+/// <summary>Codecs for the standard ABI types.</summary>
+/// <remarks>See the <see href="https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding">ABI encoding specification</see>.</remarks>
+public static partial class AbiType
 {
-    [JsonConverter(typeof(AbiTypeConverter))]
-    public abstract partial class AbiType
+    /// <summary><c>uint256</c>.</summary>
+    public static readonly Abi<UInt256> UInt256 = new()
     {
-        public static AbiDynamicBytes DynamicBytes => AbiDynamicBytes.Instance;
-        public static AbiBytes Bytes32 => AbiBytes.Bytes32;
-        public static AbiAddress Address => AbiAddress.Instance;
-        public static AbiFunction Function => AbiFunction.Instance;
-        public static AbiBool Bool => AbiBool.Instance;
-        public static AbiInt Int8 => AbiInt.Int8;
-        public static AbiInt Int16 => AbiInt.Int16;
-        public static AbiInt Int32 => AbiInt.Int32;
-        public static AbiInt Int64 => AbiInt.Int64;
-        public static AbiInt Int96 => AbiInt.Int96;
-        public static AbiInt Int256 => AbiInt.Int256;
-        public static AbiUInt UInt8 => AbiUInt.UInt8;
-        public static AbiUInt UInt16 => AbiUInt.UInt16;
-        public static AbiUInt UInt32 => AbiUInt.UInt32;
-        public static AbiUInt UInt64 => AbiUInt.UInt64;
-        public static AbiUInt UInt96 => AbiUInt.UInt96;
-        public static AbiUInt UInt256 => AbiUInt.UInt256;
-        public static AbiString String => AbiString.Instance;
-        public static AbiFixed Fixed { get; } = new(128, 18);
-        public static AbiUFixed UFixed { get; } = new(128, 18);
-
-        public virtual bool IsDynamic => false;
-
-        public abstract string Name { get; }
-
-        public abstract (object, int) Decode(byte[] data, int position, bool packed);
-
-        public abstract byte[] Encode(object? arg, bool packed);
-
-        public override string ToString() => Name;
-
-        public override int GetHashCode() => Name.GetHashCode();
-
-        public override bool Equals(object? obj) => obj is AbiType type && Name == type.Name;
-
-        protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by {GetType().Name}";
-
-        public abstract Type CSharpType { get; }
-
-        protected void ThrowIfNotMultipleOf8(int length)
+        Name = "uint256",
+        Read = (ref BinarySpanReader r) =>
         {
-            if (length % 8 != 0)
-            {
-                Throw();
-            }
+            ReadOnlySpan<byte> bytes = r.ReadBytes(32);
+            return new UInt256(bytes, isBigEndian: true);
+        },
+        Write = (ref BinarySpanWriter w, UInt256 v) =>
+        {
+            Span<byte> output = w.Take(32);
+            v.ToBigEndian(output);
+        },
+    };
 
-            [DoesNotReturn, StackTraceHidden]
-            static void Throw() =>
-                throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
-        }
-    }
-}
-
-namespace Nethermind.Blockchain.Contracts.Json
-{
-    using Nethermind.Abi;
-
-    [JsonDerivedType(typeof(AbiDynamicBytes))]
-    [JsonDerivedType(typeof(AbiBytes))]
-    [JsonDerivedType(typeof(AbiAddress))]
-    [JsonDerivedType(typeof(AbiFunction))]
-    [JsonDerivedType(typeof(AbiBool))]
-    [JsonDerivedType(typeof(AbiInt))]
-    [JsonDerivedType(typeof(AbiUInt))]
-    [JsonDerivedType(typeof(AbiString))]
-    [JsonDerivedType(typeof(AbiFixed))]
-    [JsonDerivedType(typeof(AbiUFixed))]
-    public class AbiTypeConverter : JsonConverter<AbiType>
+    /// <summary><c>int256</c>.</summary>
+    public static readonly Abi<Int256.Int256> Int256 = new()
     {
-        private const int MaxArrayDepth = 1024;
+        Name = "int256",
+        Read = (ref BinarySpanReader r) => new Int256.Int256(r.ReadBytes(32), isBigEndian: true),
+        Write = (ref BinarySpanWriter w, Int256.Int256 v) => ((UInt256)v).ToBigEndian(w.Take(32)),
+    };
 
-        public override AbiType? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    /// <summary>Returns the codec for <c>uintN</c>, where <c>N</c> is the bit width of <typeparamref name="T"/>.</summary>
+    public static Abi<T> UIntN<T>() where T : IBinaryInteger<T>, IUnsignedNumber<T>, IMinMaxValue<T> => new()
+    {
+        Name = $"uint{T.Zero.GetByteCount() * 8}",
+        Read = (ref BinarySpanReader r) =>
         {
-            string? type = reader.GetString()!;
-            return ParseAbiType(type, 0);
+            if (!T.TryReadBigEndian(r.ReadBytes(32), isUnsigned: true, out T value)) throw new AbiException();
+            return value;
+        },
+        Write = (ref BinarySpanWriter w, T value) =>
+        {
+            Span<byte> word = w.Take(32);
+            int size = value.GetByteCount();
+            word[..^size].Clear();
+            value.TryWriteBigEndian(word[^size..], out _);
+        },
+    };
 
-            static AbiType ParseAbiType(string type, int arrayDepth)
+    /// <summary>Returns the codec for <c>intN</c>, where <c>N</c> is the bit width of <typeparamref name="T"/>.</summary>
+    public static Abi<T> IntN<T>() where T : IBinaryInteger<T>, ISignedNumber<T>, IMinMaxValue<T> => new()
+    {
+        Name = $"int{T.Zero.GetByteCount() * 8}",
+        Read = (ref BinarySpanReader r) =>
+        {
+            if (!T.TryReadBigEndian(r.ReadBytes(32), isUnsigned: false, out T value)) throw new AbiException();
+            return value;
+        },
+        Write = (ref BinarySpanWriter w, T value) =>
+        {
+            Span<byte> word = w.Take(32);
+            int size = value.GetByteCount();
+            word[..^size].Fill(T.IsNegative(value) ? (byte)0xff : (byte)0);
+            value.TryWriteBigEndian(word[^size..], out _);
+        },
+    };
+
+    /// <summary><c>uint64</c>.</summary>
+    public static readonly Abi<UInt64> UInt64 = UIntN<UInt64>();
+    /// <summary><c>uint32</c>.</summary>
+    public static readonly Abi<UInt32> UInt32 = UIntN<UInt32>();
+    /// <summary><c>uint16</c>.</summary>
+    public static readonly Abi<UInt16> UInt16 = UIntN<UInt16>();
+    /// <summary><c>uint8</c>.</summary>
+    public static readonly Abi<Byte> UInt8 = UIntN<Byte>();
+
+    /// <summary><c>int64</c>.</summary>
+    public static readonly Abi<Int64> Int64 = IntN<Int64>();
+    /// <summary><c>int32</c>.</summary>
+    public static readonly Abi<Int32> Int32 = IntN<Int32>();
+    /// <summary><c>int16</c>.</summary>
+    public static readonly Abi<Int16> Int16 = IntN<Int16>();
+    /// <summary><c>int8</c>.</summary>
+    public static readonly Abi<SByte> Int8 = IntN<SByte>();
+
+    /// <summary><c>bool</c>.</summary>
+    public static readonly Abi<Boolean> Bool = new()
+    {
+        Name = "bool",
+        Read = (ref BinarySpanReader r) =>
+        {
+            UInt256 value = UInt256.Read(ref r);
+            if (value > 1) throw new AbiException();
+            return !value.IsZero;
+        },
+        Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
+    };
+
+    /// <summary><c>address</c>.</summary>
+    public static readonly Abi<Address> Address = new()
+    {
+        Name = "address",
+        Read = (ref BinarySpanReader r) =>
+        {
+            ReadOnlySpan<byte> word = r.ReadBytes(32);
+            if (word[..12].ContainsAnyExcept((byte)0)) throw new AbiException();
+            return new Address(word[12..]);
+        },
+        Write = (ref BinarySpanWriter w, Address v) =>
+        {
+            Span<byte> word = w.Take(32);
+            word[..12].Clear();
+            v.Bytes.CopyTo(word[12..]);
+        },
+    };
+
+    /// <summary>Returns the codec for the dynamic-length array <c>T[]</c>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="abi"/> has a zero <see cref="Abi{T}.HeadSize"/>, such as <c>()</c>.</exception>
+    public static Abi<T[]> Array<T>(Abi<T> abi)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(abi.HeadSize);
+
+        return new()
+        {
+            Name = $"{abi.Name}[]",
+            Read = (ref BinarySpanReader r) =>
             {
-                // Handle plain "tuple" without array suffix
-                // Note: "tuple[]" and "tuple[N]" fall through to array handling below
-                if (type == "tuple")
-                    return new AbiTuple();
+                UInt256 length = UInt256.Read(ref r);
+                return r.ReadArray(abi, (int)length);
+            },
+            Write = (ref BinarySpanWriter w, T[] array) =>
+            {
+                UInt256.Write(ref w, (UInt256)array.Length);
+                w.WriteArray(abi, array);
+            },
+            TailSize = array =>
+            {
+                const int lengthSize = 32;
+                if (!abi.IsDynamic) return checked(lengthSize + array.Length * abi.HeadSize);
 
-                // Check for array suffix: [N] for fixed-size or [] for dynamic
-                int lastBracket = type.LastIndexOf('[');
-                if (lastBracket >= 0 && type.EndsWith(']'))
+                int size = lengthSize;
+                foreach (T e in array)
                 {
-                    if (arrayDepth >= MaxArrayDepth)
-                        throw new AbiException($"ABI array nesting exceeds maximum depth of {MaxArrayDepth}.");
-
-                    string bracketContent = type[(lastBracket + 1)..^1];
-                    string elementTypeStr = type[..lastBracket];
-
-                    switch (bracketContent.Length)
-                    {
-                        case > 0 when int.TryParse(bracketContent, out int length):
-                            {
-                                // Fixed-size array: type[N]
-                                AbiType elementType = ParseAbiType(elementTypeStr, arrayDepth + 1);
-                                return new AbiFixedLengthArray(elementType, length);
-                            }
-                        case 0:
-                            {
-                                // Dynamic array: type[]
-                                AbiType elementType = ParseAbiType(elementTypeStr, arrayDepth + 1);
-                                return new AbiArray(elementType);
-                            }
-                        default:
-                            throw new ArgumentException($"Invalid array syntax in ABI type '{type}'.", nameof(type));
-                    }
+                    size = checked(size + 32 + abi.Size(e));
                 }
 
-                if (type.StartsWith('(') && type.EndsWith(')'))
-                {
-                    string[] types = type[1..^1].Split(',');
-                    return ParseTuple(types);
-                }
-                if (type.StartsWith("tuple"))
-                {
-                    string[] types = type.Trim()[6..^1].Split(',');
-                    return ParseTuple(types);
-                }
-
-                return GetType(type);
+                return size;
             }
-
-            static AbiType ParseTuple(string[] types)
-            {
-                AbiType[] abiTypes = new AbiType[types.Length];
-                for (int i = 0; i < types.Length; i++)
-                {
-                    abiTypes[i] = ParseAbiType(types[i].Trim(), 0);
-                }
-
-                return new AbiTuple(abiTypes);
-            }
-
-            static AbiType ParseFixed(string type)
-            {
-                (int length, int precision) = Parse(type.AsSpan(5));
-                return new AbiFixed(length, precision);
-            }
-
-            static AbiType ParseUFixed(string type)
-            {
-                (int length, int precision) = Parse(type.AsSpan(6));
-                return new AbiUFixed(length, precision);
-            }
-
-            static (int length, int precision) Parse(ReadOnlySpan<char> chars)
-            {
-                int xPos = chars.IndexOf('x');
-                if (xPos == -1)
-                {
-                    return (-1, -1);
-                }
-
-                int length = int.Parse(chars[..xPos]);
-                int precision = int.Parse(chars[(xPos + 1)..]);
-
-                return (length, precision);
-            }
-
-            static AbiType GetType(string? type) => type switch
-            {
-                "address" => AbiType.Address,
-                "function" => AbiType.Function,
-                "bool" => AbiType.Bool,
-                "int8" => AbiType.Int8,
-                "int16" => AbiType.Int16,
-                "int32" => AbiType.Int32,
-                "int64" => AbiType.Int64,
-                "int96" => AbiType.Int96,
-                "int256" => AbiType.Int256,
-                { } when type.StartsWith("int") => new AbiInt(int.Parse(type.AsSpan(3))),
-                "uint8" => AbiType.UInt8,
-                "uint16" => AbiType.UInt16,
-                "uint32" => AbiType.UInt32,
-                "uint64" => AbiType.UInt64,
-                "uint96" => AbiType.UInt96,
-                "uint256" => AbiType.UInt256,
-                { } when type.StartsWith("uint") => new AbiUInt(int.Parse(type.AsSpan(4))),
-                "string" => AbiType.String,
-                "bytes" => AbiType.DynamicBytes,
-                "bytes32" => AbiType.Bytes32,
-                { } when type.StartsWith("bytes") => new AbiBytes(int.Parse(type.AsSpan(5))),
-                "fixed128x18" => AbiType.Fixed,
-                "ufixed128x18" => AbiType.UFixed,
-                { } when type.StartsWith("fixed") => ParseFixed(type),
-                { } when type.StartsWith("ufixed") => ParseUFixed(type),
-                _ => throw new NotSupportedException($"ABI type {type} is not supported.")
-            };
-        }
-
-        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options) =>
-            writer.WriteStringValue(value.Name);
+        };
     }
+
+    /// <summary>Returns the codec for the fixed-length array <c>T[k]</c>, where <c>k</c> is <paramref name="length"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative.</exception>
+    public static Abi<T[]> Array<T>(Abi<T> abi, int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        int headSize = checked(length * abi.HeadSize);
+
+        return new()
+        {
+            Name = $"{abi.Name}[{length}]",
+            Read = (ref BinarySpanReader r) => r.ReadArray(abi, length),
+            Write = (ref BinarySpanWriter w, T[] array) =>
+            {
+                if (array.Length != length) throw new AbiException();
+                w.WriteArray(abi, array);
+            },
+            HeadSize = abi.IsDynamic ? 32 : headSize,
+            TailSize = !abi.IsDynamic ? null : array =>
+            {
+                int size = 0;
+                foreach (T e in array)
+                {
+                    size = checked(size + 32 + abi.Size(e));
+                }
+
+                return size;
+            }
+        };
+    }
+
+    /// <summary><c>bytes</c>.</summary>
+    public static readonly Abi<byte[]> Bytes = new()
+    {
+        Name = "bytes",
+        Read = (ref BinarySpanReader r) =>
+        {
+            int length = (int)UInt256.Read(ref r);
+            return r.ReadBytesPadded(length).ToArray();
+        },
+        Write = (ref BinarySpanWriter w, byte[] bytes) =>
+        {
+            int length = bytes.Length;
+
+            UInt256.Write(ref w, (UInt256)length);
+            w.WritePadded(bytes);
+        },
+        TailSize = bytes =>
+        {
+            const int lengthSize = 32;
+            int bytesSize = Padding.To32(bytes.Length);
+
+            return checked(lengthSize + bytesSize);
+        }
+    };
+
+    /// <summary>Returns the codec for <c>bytesM</c>, where <c>M</c> is <paramref name="length"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is not between 1 and 32.</exception>
+    public static Abi<byte[]> BytesM(int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, 32);
+
+        return new()
+        {
+            Name = $"bytes{length}",
+            Read = (ref BinarySpanReader r) => r.ReadBytesPadded(length).ToArray(),
+            Write = (ref BinarySpanWriter w, byte[] bytes) =>
+            {
+                if (bytes.Length != length) throw new AbiException();
+                w.WritePadded(bytes);
+            },
+        };
+    }
+
+    /// <summary><c>bytes32</c>, as a <see cref="ValueHash256"/>.</summary>
+    public static readonly Abi<ValueHash256> Bytes32 = new()
+    {
+        Name = "bytes32",
+        Read = (ref BinarySpanReader r) => new ValueHash256(r.ReadBytes(32)),
+        Write = (ref BinarySpanWriter w, ValueHash256 v) => v.Bytes.CopyTo(w.Take(32)),
+    };
+
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    /// <summary><c>string</c>, encoded as UTF-8.</summary>
+    public static readonly Abi<String> String = new()
+    {
+        Name = "string",
+        Read = (ref BinarySpanReader r) =>
+        {
+            int length = (int)UInt256.Read(ref r);
+            ReadOnlySpan<byte> bytes = r.ReadBytesPadded(length);
+            return StrictUtf8.GetString(bytes);
+        },
+        Write = (ref BinarySpanWriter w, String v) =>
+        {
+            int byteCount = StrictUtf8.GetByteCount(v);
+            int byteSize = Padding.To32(byteCount);
+
+            UInt256.Write(ref w, (UInt256)byteCount);
+
+            Span<byte> buffer = w.Take(byteSize);
+            StrictUtf8.GetBytes(v, buffer);
+            buffer[byteCount..].Clear();
+        },
+        TailSize = v =>
+        {
+            const int lengthSize = 32;
+            int byteCount = StrictUtf8.GetByteCount(v);
+            int byteSize = Padding.To32(byteCount);
+
+            return checked(lengthSize + byteSize);
+        }
+    };
+
+    /// <summary><c>uint</c>, an alias of <see cref="UInt256"/>.</summary>
+    public static readonly Abi<UInt256> UInt = UInt256;
+    /// <summary><c>int</c>, an alias of <see cref="Int256"/>.</summary>
+    public static readonly Abi<Int256.Int256> Int = Int256;
 }

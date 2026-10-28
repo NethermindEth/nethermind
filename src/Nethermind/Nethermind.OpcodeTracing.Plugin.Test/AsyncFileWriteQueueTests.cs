@@ -36,8 +36,11 @@ public class AsyncFileWriteQueueTests
     [Test]
     public void Enqueue_returns_true_for_valid_item_and_false_for_null()
     {
-        Assert.That(_queue.Enqueue(CreateTrace(1)), Is.True);
-        Assert.That(_queue.Enqueue(null!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_queue.Enqueue(CreateTrace(1)), Is.True);
+            Assert.That(_queue.Enqueue(null!), Is.False);
+        }
     }
 
     [Test]
@@ -48,16 +51,18 @@ public class AsyncFileWriteQueueTests
         Assert.That(_queue.PendingWrites, Is.EqualTo(0));
     }
 
-    [TestCase(1)]
-    [TestCase(50)]
-    public async Task PendingWrites_reaches_zero_after_flush(int count)
+    [Test]
+    public async Task PendingWrites_reaches_zero_after_flush([Values(1, 50)] int count)
     {
         for (ulong i = 0; i < (ulong)count; i++) _queue.Enqueue(CreateTrace(i));
 
         bool flushed = await _queue.FlushAsync(TimeSpan.FromSeconds(10));
 
-        Assert.That(flushed, Is.True);
-        Assert.That(_queue.PendingWrites, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed, Is.True);
+            Assert.That(_queue.PendingWrites, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -77,7 +82,10 @@ public class AsyncFileWriteQueueTests
 
         await _queue.DisposeAsync();
 
-        Assert.That(_queue.PendingWrites, Is.EqualTo(0));
-        Assert.That(Directory.GetFiles(_tempDir, "*.json"), Has.Length.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_queue.PendingWrites, Is.EqualTo(0));
+            Assert.That(Directory.GetFiles(_tempDir, "*.json"), Has.Length.EqualTo(3));
+        }
     }
 }

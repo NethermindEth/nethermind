@@ -9,9 +9,9 @@ namespace Nethermind.Serialization.Json
     using System.Text.Json;
     using System.Text.Json.Serialization;
 
-    public class IdConverter : JsonConverter<object>
+    public class IdConverter : JsonConverter<object?>
     {
-        public override object Read(
+        public override object? Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
             JsonSerializerOptions options)
@@ -35,12 +35,15 @@ namespace Nethermind.Serialization.Json
 
         public override void Write(
             Utf8JsonWriter writer,
-            object value,
+            object? value,
             JsonSerializerOptions options)
         {
 
             switch (value)
             {
+                case null:
+                    writer.WriteNullValue();
+                    break;
                 case int typedValue:
                     writer.WriteNumberValue(typedValue);
                     break;

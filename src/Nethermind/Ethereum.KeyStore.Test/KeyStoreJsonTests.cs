@@ -51,12 +51,8 @@ namespace Ethereum.KeyStore.Test
         [TearDown]
         public void TearDown() => _cryptoRandom?.Dispose();
 
-        [TestCase("test1")]
-        [TestCase("test2")]
-        [TestCase("python_generated_test_with_odd_iv")]
-        [TestCase("evilnonce")]
-        [TestCase("mycrypto")]
-        public void Test(string testName)
+        [Test]
+        public void Test([Values("test1", "test2", "python_generated_test_with_odd_iv", "evilnonce", "mycrypto")] string testName)
         {
             KeyStoreTestModel testModel = _testsModel[testName];
             testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
@@ -70,7 +66,9 @@ namespace Ethereum.KeyStore.Test
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);
 
+#pragma warning disable NUnit2045 // Loading the key must succeed before checking its address.
                 Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+#pragma warning restore NUnit2045
                 Assert.That(key.Address.ToString(false, false), Is.EqualTo(testModel.KeyData.Address));
             }
             catch (Exception e)

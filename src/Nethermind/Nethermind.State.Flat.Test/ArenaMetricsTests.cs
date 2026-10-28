@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -20,6 +21,31 @@ public class ArenaMetricsTests
 {
     private string _testDir = null!;
 
+    private static ArenaManager CreateArenaManager(string arenaDir) => new(arenaDir, new FlatDbConfig
+    {
+        PersistedSnapshotArenaPageCacheBytes = 0,
+        ArenaFileSizeBytes = 64 * 1024,
+    }, LimboLogs.Instance);
+
+    private static SnapshotLocation WritePersistedArena(ArenaManager arena, int size = 4096)
+    {
+        using ArenaWriter writer = arena.CreateWriter(size);
+        writer.GetWriter().GetSpan(size).Clear();
+        writer.GetWriter().Advance(size);
+        (SnapshotLocation location, ArenaReservation reservation) = writer.Complete();
+        using (reservation)
+        {
+            reservation.PersistOnShutdown();
+        }
+        return location;
+    }
+
+    private static void PreserveArena(ArenaManager arena, in SnapshotLocation location)
+    {
+        using ArenaReservation reservation = arena.Open(location);
+        reservation.PersistOnShutdown();
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -37,8 +63,8 @@ public class ArenaMetricsTests
     public void ArenaWriter_Complete_AdvancesAllocatedBytes_ByFrontierDelta_NotMappedSize()
     {
         // Use a delta from the baseline so parallel-running tests don't interfere.
-        const long maxArenaSize = 64 * 1024;  // 64 KiB sparse arena file
-        const int payloadBytes = 4096;
+        long maxArenaSize = Math.Max(64 * 1024, 4L * Environment.SystemPageSize);
+        int payloadBytes = Environment.SystemPageSize;
 
         long arenaBytesBefore = Metrics.ArenaAllocatedBytes;
         long arenaCountBefore = Metrics.ArenaFileCount;
@@ -54,15 +80,21 @@ public class ArenaMetricsTests
         }, LimboLogs.Instance);
 
         // Before any write the file isn't materialised yet (CreateArenaFile fires on first writer).
-        Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
-        Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
+            Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+        }
 
         ArenaReservation reservation;
         using (ArenaWriter writer = arena.CreateWriter(payloadBytes))
         {
             // File materialised — count +1, allocated bytes still 0 (frontier == 0 at open).
-            Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore + 1));
-            Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore + 1));
+                Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
+            }
 
             ref ArenaBufferWriter buf = ref writer.GetWriter();
             buf.GetSpan(payloadBytes).Clear();
@@ -72,20 +104,26 @@ public class ArenaMetricsTests
 
         // After Complete the frontier delta lands in ArenaAllocatedBytes — exactly the
         // payload size, NOT the 64 KiB sparse MaxSize.
-        Assert.That((Metrics.ArenaAllocatedBytes - arenaBytesBefore), Is.EqualTo(payloadBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((Metrics.ArenaAllocatedBytes - arenaBytesBefore), Is.EqualTo(payloadBytes));
 
-        Assert.That((Metrics.ArenaReservationBytes - resvBytesBefore), Is.EqualTo(payloadBytes));
+            Assert.That((Metrics.ArenaReservationBytes - resvBytesBefore), Is.EqualTo(payloadBytes));
 
-        // Arena and blob gauges are independent — no blob activity here.
-        Assert.That(Metrics.BlobAllocatedBytes, Is.EqualTo(blobBytesBefore));
-        Assert.That(Metrics.BlobFileCount, Is.EqualTo(blobCountBefore));
+            // Arena and blob gauges are independent — no blob activity here.
+            Assert.That(Metrics.BlobAllocatedBytes, Is.EqualTo(blobBytesBefore));
+            Assert.That(Metrics.BlobFileCount, Is.EqualTo(blobCountBefore));
+        }
 
         // Dropping the reservation marks all its bytes dead → MarkDead drops the file →
         // OnArenaRemoved returns the count and allocated-bytes contributions to baseline.
         reservation.Dispose();
-        Assert.That(Metrics.ArenaReservationBytes, Is.EqualTo(resvBytesBefore));
-        Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
-        Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.ArenaReservationBytes, Is.EqualTo(resvBytesBefore));
+            Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+            Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
+        }
     }
 
     [Test]
@@ -105,8 +143,11 @@ public class ArenaMetricsTests
         using (BlobArenaWriter writer = blobs.CreateWriter(blobBytes))
         {
             // File materialised on first writer — count +1, allocated still 0.
-            Assert.That(Metrics.BlobFileCount, Is.EqualTo(blobCountBefore + 1));
-            Assert.That(Metrics.BlobAllocatedBytes, Is.EqualTo(blobBytesBefore));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.BlobFileCount, Is.EqualTo(blobCountBefore + 1));
+                Assert.That(Metrics.BlobAllocatedBytes, Is.EqualTo(blobBytesBefore));
+            }
 
             byte[] rlp = new byte[blobBytes];
             writer.WriteRlp(rlp);
@@ -115,10 +156,61 @@ public class ArenaMetricsTests
 
         // After Complete: blob allocated bytes advance by exactly the written size (not the
         // 64 KiB MaxSize of the sparse file).
-        Assert.That((Metrics.BlobAllocatedBytes - blobBytesBefore), Is.EqualTo(blobBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((Metrics.BlobAllocatedBytes - blobBytesBefore), Is.EqualTo(blobBytes));
 
-        // Arena gauges stay flat — blob writes never touch them.
-        Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
-        Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+            // Arena gauges stay flat — blob writes never touch them.
+            Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
+            Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+        }
+    }
+
+    [Test]
+    public void Initialize_ReportsMissingArenaEntriesWithoutReusingTheirIds()
+    {
+        string arenaDir = Path.Combine(_testDir, "arena");
+        SnapshotLocation liveLocation;
+        using (ArenaManager arena = CreateArenaManager(arenaDir))
+        {
+            liveLocation = WritePersistedArena(arena);
+        }
+
+        CatalogEntry live = new(default, default, liveLocation, SnapshotTier.PersistedBase);
+        CatalogEntry orphan = new(default, default,
+            new SnapshotLocation(liveLocation.ArenaId + 1, 0, liveLocation.Size), SnapshotTier.PersistedBase);
+        CatalogEntry maxIdOrphan = new(default, default,
+            new SnapshotLocation(int.MaxValue, 0, liveLocation.Size), SnapshotTier.PersistedBase);
+        List<CatalogEntry> catalogEntries = [live, orphan, maxIdOrphan];
+        List<CatalogEntry> firstLoad = [.. catalogEntries];
+        SnapshotLocation replacementLocation;
+
+        using (ArenaManager reopened = CreateArenaManager(arenaDir))
+        {
+            IReadOnlySet<int> missingArenas = reopened.Initialize(firstLoad);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(missingArenas, Is.EquivalentTo(new[] { orphan.Location.ArenaId, int.MaxValue }));
+                Assert.That(firstLoad, Is.EqualTo(catalogEntries));
+            }
+
+            PreserveArena(reopened, liveLocation);
+            replacementLocation = WritePersistedArena(reopened);
+        }
+
+        Assert.That(replacementLocation.ArenaId, Is.GreaterThan(orphan.Location.ArenaId));
+
+        CatalogEntry replacement = new(default, default, replacementLocation, SnapshotTier.PersistedBase);
+        catalogEntries.Add(replacement);
+        List<CatalogEntry> secondLoad = [.. catalogEntries];
+
+        using ArenaManager restarted = CreateArenaManager(arenaDir);
+        IReadOnlySet<int> missingAfterRestart = restarted.Initialize(secondLoad);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingAfterRestart, Is.EquivalentTo(new[] { orphan.Location.ArenaId, int.MaxValue }));
+            Assert.That(secondLoad, Is.EqualTo(catalogEntries));
+        }
     }
 }

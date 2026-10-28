@@ -26,6 +26,23 @@ public class ResourcePoolTests
         _resourcePool = new ResourcePool(_config);
     }
 
+    /// <summary>The pool metrics are keyed by label value, so labels built apart must still meet in one entry.</summary>
+    [Test]
+    public void PooledResourceLabel_EqualValues_ShareAMetricEntry()
+    {
+        ResourcePool.PooledResourceLabel label = new("MainBlockProcessing", "CachedResource");
+        Dictionary<ResourcePool.PooledResourceLabel, long> counts = new() { [label] = 1 };
+
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "CachedResource")] += 1;
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "SnapshotContent")] = 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts[label], Is.EqualTo(2));
+            Assert.That(counts, Has.Count.EqualTo(2));
+        }
+    }
+
     [Test]
     public void Test_GetSnapshotContent_ReturnsNewInstance_WhenPoolEmpty()
     {
@@ -59,6 +76,64 @@ public class ResourcePoolTests
         {
             Assert.That(content2.Accounts, Is.Empty);
             Assert.That(content2.StorageNodes, Is.Empty);
+        }
+    }
+
+    /// <summary>Resources created before detailed metrics are enabled must still be counted once a warm pool only rents and returns.</summary>
+    [Test]
+    [NonParallelizable]
+    public void Test_CreatedPooledResource_IsPublished_WhenDetailedMetricsEnabledAfterCreation()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        ResourcePool.PooledResourceLabel label = new(usage.ToString(), "SnapshotContent");
+        bool wasEnabled = Metrics.DetailedMetricsEnabled;
+        Metrics.CreatedPooledResource.TryRemove(label, out _);
+        try
+        {
+            Metrics.DetailedMetricsEnabled = false;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Metrics.DetailedMetricsEnabled = true;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Assert.That(Metrics.CreatedPooledResource.TryGetValue(label, out long created) ? created : (long?)null, Is.EqualTo(1));
+        }
+        finally
+        {
+            Metrics.DetailedMetricsEnabled = wasEnabled;
+        }
+    }
+
+    [Test]
+    public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageNodesWereWritten()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.ReadOnlyProcessingEnv;
+        Address address = new("0x1234567890123456789012345678901234567890");
+        SnapshotContent? first = null;
+
+        for (int round = 0; round < 3; round++)
+        {
+            SnapshotContent content = _resourcePool.GetSnapshotContent(usage);
+            first ??= content;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(content, Is.SameAs(first));
+                Assert.That(content.Accounts, Is.Empty);
+                Assert.That(content.ReadAccounts, Is.Empty);
+                Assert.That(content.Storages, Is.Empty);
+                Assert.That(content.SelfDestructedStorageAddresses, Is.Empty);
+                Assert.That(content.StateNodes, Is.Empty);
+                Assert.That(content.StorageNodes, Is.Empty);
+            }
+
+            content.Accounts[address] = new Account(1, 2);
+            content.ReadAccounts[address] = new Account(3, 4);
+            content.Storages[(address, UInt256.One)] = UInt256.One;
+            content.SelfDestructedStorageAddresses[address] = true;
+            content.StateNodes[TreePath.Empty] = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
+            if (round != 1) content.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+
+            _resourcePool.ReturnSnapshotContent(usage, content);
         }
     }
 
@@ -97,21 +172,41 @@ public class ResourcePoolTests
     {
         TransientResource resource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         Assert.That(resource, Is.Not.Null);
-        Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
-        Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resource.size.PrewarmedAddressSize, Is.EqualTo(1024));
+            Assert.That(resource.size.NodesCacheSize, Is.EqualTo(1024));
+        }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ShouldPrewarm_AddressOverloadsUseSameHash(bool includeSlot)
+    [Test]
+    public void ShouldPrewarm_SecondRequestForTheSameKey_IsDeduplicated([Values] bool includeSlot)
     {
         using TransientResource resource = new(new TransientResource.Size(1024, 1));
         Address address = new("0x1234567890123456789012345678901234567890");
-        ValueAddress valueAddress = new(address.Bytes);
         UInt256? slot = includeSlot ? (UInt256)1 : null;
 
         Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
-        Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.False);
+    }
+
+    [Test]
+    public void Test_ReleaseLease_FinalRelease_ReturnsResourceToCheckoutPool()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        TransientResource resource = _resourcePool.GetCachedResource(usage);
+
+        resource.ReleaseLease();
+
+        Assert.That(_resourcePool.GetCachedResource(usage), Is.SameAs(resource));
+    }
+
+    [Test]
+    public void Test_ReleaseLease_WithoutPoolCheckout_Throws()
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1));
+
+        Assert.That(resource.ReleaseLease, Throws.InvalidOperationException);
     }
 
     [Test]
@@ -146,9 +241,12 @@ public class ResourcePoolTests
         TransientResource p2 = _resourcePool.GetCachedResource(usage);
         TransientResource p3 = _resourcePool.GetCachedResource(usage);
 
-        Assert.That(p1, Is.SameAs(r2)); // LIFO
-        Assert.That(p2, Is.SameAs(r1));
-        Assert.That(p3, Is.Not.SameAs(r3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p1, Is.SameAs(r2)); // LIFO
+            Assert.That(p2, Is.SameAs(r1));
+            Assert.That(p3, Is.Not.SameAs(r3));
+        }
     }
 
     [Test]
@@ -161,9 +259,12 @@ public class ResourcePoolTests
         SnapshotContent content;
         using (Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage))
         {
-            Assert.That(snapshot.From, Is.EqualTo(from));
-            Assert.That(snapshot.To, Is.EqualTo(to));
-            Assert.That(snapshot.Content, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot.From, Is.EqualTo(from));
+                Assert.That(snapshot.To, Is.EqualTo(to));
+                Assert.That(snapshot.Content, Is.Not.Null);
+            }
             content = snapshot.Content;
         }
 
@@ -187,10 +288,8 @@ public class ResourcePoolTests
     public void Test_CompactUsage_MapsCompactSizeToUsage(ulong compactSize, ResourcePool.Usage expected) =>
         Assert.That(ResourcePool.CompactUsage(compactSize), Is.EqualTo(expected));
 
-    [TestCase(3UL)]
-    [TestCase(5UL)]
-    [TestCase(2047UL)]
-    public void Test_CompactUsage_ThrowsOnInvalidSize(ulong compactSize) =>
+    [Test]
+    public void Test_CompactUsage_ThrowsOnInvalidSize([Values(3UL, 5UL, 2047UL)] ulong compactSize) =>
         Assert.That(() => ResourcePool.CompactUsage(compactSize), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

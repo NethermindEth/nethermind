@@ -61,19 +61,20 @@ internal class XdcReorgModuleTests
             await Task.WhenAny(newHeadWaitHandle.Task, Task.Delay(5_000));
         }
 
-        Assert.That(blockChain.BlockTree.Head!.Hash, Is.EqualTo(forkParent.Hash!));
-        //The new fork head should commit it's grandparent as finalized
-        // The new fork head should commit it's grandparent as finalized
-        Assert.That(blockChain.XdcContext.HighestCommitBlock.Hash, Is.EqualTo(blockChain.BlockTree.FindHeader(forkParent.ParentHash!)!.ParentHash!));
-        //Our lock QC should be parent of the fork head
-        // Our lock QC should be parent of the fork head
-        Assert.That(blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash, Is.EqualTo(forkParent.ParentHash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockChain.BlockTree.Head!.Hash, Is.EqualTo(forkParent.Hash!));
+            //The new fork head should commit it's grandparent as finalized
+            // The new fork head should commit it's grandparent as finalized
+            Assert.That(blockChain.XdcContext.HighestCommitBlock.Hash, Is.EqualTo(blockChain.BlockTree.FindHeader(forkParent.ParentHash!)!.ParentHash!));
+            //Our lock QC should be parent of the fork head
+            // Our lock QC should be parent of the fork head
+            Assert.That(blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash, Is.EqualTo(forkParent.ParentHash!));
+        }
     }
 
-    [TestCase(5)]
-    [TestCase(900)]
-    [TestCase(901)]
-    public async Task TestShouldNotReorgCommittedBlock(int number)
+    [Test]
+    public async Task TestShouldNotReorgCommittedBlock([Values(5, 900, 901)] int number)
     {
         using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create();
         ulong startRound = blockChain.XdcContext.CurrentRound;

@@ -42,7 +42,7 @@ public class VoteDecoderTests
 
         Rlp encoded = decoder.Encode(vote);
         RlpReader decoderContext = new(encoded.Bytes);
-        Vote decoded = decoder.Decode(ref decoderContext);
+        Vote decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
     }
@@ -62,7 +62,7 @@ public class VoteDecoderTests
         decoder.Encode(ref writer, vote);
 
         RlpReader decoderContext = new(bytes);
-        Vote decoded = decoder.Decode(ref decoderContext);
+        Vote decoded = decoder.DecodeGuardNotNull(ref decoderContext);
 
         Assert.That(decoded, Is.EqualTo(vote).UsingXdcComparer(compareSigner: false));
     }
@@ -103,12 +103,15 @@ public class VoteDecoderTests
             "ForSealing encoding should be shorter as it omits the signature.");
 
         RlpReader context = new(sealingEncoded.Bytes);
-        Vote decoded = decoder.Decode(ref context, RlpBehaviors.ForSealing);
+        Vote decoded = decoder.DecodeGuardNotNull(ref context, RlpBehaviors.ForSealing);
 
-        Assert.That(decoded.Signature, Is.Null,
-            "ForSealing decoding should not contain Signature field.");
-        Assert.That(decoded.ProposedBlockInfo.Round, Is.EqualTo(vote.ProposedBlockInfo.Round));
-        Assert.That(decoded.GapNumber, Is.EqualTo(vote.GapNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Signature, Is.Null,
+                "ForSealing decoding should not contain Signature field.");
+            Assert.That(decoded.ProposedBlockInfo.Round, Is.EqualTo(vote.ProposedBlockInfo.Round));
+            Assert.That(decoded.GapNumber, Is.EqualTo(vote.GapNumber));
+        }
     }
 
     [Test]
@@ -126,7 +129,7 @@ public class VoteDecoderTests
     {
         VoteDecoder decoder = new();
         RlpReader context = new(Rlp.OfEmptyList.Bytes);
-        Vote decoded = decoder.Decode(ref context);
+        Vote? decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }
@@ -137,7 +140,7 @@ public class VoteDecoderTests
         VoteDecoder decoder = new();
         RlpReader decoderContext = new(Rlp.OfEmptyList.Bytes);
 
-        Vote decoded = decoder.Decode(ref decoderContext);
+        Vote? decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.Null);
     }
@@ -171,8 +174,11 @@ public class VoteDecoderTests
 
         (ulong round, Hash256? hash) = vote.PoolKey();
 
-        Assert.That(round, Is.EqualTo(1UL));
-        Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(round, Is.EqualTo(1UL));
+            Assert.That(hash, Is.Not.EqualTo(Hash256.Zero)); // Should be computed hash
+        }
     }
 
 }

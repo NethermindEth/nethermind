@@ -12,9 +12,8 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class NodeStorageFactoryTests
 {
-    [TestCase(INodeStorage.KeyScheme.Hash)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath)]
-    public void Should_DetectHashBasedLayout(INodeStorage.KeyScheme preferredKeyScheme)
+    [Test]
+    public void Should_DetectHashBasedLayout([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme preferredKeyScheme)
     {
         IDb memDb = PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme.Hash);
 
@@ -23,9 +22,8 @@ public class NodeStorageFactoryTests
         Assert.That(nodeStorageFactory.WrapKeyValueStore(memDb).Scheme, Is.EqualTo(INodeStorage.KeyScheme.Hash));
     }
 
-    [TestCase(INodeStorage.KeyScheme.Hash)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath)]
-    public void Should_DetectHalfPathBasedLayout(INodeStorage.KeyScheme preferredKeyScheme)
+    [Test]
+    public void Should_DetectHalfPathBasedLayout([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme preferredKeyScheme)
     {
         IDb memDb = PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme.HalfPath);
 
@@ -34,9 +32,8 @@ public class NodeStorageFactoryTests
         Assert.That(nodeStorageFactory.WrapKeyValueStore(memDb).Scheme, Is.EqualTo(INodeStorage.KeyScheme.HalfPath));
     }
 
-    [TestCase(INodeStorage.KeyScheme.Hash)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath)]
-    public void When_NotEnoughKey_Then_UsePreferredKeyScheme(INodeStorage.KeyScheme preferredKeyScheme)
+    [Test]
+    public void When_NotEnoughKey_Then_UsePreferredKeyScheme([Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme preferredKeyScheme)
     {
         IDb memDb = new MemDb();
         for (int i = 0; i < 5; i++)
@@ -62,8 +59,11 @@ public class NodeStorageFactoryTests
         NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         INodeStorage nodeStorage = nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true);
-        Assert.That(nodeStorage.Scheme, Is.EqualTo(expectedScheme));
-        Assert.That(nodeStorage.RequirePath, Is.EqualTo(requirePath));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeStorage.Scheme, Is.EqualTo(expectedScheme));
+            Assert.That(nodeStorage.RequirePath, Is.EqualTo(requirePath));
+        }
     }
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)

@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json;
 
-public class IPAddressConverter : JsonConverter<IPAddress>
+public class IPAddressConverter : JsonConverter<IPAddress?>
 {
     public override IPAddress? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -27,7 +27,7 @@ public class IPAddressConverter : JsonConverter<IPAddress>
         return address;
     }
 
-    public override void Write(Utf8JsonWriter writer, IPAddress value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, IPAddress? value, JsonSerializerOptions options)
     {
         if (value is null)
         {

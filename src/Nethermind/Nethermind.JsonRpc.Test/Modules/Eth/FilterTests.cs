@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -25,7 +26,7 @@ public class FilterTests
             yield return new TestCaseData("{}",
                 new Filter
                 {
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                 });
 
@@ -46,7 +47,7 @@ public class FilterTests
                     }),
                 new Filter
                 {
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                     Topics =
                     [
@@ -87,6 +88,43 @@ public class FilterTests
                     ]
                 });
 
+            // Non-canonical spellings that must keep binding: uppercase, no prefix, JSON escapes, odd length.
+            yield return new TestCaseData(
+                """
+                {
+                    "address": [
+                        "0xC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C",
+                        "b7705ae4c6f81b66cdb323c65f4e8133690fc099",
+                        "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+                        "0x2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c"
+                    ],
+                    "topics": [
+                        "e194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7",
+                        ["0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001", "0x194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7"]
+                    ]
+                }
+                """,
+                new Filter
+                {
+                    Address =
+                    [
+                        new Address("0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c"),
+                        new Address("0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"),
+                        new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358"),
+                        new Address("0x02d77d118326c33bbe36ebeabf4f7ed6bc2dda5c")
+                    ],
+                    FromBlock = BlockParameter.Latest,
+                    ToBlock = BlockParameter.Latest,
+                    Topics =
+                    [
+                        [new("0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")],
+                        [
+                            new Hash256("0x000500002bd87daa34d8ff0daf3465c96044d8f6667614850000000000000001"),
+                            new Hash256("0x0194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7")
+                        ]
+                    ]
+                });
+
             string blockHash = "0x892a8b3ccc78359e059e67ec44c83bfed496721d48c2d1dd929d6e4cd6559d35";
             BlockParameter blockParam = BlockParameterConverter.GetBlockParameter(blockHash);
 
@@ -106,15 +144,54 @@ public class FilterTests
         Filter filter = new();
         using JsonDocument doc = JsonDocument.Parse(json);
         filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-        Assert.That(filter.Address, Is.EqualTo(expectation.Address));
-        Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
-        Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
-        Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Address, Is.EqualTo(expectation.Address));
+            Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
+            Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
+            Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
+        }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ReadJson_materializes_topics_before_json_document_is_disposed(bool filterAsString)
+    [Test]
+    public void ReadJson_accepts_hex_spellings(
+        [Values(20, 32)] int size, [Values] bool prefixed, [Values] bool oddLength, [Values] bool escaped)
+    {
+        string canonical = "0" + new string('1', size * 2 - 1);
+        string hex = oddLength ? canonical[1..] : canonical;
+        if (prefixed) hex = "0x" + hex;
+        if (escaped) hex = hex[..^1] + "\\u0031";
+        string json = size == Address.Size ? $$"""{"address":"{{hex}}"}""" : $$"""{"topics":["{{hex}}"]}""";
+        Filter filter = new();
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+
+        if (size == Address.Size)
+            Assert.That(filter.Address, Is.EqualTo(new AddressAsKey[] { new(new Address(canonical)) }));
+        else
+            Assert.That(filter.Topics, Is.EqualTo(new Hash256[][] { [new(canonical)] }));
+    }
+
+    [TestCase("""{"address":"0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5g"}""", typeof(FormatException))]
+    [TestCase("""{"address":["0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda"]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":["0XC2D77D118326C33BBE36EBEABF4F7ED6BC2DDA5C"]}""", typeof(FormatException))]
+    [TestCase("""{"address":[123]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":[null]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"address":"0x"}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"topics":["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fz7"]}""", typeof(FormatException))]
+    [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"topics":[[true]]}""", typeof(SafePublicMessageFormatException))]
+    [TestCase("""{"topics":[null,null,null,null,null]}""", typeof(JsonException))]
+    public void ReadJson_rejects_invalid_address_or_topic(string json, Type expectedException)
+    {
+        Filter filter = new();
+        using JsonDocument doc = JsonDocument.Parse(json);
+        Assert.That(() => filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions), Throws.TypeOf(expectedException));
+    }
+
+    [Test]
+    public void ReadJson_materializes_topics_before_json_document_is_disposed([Values] bool filterAsString)
     {
         string filterJson = JsonSerializer.Serialize(
             new

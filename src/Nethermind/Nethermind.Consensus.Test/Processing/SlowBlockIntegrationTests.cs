@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using System.Linq;
 using System.Text.Json;
@@ -76,8 +77,11 @@ public class SlowBlockIntegrationTests
 
         SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
-        Assert.That(log.StateReads.Accounts, Is.GreaterThan(0));
-        Assert.That(log.StateWrites.Accounts, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.StateReads.Accounts, Is.GreaterThan(0));
+            Assert.That(log.StateWrites.Accounts, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -89,7 +93,7 @@ public class SlowBlockIntegrationTests
 
         byte[] code = Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done;
         _harness.DeployCode(contract, code);
-        _harness.WorldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
+        _harness.WorldState.Set(new StorageCell(contract, 0), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
@@ -97,8 +101,11 @@ public class SlowBlockIntegrationTests
 
         SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
-        Assert.That(log.StateReads.StorageSlots, Is.GreaterThan(0));
-        Assert.That(log.Evm.Sload, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.StateReads.StorageSlots, Is.GreaterThan(0));
+            Assert.That(log.Evm.Sload, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -114,7 +121,7 @@ public class SlowBlockIntegrationTests
             .Op(Instruction.PUSH0).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done;
         _harness.DeployCode(contract, code);
-        _harness.WorldState.Set(new StorageCell(contract, 1), new byte[] { 0xFF });
+        _harness.WorldState.Set(new StorageCell(contract, 1), new UInt256(new byte[] { 0xFF }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(200_000)
@@ -122,9 +129,12 @@ public class SlowBlockIntegrationTests
 
         SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
-        Assert.That(log.StateWrites.StorageSlots, Is.GreaterThan(0));
-        Assert.That(log.StateWrites.StorageSlotsDeleted, Is.GreaterThanOrEqualTo(1));
-        Assert.That(log.Evm.Sstore, Is.GreaterThanOrEqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.StateWrites.StorageSlots, Is.GreaterThan(0));
+            Assert.That(log.StateWrites.StorageSlotsDeleted, Is.GreaterThanOrEqualTo(1));
+            Assert.That(log.Evm.Sstore, Is.GreaterThanOrEqualTo(2));
+        }
     }
 
     [Test]
@@ -168,16 +178,22 @@ public class SlowBlockIntegrationTests
 
         // hits/misses/hit_rate must be the first-touch pre-block numbers, NOT the legacy blend
         // (which would fold the 150/140 repeat-layer hits into hits and inflate misses).
-        Assert.That(log.Cache.Account.Hits, Is.EqualTo(90));
-        Assert.That(log.Cache.Account.Misses, Is.EqualTo(10));
-        Assert.That(log.Cache.Account.HitRate, Is.EqualTo(90.0));
-        Assert.That(log.Cache.Storage.Hits, Is.EqualTo(80));
-        Assert.That(log.Cache.Storage.Misses, Is.EqualTo(20));
-        Assert.That(log.Cache.Storage.HitRate, Is.EqualTo(80.0));
-        // repeat_hits = legacy hits minus pre-block hits; the real tx adds its own dict hits on top.
-        Assert.That(log.Cache.Account.RepeatHits, Is.Not.Null);
-        Assert.That(log.Cache.Account.RepeatHits, Is.GreaterThanOrEqualTo(60));
-        Assert.That(log.Cache.Storage.RepeatHits, Is.GreaterThanOrEqualTo(60));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Cache.Account.Hits, Is.EqualTo(90));
+            Assert.That(log.Cache.Account.Misses, Is.EqualTo(10));
+            Assert.That(log.Cache.Account.HitRate, Is.EqualTo(90.0));
+            Assert.That(log.Cache.Storage.Hits, Is.EqualTo(80));
+            Assert.That(log.Cache.Storage.Misses, Is.EqualTo(20));
+            Assert.That(log.Cache.Storage.HitRate, Is.EqualTo(80.0));
+            // repeat_hits = legacy hits minus pre-block hits; the real tx adds its own dict hits on top.
+            Assert.That(log.Cache.Account.RepeatHits, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Cache.Account.RepeatHits, Is.GreaterThanOrEqualTo(60));
+            Assert.That(log.Cache.Storage.RepeatHits, Is.GreaterThanOrEqualTo(60));
+        }
     }
 
     [Test]
@@ -192,8 +208,11 @@ public class SlowBlockIntegrationTests
         SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
         // No pre-block counters moved: legacy semantics, and no repeat_hits field emitted.
-        Assert.That(log.Cache.Account.RepeatHits, Is.Null);
-        Assert.That(log.Cache.Storage.RepeatHits, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Cache.Account.RepeatHits, Is.Null);
+            Assert.That(log.Cache.Storage.RepeatHits, Is.Null);
+        }
     }
 
     [Test]
@@ -212,8 +231,11 @@ public class SlowBlockIntegrationTests
 
         SlowBlockLogEntry log = Execute(tx, _harness.CreateBlock(tx));
 
-        Assert.That(log.StateReads.Code, Is.GreaterThan(0));
-        Assert.That(log.Evm.Calls, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.StateReads.Code, Is.GreaterThan(0));
+            Assert.That(log.Evm.Calls, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -271,10 +293,13 @@ public class SlowBlockIntegrationTests
 
         SlowBlockLogEntry log = Execute(tx, block);
 
-        Assert.That(log.Block.Number, Is.EqualTo(12345));
-        Assert.That(log.Block.GasLimit, Is.EqualTo(30_000_000));
-        Assert.That(log.Block.TxCount, Is.EqualTo(1));
-        Assert.That(log.Block.BlobCount, Is.EqualTo(0));
-        Assert.That(log.Block.Hash, Does.StartWith("0x"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Block.Number, Is.EqualTo(12345));
+            Assert.That(log.Block.GasLimit, Is.EqualTo(30_000_000));
+            Assert.That(log.Block.TxCount, Is.EqualTo(1));
+            Assert.That(log.Block.BlobCount, Is.EqualTo(0));
+            Assert.That(log.Block.Hash, Does.StartWith("0x"));
+        }
     }
 }

@@ -3,14 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -96,6 +95,21 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            // This scenario sets every optional tail field, with a distinct value per field. This makes the field comparisons discriminating.
+            Build.A.Block.WithNumber(1)
+                .WithBaseFeePerGas(3)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithBloom(new Bloom([Build.A.LogEntry.TestObject]))
+                .WithBlobGasUsed(1)
+                .WithExcessBlobGas(2)
+                .WithParentBeaconBlockRoot(TestItem.KeccakA)
+                .WithRequestsHash(TestItem.KeccakB)
+                .WithBlockAccessListHash(TestItem.KeccakC)
+                .WithSlotNumber(7)
+                .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
         ];
     }
@@ -110,7 +124,7 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp result = decoder.Encode((Block?)null);
-        Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
+        Block? decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
 
@@ -125,7 +139,29 @@ public class BlockDecoderTests
         RlpReader ctx = new(bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded = decoder.Encode(decoded);
-        Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
+
+        // An independent pyrlp decode of the fixed bytes produced the expected values.
+        // Only this test decodes canonical wire. Only these asserts can find a self-canceling encode/decode error.
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Transactions, Has.Length.EqualTo(1));
+        Transaction tx = decoded.Transactions[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
+            Assert.That(decoded.Header.Number, Is.EqualTo(5644UL));
+            Assert.That(decoded.Header.Difficulty, Is.EqualTo(UInt256.One));
+            Assert.That(decoded.Header.Beneficiary, Is.EqualTo(Address.Zero));
+            Assert.That(decoded.Header.GasLimit, Is.EqualTo(8_000_000UL));
+            Assert.That(decoded.Header.GasUsed, Is.EqualTo(21_000UL));
+            Assert.That(decoded.Header.Timestamp, Is.EqualTo(1549034638UL));
+            Assert.That(decoded.Header.StateRoot, Is.EqualTo(new Hash256("0xfe77dd4ad7c2a3fa4c11868a00e4d728adcdfef8d2e3c13b256b06cbdbb02ec9")));
+            Assert.That(tx.Nonce, Is.EqualTo(0UL));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)1_000_000_000));
+            Assert.That(tx.GasLimit, Is.EqualTo(21_000UL));
+            Assert.That(tx.To, Is.EqualTo(new Address("0x22ea9f6b28db76a7162054c05ed812deb2f519cd")));
+            Assert.That(tx.Value, Is.EqualTo(UInt256.Parse("100000000000000000000000")));
+            Assert.That(decoded.Uncles, Is.Empty);
+        }
     }
 
     [Test]
@@ -137,14 +173,61 @@ public class BlockDecoderTests
         RlpReader ctx = new(encoded.Bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
-        Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
-    }
 
-    [TestCase("0xf902cef9025ba055870e2f3ef77a9e6163ee5c005dc51d648a2eead382b9044b1a5ad2ee69b0c6a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942adc25665018aa1fe0e6bc666dac8fc2697ff9baa0b77e3b74c6c8af85408677375183385a2e55446bd071bf193a4958f7417dc8fba056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800188016345785d8a0000800c80a0000000000000000000000000000000000000000000000000000000000000000088000000000000000007a0cc3b10b54dc4e97c01f1df20e8b95874cd5fe83bf6eae64935a16cb08db85fa98080a00000000000000000000000000000000000000000000000000000000000000000a0e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855c0c0f86ce08080946389e7f33ce3b1e94e4325ef02829cd12297ef7188ffffffffffffffffd80180948a0a19589531694250d570040a0c4b74576919b801d8028094000000000000000000000000000000000000100080d8038094a94f5374fce5edbc8e2a8697c15331677e6ebf0b80")]
-    [Ignore("The test is useful for debugging hive - shouldn't be executed on CI")]
-    public void Write_rlp_of_blocks_to_file(string rlp) =>
-        // the test is useful for debugging hive
-        File.WriteAllBytes("chains\\block1.rlp".GetApplicationResourcePath(), Bytes.FromHexString(rlp));
+        // A re-encode comparison cannot find a decode error that the matching encode hides. The field
+        // comparisons below can. A fully self-canceling encode/decode pair passes both; only a test
+        // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
+        Assert.That(decoded, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+            Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
+            // The hash pins the embedded header bytes against the standalone header encoding. It cannot find decode errors.
+            Assert.That(decoded.Hash, Is.EqualTo(block.Hash));
+
+            BlockHeader actual = decoded.Header;
+            BlockHeader expected = block.Header;
+            Assert.That(actual.ParentHash, Is.EqualTo(expected.ParentHash));
+            Assert.That(actual.UnclesHash, Is.EqualTo(expected.UnclesHash));
+            Assert.That(actual.Beneficiary, Is.EqualTo(expected.Beneficiary));
+            Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
+            Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
+            Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
+            Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
+            Assert.That(actual.Difficulty, Is.EqualTo(expected.Difficulty));
+            Assert.That(actual.Number, Is.EqualTo(expected.Number));
+            Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
+            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
+            Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
+            Assert.That(actual.ExtraData, Is.EqualTo(expected.ExtraData));
+            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
+            Assert.That(actual.BaseFeePerGas, Is.EqualTo(expected.BaseFeePerGas));
+            Assert.That(actual.WithdrawalsRoot, Is.EqualTo(expected.WithdrawalsRoot));
+            Assert.That(actual.BlobGasUsed, Is.EqualTo(expected.BlobGasUsed));
+            Assert.That(actual.ExcessBlobGas, Is.EqualTo(expected.ExcessBlobGas));
+            Assert.That(actual.MixHash, Is.EqualTo(expected.MixHash));
+            Assert.That(actual.ParentBeaconBlockRoot, Is.EqualTo(expected.ParentBeaconBlockRoot));
+            Assert.That(actual.RequestsHash, Is.EqualTo(expected.RequestsHash));
+            Assert.That(actual.BlockAccessListHash, Is.EqualTo(expected.BlockAccessListHash));
+            Assert.That(actual.SlotNumber, Is.EqualTo(expected.SlotNumber));
+
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Assert.That(decoded.Transactions[i].Hash, Is.EqualTo(block.Transactions[i].Hash), $"transaction {i}");
+            }
+
+            for (int i = 0; i < block.Uncles.Length; i++)
+            {
+                Assert.That(decoded.Uncles[i].Hash, Is.EqualTo(block.Uncles[i].Hash), $"uncle {i}");
+            }
+
+            Assert.That(decoded.Withdrawals?.Length, Is.EqualTo(block.Withdrawals?.Length));
+        }
+    }
 
     [Test]
     public void Encode_with_pre_encoded_transactions_produces_same_rlp(
@@ -162,7 +245,25 @@ public class BlockDecoderTests
         Block blockWithEncoded = new(block.Header, block.Body) { EncodedTransactions = encodedTxs };
         Rlp fast = decoder.Encode(blockWithEncoded);
 
-        Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+            Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
+        }
+    }
+
+    [Test]
+    public void Encode_to_array_pool_span_matches_encode(
+        [ValueSource(nameof(BlockScenarios))] Block block, [Values] bool preEncodedTransactions)
+    {
+        BlockDecoder decoder = new();
+        Block target = preEncodedTransactions
+            ? new(block.Header, block.Body) { EncodedTransactions = block.Transactions.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray() }
+            : block;
+
+        using ArrayPoolSpan<byte> pooled = decoder.EncodeToArrayPoolSpan(target);
+
+        Assert.That(((ReadOnlySpan<byte>)pooled).ToArray(), Is.EqualTo(decoder.Encode(target).Bytes));
     }
 
     [Test]
@@ -239,6 +340,69 @@ public class BlockDecoderTests
         }
     }
 
+    [TestCase(true, TestName = "Receipt_recovery_value_hash_matches_the_hash_from_encoded_transactions")]
+    [TestCase(false, TestName = "Receipt_recovery_value_hash_matches_the_hash_from_block_transactions")]
+    public void Receipt_recovery_value_hash_matches_the_transaction_hash(bool fromEncoded)
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
+        BlockDecoder decoder = new();
+        ReceiptRecoveryBlock recovery = fromEncoded
+            ? decoder.DecodeToReceiptRecoveryBlock(null, decoder.Encode(block).Bytes, RlpBehaviors.None)
+                ?? throw new AssertionException("encoded block should decode for receipt recovery")
+            : new ReceiptRecoveryBlock(block);
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionValueHash(), Is.EqualTo(transactions[i].Hash!.ValueHash256), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    [Test]
+    public void Receipt_recovery_transaction_at_an_index_does_not_reference_the_block_memory()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).WithTo(null).WithCode([0x60, 0x00]).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).WithMaxFeePerGas(1).WithData([1, 2, 3]).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithMaxFeePerGas(1).WithShardBlobTxTypeAndFields(2, isMempoolTx: false).Signed().TestObject,
+            Build.A.Transaction.WithNonce(4).WithType(TxType.SetCode).WithMaxFeePerGas(1)
+                .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressC, 7, new Signature(new byte[64], 0))).Signed().TestObject,
+        ];
+        BlockDecoder decoder = new();
+        byte[] encoded = decoder.Encode(Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(transactions).TestObject).Bytes;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)
+            ?? throw new AssertionException("encoded block should decode for receipt recovery");
+        recovery.SkipNextTransaction();
+
+        Transaction[] decoded = Enumerable.Range(0, transactions.Length).Reverse().Select(recovery.GetTransaction).Reverse().ToArray();
+        Array.Fill(encoded, (byte)0xff);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(decoded[i].Hash, Is.EqualTo(transactions[i].Hash), $"transaction {i}");
+                Assert.That(TxDecoder.Instance.Encode(decoded[i]).Bytes, Is.EqualTo(TxDecoder.Instance.Encode(transactions[i]).Bytes), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetTransaction(transactions.Length));
+        }
+    }
+
     [Test]
     public void Receipt_recovery_calculates_a_missing_in_memory_transaction_hash()
     {
@@ -274,8 +438,9 @@ public class BlockDecoderTests
         [0xb8, 0x01, 0x01],
     ];
 
-    [TestCaseSource(nameof(MalformedRecoveryTransactions))]
-    public void Receipt_recovery_rejects_malformed_transaction_envelopes(byte[] transactionData)
+    [Test]
+    public void Receipt_recovery_rejects_malformed_transaction_envelopes(
+        [ValueSource(nameof(MalformedRecoveryTransactions))] byte[] transactionData, [Values] bool skip)
     {
         ReceiptRecoveryBlock recovery = new(
             null,
@@ -283,7 +448,11 @@ public class BlockDecoderTests
             transactionData,
             transactionCount: 1);
 
-        Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+        Assert.Throws<RlpException>(() =>
+        {
+            if (skip) recovery.SkipNextTransaction();
+            else recovery.GetNextTransactionHash();
+        });
     }
 
     [Test]

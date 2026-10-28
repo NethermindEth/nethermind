@@ -69,7 +69,15 @@ public sealed class DetailedMetricOnFlagAttribute : Attribute
 {
 }
 
-public record StringLabel(string label) : IMetricLabels
+public sealed class StringLabel(string label) : IMetricLabels, IEquatable<StringLabel>
 {
-    public string[] Labels => [label];
+    private readonly string _label = label;
+
+    public string[] Labels { get; } = [label];
+
+    public bool Equals(StringLabel? other) => other is not null && _label == other._label;
+
+    public override bool Equals(object? obj) => Equals(obj as StringLabel);
+
+    public override int GetHashCode() => _label.GetHashCode();
 }

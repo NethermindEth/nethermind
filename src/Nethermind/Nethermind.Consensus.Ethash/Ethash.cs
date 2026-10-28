@@ -66,6 +66,19 @@ namespace Nethermind.Consensus.Ethash
         }
 
         /// <summary>
+        /// The largest epoch for which <see cref="GetCacheSize"/>'s growth term stays within <see cref="uint"/>;
+        /// one epoch higher it wraps to zero and no cache size can be derived at all.
+        /// </summary>
+        /// <remarks>
+        /// A sanity ceiling on a caller-supplied epoch, not a bound on cache size: the final
+        /// <c>cacheItems * HashBytes</c> multiplication is also unsigned and already wraps from epoch ~32_640, so
+        /// sizes reported above that are arbitrary rather than merely large. Keeping block numbers in a plausible
+        /// range is the caller's responsibility — for peer-supplied numbers that is the batch-consistency check in
+        /// the forward header provider.
+        /// </remarks>
+        public static uint MaxEpoch => (uint.MaxValue - CacheBytesInit / (uint)HashBytes) / (CacheBytesGrowth / (uint)HashBytes);
+
+        /// <summary>
         /// Improvement from @AndreaLanfranchi
         /// Finds the largest prime number given an upper limit
         /// </summary>
@@ -195,22 +208,23 @@ namespace Nethermind.Consensus.Ethash
 
         public void HintRange(Guid guid, ulong start, ulong end) => _hintBasedCache.Hint(guid, start, end);
 
-        private readonly Guid _hintBasedCacheUser = Guid.Empty;
-
         public bool Validate(BlockHeader header)
         {
+            // Mirror the ceiling HintBasedCache enforces, so a number whose epoch only fits uint once truncated
+            // cannot alias onto a legitimately cached epoch.
+            if (header.Number / EpochLength > MaxEpoch)
+            {
+                return false;
+            }
+
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
-                dataSet = _hintBasedCache.Get(epoch);
-                if (dataSet is null)
-                {
-                    if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
-                    return false;
-                }
+                // Callers must hint the validation range before validating. Building the cache on demand here
+                // would let a peer-selected header number drive unbounded Ethash cache construction.
+                if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
+                return false;
             }
 
             ulong fullSize = GetDataSize(epoch);

@@ -122,8 +122,11 @@ public class ForkInfoTests
     [TestCase(1735374ul, 1_760_428_360ul, "0xe2ae4999", 1_761_017_184ul, "Future Osaka timestamp")]
     [TestCase(1735373ul, 1_761_017_184ul, "0x56078a1e", 1_761_607_008ul, "First BPO1 timestamp")]
     [TestCase(1735374ul, 1_761_018_184ul, "0x56078a1e", 1_761_607_008ul, "Future BPO1 timestamp")]
-    [TestCase(1735373ul, 1_761_607_008ul, "0x268956b6", 0ul, "First BPO2 timestamp")]
-    [TestCase(1735374ul, 1_761_608_008ul, "0x268956b6", 0ul, "Future BPO2 timestamp")]
+    [TestCase(1735373ul, 1_761_607_008ul, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "First BPO2 timestamp")]
+    [TestCase(1735374ul, 1_761_608_008ul, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "Future BPO2 timestamp")]
+    [TestCase(1735373ul, SepoliaSpecProvider.AmsterdamTimestamp - 1, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "Last timestamp before Amsterdam")]
+    [TestCase(1735373ul, SepoliaSpecProvider.AmsterdamTimestamp, "0x6c1d9423", 0ul, "First Amsterdam timestamp")]
+    [TestCase(1735374ul, SepoliaSpecProvider.AmsterdamTimestamp + 1000, "0x6c1d9423", 0ul, "Future Amsterdam timestamp")]
     public void Fork_id_and_hash_as_expected_on_sepolia(ulong head, ulong headTimestamp, string forkHashHex, ulong next, string description) => Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
 
     [TestCase(0ul, 0ul, "0xf64909b1", 1604400ul, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
@@ -295,6 +298,11 @@ public class ForkInfoTests
     // fork) at block 7279999, before Shanghai. Local is incompatible.
     [TestCase(19999999ul, 1667999999ul, "0xf0afd0e3", 1667999999ul, ValidationResult.IncompatibleOrStale, true)]
 
+    // Local is mainnet Petersburg. Remote is Byzantium and announces Petersburg at a wrong block that local has
+    // not reached yet. Remote fork hash is a subset of local forks with a mismatched next: EIP-2124 rule 2
+    // rejects it as stale (geth: ErrRemoteStale).
+    [TestCase(7_300_000ul, 0ul, "0xa00bc324", 7_500_000ul, ValidationResult.RemoteStale)]
+
     //----------------------
     // Timestamp based tests
     //----------------------
@@ -346,9 +354,8 @@ public class ForkInfoTests
             Is.EqualTo(expected),
             description);
 
-    [TestCase(0ul)]
-    [TestCase(9_999_999_999ul)]
-    public void Test_last_known_fork_id_compatibility_mainnet(ulong next)
+    [Test]
+    public void Test_last_known_fork_id_compatibility_mainnet([Values(0ul, 9_999_999_999ul)] ulong next)
     {
         ForkInfo forkInfo = CreateMainnetForkInfo();
         Fork lastFork = forkInfo.GetForkActivationsSummary(null).Last!.Value;
@@ -399,10 +406,13 @@ public class ForkInfoTests
         ChainSpec spec = loader.Load(memoryStream);
         ChainSpecBasedSpecProvider provider = new(spec);
 
-        Assert.That(spec.ChainId, Is.EqualTo(expectedChainId));
-        Assert.That(spec.NetworkId, Is.EqualTo(expectedNetworkId));
-        Assert.That(provider.ChainId, Is.EqualTo(expectedChainId));
-        Assert.That(provider.NetworkId, Is.EqualTo(expectedNetworkId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.ChainId, Is.EqualTo(expectedChainId));
+            Assert.That(spec.NetworkId, Is.EqualTo(expectedNetworkId));
+            Assert.That(provider.ChainId, Is.EqualTo(expectedChainId));
+            Assert.That(provider.NetworkId, Is.EqualTo(expectedNetworkId));
+        }
     }
 
     public static void Test(ulong head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
@@ -429,20 +439,29 @@ public class ForkInfoTests
         ForkInfo forkInfo = new(specProvider, syncServer);
         ForkId forkId = forkInfo.GetForkId(head, headTimestamp);
 
-        Assert.That(forkId.Next, Is.EqualTo(next));
-        Assert.That(forkId.ForkHash, Is.EqualTo(expectedForkHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkId.Next, Is.EqualTo(next));
+            Assert.That(forkId.ForkHash, Is.EqualTo(expectedForkHash));
+        }
 
         // Validate fork info summary
         BlockHeader header = Build.A.BlockHeader.WithNumber(head).WithTimestamp(headTimestamp).TestObject;
         ForkActivationsSummary forkActivationsSummary = forkInfo.GetForkActivationsSummary(header);
 
-        Assert.That(forkActivationsSummary.Current.Id.ForkHash, Is.EqualTo(expectedForkHash));
-        Assert.That(forkActivationsSummary.Current.Id.Next, Is.EqualTo(next));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkActivationsSummary.Current.Id.ForkHash, Is.EqualTo(expectedForkHash));
+            Assert.That(forkActivationsSummary.Current.Id.Next, Is.EqualTo(next));
+        }
 
         if (next is 0)
         {
-            Assert.That(forkActivationsSummary.Next, Is.Null);
-            Assert.That(forkActivationsSummary.Last, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forkActivationsSummary.Next, Is.Null);
+                Assert.That(forkActivationsSummary.Last, Is.Null);
+            }
             return;
         }
 

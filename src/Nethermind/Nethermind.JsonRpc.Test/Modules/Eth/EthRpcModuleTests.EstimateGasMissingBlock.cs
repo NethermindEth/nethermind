@@ -20,12 +20,14 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
 
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            """{"from":"0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gasPrice":"0xBA43B7400"}""");
+            """{"from":"0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gasPrice":"0xBA43B7400"}""")!;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, blockId);
 
         JObject response = JObject.Parse(serialized);
+#pragma warning disable NUnit2045 // The key must exist before indexing the result.
         Assert.That(response.ContainsKey("error"), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
         Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedMessage));
     }

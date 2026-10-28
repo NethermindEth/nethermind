@@ -3,11 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -47,15 +48,19 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public byte[]? GetMetadata(byte[] key) => _blockDb.Get(key);
 
+    /// <inheritdoc/>
+    /// <remarks>Deliberately does not consult <c>_blockCache</c>: it is a bounded read accelerator whose entries
+    /// can be evicted at any time, and it holds blocks that were never written (a preloaded block cached by
+    /// <c>UpdateMainChainCore</c>), so a hit there would report a body that is about to vanish. The pending
+    /// overlay is durable - its entry is removed only after the write returns. Both key forms are probed, so this
+    /// agrees with <see cref="Get"/> on a database predating the block-number prefix.</remarks>
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
-        ValueHash256 cacheKey = blockHash.ValueHash256;
-        if (_blockCache.TryGetNoRefresh(in cacheKey, out _)) return true;
         if (_pending?.Contains(blockHash) == true) return true;
 
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return _blockDb.KeyExists(dbKey);
+        return _blockDb.KeyExists(dbKey) || _blockDb.KeyExists(blockHash.Bytes);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -87,7 +92,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // solely on header/txs/uncles/withdrawals (none mutated after processing), so encoding defers to the consumer.
         // Carry the pre-encoded transactions (populated when built from an ExecutionPayload) so the consumer reuses
         // them instead of re-encoding every tx; the arrays are immutable encoded bytes, so sharing the reference is safe.
-        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions });
+        _pending.Publish(block.Number, block.Hash, new Block(block.Header, block.Body) { EncodedTransactions = block.EncodedTransactions, EncodedSize = block.EncodedSize });
     }
 
     private void WriteBlock(ulong blockNumber, Hash256 blockHash, Block block)
@@ -114,6 +119,42 @@ public class BlockStore : IBlockStore, IClearableCache
         _blockCache.Delete(in blockHash.ValueHash256);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
+    }
+
+    /// <summary>Drops every stored block in <c>[fromInclusive, toExclusive)</c> in one operation, whatever their
+    /// hashes and whether or not a chain level lists them.</summary>
+    /// <remarks>Reaches only block-number-prefixed keys. A database predating those stores bodies under the bare
+    /// 32-byte hash, which <see cref="Get"/> still reads, so it reclaims nothing here and keeps serving blocks below
+    /// the announced boundary. Accepted: it needs a node that never resynced since keys gained their prefix.</remarks>
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive) => DeleteRanges([(fromInclusive, toExclusive)]);
+
+    /// <inheritdoc/>
+    public void DeleteRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+    {
+        bool removedAny = false;
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
+            }
+            else
+            {
+                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
+            }
+
+            removedAny |= fromInclusive < toExclusive;
+        }
+
+        if (!removedAny) return;
+
+        // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
+        // disk must stop being served whatever the reclaim does.
+        _blockCache.Clear();
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+        }
     }
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
@@ -145,7 +186,7 @@ public class BlockStore : IBlockStore, IClearableCache
         // Bytes are needed here, so encode the snapshot on demand - paid only on a rare read of a still-pending block.
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
-            return _blockDecoder.EncodeAsBytes(pendingBlock);
+            return _blockDecoder.Encode(pendingBlock).Bytes;
         }
 
         Span<byte> dbKey = stackalloc byte[40];
@@ -194,7 +235,7 @@ public class BlockStore : IBlockStore, IClearableCache
             ? pendingBlock
             // Cache a sanitized copy to avoid retaining large BAL/account-change structures without mutating
             // the original block, which downstream consumers may still use and dispose.
-            : new Block(block.Header, block.Body);
+            : new Block(block.Header, block.Body) { EncodedSize = block.EncodedSize };
 
         _blockCache.Set(in cacheKey, cachedBlock);
     }

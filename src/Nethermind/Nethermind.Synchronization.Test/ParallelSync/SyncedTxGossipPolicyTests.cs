@@ -58,8 +58,11 @@ public class SyncedTxGossipPolicyTests
         CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
 
         // During sync: gossip disabled
-        Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
-        Assert.That(composite.CanGossipTransactions, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
+            Assert.That(composite.CanGossipTransactions, Is.True);
+        }
 
         // Transition to synced: gossip must become enabled
         selector.Current = SyncMode.WaitingForBlock;
@@ -68,6 +71,20 @@ public class SyncedTxGossipPolicyTests
         // Transition back to sync: gossip must become disabled again
         selector.Current = SyncMode.StateNodes;
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
+    }
+
+    [Test]
+    public void Accept_tx_when_not_synced_allows_gossip_listening()
+    {
+        TxPoolConfig txPoolConfig = new() { AcceptTxWhenNotSynced = true };
+        MutableSelector selector = new(SyncMode.Disconnected);
+        SyncedTxGossipPolicy syncPolicy = new(selector, txPoolConfig);
+        CompositeTxGossipPolicy composite = new(new FixedTxGossipPolicySource([syncPolicy]));
+
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
+
+        selector.Current = SyncMode.FastSync;
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
     }
 
     [Test]

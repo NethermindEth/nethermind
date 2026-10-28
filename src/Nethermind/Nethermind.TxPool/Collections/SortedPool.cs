@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
@@ -21,6 +22,7 @@ namespace Nethermind.TxPool.Collections
     /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
     public abstract partial class SortedPool<TKey, TValue, TGroupKey>
         where TKey : notnull
+        where TValue : notnull
         where TGroupKey : notnull
     {
         internal delegate bool BucketVisitor<TState>(TValue value, ref TState state);
@@ -43,9 +45,10 @@ namespace Nethermind.TxPool.Collections
         private readonly IComparer<TValue> _sortedComparer;
 
         // worst element from every group, used to determine element that will be evicted when pool is full
-        protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
+        private protected readonly WorstValueHeap<TValue, TKey> _worstSortedValues;
         protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
+        private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
 
         /// <summary>
         /// Constructor
@@ -60,7 +63,7 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = []; // do not initialize it at the full capacity
             _buckets = [];
-            _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
+            _worstSortedValues = new WorstValueHeap<TValue, TKey>(_sortedComparer);
             _logger = logManager?.GetClassLogger(typeof(SortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -121,11 +124,8 @@ namespace Nethermind.TxPool.Collections
             int index = 0;
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
-                foreach (TValue value in bucket.Value)
-                {
-                    snapshot[index] = value;
-                    index++;
-                }
+                CopyBucketTo(bucket.Value, snapshot.AsSpan(index, bucket.Value.Count));
+                index += bucket.Value.Count;
             }
 
             Volatile.Write(ref _snapshot, snapshot);
@@ -135,22 +135,45 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+        /// <remarks>Takes the pool lock for the whole walk, so callers that want only some of the groups filter
+        /// the returned snapshot rather than being handed a predicate to pay for under that lock.</remarks>
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot()
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
-
             Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                if (where is not null && (bucket.Count == 0 || !where.Invoke((key, bucket.Min!))))
-                {
-                    continue;
-                }
-
                 snapshots[key] = CopyBucketToArray(bucket);
             }
-
             return snapshots;
+        }
+
+        /// <summary>Gets a production snapshot whose bucket arrays must not be modified by callers.</summary>
+        /// <remarks>
+        /// Membership changes invalidate cached arrays. In-place value updates remain visible through their
+        /// references and must not reorder a bucket without invalidating its snapshot.
+        /// Unfiltered calls also cache the dictionary; filtered calls reuse only the bucket arrays.
+        /// </remarks>
+        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+            if (where is null && _productionSnapshot is not null) return _productionSnapshot;
+            if (_buckets.Count == 0) return _productionSnapshot ??= new([], 0);
+
+            KeyValuePair<TGroupKey, TValue[]>[] entries = new KeyValuePair<TGroupKey, TValue[]>[_buckets.Count];
+            int count = 0;
+            foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
+            {
+                if (where is not null && (bucket.Count == 0 || !where((key, bucket.Min!)))) continue;
+                TValue[] values = bucket is SnapshotBucket cached
+                    ? cached.Snapshot ??= CopyBucketToArray(bucket)
+                    : CopyBucketToArray(bucket);
+                entries[count++] = new(key, values);
+            }
+
+            SnapshotDictionary<TGroupKey, TValue[]> snapshot = new(entries, count);
+            if (where is null) _productionSnapshot = snapshot;
+            return snapshot;
         }
 
         /// <summary>
@@ -164,16 +187,121 @@ namespace Nethermind.TxPool.Collections
             return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? CopyBucketToArray(bucket) : [];
         }
 
+        /// <summary>A bucket that also keeps its items in traversal order, so walking it allocates nothing.</summary>
+        /// <remarks>
+        /// <see cref="SortedSet{T}"/> allocates a traversal stack per enumeration, and every insert walks its bucket.
+        /// The ordered copy is maintained by binary search only while it is strictly sorted under the comparer: the
+        /// pool comparer breaks equal nonces on fees that change in place, after which the tree keeps its insertion
+        /// order and the copy is rebuilt from the tree's own traversal instead.
+        /// </remarks>
+        private sealed class SnapshotBucket(IComparer<TValue> comparer) : EnhancedSortedSet<TValue>(comparer)
+        {
+            public TValue[]? Snapshot;
+            private readonly List<TValue> _ordered = [];
+            private bool _isOrderedStale;
+
+            public ReadOnlySpan<TValue> Ordered
+            {
+                get
+                {
+                    if (_isOrderedStale) RebuildOrdered();
+                    return CollectionsMarshal.AsSpan(_ordered);
+                }
+            }
+
+            public bool AddInOrder(TValue value)
+            {
+                if (!Add(value)) return false;
+
+                Snapshot = null;
+                if (!_isOrderedStale && !TryInsertOrdered(value)) _isOrderedStale = true;
+                return true;
+            }
+
+            public bool RemoveInOrder(TValue value)
+            {
+                if (!Remove(value)) return false;
+
+                Snapshot = null;
+                if (!_isOrderedStale && !TryRemoveOrdered(value)) _isOrderedStale = true;
+                return true;
+            }
+
+            private bool TryInsertOrdered(TValue value)
+            {
+                ReadOnlySpan<TValue> items = CollectionsMarshal.AsSpan(_ordered);
+                for (int i = 1; i < items.Length; i++)
+                {
+                    if (Comparer.Compare(items[i - 1], items[i]) >= 0) return false;
+                }
+
+                int index = items.BinarySearch(value, Comparer);
+                if (index >= 0) return false;
+
+                _ordered.Insert(~index, value);
+                return true;
+            }
+
+            private bool TryRemoveOrdered(TValue value)
+            {
+                ReadOnlySpan<TValue> items = CollectionsMarshal.AsSpan(_ordered);
+                for (int i = 0; i < items.Length; i++)
+                {
+                    if (Comparer.Compare(items[i], value) != 0) continue;
+
+                    // An out-of-order tree can hold an item twice, and which copy it removed is not knowable here.
+                    for (int j = i + 1; j < items.Length; j++)
+                    {
+                        if (Comparer.Compare(items[j], value) == 0) return false;
+                    }
+
+                    _ordered.RemoveAt(i);
+                    return true;
+                }
+
+                return false;
+            }
+
+            private void RebuildOrdered()
+            {
+                _ordered.Clear();
+                _ordered.EnsureCapacity(Count);
+                foreach (TValue value in this)
+                {
+                    _ordered.Add(value);
+                }
+
+                _isOrderedStale = false;
+            }
+        }
+
         private static TValue[] CopyBucketToArray(EnhancedSortedSet<TValue> bucket)
         {
             TValue[] snapshot = new TValue[bucket.Count];
+            CopyBucketTo(bucket, snapshot);
+            return snapshot;
+        }
+
+        private static void CopyBucketTo(EnhancedSortedSet<TValue> bucket, Span<TValue> destination)
+        {
+            if (bucket is SnapshotBucket ordered)
+            {
+                ordered.Ordered.CopyTo(destination);
+                return;
+            }
+
+            // Avoid allocating the SortedSet enumerator's traversal stack for a single item.
+            if (bucket.Count == 1)
+            {
+                destination[0] = bucket.Min!;
+                return;
+            }
+
             int index = 0;
             foreach (TValue value in bucket)
             {
-                snapshot[index++] = value;
+                destination[index++] = value;
             }
-
-            return snapshot;
         }
 
         /// <summary>
@@ -292,14 +420,21 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        private bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
+        /// <summary>Removes <paramref name="value"/> from its group bucket.</summary>
+        /// <remarks>The only place bucket membership shrinks, so per-bucket accounting belongs here rather than on
+        /// <see cref="Removed"/>, which <see cref="RemoveLast"/> bypasses when it falls back to the bucket.</remarks>
+        /// <param name="value">Element to remove.</param>
+        /// <param name="bucketSet">Bucket the element was mapped to, or null when the group is unknown.</param>
+        /// <returns>Whether the bucket held the element.</returns>
+        protected virtual bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
         {
             TGroupKey groupMapping = MapToGroup(value);
             if (_buckets.TryGetValue(groupMapping, out bucketSet))
             {
                 TValue? last = bucketSet.Max;
-                if (bucketSet.Remove(value))
+                if (bucketSet is SnapshotBucket ordered ? ordered.RemoveInOrder(value) : bucketSet.Remove(value))
                 {
+                    _productionSnapshot = null;
                     if (bucketSet.Count == 0)
                     {
                         _buckets.Remove(groupMapping);
@@ -445,7 +580,7 @@ namespace Nethermind.TxPool.Collections
                     return true;
                 }
 
-                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue))
+                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue.Key))
                 {
                     RemoveFromBucket(worstValue.Key, out _);
                 }
@@ -481,12 +616,13 @@ namespace Nethermind.TxPool.Collections
         {
             if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
-                _buckets[groupKey] = bucket = new EnhancedSortedSet<TValue>(_groupComparer);
+                _buckets[groupKey] = bucket = new SnapshotBucket(_groupComparer);
             }
 
             TValue? last = bucket.Max;
-            if (bucket.Add(value))
+            if (bucket is SnapshotBucket ordered ? ordered.AddInOrder(value) : bucket.Add(value))
             {
+                _productionSnapshot = null;
                 _cacheMap[key] = value;
                 UpdateIsFull();
                 UpdateSortedValues(bucket, last);
@@ -594,6 +730,18 @@ namespace Nethermind.TxPool.Collections
                 return;
             }
 
+            if (bucket is SnapshotBucket ordered)
+            {
+                foreach (TValue value in ordered.Ordered)
+                {
+                    if (!visitor(value, ref state))
+                    {
+                        break;
+                    }
+                }
+                return;
+            }
+
             foreach (TValue value in bucket)
             {
                 if (!visitor(value, ref state))
@@ -602,6 +750,11 @@ namespace Nethermind.TxPool.Collections
                 }
             }
         }
+
+        /// <summary>The items of <paramref name="bucket"/> in traversal order.</summary>
+        /// <remarks>Valid until the bucket's membership next changes; call under the pool lock.</remarks>
+        internal static ReadOnlySpan<TValue> InOrder(EnhancedSortedSet<TValue> bucket) =>
+            bucket is SnapshotBucket ordered ? ordered.Ordered : CopyBucketToArray(bucket);
 
         public bool BucketAny(TGroupKey groupKey, Func<TValue, bool> predicate)
         {

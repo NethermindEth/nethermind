@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
@@ -125,10 +126,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
 
-                if (Logger.IsDebug) Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
+                if (Logger.IsTrace) TraceRequestTimeout(describeRequestFunc(request.Message));
             }
 
             return task;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceRequestTimeout(string requestDescription) =>
+            Logger.Trace($"{Session} Request timeout in {requestDescription}");
     }
 }

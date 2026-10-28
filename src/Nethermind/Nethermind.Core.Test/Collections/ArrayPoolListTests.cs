@@ -90,7 +90,7 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
-        Assert.That(list.ToArray(), Is.EqualTo(Enumerable.Range(0, 50)));
+        Assert.That(list, Is.SequenceEqualTo(Enumerable.Range(0, 50)));
     }
 
     [TestCase(0, new[] { -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
@@ -104,9 +104,8 @@ public class ArrayPoolListTests
         Assert.That(list, Is.EqualTo(expected));
     }
 
-    [TestCase(10)]
-    [TestCase(-1)]
-    public void Insert_should_throw(int index)
+    [Test]
+    public void Insert_should_throw([Values(10, -1)] int index)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -134,7 +133,9 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(list.Remove(item), Is.EqualTo(removed));
+#pragma warning restore NUnit2045
         Assert.That(list, Is.EqualTo(expected));
     }
 
@@ -177,9 +178,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Get_should_throw(int item)
+    [Test]
+    public void Get_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -197,9 +197,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Set_should_throw(int item)
+    [Test]
+    public void Set_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -245,18 +244,24 @@ public class ArrayPoolListTests
 
         list.Insert(1, 2);
         Assert.That(list[1], Is.EqualTo(2));
-        Assert.That(list[1], Is.EqualTo(listT[1]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list[1], Is.EqualTo(listT[1]));
 
-        Assert.That(list.Count, Is.EqualTo(2));
+            Assert.That(list.Count, Is.EqualTo(2));
+        }
         Assert.That(list.Count, Is.EqualTo(listT.Count));
 
         int[] a = new int[3];
 
         list.CopyTo(a, 1);
-        Assert.That(a[2], Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a[2], Is.EqualTo(2));
 
-        Assert.That(list.Contains(2), Is.EqualTo(listT.Contains(2)));
-        Assert.That(list.IndexOf(2), Is.EqualTo(listT.IndexOf(2)));
+            Assert.That(list.Contains(2), Is.EqualTo(listT.Contains(2)));
+            Assert.That(list.IndexOf(2), Is.EqualTo(listT.IndexOf(2)));
+        }
 
         list.Remove(2);
         Assert.That(list.Count, Is.EqualTo(1));
@@ -299,9 +304,42 @@ public class ArrayPoolListTests
         Assert.That(action, Throws.TypeOf<InvalidCastException>());
     }
 
-    [TestCase("null")]
-    [TestCase(null)]
-    public void Should_not_throw_on_invalid_type_lookup(object? value)
+    [Test]
+    public void Lookup_compares_only_items_within_count()
+    {
+        using ArrayPoolList<CountingItem> list = new(1024);
+        list.Add(new CountingItem(1, null));
+        EqualsCounter counter = new();
+        CountingItem missing = new(2, counter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Contains(missing), Is.False);
+            Assert.That(list.IndexOf(missing), Is.EqualTo(-1));
+            Assert.That(list.Remove(missing), Is.False);
+            Assert.That(counter.Calls, Is.EqualTo(3 * list.Count));
+        }
+    }
+
+    private sealed class EqualsCounter
+    {
+        public int Calls;
+    }
+
+    /// <summary>Counts the comparisons made against the item searched for.</summary>
+    private readonly record struct CountingItem(int Value, EqualsCounter? Counter)
+    {
+        public bool Equals(CountingItem other)
+        {
+            if (other.Counter is not null) other.Counter.Calls++;
+            return Value == other.Value;
+        }
+
+        public override int GetHashCode() => Value;
+    }
+
+    [Test]
+    public void Should_not_throw_on_invalid_type_lookup([Values("null", null)] object? value)
     {
         using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
@@ -377,8 +415,11 @@ public class ArrayPoolListTests
 
         Action act = () => list.RemoveAt(2);
 
-        Assert.That(act, Throws.Nothing);
-        Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.Nothing);
+            Assert.That(list, Is.EqualTo(new[] { 0, 1, 3, 4, 5, 6, 7 }));
+        }
     }
 
     private sealed class ExactSizeArrayPool<T> : ArrayPool<T>
@@ -396,9 +437,12 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
 
         Assert.That(list.Count, Is.EqualTo(10));
-        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
-        Assert.That(list.AsSpan().Length, Is.EqualTo(10));
-        Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
+            Assert.That(list.AsSpan().Length, Is.EqualTo(10));
+            Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+        }
     }
 
     [Test]
@@ -443,4 +487,27 @@ public class ArrayPoolListTests
         Assert.That(exception, Is.True);
     }
 #endif
+}
+
+public class ArrayPoolUtilitiesTests
+{
+    private static object[][] CapacityCases() =>
+    [
+        [1, 1],
+        [3, 4],
+        [(1 << 28) + 1, 1 << 29],
+        [(1 << 30) + 1, (1 << 30) + 1],
+        [Array.MaxLength, Array.MaxLength],
+        [int.MaxValue, int.MaxValue],
+    ];
+
+    [TestCaseSource(nameof(CapacityCases))]
+    public void Get_power_of_two_capacity_returns_safe_capacity(int minimumLength, int expectedCapacity)
+        => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
+
+    [Test]
+    public void Get_power_of_two_capacity_requires_positive_length([Values(0, -1)] int minimumLength)
+        => Assert.That(
+            () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
 }

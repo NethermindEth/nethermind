@@ -5,7 +5,9 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Core;
 using Nethermind.Network.Config;
+using SharpOpenNat;
 
 namespace Nethermind.UPnP.Plugin;
 
@@ -21,5 +23,6 @@ public class UPnPPlugin(INetworkConfig networkConfig) : INethermindPlugin
 public class UPnPModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
+        .AddSingleton(OpenNat.Discoverer)
         .AddStep(typeof(UPnPStep));
 }

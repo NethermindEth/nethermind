@@ -13,7 +13,8 @@ namespace Nethermind.Merge.Plugin.Data;
 /// Combines the standard <see cref="PayloadStatusV1"/> fields with an optional
 /// <see cref="Witness"/> that is populated when <see cref="Status"/> is
 /// <see cref="PayloadStatus.Valid"/>.
-/// <seealso href="https://github.com/ethereum/execution-apis/pull/773"/>
+/// <seealso href="https://github.com/ethereum/execution-apis/pull/557"/>
+/// <seealso href="https://github.com/ethereum/execution-apis/pull/793"/>
 /// </summary>
 public class NewPayloadWithWitnessV1Result : IDisposable
 {
@@ -25,6 +26,8 @@ public class NewPayloadWithWitnessV1Result : IDisposable
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? ValidationError { get; set; }
 
+    [JsonPropertyName("witness")]
+    [JsonConverter(typeof(RlpExecutionWitnessJsonConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Witness? ExecutionWitness { get; set; }
 

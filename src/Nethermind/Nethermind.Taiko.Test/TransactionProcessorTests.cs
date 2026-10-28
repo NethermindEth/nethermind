@@ -81,11 +81,43 @@ public class TransactionProcessorTests
         _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
         _transactionProcessor!.Execute(tx, NullTxTracer.Instance);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
             Assert.That(_stateProvider.GetBalance(beneficiaryAddress), Is.EqualTo(goesToBeneficiary));
-        });
+        }
+    }
+
+    [Test]
+    public void Contract_sender_executes_and_pays_fees_when_sender_code_check_skipped()
+    {
+        // Relaxing EIP-3607 without wrapping the spec keeps the concrete ITaikoReleaseSpec that PayFees casts to.
+        _spec.IsEip3607Enabled = true;
+        _stateProvider!.InsertCode(TestItem.AddressA, Bytes.FromHexString("0x600060"), _spec);
+        _stateProvider!.Commit(_spec);
+
+        ulong gasLimit = 100000;
+        Transaction tx = Build.A.Transaction
+            .WithValue(1)
+            .WithGasPrice(1)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
+            .WithBaseFeePerGas(1)
+            .WithExtraData(new byte[32])
+            .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
+
+        _transactionProcessor!.SkipSenderChecks = true;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.GreaterThan(UInt256.Zero));
+        }
     }
 
     public static IEnumerable FeesDistributionTests
@@ -116,9 +148,8 @@ public class TransactionProcessorTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Transaction_tip_and_base_fee_handling(bool isAnchorTx)
+    [Test]
+    public void Transaction_tip_and_base_fee_handling([Values] bool isAnchorTx)
     {
         ulong gasLimit = 21000;
         UInt256 gasPrice = 20;
@@ -163,13 +194,15 @@ public class TransactionProcessorTests
         UInt256 expectedTipFees = isAnchorTx ? 0 : (UInt256)gasUsed * tipFee;
         UInt256 expectedBaseFees = isAnchorTx ? 0 : (UInt256)gasUsed * baseFee;
 
-        Assert.That(receivedTipFees, Is.EqualTo(expectedTipFees), "Transaction did not receive expected tip fees");
-        Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Transaction did not receive expected base fees");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedTipFees, Is.EqualTo(expectedTipFees), "Transaction did not receive expected tip fees");
+            Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Transaction did not receive expected base fees");
+        }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Check_fees_with_fee_collector_destroy_coinbase_taiko(bool isOntakeEnabled)
+    [Test]
+    public void Check_fees_with_fee_collector_destroy_coinbase_taiko([Values] bool isOntakeEnabled)
     {
         _spec.FeeCollector = TestItem.AddressC;
         _spec.IsOntakeEnabled = isOntakeEnabled;
@@ -211,8 +244,11 @@ public class TransactionProcessorTests
         UInt256 finalTreasuryBalance = _stateProvider.GetBalance(_spec.FeeCollector!);
         UInt256 receivedBaseFees = finalTreasuryBalance - initialTreasuryBalance;
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
 
         UInt256 expectedBaseFees = tracer.BurntFees;
         if (isOntakeEnabled)
@@ -220,9 +256,12 @@ public class TransactionProcessorTests
             expectedBaseFees -= expectedBaseFees * defaultBaseFeeSharingPct / 100;
         }
 
-        Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Burnt fees should be paid to treasury");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedBaseFees, Is.EqualTo(expectedBaseFees), "Burnt fees should be paid to treasury");
 
-        Assert.That(_stateProvider.AccountExists(SelfDestructAddress), Is.False, "SelfDestructAddress should be destroyed");
-        Assert.That(_stateProvider.GetBalance(SelfDestructAddress), Is.EqualTo(UInt256.Zero), "SelfDestructAddress balance should be 0");
+            Assert.That(_stateProvider.AccountExists(SelfDestructAddress), Is.False, "SelfDestructAddress should be destroyed");
+            Assert.That(_stateProvider.GetBalance(SelfDestructAddress), Is.EqualTo(UInt256.Zero), "SelfDestructAddress balance should be 0");
+        }
     }
 }

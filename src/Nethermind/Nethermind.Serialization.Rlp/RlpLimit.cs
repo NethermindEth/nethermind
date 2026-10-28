@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
-public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<char> PropertyName = default)
+public partial record struct RlpLimit
 {
     // We shouldn't allocate any single array bigger than 4M
     public static readonly RlpLimit DefaultLimit = new();
@@ -19,28 +17,32 @@ public record struct RlpLimit(int Limit, string TypeName = "", ReadOnlyMemory<ch
     public static readonly RlpLimit L64 = new(64);
     public static readonly RlpLimit L65 = new(65);
 
+    private const ulong DefaultMaxBlockGas = 1_000_000_000;
+
     /// <remarks>
     /// Should not be captured in a static readonly field - the value is set from
     /// client configuration during startup, type initializers can run before.
     /// </remarks>
-    public static ulong MaxBlockGas { get; private set; } = 1_000_000_000;
-    public static void InitMaxBlockGas(ulong maxBlockGas) => MaxBlockGas = maxBlockGas;
+    public static ulong MaxBlockGas { get; private set; } = DefaultMaxBlockGas;
 
-    public RlpLimit() : this((int)4.MiB) { }
+    /// <summary>Maximum number of logs a single receipt may carry.</summary>
+    /// <remarks>
+    /// A log costs at least <see cref="GasCostOf.Log"/> and a receipt's logs all come from one
+    /// transaction, whose gas cannot exceed the block's, so <see cref="MaxBlockGas"/> bounds the count.
+    /// Clamped because the configured ceiling is unbounded; one below <see cref="int.MaxValue"/> so
+    /// that the <c>Limit + 1</c> peek idiom cannot wrap. Recomputed by <see cref="InitMaxBlockGas"/>
+    /// rather than derived per read - receipt decoding is a hot path.
+    /// </remarks>
+    public static RlpLimit ReceiptLogs { get; private set; } = ForReceiptLogs(DefaultMaxBlockGas);
 
-    public string CollectionExpression
+    public static void InitMaxBlockGas(ulong maxBlockGas)
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => field ??= GenerateCollectionExpression();
+        MaxBlockGas = maxBlockGas;
+        ReceiptLogs = ForReceiptLogs(maxBlockGas);
     }
 
-    private string GenerateCollectionExpression() =>
-        PropertyName.IsEmpty
-            ? TypeName
-            : $"{TypeName}.{PropertyName}";
+    private static RlpLimit ForReceiptLogs(ulong maxBlockGas) =>
+        For<TxReceipt>((int)ulong.Min(maxBlockGas / GasCostOf.Log + 1, int.MaxValue - 1), nameof(TxReceipt.Logs));
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static RlpLimit For<T>(int limit, string propertyName = "") => new(limit, typeof(T).Name, propertyName.AsMemory());
-
-    public override string ToString() => CollectionExpression;
+    public RlpLimit() : this((int)4.MiB) { }
 }

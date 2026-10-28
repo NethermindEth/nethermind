@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -11,8 +13,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
@@ -22,14 +29,15 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 [TestFixture, NonParallelizable]
 public class RpcModuleTests
 {
+    private const ulong FinalizedBlockNumber = 98;
+    private const ulong HeadBlockNumber = 100;
+
     private IBlockTree _blockTree;
     private ISnapshotManager _snapshotManager;
     private ISpecProvider _specProvider;
-    private IQuorumCertificateManager _quorumCertificateManager;
     private IEpochSwitchManager _epochSwitchManager;
     private IVotesManager _votesManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
-    private ISyncInfoManager _syncInfoManager;
     private IRewardsStore _rewardsStore;
     private XdcRpcModule _rpcModule;
 
@@ -52,119 +60,29 @@ public class RpcModuleTests
         return epochSwitchInfos.ToArray();
     }
 
-    private IXdcReleaseSpec CreateDummyXdcReleaseSpec(
-        ulong? switchEpoch = null,
-        ulong? epochLength = null,
-        ulong? switchBlock = null,
-        int? maxMasternodes = null,
-        double? certThreshold = null,
-        int? timeoutPeriod = null,
-        ulong? minePeriod = null,
-        int? configsCount = null)
-    {
-        List<V2ConfigParams> v2Configs = [];
-
-        int count = configsCount ?? 1;
-
-        for (int i = 0; i < count; i++)
-        {
-            v2Configs.Add(new V2ConfigParams
-            {
-                SwitchRound = 0,
-                MaxMasternodes = maxMasternodes ?? 108,
-                CertificateThreshold = certThreshold ?? 0.667,
-                TimeoutSyncThreshold = 3,
-                TimeoutPeriod = timeoutPeriod ?? 30000,
-                MinePeriod = minePeriod ?? 2
-            });
-        }
-
-
-        XdcReleaseSpec spec = new()
-        {
-            // Epoch configuration
-            SwitchEpoch = switchEpoch ?? 0,
-            EpochLength = epochLength ?? 900,
-            SwitchBlock = switchBlock ?? 0,
-            Gap = 5,
-
-            // V2 Configuration
-            MaxMasternodes = maxMasternodes ?? 108,
-            MaxProtectorNodes = 0,  // Not used in current implementation
-            MaxObserverNodes = 0,   // Not used in current implementation
-            SwitchRound = 0,
-
-            // Timing parameters
-            MinePeriod = minePeriod ?? 2,              // 2 seconds per block
-            TimeoutSyncThreshold = 3,                   // Send sync info after 3 timeouts
-            TimeoutPeriod = timeoutPeriod ?? 30000,    // 30 seconds timeout
-
-            // Consensus thresholds
-            CertificateThreshold = certThreshold ?? 0.667,     // 2/3 majority for certificates
-
-            // Reward configuration (in Wei)
-            Reward = 5000,
-            MasternodeReward = 5000,
-            ProtectorReward = 0,
-            ObserverReward = 0,
-
-            // Penalty configuration
-            MinimumMinerBlockPerEpoch = 1,
-            LimitPenaltyEpoch = 3,
-            MinimumSigningTx = 1,
-
-            // Smart contract addresses (using zero addresses for tests)
-            GenesisMasterNodes = Array.Empty<Address>(),
-            BlockSignerContract = Address.Zero,
-            RandomizeSMCBinary = Address.Zero,
-            XDCXLendingFinalizedTradeAddressBinary = Address.Zero,
-            XDCXLendingAddressBinary = Address.Zero,
-            XDCXAddressBinary = Address.Zero,
-            TradingStateAddressBinary = Address.Zero,
-            FoundationWallet = Address.Zero,
-            MasternodeVotingContract = Address.Zero,
-
-            // Feature flags
-            IsBlackListingEnabled = false,
-            IsTIP2019 = true,
-            IsTIPXDCXMiner = false,
-
-            // Other settings
-            MergeSignRange = 15,
-            BlackListedAddresses = [],
-
-            // V2 configuration parameters
-            V2Configs = v2Configs
-        };
-
-        return spec;
-    }
-
-
     [SetUp]
     public void Setup()
     {
         _blockTree = Substitute.For<IBlockTree>();
         _snapshotManager = Substitute.For<ISnapshotManager>();
         _specProvider = Substitute.For<ISpecProvider>();
-        _quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         _epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         _votesManager = Substitute.For<IVotesManager>();
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
-        _syncInfoManager = Substitute.For<ISyncInfoManager>();
         _rewardsStore = Substitute.For<IRewardsStore>();
 
-        _rpcModule = new XdcRpcModule(
-            _blockTree,
-            _snapshotManager,
-            _specProvider,
-            _quorumCertificateManager,
-            _epochSwitchManager,
-            _votesManager,
-            _timeoutCertificateManager,
-            _syncInfoManager,
-            _rewardsStore);
+        _rpcModule = CreateRpcModule(new XdcHeaderDecoder());
     }
+
+    private XdcRpcModule CreateRpcModule(IHeaderDecoder headerDecoder) => new(
+        _blockTree,
+        _snapshotManager,
+        _specProvider,
+        _epochSwitchManager,
+        _votesManager,
+        _timeoutCertificateManager,
+        _rewardsStore,
+        headerDecoder);
 
     [Test]
     public void BuildRpcSnapshot_ShouldUseSnapshotIdentity()
@@ -189,8 +107,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_calculateBlockInfoByV1EpochNum(1);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -213,13 +134,19 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.EpochBlockHash, Is.EqualTo(expectedHash));
-        Assert.That(result.Data.EpochRound, Is.EqualTo((UInt256)expectedRound));
-        Assert.That(result.Data.EpochFirstBlockNumber, Is.EqualTo((UInt256)expectedBlockNumber));
-        Assert.That(result.Data.EpochLastBlockNumber, Is.EqualTo((UInt256)(nextBlockRoundInfo.BlockNumber - 1)));
-        Assert.That(result.Data.EpochConsensusVersion, Is.EqualTo("v2"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.EpochBlockHash, Is.EqualTo(expectedHash));
+            Assert.That(result.Data.EpochRound, Is.EqualTo((UInt256)expectedRound));
+            Assert.That(result.Data.EpochFirstBlockNumber, Is.EqualTo((UInt256)expectedBlockNumber));
+            Assert.That(result.Data.EpochLastBlockNumber, Is.EqualTo((UInt256)(nextBlockRoundInfo.BlockNumber - 1)));
+            Assert.That(result.Data.EpochConsensusVersion, Is.EqualTo("v2"));
+        }
     }
 
     [Test]
@@ -239,8 +166,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         Assert.That(result.Data!.EpochLastBlockNumber, Is.Null);
     }
 
@@ -255,8 +185,11 @@ public class RpcModuleTests
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByV2EpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -272,15 +205,18 @@ public class RpcModuleTests
         header.Number = headNumber;
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
+        IXdcReleaseSpec spec = XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         // Act
         ResultWrapper<EpochNumInfo> result = _rpcModule.XDPoS_getBlockInfoByEpochNum(epochNumber);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -295,7 +231,7 @@ public class RpcModuleTests
         header.Number = headNumber;
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
+        IXdcReleaseSpec spec = XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         BlockRoundInfo blockRoundInfo = new(TestItem.KeccakA, 100, 500);
@@ -307,6 +243,53 @@ public class RpcModuleTests
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         _epochSwitchManager.Received(1).GetBlockByEpochNumber(epochNumber);
+    }
+
+    /// <remarks>
+    /// The reference client takes epoch numbers as a Go <c>uint64</c>, so its callers send a plain JSON number, which
+    /// strict hex parsing alone would reject.
+    /// </remarks>
+    [Test]
+    public async Task EpochNumberMethods_ShouldAcceptPlainNumberOrHex_UnderStrictHexFormat(
+        [Values("XDPoS_getBlockInfoByV2EpochNum", "XDPoS_getBlockInfoByEpochNum")] string method,
+        [Values("10", "\"0xa\"")] string epochJson)
+    {
+        const ulong epochNumber = 10;
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.XdcBlockHeader().WithNumber(100).TestObject).TestObject);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, configsCount: (int)epochNumber));
+        _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(new BlockRoundInfo(TestItem.KeccakA, 100, 500));
+
+        using JsonDocument response = await SendUnderStrictHexFormat(method, epochJson);
+        Assert.That(response.RootElement.GetProperty("result").GetProperty("epochFirstBlockNumber").GetString(), Is.EqualTo("0x1f4"));
+    }
+
+    [Test]
+    public async Task CalculateBlockInfoByV1EpochNum_ShouldBindPlainNumberOrHex_UnderStrictHexFormat(
+        [Values("10", "\"0xa\"")] string epochJson)
+    {
+        using JsonDocument response = await SendUnderStrictHexFormat("XDPoS_calculateBlockInfoByV1EpochNum", epochJson);
+
+        JsonElement error = response.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("V1 epoch is not supported"));
+        }
+    }
+
+    private async Task<JsonDocument> SendUnderStrictHexFormat(string method, string epochJson)
+    {
+        bool strictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+        EthereumJsonSerializer.StrictHexFormat = true;
+        try
+        {
+            using JsonDocument epoch = JsonDocument.Parse(epochJson);
+            return JsonDocument.Parse(await RpcTest.TestSerializedRequest<IXdcRpcModule>(_rpcModule, method, epoch.RootElement));
+        }
+        finally
+        {
+            EthereumJsonSerializer.StrictHexFormat = strictHexFormat;
+        }
     }
 
 
@@ -338,8 +321,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Has.Length.EqualTo(2));
+        }
         Assert.That(result.Data, Is.EqualTo(new[] { 100UL, 150UL }));
     }
 
@@ -356,8 +342,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -377,8 +366,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -401,8 +393,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -425,8 +420,11 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -449,15 +447,20 @@ public class RpcModuleTests
         ResultWrapper<ulong[]> result = _rpcModule.XDPoS_getEpochNumbersBetween(begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
-    [Test]
-    public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
+    /// <summary>
+    /// Sets up a head block whose vote pool holds a single entry signed by two of three masternodes,
+    /// and returns that entry's reference-client pool key.
+    /// </summary>
+    private string ArrangeLatestPoolStatus()
     {
-        // Arrange
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = 100;
 
@@ -482,17 +485,71 @@ public class RpcModuleTests
 
         _votesManager.GetReceivedVotes().Returns(receivedVotes);
         _timeoutCertificateManager.GetReceivedTimeouts().Returns(new Dictionary<(ulong, Hash256), Dictionary<Address, Timeout>>());
-        _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), SyncInfoTypes>());
+
+        return $"10:0:100:{TestItem.KeccakA}";
+    }
+
+    [Test]
+    public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
+    {
+        // Arrange
+        ArrangeLatestPoolStatus();
 
         // Act
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Vote, Is.Not.Null);
-        Assert.That(result.Data.Timeout, Is.Not.Null);
-        Assert.That(result.Data.SyncInfo, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Vote, Is.Not.Null);
+            Assert.That(result.Data.Timeout, Is.Not.Null);
+        }
+    }
+
+    /// <summary>
+    /// The response must carry the same structure as the reference client, which keys each bucket by its
+    /// <c>PoolKey()</c> and returns only <c>vote</c> and <c>timeout</c>. Member names stay camelCase per
+    /// this serializer's convention rather than the reference's PascalCase.
+    /// </summary>
+    [Test]
+    public void GetLatestPoolStatus_ShouldMatchReferenceClientStructure_WhenPoolIsNotEmpty()
+    {
+        // Arrange
+        string poolKey = ArrangeLatestPoolStatus();
+
+        // Act
+        PoolStatus poolStatus = _rpcModule.XDPoS_getLatestPoolStatus().Data;
+        string json = new EthereumJsonSerializer().Serialize(poolStatus);
+
+        // Assert
+        //Serializing at all is the regression: a ValueTuple key threw and truncated the response mid-write
+        Assert.That(json, Does.Contain($"\"{poolKey}\":"));
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        List<string> members = [];
+        foreach (JsonProperty member in document.RootElement.EnumerateObject())
+        {
+            members.Add(member.Name);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(members, Is.EquivalentTo(new[] { "vote", "timeout" }));
+
+            Assert.That(poolStatus.Vote!.Keys, Is.EquivalentTo(new[] { poolKey }));
+        }
+        SignerTypes bucket = poolStatus.Vote[poolKey];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.CurrentNumber, Is.EqualTo(2));
+            Assert.That(bucket.CurrentSigners, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(bucket.MissingSigners, Is.EquivalentTo(new[] { TestItem.AddressC }));
+            Assert.That(poolStatus.Timeout, Is.Empty);
+        }
     }
 
     [Test]
@@ -505,8 +562,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -520,8 +580,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -536,8 +599,11 @@ public class RpcModuleTests
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
@@ -552,7 +618,7 @@ public class RpcModuleTests
 
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        IXdcReleaseSpec spec = XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] masternodes = new[] { TestItem.AddressA, TestItem.AddressB };
@@ -571,29 +637,27 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Latest);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Masternodes, Is.EquivalentTo(masternodes));
-        Assert.That(result.Data.Penalty, Is.EquivalentTo(penalties));
-        Assert.That(result.Data.Standbynodes, Is.EquivalentTo(standbynodes));
-        Assert.That(result.Data.Number, Is.EqualTo(100));
-        Assert.That(result.Data.Round, Is.EqualTo((UInt256)50));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Masternodes, Is.EquivalentTo(masternodes));
+            Assert.That(result.Data.Penalty, Is.EquivalentTo(penalties));
+            Assert.That(result.Data.Standbynodes, Is.EquivalentTo(standbynodes));
+            Assert.That(result.Data.Number, Is.EqualTo(100));
+            Assert.That(result.Data.Round, Is.EqualTo((UInt256)50));
+        }
     }
 
     [Test]
-    public void GetMasternodesByNumber_ShouldReturnSuccess_WithFinalizedBlockParameter()
+    public void GetMasternodesByNumber_ShouldResolveFinalizedBlock_FromTheCommittedTip()
     {
-        // Arrange
-        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        header.Number = 100;
-        BlockRoundInfo proposedBlock = new(header.Hash!, 50, 100);
-        QuorumCertificate qc = new(proposedBlock, null, 50);
-        header.ExtraConsensusData = new ExtraFieldsV2(50, qc);
+        XdcBlockHeader finalizedHeader = ArrangeChainWithFinalizedTip()[FinalizedBlockNumber];
 
-        _quorumCertificateManager.HighestKnownCertificate.Returns(qc);
-        _blockTree.FindHeader(header.Hash!).Returns(header);
-
-        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        IXdcReleaseSpec spec = XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] masternodes = new[] { TestItem.AddressA };
@@ -601,30 +665,45 @@ public class RpcModuleTests
             masternodes,
             Array.Empty<Address>(),
             Array.Empty<Address>(),
-            new BlockRoundInfo(TestItem.KeccakA, 50, 100));
+            new BlockRoundInfo(finalizedHeader.Hash!, FinalizedBlockNumber, (long)FinalizedBlockNumber));
 
-        _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
+        _epochSwitchManager.GetEpochSwitchInfo(finalizedHeader).Returns(epochSwitchInfo);
 
-        // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
-        // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Number, Is.EqualTo(FinalizedBlockNumber));
+            Assert.That(result.Data.Round, Is.EqualTo((UInt256)FinalizedBlockNumber));
+            Assert.That(result.Data.Masternodes, Is.EquivalentTo(masternodes));
+        }
     }
 
     [Test]
-    public void GetMasternodesByNumber_ShouldReturnFail_WhenFinalizedBlockNotFound()
+    public void BlockNumberMethods_ShouldReturnFail_WhenFinalizedBlockNotFound()
     {
-        // Arrange
-        _quorumCertificateManager.HighestKnownCertificate.Returns((QuorumCertificate?)null);
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
 
-        // Act
-        ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
+        IResultWrapper[] results =
+        [
+            _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized),
+            _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Finalized),
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(BlockParameter.Finalized)
+        ];
 
-        // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (IResultWrapper result in results)
+            {
+                Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+            }
+        }
     }
 
     [Test]
@@ -637,8 +716,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -652,8 +734,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -669,8 +754,11 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -688,10 +776,173 @@ public class RpcModuleTests
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
+
+    [TestCase(null, false)]
+    [TestCase(100UL, false)]
+    [TestCase(99UL, false)]
+    [TestCase(98UL, true)]
+    [TestCase(97UL, true)]
+    public void GetV2BlockByNumber_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
+    {
+        ArrangeChainWithFinalizedTip();
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(
+            blockNumber is null ? BlockParameter.Latest : new BlockParameter(blockNumber.Value));
+
+        AssertCommitted(result, expectedCommitted);
+    }
+
+    /// <remarks>
+    /// The XDC relayer reads the checkpoint tip with <c>XDPoS_getV2BlockByNumber("committed")</c>, so the tag has to
+    /// survive the JSON-RPC parameter parsing, not only the module call.
+    /// </remarks>
+    [TestCase("committed", FinalizedBlockNumber)]
+    [TestCase("finalized", FinalizedBlockNumber)]
+    [TestCase("latest", HeadBlockNumber)]
+    [TestCase("0x61", FinalizedBlockNumber - 1)]
+    public async Task GetV2BlockByNumber_ShouldResolveBlockTag_OverJsonRpc(string blockTag, ulong expectedNumber)
+    {
+        ArrangeChainWithFinalizedTip();
+        XdcBlockParameterConverter.Register();
+
+        string json = await RpcTest.TestSerializedRequest<IXdcRpcModule>(_rpcModule, "XDPoS_getV2BlockByNumber", blockTag);
+
+        using JsonDocument response = JsonDocument.Parse(json);
+        JsonElement result = response.RootElement.GetProperty("result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("number").GetString(), Is.EqualTo($"0x{expectedNumber:x}"));
+            Assert.That(result.GetProperty("committed").GetBoolean(), Is.EqualTo(expectedNumber <= FinalizedBlockNumber));
+        }
+    }
+
+    [TestCase(null, false)]
+    [TestCase(99UL, false)]
+    [TestCase(98UL, true)]
+    public void GetV2BlockByHash_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
+    {
+        Dictionary<ulong, XdcBlockHeader> headers = ArrangeChainWithFinalizedTip();
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByHash(
+            blockNumber is null ? BlockParameter.Latest : new BlockParameter(headers[blockNumber.Value].Hash!));
+
+        AssertCommitted(result, expectedCommitted);
+    }
+
+    [Test]
+    public void GetV2BlockByHash_ShouldNotReportCommitted_ForBlockOffTheCanonicalChain()
+    {
+        ArrangeChainWithFinalizedTip();
+
+        XdcBlockHeader forkHeader = Build.A.XdcBlockHeader()
+            .WithNumber(FinalizedBlockNumber)
+            .WithParentHash(TestItem.KeccakA)
+            .WithExtraConsensusData(new ExtraFieldsV2(FinalizedBlockNumber, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
+
+        _blockTree.FindHeader(forkHeader.Hash!).Returns(forkHeader);
+        _blockTree.IsMainChain(forkHeader).Returns(false);
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByHash(new BlockParameter(forkHeader.Hash!));
+
+        AssertCommitted(result, false);
+    }
+
+    [Test]
+    public void GetV2BlockByNumber_ShouldReturnError_WhenNoFinalizedBlock()
+    {
+        ArrangeChainWithFinalizedTip();
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Committed, Is.False);
+            Assert.That(result.Data.Error, Is.Not.Null);
+        }
+    }
+
+    /// <remarks>
+    /// The XDC checkpoint contract hashes <c>EncodedRLP</c> as the block hash, so a subnet node must encode with the
+    /// subnet layout, which carries <c>NextValidators</c>.
+    /// </remarks>
+    [Test]
+    public void GetV2BlockByNumber_ShouldEncodeSubnetHeaderMatchingItsHash()
+    {
+        XdcSubnetBlockHeader header = Build.A.XdcSubnetBlockHeader()
+            .WithNextValidators([TestItem.AddressA, TestItem.AddressB])
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        header.Hash = header.CalculateHash().ToHash256();
+        _blockTree.FindHeader(header.Number).Returns(header);
+        _blockTree.IsMainChain(header).Returns(true);
+        _blockTree.FinalizedHash.Returns(header.Hash);
+        _blockTree.LastFinalizedBlockLevel.Returns(header.Number);
+
+        ResultWrapper<V2BlockInfo> result = CreateRpcModule(new XdcSubnetHeaderDecoder())
+            .XDPoS_getV2BlockByNumber(new BlockParameter(header.Number));
+
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
+        Assert.That(result.Data?.EncodedRLP, Is.Not.Null);
+#pragma warning restore NUnit2045
+        Assert.That(Keccak.Compute(Convert.FromBase64String(result.Data!.EncodedRLP!)), Is.EqualTo(header.Hash));
+    }
+
+    /// <summary>
+    /// Sets up a chain whose head is two rounds ahead of the committed (finalized) tip, as the XDPoS 2.0 commit rule
+    /// leaves it. Each header carries its own block number as its round.
+    /// </summary>
+    /// <returns>The headers of the chain, keyed by block number.</returns>
+    private Dictionary<ulong, XdcBlockHeader> ArrangeChainWithFinalizedTip()
+    {
+        Dictionary<ulong, XdcBlockHeader> headers = [];
+        for (ulong number = FinalizedBlockNumber - 1; number <= HeadBlockNumber; number++)
+        {
+            XdcBlockHeader header = Build.A.XdcBlockHeader()
+                .WithNumber(number)
+                .WithExtraConsensusData(new ExtraFieldsV2(number, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+
+            headers[number] = header;
+            _blockTree.FindHeader(number).Returns(header);
+            _blockTree.FindHeader(header.Hash!).Returns(header);
+            _blockTree.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
+            _blockTree.IsMainChain(header).Returns(true);
+        }
+
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(headers[HeadBlockNumber]).TestObject);
+        _blockTree.FinalizedHash.Returns(headers[FinalizedBlockNumber].Hash);
+        _blockTree.LastFinalizedBlockLevel.Returns(FinalizedBlockNumber);
+
+        return headers;
+    }
+
+    private static void AssertCommitted(ResultWrapper<V2BlockInfo> result, bool expectedCommitted)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Committed, Is.EqualTo(expectedCommitted));
+            Assert.That(result.Data.Error, Is.Null);
+        }
+    }
 
     [Test]
     public void GetSigners_ShouldReturnSuccess_WithLatestBlockParameter()
@@ -703,7 +954,7 @@ public class RpcModuleTests
 
         _blockTree.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
 
-        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        IXdcReleaseSpec spec = XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA, TestItem.AddressB };
@@ -715,8 +966,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(BlockParameter.Latest);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        }
     }
 
     [Test]
@@ -730,7 +984,7 @@ public class RpcModuleTests
 
         _blockTree.FindHeader(50).Returns(header);
 
-        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
+        IXdcReleaseSpec spec = XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA };
@@ -742,8 +996,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+        }
     }
 
     [Test]
@@ -756,8 +1013,11 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -771,13 +1031,16 @@ public class RpcModuleTests
         ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSigners(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
 
     [Test]
-    public void GetMissedRoundsInEpochByBlockNum_RoundGap_ReturnsOnlySkippedRounds()
+    public void GetMissedRoundsInEpochByBlockNum_RoundGap_ReturnsOnlySkippedRounds([Values] bool byFinalizedTag)
     {
         const long epochBlockNumber = 1800;
         const ulong epochRound = 900;
@@ -788,6 +1051,8 @@ public class RpcModuleTests
         Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
 
         _blockTree.FindHeader(1803).Returns(block1803);
+        _blockTree.FinalizedHash.Returns(block1803.Hash);
+        _blockTree.FindHeader(block1803.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(block1803);
         _blockTree.FindHeader(block1802.Hash!).Returns(block1802);
         _blockTree.FindHeader(block1801.Hash!).Returns(block1801);
         _blockTree.FindHeader(epochHeader.Hash!).Returns(epochHeader);
@@ -796,13 +1061,16 @@ public class RpcModuleTests
             [],
             [],
             new BlockRoundInfo(epochHeader.Hash!, epochRound, epochBlockNumber)));
-        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(CreateDummyXdcReleaseSpec(epochLength: 900));
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(epochLength: 900));
 
         ResultWrapper<PublicApiMissedRoundsMetadata> result =
-            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(1803));
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(byFinalizedTag ? BlockParameter.Finalized : new BlockParameter(1803));
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         PublicApiMissedRoundsMetadata data = result.Data!;
         Assert.That(data.MissedRounds, Is.Not.Null);
         MissedRoundInfo[] missedRounds = data.MissedRounds!;
@@ -824,14 +1092,46 @@ public class RpcModuleTests
             Assert.That(missedRounds[1].ParentBlockHash, Is.EqualTo(block1802.Hash));
             Assert.That(missedRounds[1].ParentBlockNum, Is.EqualTo((UInt256)1802));
         }
-
-        static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
-            Build.A.XdcBlockHeader()
-                .WithNumber(number)
-                .WithParentHash(parentHash)
-                .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
-                .TestObject;
     }
+
+    [Test]
+    public void GetMissedRoundsInEpochByBlockNum_FirstEpoch_TreatsSwitchBlockWithoutExtraDataAsRoundZero()
+    {
+        XdcBlockHeader genesis = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+        XdcBlockHeader block1 = BuildHeader(1, 2, genesis.Hash!);
+        XdcBlockHeader block2 = BuildHeader(2, 3, block1.Hash!);
+        Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+
+        _blockTree.FindHeader(2).Returns(block2);
+        _blockTree.FindHeader(block1.Hash!).Returns(block1);
+        _blockTree.FindHeader(genesis.Hash!).Returns(genesis);
+        _epochSwitchManager.GetEpochSwitchInfo(block2).Returns(new EpochSwitchInfo(
+            masternodes,
+            [],
+            [],
+            new BlockRoundInfo(genesis.Hash!, 0, 0)));
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(epochLength: 900, switchBlock: 0));
+
+        ResultWrapper<PublicApiMissedRoundsMetadata> result =
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(2));
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        MissedRoundInfo[] missedRounds = result.Data!.MissedRounds!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missedRounds, Has.Length.EqualTo(1));
+            Assert.That(missedRounds[0].Round, Is.EqualTo(1));
+            Assert.That(missedRounds[0].Miner, Is.EqualTo(TestItem.AddressB));
+            Assert.That(missedRounds[0].ParentBlockHash, Is.EqualTo(genesis.Hash));
+        }
+    }
+
+    private static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
+        Build.A.XdcBlockHeader()
+            .WithNumber(number)
+            .WithParentHash(parentHash)
+            .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
 
     [Test]
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()
@@ -843,8 +1143,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -858,8 +1161,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -875,8 +1181,11 @@ public class RpcModuleTests
         ResultWrapper<PublicApiMissedRoundsMetadata> result = _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(blockParameter);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -952,9 +1261,14 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(result.Data!.EpochRewards, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(result.Data.EpochRewards!.Length, Is.EqualTo(2));
         Assert.That(result.Data.Total, Is.Not.Null);
         Assert.That(result.Data.EpochRewards![1].DelegatedReward, Is.Not.Null);
@@ -1088,8 +1402,11 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     [Test]
@@ -1110,8 +1427,11 @@ public class RpcModuleTests
         ResultWrapper<AccountRewardResponse> result = _rpcModule.XDPoS_getRewardByAccount(account, begin, end);
 
         // Assert
-        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+        }
     }
 
     private static Dictionary<string, XdcRewardLog> GetSignerSection(XdcEpochRewards rewards, string section) =>

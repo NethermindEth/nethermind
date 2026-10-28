@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -43,12 +43,14 @@ public class AccountAccessForRpc
             StorageChanges = Map(account.StorageChanges, static sc => new SlotChangesForRpc
             {
                 Key = sc.Key.ToValueHash(),
-                Changes = Map(sc.Changes, static c => new StorageChangeForRpc { Index = c.Index, Value = ToValueHash(c.Value) }),
+                Changes = Map(sc.Changes, static c => new StorageChangeForRpc { Index = c.Index, Value = c.Value.ToValueHash() }),
             }),
             StorageReads = Map(account.StorageReads, static r => r.ToValueHash()),
             BalanceChanges = Map(account.BalanceChanges, static c => new BalanceChangeForRpc { Index = c.Index, Value = c.Value }),
             NonceChanges = Map(account.NonceChanges, static c => new NonceChangeForRpc { Index = c.Index, Value = c.Value }),
-            CodeChanges = Map(account.CodeChanges, static c => new CodeChangeForRpc { Index = c.Index, Code = c.Code }),
+            CodeChanges = Map(account.CodeChanges, static c => c.IsAdopted
+                ? new CodeChangeForRpc { Index = c.Index, Code = [], CodeHash = c.CodeHash }
+                : new CodeChangeForRpc { Index = c.Index, Code = c.Code }),
         };
 
     /// <summary>Projects each element of <paramref name="source"/>, reusing a shared empty array when empty.</summary>
@@ -64,9 +66,6 @@ public class AccountAccessForRpc
 
         return result;
     }
-
-    // EvmWord already holds the 32 big-endian bytes.
-    private static ValueHash256 ToValueHash(in EvmWord word) => Unsafe.BitCast<EvmWord, ValueHash256>(word);
 }
 
 public readonly struct SlotChangesForRpc
@@ -97,4 +96,8 @@ public readonly struct CodeChangeForRpc
 {
     public required ulong Index { get; init; }
     public required byte[] Code { get; init; }
+
+    /// <summary>The code hash adopted by EIP-8298 <c>SETCODEFROM</c>, whose change carries empty <see cref="Code"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ValueHash256? CodeHash { get; init; }
 }

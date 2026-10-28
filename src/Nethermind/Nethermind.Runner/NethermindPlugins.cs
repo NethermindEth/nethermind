@@ -10,6 +10,7 @@ public static class NethermindPlugins
 {
     public static readonly IReadOnlyList<Type> EmbeddedPlugins =
     [
+        typeof(Nethermind.PortfolioViewer.Plugin.PortfolioViewerPlugin),
         typeof(Nethermind.BalRecorder.BalRecorderPlugin),
         typeof(Nethermind.BlockProfiler.BlockProfilerPlugin),
         typeof(Nethermind.CensorshipDetector.Plugin.CensorshipDetectorPlugin),
@@ -22,9 +23,12 @@ public static class NethermindPlugins
         typeof(Nethermind.HealthChecks.HealthChecksPlugin),
         typeof(Nethermind.Hive.HivePlugin),
         typeof(Nethermind.Init.Snapshot.SnapshotPlugin),
+        typeof(Nethermind.Mcp.Plugin.McpPlugin),
         typeof(Nethermind.Merge.AuRa.AuRaMergePlugin),
         typeof(Nethermind.Merge.Plugin.MergePlugin),
+        typeof(Nethermind.Monitoring.MonitoringPlugin),
         typeof(Nethermind.Optimism.OptimismPlugin),
+        typeof(Nethermind.SendPolicy.Plugin.SendPolicyPlugin),
         typeof(Nethermind.Shutter.ShutterPlugin),
         typeof(Nethermind.Taiko.TaikoPlugin),
         typeof(Nethermind.UPnP.Plugin.UPnPPlugin),

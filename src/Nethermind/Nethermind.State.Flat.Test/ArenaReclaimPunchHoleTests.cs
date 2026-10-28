@@ -36,9 +36,8 @@ public class ArenaReclaimPunchHoleTests
         try { Directory.Delete(_testDir, recursive: true); } catch { /* best-effort */ }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void ReservationCleanup_PunchesHole_ForDeadRange_WhenEnabled(bool punchHoleOnReclaim)
+    [Test]
+    public void ReservationCleanup_PunchesHole_ForDeadRange_WhenEnabled([Values] bool punchHoleOnReclaim)
     {
         if (!OperatingSystem.IsLinux()) Assert.Ignore("fallocate punch-hole is Linux-only");
         int pageSize = Environment.SystemPageSize;
@@ -108,8 +107,11 @@ public class ArenaReclaimPunchHoleTests
         BlobArenaFile file = blobs.GetFile(blobId);
         blobs.TryResetOrphanedFrontier(file);
 
-        Assert.That(file.Frontier, Is.EqualTo(0), "in-memory frontier reset");
-        Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(0), "on-disk file truncated by frontier reset");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(file.Frontier, Is.EqualTo(0), "in-memory frontier reset");
+            Assert.That(new FileInfo(blobPath).Length, Is.EqualTo(0), "on-disk file truncated by frontier reset");
+        }
     }
 
     private static (SnapshotLocation, ArenaReservation) WriteReservation(ArenaManager manager, int size)

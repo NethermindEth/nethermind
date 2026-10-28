@@ -315,7 +315,7 @@ internal class VotesManager : IVotesManager, IDisposable
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+            if (peer.SyncPeer is IXdcConsensusPeer xdcProtocol)
                 xdcProtocol.SendVote(vote);
         }
     }
@@ -395,8 +395,9 @@ internal class VotesManager : IVotesManager, IDisposable
                 return;
             }
 
-            Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
-            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
+            // Recovery fails for off-curve r (e.g. r = 0) that still passes the low-s check.
+            Address? signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            ref int signCount = ref signer is null ? ref Unsafe.NullRef<int>() : ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
             if (Unsafe.IsNullRef(ref signCount))
             {

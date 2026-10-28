@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V71;
 public class BlockAccessListsMessageSerializerTests
 {
     [TestCaseSource(nameof(BlockAccessListsRoundtripCases))]
-    public void Roundtrip(Func<BlockAccessListsMessage> buildMessage, string? expectedData)
+    public void Roundtrip(Func<BlockAccessListsMessage> buildMessage, string expectedData)
     {
         BlockAccessListsMessageSerializer serializer = new();
         using BlockAccessListsMessage msg = buildMessage();
@@ -34,10 +34,9 @@ public class BlockAccessListsMessageSerializerTests
         serializer.Serialize(buffer2, deserialized);
         buffer.SetReaderIndex(0);
         string allHex = buffer.ReadAllHex();
-        Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
-
-        if (expectedData is not null)
+        using (Assert.EnterMultipleScope())
         {
+            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
             Assert.That(allHex, Is.EqualTo(expectedData));
         }
     }
@@ -55,7 +54,7 @@ public class BlockAccessListsMessageSerializerTests
     {
         yield return new TestCaseData(
                 new Func<BlockAccessListsMessage>(() => BuildMessage(42)),
-                null)
+                "c22ac0")
             .SetName("Roundtrip_empty");
         yield return new TestCaseData(
                 new Func<BlockAccessListsMessage>(() => BuildMessage(43, (byte[]?)null)),
@@ -69,9 +68,10 @@ public class BlockAccessListsMessageSerializerTests
                 new Func<BlockAccessListsMessage>(() => BuildMessage(45, [0xc1, 0x80], [0xc2, 0x01, 0x02], null)),
                 "c82dc6c180c2010280")
             .SetName("Roundtrip_multiple_bals");
+        // A negative request id encodes as its unsigned two's-complement value.
         yield return new TestCaseData(
                 new Func<BlockAccessListsMessage>(() => BuildMessage(-1)),
-                null)
+                "ca88ffffffffffffffffc0")
             .SetName("Roundtrip_negative_request_id");
     }
 
@@ -128,31 +128,45 @@ public class BlockAccessListsMessageSerializerTests
 public class GetBlockAccessListsMessageSerializerTests
 {
     [TestCaseSource(nameof(GetBlockAccessListsRoundtripCases))]
-    public void Roundtrip(Func<GetBlockAccessListsMessage> buildMessage)
+    public void Roundtrip(Func<GetBlockAccessListsMessage> buildMessage, string expectedData)
     {
         GetBlockAccessListsMessageSerializer serializer = new();
         using GetBlockAccessListsMessage msg = buildMessage();
-        SerializerTester.TestZero(serializer, msg);
+        SerializerTester.TestZero(serializer, msg, expectedData);
+    }
+
+    [Test]
+    public void Deserialize_throws_on_null_hash()
+    {
+        GetBlockAccessListsMessageSerializer serializer = new();
+        using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x01, 0xc1, 0x80]).AsDisposable();
+
+        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
     }
 
     private static IEnumerable<TestCaseData> GetBlockAccessListsRoundtripCases()
     {
         yield return new TestCaseData(
-                new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(99, ArrayPoolList<Hash256>.Empty())))
+                new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(99, ArrayPoolList<Hash256>.Empty())),
+                "c263c0")
             .SetName("Roundtrip_empty_hashes");
+        // Each hash encodes as 0xa0 + 32 bytes.
         yield return new TestCaseData(
                 new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(100, new ArrayPoolList<Hash256>(1)
                 {
                     Keccak.Zero
-                })))
+                })),
+                "e364e1a00000000000000000000000000000000000000000000000000000000000000000")
             .SetName("Roundtrip_single_hash");
+        // The last two 32-byte literals in the expectation are keccak("A") and keccak("B").
         yield return new TestCaseData(
                 new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(101, new ArrayPoolList<Hash256>(3)
                 {
                     Keccak.Zero,
                     TestItem.KeccakA,
                     TestItem.KeccakB
-                })))
+                })),
+                "f86665f863a00000000000000000000000000000000000000000000000000000000000000000a003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760a01f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111")
             .SetName("Roundtrip_multiple_hashes");
     }
 }

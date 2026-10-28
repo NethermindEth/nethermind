@@ -33,6 +33,26 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public async Task Boost_relay_rejects_null_payload_attributes()
+    {
+        const string relayUrl = "http://localhost";
+        MockHttpMessageHandler mockHttp = new();
+        mockHttp.Expect(HttpMethod.Post, relayUrl + BoostRelay.GetPayloadAttributesPath)
+            .Respond("application/json", "null");
+        DefaultHttpClient httpClient = new(mockHttp.ToHttpClient(), new EthereumJsonSerializer(), LimboLogs.Instance, 1);
+        BoostRelay relay = new(httpClient, relayUrl);
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await relay.GetPayloadAttributes(payloadAttributes, CancellationToken.None));
+    }
+
+    [Test]
     [Obsolete]
     public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay()
     {
@@ -62,7 +82,7 @@ public partial class EngineModuleTests
             }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -82,11 +102,14 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
-        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
-        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
-        Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
+            Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(executionPayloadV1)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(sentItem!.Block))).Using(JToken.EqualityComparer));
+            Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [TestCase(
@@ -168,7 +191,7 @@ public partial class EngineModuleTests
         );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         Task blockImprovementWait = chain.WaitForImprovedBlock();
 
@@ -181,8 +204,11 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
-        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+            Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        }
 
         mockHttp.VerifyNoOutstandingExpectation();
     }
@@ -215,7 +241,7 @@ public partial class EngineModuleTests
         );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;

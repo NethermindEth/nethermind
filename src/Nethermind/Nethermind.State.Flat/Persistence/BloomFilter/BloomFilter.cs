@@ -13,9 +13,9 @@ namespace Nethermind.State.Flat.Persistence.BloomFilter;
 /// Pure in-memory cache-local (64B / 512-bit) Bloom filter.
 /// Owns its memory and supports atomic adds + AVX2-optimized queries.
 /// Optimized for Linux Transparent Huge Pages (THP).
-/// AI-generated based on RocksDB's bloom filter implementation.
+/// Based on RocksDB's bloom filter implementation.
 /// </summary>
-public sealed unsafe class BloomFilter : IDisposable
+public sealed unsafe partial class BloomFilter : IDisposable
 {
     // ---- constants ----
     private const int CacheLineBytes = 64;      // 512 bits
@@ -28,8 +28,8 @@ public sealed unsafe class BloomFilter : IDisposable
     private const int MADV_HUGEPAGE = 14;
     private const nuint HugePageSize = 2 * MemorySizes.MiB;
 
-    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
-    private static extern int Madvise(void* addr, nuint length, int advice);
+    [LibraryImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static partial int Madvise(void* addr, nuint length, int advice);
 
     public long Capacity { get; }
     public double BitsPerKey { get; }
@@ -165,6 +165,35 @@ public sealed unsafe class BloomFilter : IDisposable
 
         Interlocked.Increment(ref _count);
         return lineIndex * CacheLineBytes;
+    }
+
+    /// <summary>
+    /// <see cref="Add"/> without the atomics, for a filter that a single thread fills before publishing it.
+    /// </summary>
+    /// <remarks>
+    /// Must not race another add or a query: a plain read-modify-write can lose a concurrent add's bit, which
+    /// would be a false negative. Publishing the filter with a release write (e.g. <see cref="Volatile.Write{T}(ref T, T)"/>)
+    /// makes every bit visible to readers that acquire it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddUnsynchronized(ulong key)
+    {
+        ObjectDisposedException.ThrowIf(_disposed != 0, this);
+
+        GetLineAndHashState(key, NumBlocks, out long lineIndex, out uint h);
+
+        ulong* lanes = (ulong*)(_data + lineIndex * CacheLineBytes);
+
+        const int shift = 32 - 9; // log2(512)=9
+        int k = K;
+        for (int i = 0; i < k; i++)
+        {
+            int bit = (int)(h >> shift);
+            lanes[bit >> 6] |= 1UL << (bit & 63);
+            h *= Mul32;
+        }
+
+        _count++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

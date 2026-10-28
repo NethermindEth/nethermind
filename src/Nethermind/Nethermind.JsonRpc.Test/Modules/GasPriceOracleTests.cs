@@ -5,11 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -31,8 +34,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = GasPriceOracle.SelectKthSmallestInPlace(list, k);
 
-            Assert.That(result, Is.EqualTo(expected));
-            Assert.That(list, Has.Count.EqualTo(values.Length));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expected));
+                Assert.That(list, Has.Count.EqualTo(values.Length));
+            }
             Assert.That(list, Is.EquivalentTo(values.Select(static v => (UInt256)v))); // ensures mutation doesn't lose/duplicate items
         }
 
@@ -99,9 +105,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(result, Is.EqualTo((UInt256)7));
         }
 
-        [TestCase(null)]
-        [TestCase(100ul)]
-        public async ValueTask GasPriceEstimate_IfPreviousGasPriceDoesNotExist_ShouldBeEmptyPrice(ulong? gasPrice)
+        [Test]
+        public async ValueTask GasPriceEstimate_IfPreviousGasPriceDoesNotExist_ShouldBeEmptyPrice([Values(null, 100ul)] ulong? gasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -112,9 +117,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(estimate, Is.EqualTo(expectedGasPrice));
         }
 
-        [TestCase(3)]
-        [TestCase(10)]
-        public async ValueTask GasPriceEstimate_IfPreviousGasPriceExists_ShouldEqualLastGasPrice(int lastGasPrice)
+        [Test]
+        public async ValueTask GasPriceEstimate_IfPreviousGasPriceExists_ShouldEqualLastGasPrice([Values(3, 10)] int lastGasPrice)
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -128,9 +132,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(estimate, Is.EqualTo((UInt256?)lastGasPrice));
         }
 
-        [TestCase(null)]
-        [TestCase(100ul)]
-        public async ValueTask GasPriceEstimate_EmptyChain_BaseFeeIncluded(ulong? gasPrice)
+        [Test]
+        public async ValueTask GasPriceEstimate_EmptyChain_BaseFeeIncluded([Values(null, 100ul)] ulong? gasPrice)
         {
             UInt256 baseFeePerGas = 10.GWei;
             Block headBlock = Build.A.Block.WithBaseFeePerGas(baseFeePerGas).TestObject;
@@ -268,6 +271,35 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             Assert.That(results, Is.EquivalentTo(expected));
+        }
+
+        [Test]
+        public async Task GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTxs_ReturnsLowestGasPricesInAscendingOrder()
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithGasPrice(6).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject,
+                Build.A.Transaction.WithGasPrice(4).TestObject,
+                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject,
+                Build.A.Transaction.WithGasPrice(5).TestObject
+            ];
+            await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block testBlock = Build.A.Block.WithParent(genesis).WithTransactions(transactions).TestObject;
+            foreach (Block block in (Block[])[genesis, testBlock])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
+
+            GasPriceOracle testGasPriceOracle = (GasPriceOracle)container.Resolve<IGasPriceOracle>();
+
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(testBlock.Number);
+
+            Assert.That(results.Take(EthGasPriceConstants.TxLimitFromABlock), Is.EqualTo((UInt256[])[3, 3, 4]), "the empty genesis block after it adds its own price");
         }
 
         private Transaction[] GetFiveTransactionsWithDifferentGasPrices()
@@ -419,6 +451,101 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             Assert.That(results, Is.EquivalentTo(expected));
+        }
+
+        [TestCase(null, 1UL)]
+        [TestCase(5UL, 5UL)]
+        public void GetMaxPriorityGasFeeEstimate_IfNoTipAboveIgnoreUnder_DoesNotUseGasPriceEstimate(ulong? lastMaxPriorityFeePerGas, ulong expected)
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1).WithType(TxType.EIP1559).TestObject
+            ];
+            Block headBlock = Build.A.Block.Genesis.WithTransactions(transactions).WithBaseFeePerGas(10.GWei).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0UL).Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
+            {
+                _gasPriceEstimation = new(null, 100.GWei),
+                _maxPriorityFeePerGasEstimation = new(null, lastMaxPriorityFeePerGas)
+            };
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo((UInt256)expected));
+        }
+
+        [TestCase(null, 20UL)]
+        [TestCase(25UL, 25UL)]
+        public void GetMaxPriorityGasFeeEstimate_IfSomeBlocksHaveNoTips_SubstituteIsSampledAlongsideTheTips(ulong? lastMaxPriorityFeePerGas, ulong expected)
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithMaxFeePerGas(100).WithMaxPriorityFeePerGas(10).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(100).WithMaxPriorityFeePerGas(20).WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithMaxFeePerGas(100).WithMaxPriorityFeePerGas(30).WithType(TxType.EIP1559).TestObject
+            ];
+            Block headBlock = Build.A.Block.WithNumber(1).WithTransactions(transactions).WithBaseFeePerGas(10).TestObject;
+            Block blockWithoutTransactions = Build.A.Block.Genesis.WithBaseFeePerGas(10).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(1UL).Returns(headBlock);
+            blockFinder.FindBlock(0UL).Returns(blockWithoutTransactions);
+            blockFinder.Head.Returns(headBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
+            {
+                _gasPriceEstimation = new(null, 100),
+                _maxPriorityFeePerGasEstimation = new(null, lastMaxPriorityFeePerGas)
+            };
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo((UInt256)expected));
+        }
+
+        [Test]
+        public void GetMaxPriorityGasFeeEstimate_EmptyChain_BaseFeeNotIncluded([Values(null, 100ul)] ulong? minGasPrice)
+        {
+            Block headBlock = Build.A.Block.WithBaseFeePerGas(10.GWei).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0UL).Returns(headBlock);
+            blockFinder.Head.Returns(headBlock);
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance, minGasPrice);
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo(minGasPrice ?? 1.Wei));
+        }
+
+        [Test]
+        public async ValueTask GasPriceEstimate_IfHeadBodyIsMissing_FallsBackToMinimumGasPrice()
+        {
+            IBlockFinder blockFinder = GetBlockFinderWithoutBodies();
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance);
+
+            UInt256 estimate = await gasPriceOracle.GetGasPriceEstimate();
+
+            Assert.That(estimate, Is.EqualTo((10.GWei + 1.Wei) * 110 / 100));
+        }
+
+        [Test]
+        public void GetMaxPriorityGasFeeEstimate_IfHeadBodyIsMissing_FallsBackToMinGasPrice()
+        {
+            IBlockFinder blockFinder = GetBlockFinderWithoutBodies();
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance);
+
+            UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+
+            Assert.That(estimate, Is.EqualTo(1.Wei));
+        }
+
+        /// <summary>Head header is known but every body lookup fails, as on a node whose bodies were pruned.</summary>
+        private static IBlockFinder GetBlockFinderWithoutBodies()
+        {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithBaseFeePerGas(10.GWei).TestObject);
+            return blockFinder;
         }
     }
 }

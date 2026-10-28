@@ -52,6 +52,49 @@ public class KeyStoreTests
         }
     }
 
+    [Test]
+    public void Verify_rejects_null_json()
+    {
+        TestContext test = new();
+
+        (KeyStoreItem keyData, Result result) = test.Store.Verify("null");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(keyData, Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetKeyData_returns_failure_for_missing_key()
+    {
+        TestContext test = new();
+
+        (KeyStoreItem keyData, Result result) = test.Store.GetKeyData(Address.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(keyData, Is.Null);
+        }
+    }
+
+    [Test]
+    public void GetKeyAddresses_returns_empty_collection_on_failure()
+    {
+        TestContext test = new();
+        test.KeyStoreConfig.KeyStoreDirectory = "\0";
+
+        (IReadOnlyCollection<Address> addresses, Result result) = test.Store.GetKeyAddresses();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(addresses, Is.Empty);
+        }
+    }
+
     [TestCase("{\"address\":\"20b2e4bb8688a44729780d15dc64adb42f9f5a0a\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"d30cbb0f5b30ef86e57b7fa111307398b911b8c0a3eab4ac4edc4b2c8839afbe\",\"cipherparams\":{\"iv\":\"1e29e79023d73be3f3bb065ca9ddc078\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"fffcd979c3223b3cdfcb2cf21b07bd4313e6f8d02af8a79a5c5dc879a25680d3\"},\"mac\":\"3ac5a539775c33bd73adfd2c0d4ef8c9154e4b404e2a15c77b0e6c78cb90df20\"},\"id\":\"68462de1-4114-4f92-828b-883fae5f779c\",\"version\":3}")]
     [TestCase("{\"address\":\"746526c3a59db995b914a319306cd7ae35dc50c5\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"644b1af45188b23f6195abd2b0563d7b079ff6622e5ac61767cd81cbd621a13e\",\"cipherparams\":{\"iv\":\"844c895835de8571409b8a76a75672b2\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"e7df76e322e444ed61314fa5261cf0ac02b9c057fe626a74a37c5255c16a8d61\"},\"mac\":\"48f26081eec397b818ed4e2cb3b1c04908c671a81d6b183e9965d869bd001862\"},\"id\":\"6ee56be1-367f-4b41-a25d-f60e0a7bfe42\",\"version\":3}")]
     [TestCase("{\"address\":\"aa42104423e00a862b616f2f712a1b17d308bbc9\",\"crypto\":{\"cipher\":\"aes-128-ctr\",\"ciphertext\":\"450c341ab64c39237039a30a8d84cc112dfbdda889caa19201b0cf8473680936\",\"cipherparams\":{\"iv\":\"923d950dcdba710a0c8e240441e0a227\"},\"kdf\":\"scrypt\",\"kdfparams\":{\"dklen\":32,\"n\":262144,\"p\":1,\"r\":8,\"salt\":\"101185ea81a1067591bce5323d75648b753f71becc22a4ebd55256593a705698\"},\"mac\":\"dc0a3bc555ac8f22d84115968b5fde6f50eb065ff7fe47a1da30de668a5ca864\"},\"id\":\"339ef573-a7d5-4bd0-86b2-3b1e420439d7\",\"version\":3}")]
@@ -75,8 +118,11 @@ public class KeyStoreTests
         try
         {
             (PrivateKey key, Result result) = test.Store.GetKey(new Address(item.Address), securePassword);
-            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
-            Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
+                Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
+            }
         }
         finally
         {
@@ -141,10 +187,13 @@ public class KeyStoreTests
             Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "generate key 2");
 
             (IReadOnlyCollection<Address> addresses, Result getAllResult) = test.Store.GetKeyAddresses();
-            Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
-            Assert.That(addresses.Count >= 2, Is.True);
-            Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
-            Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
+                Assert.That(addresses.Count >= 2, Is.True);
+                Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
+                Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
+            }
 
             result = test.Store.DeleteKey(key1.Address);
             Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "delete key 1");
@@ -166,8 +215,11 @@ public class KeyStoreTests
         Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
 
         (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-        Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
+        }
 
         Result result = test.Store.DeleteKey(key.Item1.Address);
         Assert.That(result.ResultType, Is.EqualTo(ResultType.Success));
@@ -195,8 +247,11 @@ public class KeyStoreTests
         test.Store.StoreKey(key.Address, keyData);
 
         (_, Result loadResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-        Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
-        Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
+            Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
+        }
 
         test.Store.DeleteKey(key.Address);
     }
@@ -209,12 +264,18 @@ public class KeyStoreTests
         Assert.That(generateResult.ResultType, Is.EqualTo(ResultType.Success));
 
         (PrivateKey keyRestored, Result getResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-        Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes), Is.True);
+        }
 
         (PrivateKey _, Result wrongResult) = test.Store.GetKey(key.Address, test.WrongPasswordSecured);
-        Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
+        }
 
         Result deleteResult = test.Store.DeleteKey(key.Address);
         Assert.That(deleteResult.ResultType, Is.EqualTo(ResultType.Success));

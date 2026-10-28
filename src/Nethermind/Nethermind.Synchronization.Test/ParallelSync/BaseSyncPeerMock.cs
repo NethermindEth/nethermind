@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 
@@ -20,7 +21,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public virtual PublicKey Id { get; } = null!;
     public ulong HeadNumber { get; set; }
     public virtual string ClientId { get; set; } = null!;
-    public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+    public virtual void SendNewTransactions(System.ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
         throw new System.NotImplementedException();
 
     public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class =>
@@ -36,6 +37,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public bool IsInitialized { get; set; }
     public bool IsPriority { get; set; }
     public virtual byte ProtocolVersion { get; }
+    public virtual byte SnapProtocolVersion => SnapVersions.Snap1;
     public string ProtocolCode { get; } = null!;
     public virtual void Disconnect(DisconnectReason reason, string details)
     {

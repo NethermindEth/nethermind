@@ -7,6 +7,7 @@ using System.Collections;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz.SszBasicTypeConverters;
 using NUnit.Framework;
@@ -23,7 +24,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             Span<byte> output = stackalloc byte[1];
             ByteSszBasicTypeConverter.ToSpan(output, uint8);
-            Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
+            Assert.That(output, Is.SequenceEqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
         [TestCase(ushort.MinValue, "0x0000")]
@@ -33,7 +34,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             Span<byte> output = stackalloc byte[2];
             UInt16SszBasicTypeConverter.ToSpan(output, uint16);
-            Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
+            Assert.That(output, Is.SequenceEqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
         [TestCase(0U, "0x00000000")]
@@ -43,7 +44,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             Span<byte> output = stackalloc byte[4];
             UInt32SszBasicTypeConverter.ToSpan(output, uint32);
-            Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
+            Assert.That(output, Is.SequenceEqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
         [TestCase(0UL, "0x0000000000000000")]
@@ -53,7 +54,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             Span<byte> output = stackalloc byte[8];
             UInt64SszBasicTypeConverter.ToSpan(output, uint64);
-            Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedOutput)));
+            Assert.That(output, Is.SequenceEqualTo(Bytes.FromHexString(expectedOutput)));
         }
 
         [Test]
@@ -129,7 +130,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             Span<byte> output = stackalloc byte[1];
             BooleanSszBasicTypeConverter.ToSpan(output, value);
-            Assert.That(output.ToArray(), Is.EqualTo(Bytes.FromHexString(expectedValue)));
+            Assert.That(output, Is.SequenceEqualTo(Bytes.FromHexString(expectedValue)));
         }
 
         [Test]
@@ -140,9 +141,8 @@ namespace Nethermind.Serialization.Ssz.Test
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitvector(twoBytes, 5));
         }
 
-        [TestCase(0)]
-        [TestCase(-1)]
-        public void DecodeBitvector_rejects_non_positive_vector_length(int vectorLength) =>
+        [Test]
+        public void DecodeBitvector_rejects_non_positive_vector_length([Values(0, -1)] int vectorLength) =>
             Assert.Throws<ArgumentOutOfRangeException>(() => Ssz.DecodeBitvector(ReadOnlySpan<byte>.Empty, vectorLength));
 
         [Test]

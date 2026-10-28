@@ -22,6 +22,6 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
         .AddSingleton<IKademliaNodeSource, NodeSource>()
         .AddSingleton<IKademliaAdapter, KademliaAdapter>()
         .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
-        .AddSingleton<NettyDiscoveryV5Handler>()
+        .AddSingleton<DiscoveryV5Transport>()
         .AddSingleton<PacketCodec>();
 }

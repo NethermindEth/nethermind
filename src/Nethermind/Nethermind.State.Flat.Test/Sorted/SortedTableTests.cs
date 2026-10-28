@@ -78,14 +78,20 @@ public class SortedTableTests
 
         foreach ((byte[] key, byte[] value) in entries)
         {
-            Assert.That(Seek(bytes, key, out byte[] got), Is.True, $"key {key.ToHexString()} should be found");
-            Assert.That(got, Is.EqualTo(value), $"value for {key.ToHexString()}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Seek(bytes, key, out byte[] got), Is.True, $"key {key.ToHexString()} should be found");
+                Assert.That(got, Is.EqualTo(value), $"value for {key.ToHexString()}");
+            }
         }
 
         // Misses: an absent key, and a key that is a prefix of a present one but not itself present.
-        Assert.That(Seek(bytes, Bytes.FromHexString("02"), out _), Is.False);
-        Assert.That(Seek(bytes, Bytes.FromHexString("0001"), out _), Is.False);
-        Assert.That(Seek(bytes, Bytes.FromHexString("ffff"), out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Seek(bytes, Bytes.FromHexString("02"), out _), Is.False);
+            Assert.That(Seek(bytes, Bytes.FromHexString("0001"), out _), Is.False);
+            Assert.That(Seek(bytes, Bytes.FromHexString("ffff"), out _), Is.False);
+        }
     }
 
     // A torn/corrupt data record whose common-prefix-length byte exceeds the reader's 256-byte key buffer
@@ -150,9 +156,12 @@ public class SortedTableTests
     public void Empty_table_seeks_and_enumerates_nothing()
     {
         byte[] bytes = BuildTable([]);
-        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(0));
-        Assert.That(Seek(bytes, Bytes.FromHexString("00"), out _), Is.False);
-        Assert.That(Enumerate(bytes), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(0));
+            Assert.That(Seek(bytes, Bytes.FromHexString("00"), out _), Is.False);
+            Assert.That(Enumerate(bytes), Is.Empty);
+        }
     }
 
     [Test]
@@ -161,24 +170,21 @@ public class SortedTableTests
         (byte[] Key, byte[] Value)[] entries = [(Bytes.FromHexString("abcdef"), Bytes.FromHexString("1234"))];
         byte[] bytes = BuildTable(entries);
 
-        Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(1));
-        Assert.That(Seek(bytes, entries[0].Key, out byte[] got), Is.True);
-        Assert.That(got, Is.EqualTo(entries[0].Value));
-        Assert.That(Seek(bytes, Bytes.FromHexString("abcdee"), out _), Is.False); // before
-        Assert.That(Seek(bytes, Bytes.FromHexString("abcdff"), out _), Is.False); // after
-        Assert.That(Enumerate(bytes).Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(1));
+            Assert.That(Seek(bytes, entries[0].Key, out byte[] got), Is.True);
+            Assert.That(got, Is.EqualTo(entries[0].Value));
+            Assert.That(Seek(bytes, Bytes.FromHexString("abcdee"), out _), Is.False); // before
+            Assert.That(Seek(bytes, Bytes.FromHexString("abcdff"), out _), Is.False); // after
+            Assert.That(Enumerate(bytes).Count, Is.EqualTo(1));
+        }
     }
 
     // A single 4 KB block, exercising restart-run boundaries around RestartInterval (= 8): the
     // builder resets front-coding every restart, the reader binary-searches restarts then scans one run.
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(16)]
-    [TestCase(24)]
-    [TestCase(25)]
-    [TestCase(48)]
-    public void Restart_boundaries_within_one_block(int count)
+    [Test]
+    public void Restart_boundaries_within_one_block([Values(7, 8, 9, 16, 24, 25, 48)] int count)
     {
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -192,8 +198,11 @@ public class SortedTableTests
         Assert.That(TestFixtureHelpers.DataBlockCount(bytes), Is.EqualTo(1), "small values keep all records in one block");
         for (int i = 0; i < count; i++)
         {
-            Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
-            Assert.That(got, Is.EqualTo(entries[i].Value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
+                Assert.That(got, Is.EqualTo(entries[i].Value));
+            }
         }
         byte[] missing = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(missing, count);
@@ -201,13 +210,8 @@ public class SortedTableTests
     }
 
     // Exercise the last-block fill across single-block sizes 1..17.
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(16)]
-    [TestCase(17)]
-    public void Round_trips_across_record_counts(int count)
+    [Test]
+    public void Round_trips_across_record_counts([Values(1, 7, 8, 9, 16, 17)] int count)
     {
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -220,8 +224,11 @@ public class SortedTableTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
-            Assert.That(got, Is.EqualTo(entries[i].Value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
+                Assert.That(got, Is.EqualTo(entries[i].Value));
+            }
         }
         byte[] missing = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(missing, count);
@@ -231,10 +238,8 @@ public class SortedTableTests
     // Large values force many 4 KB blocks. Present keys are odd, so every even probe lands in a gap —
     // including gaps that straddle a block boundary (the separator lower-bound + in-block re-validation),
     // plus the before-first and after-last sentinels.
-    [TestCase(50)]
-    [TestCase(800)]
-    [TestCase(4000)]
-    public void Round_trips_multiblock_with_gaps(int count)
+    [Test]
+    public void Round_trips_multiblock_with_gaps([Values(50, 800, 4000)] int count)
     {
         byte[] value = new byte[200];
         for (int i = 0; i < value.Length; i++) value[i] = (byte)i;
@@ -251,8 +256,11 @@ public class SortedTableTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True, $"present key #{i}");
-            Assert.That(got, Is.EqualTo(value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True, $"present key #{i}");
+                Assert.That(got, Is.EqualTo(value));
+            }
 
             byte[] gap = new byte[4];
             BinaryPrimitives.WriteInt32BigEndian(gap, 2 * i); // even: before-first (i==0) or between two present keys
@@ -270,9 +278,8 @@ public class SortedTableTests
 
     // 32-byte keys sharing a 30-byte prefix, differing only in the last two bytes — exercises long
     // front-coded cp within restart runs and the cp == 0 reset at each restart and block boundary.
-    [TestCase(20)]
-    [TestCase(4000)]
-    public void Long_shared_prefix_round_trips(int count)
+    [Test]
+    public void Long_shared_prefix_round_trips([Values(20, 4000)] int count)
     {
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -286,8 +293,11 @@ public class SortedTableTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
-            Assert.That(got, Is.EqualTo(entries[i].Value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
+                Assert.That(got, Is.EqualTo(entries[i].Value));
+            }
         }
 
         // Enumeration reconstructs the full 32-byte keys in ascending order.
@@ -295,8 +305,11 @@ public class SortedTableTests
         Assert.That(keys.Count, Is.EqualTo(count));
         for (int i = 0; i < count; i++)
         {
-            Assert.That(keys[i].Length, Is.EqualTo(32));
-            Assert.That(BinaryPrimitives.ReadUInt16BigEndian(keys[i].AsSpan(30)), Is.EqualTo((ushort)i));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keys[i].Length, Is.EqualTo(32));
+                Assert.That(BinaryPrimitives.ReadUInt16BigEndian(keys[i].AsSpan(30)), Is.EqualTo((ushort)i));
+            }
         }
 
         byte[] missing = new byte[32];
@@ -307,10 +320,8 @@ public class SortedTableTests
 
     // Fuzz arbitrary block fills, restart placements, separator computation and front-coding across
     // boundaries with random unique keys (1..55 B) and values (0..254 B).
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(42)]
-    public void Fuzz_round_trips_random_tables(int seed)
+    [Test]
+    public void Fuzz_round_trips_random_tables([Values(1, 7, 42)] int seed)
     {
         Random rng = new(seed);
         for (int iter = 0; iter < 25; iter++)
@@ -331,8 +342,11 @@ public class SortedTableTests
 
             foreach ((byte[] key, byte[] value) in entries)
             {
-                Assert.That(Seek(bytes, key, out byte[] got), Is.True);
-                Assert.That(got, Is.EqualTo(value));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Seek(bytes, key, out byte[] got), Is.True);
+                    Assert.That(got, Is.EqualTo(value));
+                }
             }
 
             // Random probes; most are absent. Compare against the source map for the verdict.
@@ -380,7 +394,9 @@ public class SortedTableTests
 
         // The index block is located directly by the footer's IndexOffset (it is not block-aligned and
         // begins right after the last, unpadded, data block).
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(footer.IndexOffset, Is.GreaterThanOrEqualTo((m - 1) * SortedTable.BlockSize));
+#pragma warning restore NUnit2045
         Assert.That(IndexBlockReader.TryReadRecordRange<SpanByteReader, NoOpPin>(in reader, SortedTable.IndexBlockStart(table, footer), out _, out _), Is.True, "index block at IndexOffset");
     }
 
@@ -407,8 +423,11 @@ public class SortedTableTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
-            Assert.That(got, Is.EqualTo(entries[i].Value));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Seek(bytes, entries[i].Key, out byte[] got), Is.True);
+                Assert.That(got, Is.EqualTo(entries[i].Value));
+            }
         }
 
         byte[] missing = new byte[4];

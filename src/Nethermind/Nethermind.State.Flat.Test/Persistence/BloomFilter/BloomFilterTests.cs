@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,7 +63,9 @@ public class BloomFilterTests
     [Test]
     public void Add_ConcurrentWithMightContain_ShouldWork()
     {
-        using Bloom bloom = NewBloom(capacity: 10000);
+        // The capacity is far above the 30k added keys. A saturated filter's
+        // false-positive rate masks a single lost write and defeats the check below.
+        using Bloom bloom = NewBloom(capacity: 100_000);
         const int iterationsPerThread = 10000;
 
         Task[] writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
@@ -85,7 +88,51 @@ public class BloomFilterTests
 
         Task.WaitAll(writerTasks.Concat(readerTasks).ToArray());
 
-        Assert.Pass("Concurrent operations completed without exceptions");
+        // A bloom filter never returns a false negative. Every added hash must be found
+        // afterwards. A miss means a concurrent-access race lost a write.
+        List<ulong> lost = [];
+        for (int threadId = 0; threadId < 3; threadId++)
+        {
+            ulong hash = (ulong)(threadId * 1000000);
+            for (int i = 0; i < iterationsPerThread; i++)
+            {
+                if (!bloom.MightContain(hash)) lost.Add(hash);
+                hash++;
+            }
+        }
+
+        Assert.That(lost, Is.Empty, "hashes lost during concurrent add");
+    }
+
+    [Test]
+    public void AddUnsynchronized_SetsTheSameBitsAsAdd([Values(1.0, 10.0, 14.0, 30.0)] double bitsPerKey)
+    {
+        const int keys = 2_000;
+        using Bloom atomic = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+        using Bloom plain = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+
+        for (ulong i = 0; i < keys; i++)
+        {
+            atomic.Add(i * 0x9E3779B97F4A7C15UL);
+            plain.AddUnsynchronized(i * 0x9E3779B97F4A7C15UL);
+        }
+
+        Assert.That(plain.Count, Is.EqualTo(keys));
+        // Same bits set means the same answer for every probe, members and non-members alike.
+        for (ulong probe = 0; probe < 50_000; probe++)
+        {
+            ulong key = probe * 0xC2B2AE3D27D4EB4FUL;
+            Assert.That(plain.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"probe {probe}");
+        }
+    }
+
+    [Test]
+    public void AddUnsynchronized_AfterDispose_Throws()
+    {
+        Bloom bloom = NewBloom();
+        bloom.Dispose();
+
+        Assert.That(() => bloom.AddUnsynchronized(1), Throws.TypeOf<ObjectDisposedException>());
     }
 
     [Test]
@@ -97,11 +144,8 @@ public class BloomFilterTests
         Assert.DoesNotThrow(() => bloom.Dispose());
     }
 
-    [TestCase(0UL)]
-    [TestCase(1UL)]
-    [TestCase(0xDEADBEEFCAFEBABEUL)]
-    [TestCase(ulong.MaxValue)]
-    public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue(ulong key)
+    [Test]
+    public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue([Values(0UL, 1UL, 0xDEADBEEFCAFEBABEUL, ulong.MaxValue)] ulong key)
     {
         using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
             Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
@@ -131,18 +175,12 @@ public class BloomFilterTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(-1)]
-    [TestCase(long.MinValue)]
-    public void Constructor_RejectsNonPositiveCapacity(long capacity) =>
+    [Test]
+    public void Constructor_RejectsNonPositiveCapacity([Values(0, -1, long.MinValue)] long capacity) =>
         Assert.That(() => NewBloom(capacity: capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(0.0)]
-    [TestCase(-1.0)]
-    [TestCase(double.NaN)]
-    [TestCase(double.PositiveInfinity)]
-    [TestCase(double.NegativeInfinity)]
-    public void Constructor_RejectsInvalidBitsPerKey(double bitsPerKey) =>
+    [Test]
+    public void Constructor_RejectsInvalidBitsPerKey([Values(0.0, -1.0, double.NaN, double.PositiveInfinity, double.NegativeInfinity)] double bitsPerKey) =>
         Assert.That(() => NewBloom(bitsPerKey: bitsPerKey), Throws.TypeOf<ArgumentOutOfRangeException>());
 
     [Test]

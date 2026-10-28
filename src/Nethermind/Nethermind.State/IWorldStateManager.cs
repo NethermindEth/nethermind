@@ -14,7 +14,7 @@ public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
     IStateReader GlobalStateReader { get; }
-    ISnapServer SnapServer { get; }
+    ISnapStateServer SnapStateServer { get; }
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
@@ -22,6 +22,12 @@ public interface IWorldStateManager
     /// </summary>
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
+
+    /// <summary>
+    /// Like <see cref="CreateResettableWorldState"/>, for read-only queries whose results never feed block processing.
+    /// A backend may tune its reads for them.
+    /// </summary>
+    IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateResettableWorldState();
 
     IOverridableWorldScope CreateOverridableWorldScope();
 
@@ -45,6 +51,13 @@ public interface IWorldStateManager
     /// Persist and clear cache. Used by some tests.
     /// </summary>
     void FlushCache(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Drop cached state that is not on the ancestry of <paramref name="head"/>: every other branch, and
+    /// everything above the head on its own branch, is removed and can no longer be processed from.
+    /// Called when the head is force-reset (<c>debug_resetHead</c>).
+    /// </summary>
+    void DropStateNotReachableFrom(BlockHeader head);
 }
 
 public interface IOverridableWorldScope : IDisposable

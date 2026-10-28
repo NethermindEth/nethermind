@@ -23,6 +23,7 @@ namespace Nethermind.Network
         private bool _wasInitialized = false;
         private Dictionary<uint, Fork> DictForks { get; set; }
         internal Fork[] Forks { get; set; }
+        private ForkActivation[] _activations = [];
         private bool _hasTimestampFork;
 
         internal void EnsureInitialized()
@@ -35,7 +36,7 @@ namespace Nethermind.Network
             Hash256 genesisHash = syncServer.Genesis!.Hash;
 
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
-            ForkActivation[] transitionActivations = specProvider.TransitionActivations;
+            ForkActivation[] transitionActivations = _activations = GetForkActivations();
             DictForks = [];
             Forks = new Fork[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
@@ -50,6 +51,13 @@ namespace Nethermind.Network
                 SetFork(index + 1, crc, new(forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
             }
         }
+
+        /// <summary>The forks, in ascending activation order, that the EIP-2124 checksum is built from.</summary>
+        /// <remarks>
+        /// Chains whose fork schedule is not fully described by the spec transitions - because a fork is gated
+        /// on engine parameters rather than on a release spec - override this to contribute the missing entries.
+        /// </remarks>
+        protected virtual ForkActivation[] GetForkActivations() => specProvider.TransitionActivations;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetFork(int index, uint crc, Fork fork)
@@ -123,9 +131,10 @@ namespace Nethermind.Network
             if (found.Id.Next != peerId.Next) // if the next fork is different
             {
                 bool headPastLocalFork = headActivation >= found.Id.Next;
-                if (peerForkIsLast && !forkIsLast && headPastLocalFork)
+                if (!forkIsLast && headPastLocalFork)
                 {
-                    // Remote does not know about a fork that local has already went through. remote is stale.
+                    // EIP-2124 rule 2: the remote fork hash is a past local fork, so the remote must announce
+                    // exactly the fork local went through next. Anything else (none, or another activation) is stale.
                     return ValidationResult.RemoteStale;
                 }
 
@@ -182,7 +191,7 @@ namespace Nethermind.Network
                 currentFork = new Fork(new ForkActivation(0, 0), currentFork.Id);
             }
 
-            bool isNextPresent = GetNextActivation(indexOfActive - 1, specProvider.TransitionActivations) is not 0;
+            bool isNextPresent = GetNextActivation(indexOfActive - 1, _activations) is not 0;
 
             return new ForkActivationsSummary
             {

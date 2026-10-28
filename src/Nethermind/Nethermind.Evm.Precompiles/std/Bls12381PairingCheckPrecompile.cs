@@ -3,9 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
@@ -15,11 +15,13 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381PairingCheckPrecompile
 {
+    private static readonly byte[] _successResult = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+
+    public static Address Address { get; } = Address.FromNumber(0xf);
+
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Bls12381PairingCheckPrecompile++;
-
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
@@ -43,55 +45,30 @@ public partial class Bls12381PairingCheckPrecompile
             pairDestinations.Add(dest);
         }
 
-        Result result = Result.Success;
-
+        Memory<long> g1Memory = g1Points.AsMemory();
+        Memory<long> g2Memory = g2Points.AsMemory();
         // decode + on-curve/subgroup-validate each pair into its slot
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pairDestinations.Count && result; i++)
-            {
-                result = TryDecodePairToBuffer(inputData, g1Points.AsMemory(), g2Points.AsMemory(), pairDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> g1Memory = g1Points.AsMemory();
-            Memory<long> g2Memory = g2Points.AsMemory();
-            Parallel.For(0, pairDestinations.Count, (index, state) =>
-            {
-                Result local = TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index);
-                if (!local)
-                {
-                    // racy but safe: workers only ever store a failure, so post-barrier result fails iff any pair did
-                    result = local;
-                    state.Break();
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pairDestinations.Count, new PairDecoder(inputData, g1Memory, g2Memory, pairDestinations));
 
         if (!result)
             return result.Error!;
 
         // all pairs had an infinity point: empty product is one
         if (npairs == 0)
-        {
-            byte[] one = new byte[32];
-            one[31] = 1;
-            return one;
-        }
+            return _successResult;
 
         // batched product of the per-pair Miller loops
         GT acc = new(stackalloc long[GT.Sz]);
         acc.MillerLoopN(g2Points, g1Points, npairs);
 
         // e(x_0, y_0) * e(x_1, y_1) * ... == 1
-        byte[] res = new byte[32];
+        return acc.FinalExp().IsOne() ? _successResult : Bytes.Zero32;
+    }
 
-        if (acc.FinalExp().IsOne()) res[31] = 1;
-
-        return res;
+    private readonly struct PairDecoder(ReadOnlyMemory<byte> inputData, Memory<long> g1Buffer, Memory<long> g2Buffer, ArrayPoolList<int> destinations)
+        : Eip2537.IItemDecoder
+    {
+        public Result Decode(int index) => TryDecodePairToBuffer(inputData, g1Buffer, g2Buffer, destinations[index], index);
     }
 
     private static Result TryDecodePairToBuffer(

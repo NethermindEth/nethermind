@@ -67,11 +67,14 @@ namespace Nethermind.Db.Test
             Assert.That(valueA, Is.EqualTo(_sampleValue));
 
             byte[] valueB = snapshot.Get(TestItem.KeccakB);
-            Assert.That(valueB, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(valueB, Is.Null);
 
-            // Main db should see new values
-            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
-            Assert.That(memDb.Get(TestItem.KeccakB), Is.EqualTo(_sampleValue2));
+                // Main db should see new values
+                Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue2));
+                Assert.That(memDb.Get(TestItem.KeccakB), Is.EqualTo(_sampleValue2));
+            }
 
             snapshot.Dispose();
         }
@@ -98,13 +101,19 @@ namespace Nethermind.Db.Test
             byte[]? value2 = snapshot2.Get(TestItem.KeccakA);
             byte[]? value3 = snapshot3.Get(TestItem.KeccakA);
 
-            Assert.That(value1, Is.Not.Null);
-            Assert.That(value2, Is.Not.Null);
-            Assert.That(value3, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value1, Is.Not.Null);
+                Assert.That(value2, Is.Not.Null);
+                Assert.That(value3, Is.Not.Null);
+            }
 
-            Assert.That(value1, Is.EqualTo(new byte[] { 1 }));
-            Assert.That(value2, Is.EqualTo(new byte[] { 2 }));
-            Assert.That(value3, Is.EqualTo(new byte[] { 3 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(value1, Is.EqualTo(new byte[] { 1 }));
+                Assert.That(value2, Is.EqualTo(new byte[] { 2 }));
+                Assert.That(value3, Is.EqualTo(new byte[] { 3 }));
+            }
 
             snapshot1.Dispose();
             snapshot2.Dispose();
@@ -154,11 +163,14 @@ namespace Nethermind.Db.Test
             memDb.Remove(TestItem.KeccakA.Bytes);
 
             // Main db should not see key
-            Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memDb.KeyExists(TestItem.KeccakA), Is.False);
 
-            // Snapshot should still see key
-            Assert.That(snapshot.KeyExists(TestItem.KeccakA), Is.True);
-            Assert.That(snapshot.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
+                // Snapshot should still see key
+                Assert.That(snapshot.KeyExists(TestItem.KeccakA), Is.True);
+                Assert.That(snapshot.Get(TestItem.KeccakA), Is.EqualTo(_sampleValue));
+            }
 
             snapshot.Dispose();
         }
@@ -188,20 +200,6 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             Assert.That(memDb.Values, Has.Count.EqualTo(2));
-        }
-
-        [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            SnapshotableMemDb memDb = new();
-            memDb.Dispose();
-        }
-
-        [Test]
-        public void Flush_does_not_cause_trouble()
-        {
-            SnapshotableMemDb memDb = new();
-            memDb.Flush();
         }
 
         [Test]
@@ -276,15 +274,42 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(keys, Has.Count.EqualTo(3));
-            Assert.That(keys[0], Is.EqualTo(keyB));
-            Assert.That(keys[1], Is.EqualTo(keyC));
-            Assert.That(keys[2], Is.EqualTo(keyD));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(keys[0], Is.EqualTo(keyB));
+                Assert.That(keys[1], Is.EqualTo(keyC));
+                Assert.That(keys[2], Is.EqualTo(keyD));
 
-            Assert.That(values[0], Is.EqualTo(new byte[] { 2 }));
-            Assert.That(values[1], Is.EqualTo(new byte[] { 3 }));
-            Assert.That(values[2], Is.EqualTo(new byte[] { 4 }));
+                Assert.That(values[0], Is.EqualTo(new byte[] { 2 }));
+                Assert.That(values[1], Is.EqualTo(new byte[] { 3 }));
+                Assert.That(values[2], Is.EqualTo(new byte[] { 4 }));
+            }
 
             view.Dispose();
+        }
+
+        [Test]
+        public void SeekTo_MidIteration_LandsOnTheFirstLiveKeyAtOrAfterTheTargetWithinTheViewBounds()
+        {
+            SnapshotableMemDb memDb = new();
+            foreach (byte b in new byte[] { 0, 1, 2, 3, 4, 5, 7 })
+            {
+                memDb.Set([b], [b]);
+            }
+
+            memDb.Remove([4]);
+
+            using ISeekableSortedView view = (ISeekableSortedView)memDb.GetViewBetween([1], [7]);
+
+#pragma warning disable NUnit2045 // Positioning and seeking must succeed before CurrentKey is accessed.
+            Assert.That(view.MoveNext(), Is.True, "precondition: the view starts on its first key");
+#pragma warning restore NUnit2045
+            Assert.That(view.SeekTo([4]), Is.True, "a live key at or after 4 remains below the upper bound");
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }), "4 was removed, so the seek lands on the next live key");
+            Assert.That(view.MoveNext(), Is.False, "7 is the exclusive upper bound, so 5 is the last key of the view");
+            Assert.That(view.SeekTo([6]), Is.False, "the only key at or after 6 is the excluded upper bound itself");
+            Assert.That(view.SeekTo([0]), Is.True, "a target below the lower bound is clamped to it");
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }), "0 sits outside the view, so the seek lands on the lower bound");
         }
 
         [Test]
@@ -318,9 +343,12 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(values, Has.Count.EqualTo(3));
-            Assert.That(values[0], Is.EqualTo(new byte[] { 1 }));
-            Assert.That(values[1], Is.EqualTo(new byte[] { 2 })); // Old version
-            Assert.That(values[2], Is.EqualTo(new byte[] { 3 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(values[0], Is.EqualTo(new byte[] { 1 }));
+                Assert.That(values[1], Is.EqualTo(new byte[] { 2 })); // Old version
+                Assert.That(values[2], Is.EqualTo(new byte[] { 3 }));
+            }
 
             view.Dispose();
             snapshot.Dispose();
@@ -350,7 +378,7 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakB, _sampleValue);
             memDb.Set(TestItem.KeccakD, _sampleValue);
 
-            IEnumerable<KeyValuePair<byte[], byte[]?>> orderedItems = memDb.GetAll(true);
+            IEnumerable<KeyValuePair<byte[], byte[]>> orderedItems = memDb.GetAll(true);
 
             Assert.That(System.Linq.Enumerable.Count(orderedItems), Is.EqualTo(5));
 
@@ -380,11 +408,17 @@ namespace Nethermind.Db.Test
             byte[]? firstKey = sortedSnapshot.FirstKey;
             byte[]? lastKey = sortedSnapshot.LastKey;
 
-            Assert.That(firstKey, Is.Not.Null);
-            Assert.That(lastKey, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstKey, Is.Not.Null);
+                Assert.That(lastKey, Is.Not.Null);
+            }
 
-            Assert.That(firstKey, Is.EqualTo(keyA));  // 0x01
-            Assert.That(lastKey, Is.EqualTo(keyB));   // 0x02 (not keyC which was added after)
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstKey, Is.EqualTo(keyA));  // 0x01
+                Assert.That(lastKey, Is.EqualTo(keyB));   // 0x02 (not keyC which was added after)
+            }
 
             snapshot.Dispose();
         }

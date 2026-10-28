@@ -8,8 +8,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -45,6 +47,65 @@ public class PersistedSnapshotRepositoryTests
     }
 
     [Test]
+    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace)
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        StateId parent = new(0, Keccak.EmptyTreeHash);
+        StateId state = new(1, Keccak.Compute("lease-replacement"));
+        using Snapshot source = CreateTestSnapshot(parent, state, TestItem.AddressA);
+        PersistedSnapshotBucket bucket = new(tier.Resolve<ISnapshotCatalog>(), SnapshotTier.PersistedBase, LimboLogs.Instance.GetClassLogger<PersistedSnapshotBucket>());
+        try
+        {
+            using (PersistedSnapshot original = tier.ConvertToPersistedBase(source))
+            {
+                bucket.Add(state, original);
+                Assert.That(tier.Repository.RemovePersistedStateExact(state), Is.True);
+            }
+            Assert.That(bucket.TryGet(state, out PersistedSnapshot? observed), Is.True);
+            PersistedSnapshot? retired = observed;
+            void Retire(PersistedSnapshot current)
+            {
+                if (replace)
+                {
+                    using PersistedSnapshot replacement = new(parent, state, current.Reservation, tier.Blobs,
+                        SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
+                    Assert.That(bucket.Replace(state, replacement), Is.True);
+                }
+                else
+                {
+                    Assert.That(bucket.RemoveExact(state), Is.True);
+                }
+                Assert.That(retired!.TryAcquire(), Is.False, "the observed instance must have drained before acquisition");
+            }
+            Retire(observed!);
+            bool acquired = bucket.TryAcquire(state, ref observed);
+            Assert.That(bucket.TryLease(state, out PersistedSnapshot? fresh), Is.EqualTo(replace));
+            fresh?.Dispose();
+            using (observed)
+            {
+                Assert.That(acquired, Is.EqualTo(replace), "replacement must not look like a missing snapshot");
+                if (replace)
+                {
+#pragma warning disable NUnit2045 // The lease must remain valid before removing its repository entry.
+                    Assert.That(observed, Is.Not.SameAs(retired));
+#pragma warning restore NUnit2045
+                    Assert.That(bucket.RemoveExact(state), Is.True);
+                    Assert.That(observed!.TryGetAccount(TestItem.AddressA, out Account? account), Is.True);
+                    Assert.That(account!.Balance, Is.EqualTo((UInt256)1000), "the acquired lease must keep the replacement readable after removal");
+                }
+                else
+                {
+                    Assert.That(observed, Is.Null);
+                }
+            }
+        }
+        finally
+        {
+            bucket.DisposeAndClear();
+        }
+    }
+
+    [Test]
     public void PersistSnapshot_And_Query()
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
@@ -55,7 +116,9 @@ public class PersistedSnapshotRepositoryTests
         Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
 
         tier.ConvertToPersistedBase(snap).Dispose();
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
+#pragma warning restore NUnit2045
 
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.From, Is.EqualTo(s0));
@@ -84,7 +147,9 @@ public class PersistedSnapshotRepositoryTests
         tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 1000)).Dispose();
         tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 2000)).Dispose();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1), "overwrite must be net-zero, not double-counted");
+#pragma warning restore NUnit2045
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out Account? acct), Is.True);
         Assert.That(acct!.Balance, Is.EqualTo((UInt256)2000), "the second (newest) snapshot must win the overwrite");
@@ -116,7 +181,9 @@ public class PersistedSnapshotRepositoryTests
         tier.ConvertToPersistedBase(snap1).Dispose();
         tier.ConvertToPersistedBase(snap2).Dispose();
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedBase, out PersistedSnapshot? newest), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(newest!.TryLoadStateNodeRlp(path, out byte[]? result), Is.True);
         Assert.That(result, Is.EqualTo(rlp2));
         newest.Dispose();
@@ -139,7 +206,9 @@ public class PersistedSnapshotRepositoryTests
         using (FlatTestContainer tier2 = new(arenaFileSizeBytes: 4096, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo = tier2.Repository;
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? snapshot), Is.True);
             snapshot!.Dispose();
         }
@@ -161,7 +230,7 @@ public class PersistedSnapshotRepositoryTests
         byte[] slotBytes = new byte[32];
         slotBytes[31] = 0xAB;
         slotBytes[30] = 0xCD;
-        SlotValue slotValue = new(slotBytes);
+        UInt256 slotValue = new(slotBytes, isBigEndian: true);
 
         TreePath statePath = new(Keccak.Compute("state_path"), 4);
         byte[] stateRlp = [0xC2, 0x80, 0x80];
@@ -182,21 +251,25 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         using PersistedSnapshot _ = persisted!;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(persisted!.TryGetAccount(acctAddr, out Account? account), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(account, Is.Not.Null);
-        Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
 
-        SlotValue readSlot = default;
-        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, ref readSlot), Is.True);
-        Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
+            Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, out UInt256? readSlot), Is.True);
+            Assert.That(readSlot.GetValueOrDefault().ToBigEndian(), Is.EqualTo(slotBytes));
 
-        Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
+            Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
 
-        Assert.That(persisted.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
-        Assert.That(stateResult, Is.EqualTo(stateRlp));
+            Assert.That(persisted.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
+            Assert.That(stateResult, Is.EqualTo(stateRlp));
 
-        Assert.That(persisted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, storagePath, out byte[]? storageResult), Is.True);
-        Assert.That(storageResult, Is.EqualTo(storageRlp));
+            Assert.That(persisted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, storagePath, out byte[]? storageResult), Is.True);
+            Assert.That(storageResult, Is.EqualTo(storageRlp));
+        }
     }
 
     [Test]
@@ -224,9 +297,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
     }
 
-    [TestCase(100)]
-    [TestCase(1000)]
-    public void ManyBaseSnapshots_ShareUnderlyingFiles(int count)
+    [Test]
+    public void ManyBaseSnapshots_ShareUnderlyingFiles([Values(100, 1000)] int count)
     {
         // Regression for the old "Blob arena id space exhausted (65535 arenas per tier)"
         // bug: ids were minted per base-conversion call, so 65k base
@@ -270,8 +342,11 @@ public class PersistedSnapshotRepositoryTests
 
         if (withTrieNode)
         {
-            Assert.That(persisted.BlobRange.IsEmpty, Is.False, "a base snapshot with trie nodes records a non-empty blob range");
-            Assert.That(persisted.BlobRange.Length, Is.GreaterThan(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persisted.BlobRange.IsEmpty, Is.False, "a base snapshot with trie nodes records a non-empty blob range");
+                Assert.That(persisted.BlobRange.Length, Is.GreaterThan(0));
+            }
         }
         else
         {
@@ -328,8 +403,11 @@ public class PersistedSnapshotRepositoryTests
         using PersistedSnapshotList bases = repo.LeaseBaseSnapshotsInRange(ids[0], ids[3]);
         Assert.That(bases.Count, Is.EqualTo(3));
         // Walk-back order: newest first.
-        Assert.That(bases[0].To, Is.EqualTo(ids[3]));
-        Assert.That(bases[^1].From, Is.EqualTo(ids[0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bases[0].To, Is.EqualTo(ids[3]));
+            Assert.That(bases[^1].From, Is.EqualTo(ids[0]));
+        }
     }
 
     /// <summary>
@@ -372,10 +450,13 @@ public class PersistedSnapshotRepositoryTests
             // The widest snapshot covering (0, 4] — the chain's starting snapshot. Its bloom is rebuilt
             // from its own merged table and holds every address written across the four bases.
             BloomFilter shared = compactSizedAt4!.Bloom;
-            Assert.That(shared.Count, Is.GreaterThan(0),
-                "ReconstructBloom must have built a real bloom for the widest (starting) snapshot");
-            Assert.That(compactSizedAt4.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(compactSizedAt4.To.BlockNumber, Is.EqualTo(4));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(shared.Count, Is.GreaterThan(0),
+                    "ReconstructBloom must have built a real bloom for the widest (starting) snapshot");
+                Assert.That(compactSizedAt4.From.BlockNumber, Is.EqualTo(0));
+                Assert.That(compactSizedAt4.To.BlockNumber, Is.EqualTo(4));
+            }
             for (int i = 1; i <= 4; i++)
             {
                 ulong key = PersistedSnapshotBloomBuilder.AddressKey(TestItem.Addresses[i - 1]);
@@ -498,7 +579,9 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo2.TryLeasePersistedState(ids[8], SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSizedAt8), Is.True);
         using (compactSizedAt8)
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(compactSizedAt8!.Bloom.Count, Is.GreaterThan(0), "CompactSized at ids[8] must have a real bloom");
+#pragma warning restore NUnit2045
             Assert.That(repo2.TryLeasePersistedState(ids[1], SnapshotTier.PersistedBase, out PersistedSnapshot? baseAt1), Is.True);
             using (baseAt1)
                 Assert.That(ReferenceEquals(baseAt1!.Bloom, compactSizedAt8.Bloom), Is.True,
@@ -529,8 +612,11 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(tier2.Repository.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? p), Is.True);
         using (p)
         {
-            Assert.That(p!.Bloom.Count, Is.EqualTo(0), "bloom disabled → AlwaysTrue sentinel, no reconstruction");
-            Assert.That(p.TryGetAccount(TestItem.AddressA, out _), Is.True, "data must survive restart with bloom disabled");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(p!.Bloom.Count, Is.EqualTo(0), "bloom disabled → AlwaysTrue sentinel, no reconstruction");
+                Assert.That(p.TryGetAccount(TestItem.AddressA, out _), Is.True, "data must survive restart with bloom disabled");
+            }
         }
     }
 
@@ -547,7 +633,9 @@ public class PersistedSnapshotRepositoryTests
             arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
 
         using PersistedSnapshot p = tier.ConvertToPersistedBase(CreateTestSnapshot(s0, s1, TestItem.AddressA, 77));
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(p.TryGetAccount(TestItem.AddressA, out Account? acc), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(acc!.Balance, Is.EqualTo((UInt256)77));
     }
 
@@ -584,18 +672,22 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(123).TestObject;
         byte[] slot = new byte[32]; slot[31] = 0x55;
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slot);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slot, isBigEndian: true);
         PersistedSnapshot persisted = tier.ConvertToPersistedBase(
             new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
 
         PersistedSnapshotList list = new(1) { persisted };
         using PersistedSnapshotStack stack = new(list, recordDetailedMetrics: false);
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(a!.Balance, Is.EqualTo((UInt256)123));
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv), Is.True);
-        Assert.That(sv![^1], Is.EqualTo((byte)0x55));
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out UInt256? sv), Is.True);
+#pragma warning restore NUnit2045
+        Assert.That(sv!.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x55));
 
         // Absent addresses: the real bloom excludes them (or the snapshot misses) → fall through.
         foreach (Address absent in new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF })

@@ -21,17 +21,17 @@ public class DoubleConverterTests
     [TestCase(0.0105, "0.0105")]
     [TestCase(0.0, "0")]
     [TestCase(1.0, "1")]
+    [TestCase(1e-7, "1E-07")]
+    [TestCase(double.Epsilon, "5E-324")]
+    [TestCase(-double.MaxValue, "-1.7976931348623157E+308")]
     public void Write_PreservesFullIeee754Precision(double value, string expected)
     {
         string json = JsonSerializer.Serialize(value, Options);
         Assert.That(json, Is.EqualTo(expected), "double serialization must preserve full IEEE 754 round-trip precision");
     }
 
-    [TestCase(0.678584082336891)]
-    [TestCase(0.9985787551520126)]
-    [TestCase(0.16666666666666666)]
-    [TestCase(0.3333333333333333)]
-    public void Roundtrip_PreservesValue(double value)
+    [Test]
+    public void Roundtrip_PreservesValue([Values(0.678584082336891, 0.9985787551520126, 0.16666666666666666, 0.3333333333333333)] double value)
     {
         string json = JsonSerializer.Serialize(value, Options);
         double deserialized = JsonSerializer.Deserialize<double>(json, Options);

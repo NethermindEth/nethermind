@@ -87,8 +87,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ReadOnlySequence<byte> seq = MakeSequence(json.AsMemory(0, 2), json.AsMemory(2)); // split at index 2 between 'A'|'B'
 
         (byte[]? res, Exception? err) = InvokeOnBareString(seq);
-        Assert.That(err, Is.Null);
-        Assert.That(res, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(err, Is.Null);
+            Assert.That(res, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(res!.Length, Is.EqualTo(1));
@@ -108,10 +111,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
-    [TestCase("true")]
-    [TestCase("123")]
-    [TestCase("{}")]
-    public void NonStringTokens_ShouldThrowInvalidOperation(string literal)
+    [Test]
+    public void NonStringTokens_ShouldThrowInvalidOperation([Values("true", "123", "{}")] string literal)
     {
         ReadOnlySequence<byte> seq = JsonForLiteral(literal);
         (_, Exception? err) = InvokeRaw(seq);
@@ -119,9 +120,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(err, Is.TypeOf<InvalidOperationException>());
     }
 
-    [TestCase("0x")]
-    [TestCase("0X")]
-    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation(string hex)
+    [Test]
+    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation([Values("0x", "0X")] string hex)
     {
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
         // We accept either null or empty — but it must be consistent across segmentations.
@@ -207,7 +207,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
             }
             else
             {
-                Assert.That(result?.AsSpan().ToArray(), Is.EqualTo(expected), "pooled bytes must match the byte[] converter");
+                Assert.That(result!.AsSpan(), Is.SequenceEqualTo(expected), "pooled bytes must match the byte[] converter");
             }
         }
     }
@@ -231,11 +231,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [TestCase(126)]
-    [TestCase(127)]
-    [TestCase(1022)]
-    [TestCase(1023)]
-    public void Write_OutputAroundInlineThresholds_IsByteIdentical(int length)
+    [Test]
+    public void Write_OutputAroundInlineThresholds_IsByteIdentical([Values(126, 127, 1022, 1023)] int length)
     {
         byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
@@ -264,9 +261,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [TestCase(127)]
-    [TestCase(1022)]
-    public void WriteAsPropertyName_MediumOutput_IsByteIdentical(int length)
+    [Test]
+    public void WriteAsPropertyName_MediumOutput_IsByteIdentical([Values(127, 1022)] int length)
     {
         byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
@@ -386,8 +382,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
         else
         {
-            Assert.That(firstErr, Is.Not.Null);
-            Assert.That(err, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstErr, Is.Not.Null);
+                Assert.That(err, Is.Not.Null);
+            }
             Assert.That(err!.GetType(), Is.EqualTo(firstErr!.GetType()));
         }
     }
@@ -398,7 +397,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnBareString(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.String));
 
         try { return (ByteArrayConverter.Convert(ref reader), null); }
@@ -408,7 +409,9 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     private static (byte[]? Result, Exception? Error) InvokeOnPropertyName(ReadOnlySequence<byte> json)
     {
         Utf8JsonReader reader = new(json);
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(reader.Read(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.StartObject));
         Assert.That(reader.Read(), Is.True);
         Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.PropertyName));
@@ -578,6 +581,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         yield return new("Rejects_InvalidHexCharacters", "0x01zz01", Bytes.ErrSyntax);
 
         yield return new("Parses_EmptyHex", "0x", Array.Empty<byte>());
+        yield return new("Parses_EmptyString", "", Array.Empty<byte>());
         yield return new("Parses_SingleByte", "0x1f", new byte[] { 0x1f });
         yield return new("Parses_DeadBeef", "0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef });
     }

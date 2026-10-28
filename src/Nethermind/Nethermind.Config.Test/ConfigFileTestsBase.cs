@@ -46,7 +46,7 @@ public abstract class ConfigFileTestsBase
 
     [ConfigFileGroup("fast")]
     protected IEnumerable<string> FastSyncConfigs
-        => Configs.Where(static config => !config.Contains('_') && !config.Contains("spaceneth"));
+        => Configs.Where(static config => !config.Contains("_archive") && !config.Contains("spaceneth"));
 
     [ConfigFileGroup("archive")]
     protected IEnumerable<string> ArchiveConfigs
@@ -166,8 +166,7 @@ public abstract class ConfigFileTestsBase
         try
         {
             TestConfigProvider configProvider = new(configFile);
-            string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
-            configProvider.AddSource(new JsonConfigSource(configPath));
+            configProvider.AddSource(LoadBuiltInConfig(configFile));
             return configProvider;
         }
         catch (Exception e)
@@ -175,6 +174,21 @@ public abstract class ConfigFileTestsBase
             throw new ConfigurationErrorsException($"Cannot load config file {configFile}", e);
         }
     }
+
+    protected static JsonConfigSource LoadBuiltInConfig(string name)
+    {
+        using Stream stream = OpenBuiltInConfig(name);
+        return new JsonConfigSource(stream);
+    }
+
+    protected static string ReadBuiltInConfig(string name)
+    {
+        using StreamReader reader = new(OpenBuiltInConfig(name));
+        return reader.ReadToEnd();
+    }
+
+    private static Stream OpenBuiltInConfig(string name) =>
+        BuiltInConfigs.Open(name) ?? throw new FileNotFoundException($"Built-in config {name} not found");
 
     private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
     {

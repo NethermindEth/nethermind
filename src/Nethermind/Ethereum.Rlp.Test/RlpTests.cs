@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -18,21 +19,27 @@ namespace Ethereum.Rlp.Test
         [Test]
         public void TestEmpty()
         {
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(Array.Empty<byte>()), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyByteArray));
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(), Is.EqualTo(Nethermind.Serialization.Rlp.Rlp.OfEmptyList));
+            }
         }
 
         [Test]
         public void TestCast()
         {
             byte[] expected = [1];
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, Is.EqualTo(expected), "byte");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, Is.EqualTo(expected), "short");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, Is.EqualTo(expected), "ushort");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, Is.EqualTo(expected), "int");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, Is.EqualTo(expected), "uint bytes");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, Is.EqualTo(expected), "long bytes");
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((byte)1).Bytes, Is.EqualTo(expected), "byte");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((short)1).Bytes, Is.EqualTo(expected), "short");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((ushort)1).Bytes, Is.EqualTo(expected), "ushort");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1).Bytes, Is.EqualTo(expected), "int");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1U).Bytes, Is.EqualTo(expected), "uint bytes");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1L).Bytes, Is.EqualTo(expected), "long bytes");
+                Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
+            }
 
             byte[] expectedNonce = [136, 0, 0, 0, 0, 0, 0, 0, 1];
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)1UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
@@ -47,13 +54,16 @@ namespace Ethereum.Rlp.Test
             RlpWriter writer = new(buffer.AsSpan(5));
             writer.Encode(Bloom.Empty);
 
-            Assert.That(writer.Position, Is.EqualTo(total));
-            Assert.That(buffer[5], Is.EqualTo(185));
-            Assert.That(buffer[6], Is.EqualTo(1));
-            Assert.That(buffer[7], Is.EqualTo(0));
-            Assert.That(buffer.AsSpan(8, 256).ToArray(), Is.EqualTo(new byte[256]));
-            Assert.That(buffer.AsSpan(0, 5).ToArray(), Is.EqualTo(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 0xAB }));
-            Assert.That(buffer.AsSpan(5 + total).ToArray(), Is.EqualTo(new byte[] { 0xAB, 0xAB, 0xAB }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(writer.Position, Is.EqualTo(total));
+                Assert.That(buffer[5], Is.EqualTo(185));
+                Assert.That(buffer[6], Is.EqualTo(1));
+                Assert.That(buffer[7], Is.EqualTo(0));
+                Assert.That(buffer.AsSpan(8, 256), Is.SequenceEqualTo(new byte[256]));
+                Assert.That(buffer.AsSpan(0, 5), Is.SequenceEqualTo(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 0xAB }));
+                Assert.That(buffer.AsSpan(5 + total), Is.SequenceEqualTo(new byte[] { 0xAB, 0xAB, 0xAB }));
+            }
         }
 
         [Test]
@@ -65,10 +75,13 @@ namespace Ethereum.Rlp.Test
             writer.Encode(Bloom.Empty);
 
             Assert.That(bytes.Length, Is.EqualTo(total));
-            Assert.That(bytes[0], Is.EqualTo(185));
-            Assert.That(bytes[1], Is.EqualTo(1));
-            Assert.That(bytes[2], Is.EqualTo(0));
-            Assert.That(bytes.AsSpan(3, 256).ToArray(), Is.EqualTo(new byte[256]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bytes[0], Is.EqualTo(185));
+                Assert.That(bytes[1], Is.EqualTo(1));
+                Assert.That(bytes[2], Is.EqualTo(0));
+                Assert.That(bytes.AsSpan(3, 256), Is.SequenceEqualTo(new byte[256]));
+            }
         }
 
         [Test]

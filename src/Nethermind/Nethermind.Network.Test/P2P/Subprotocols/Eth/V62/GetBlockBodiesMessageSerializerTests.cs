@@ -32,9 +32,8 @@ public class GetBlockBodiesMessageSerializerTests
         SerializerTester.TestZero(serializer, message);
     }
 
-    [TestCase(500)]
-    [TestCase(1024)]
-    public void Can_deserialize_body_request_up_to_message_limit(int hashCount)
+    [Test]
+    public void Can_deserialize_body_request_up_to_message_limit([Values(500, 1024)] int hashCount)
     {
         GetBlockBodiesMessageSerializer serializer = new();
         using GetBlockBodiesMessage message = new(CreateHashes(hashCount));
@@ -56,10 +55,18 @@ public class GetBlockBodiesMessageSerializerTests
     }
 
     [Test]
+    public void Deserialize_throws_on_null_hash()
+    {
+        GetBlockBodiesMessageSerializer serializer = new();
+
+        Assert.That(() => serializer.Deserialize([0xc1, 0x80]), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
     public void To_string()
     {
         using GetBlockBodiesMessage newBlockMessage = new();
-        _ = newBlockMessage.ToString();
+        Assert.That(newBlockMessage.ToString(), Does.StartWith(nameof(GetBlockBodiesMessage)));
     }
 
     private static Hash256[] CreateHashes(int count)

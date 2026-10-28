@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
@@ -14,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
@@ -27,8 +27,11 @@ public class FilterStoreTests
         FilterStore store = new(new TimerFactory());
         BlockFilter filter = store.CreateBlockFilter();
         store.SaveFilter(filter);
-        Assert.That(store.FilterExists(0), Is.True, "exists");
-        Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.BlockFilter), "type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FilterExists(0), Is.True, "exists");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.BlockFilter), "type");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -37,8 +40,11 @@ public class FilterStoreTests
         FilterStore store = new(new TimerFactory());
         LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
         store.SaveFilter(filter);
-        Assert.That(store.FilterExists(0), Is.True, "exists");
-        Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FilterExists(0), Is.True, "exists");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -61,9 +67,12 @@ public class FilterStoreTests
         LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
         store.SaveFilter(filter);
 
-        Assert.That(store.FilterExists(100), Is.True, "exists 100");
-        Assert.That(store.FilterExists(101), Is.True, "exists 101");
-        Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FilterExists(100), Is.True, "exists 100");
+            Assert.That(store.FilterExists(101), Is.True, "exists 101");
+            Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -72,12 +81,22 @@ public class FilterStoreTests
         FilterStore store = new(new TimerFactory());
         BlockFilter filter = store.CreateBlockFilter();
         store.SaveFilter(filter);
-        bool hasNotified = false;
-        store.FilterRemoved += (s, e) => hasNotified = true;
-        store.RemoveFilter(0);
+        int notifications = 0;
+        store.FilterRemoved += (s, e) => notifications++;
 
-        Assert.That(hasNotified, Is.True, "notified");
-        Assert.That(store.FilterExists(0), Is.False, "exists");
+#pragma warning disable NUnit2045 // Filter removal must succeed before checking its notifications and stored state.
+        Assert.That(store.RemoveFilter(0), Is.True, "removed");
+#pragma warning restore NUnit2045
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notifications, Is.EqualTo(1), "notified");
+            Assert.That(store.FilterExists(0), Is.False, "exists");
+        }
+
+#pragma warning disable NUnit2045 // Check the repeated removal before inspecting its notification count.
+        Assert.That(store.RemoveFilter(0), Is.False, "removed again");
+#pragma warning restore NUnit2045
+        Assert.That(notifications, Is.EqualTo(1), "notified again");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -93,8 +112,11 @@ public class FilterStoreTests
         BlockFilter[] blockFilters = store.GetFilters<BlockFilter>().ToArray();
 
         Assert.That(logFilters.Length, Is.EqualTo(1), "log filters length");
-        Assert.That(logFilters[0].Id, Is.EqualTo(1), "log filters ids");
-        Assert.That(blockFilters.Length, Is.EqualTo(1), "block Filters length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logFilters[0].Id, Is.EqualTo(1), "log filters ids");
+            Assert.That(blockFilters.Length, Is.EqualTo(1), "block Filters length");
+        }
         Assert.That(blockFilters[0].Id, Is.EqualTo(0), "block filters ids");
     }
 
@@ -172,26 +194,43 @@ public class FilterStoreTests
             && actual.Expressions.SequenceEqual(expected.Expressions);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    [Parallelizable(ParallelScope.None)]
-    public async Task CleanUps_filters()
+    [Test]
+    public void CleanUps_filters()
     {
         List<int> removedFilterIds = [];
-        FilterStore store = new(new TimerFactory(), 500, 100);
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        using FilterStore store = new(timerFactory, (int)TimeSpan.FromDays(1).TotalMilliseconds);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
         store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest));
         store.SaveFilter(store.CreatePendingTransactionFilter());
-        await Task.Delay(300);
+        DateTimeOffset stale = DateTimeOffset.UtcNow.AddDays(-2);
+        foreach (FilterBase filter in store.GetFilters<FilterBase>()) filter.LastUsed = stale;
         store.RefreshFilter(0);
-        await Task.Delay(300);
-        store.RefreshFilter(0);
-        Assert.That(() => store.FilterExists(0), Is.True.After(300, 10), "filter 0 exists");
-        Assert.That(() => store.FilterExists(1), Is.False.After(300, 10), "filter 1 doesn't exist");
-        Assert.That(() => store.FilterExists(2), Is.False.After(300, 10), "filter 2 doesn't exist");
-        Assert.That(() => store.FilterExists(3), Is.False.After(300, 10), "filter 3 doesn't exist");
-        store.RefreshFilter(0);
-        Assert.That(() => removedFilterIds, Is.EqualTo([1, 2, 3]).After(300, 10));
+        timer.ClearReceivedCalls();
+        timer.Elapsed += Raise.Event();
+        timer.Received(1).Enabled = true;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FilterExists(0), Is.True, "refreshed filter survives cleanup");
+            Assert.That(store.FilterExists(1), Is.False, "stale block filter is removed");
+            Assert.That(store.FilterExists(2), Is.False, "stale log filter is removed");
+            Assert.That(store.FilterExists(3), Is.False, "stale pending-transaction filter is removed");
+            Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 1, 2, 3 }));
+        }
+
+        store.GetFilter<BlockFilter>(0)!.LastUsed = stale;
+        timer.ClearReceivedCalls();
+        timer.Elapsed += Raise.Event();
+        timer.Received(1).Enabled = true;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FilterExists(0), Is.False, "the refreshed filter is removed once stale");
+            Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 0, 1, 2, 3 }));
+        }
     }
 }

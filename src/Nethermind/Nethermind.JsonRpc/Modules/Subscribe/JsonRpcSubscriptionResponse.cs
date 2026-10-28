@@ -90,10 +90,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
 
             writer.WritePropertyName("result"u8);
-            if (!JsonRpcResponseWriter.TryWriteSimpleValue(writer, result))
-            {
-                JsonSerializer.Serialize(writer, result, RpcPayloadTypeInfo<T>.Get(options));
-            }
+            JsonRpcResponseWriter.WritePayload(writer, result, options);
 
             writer.WriteEndObject();
         }

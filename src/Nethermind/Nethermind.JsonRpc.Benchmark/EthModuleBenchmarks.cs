@@ -29,7 +29,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -81,15 +80,13 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                LimboLogs.Instance,
+                NullLogManager.Instance,
                 specProvider,
                 _container.Resolve<IGasPriceOracle>(),
                 _container.Resolve<IEthSyncingInfo>(),
                 feeHistoryOracle,
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
-                new LogIndexConfig(),
-                new ReceiptConfig(),
                 new BlocksConfig().SecondsPerSlot,
                 _headBlockSignal,
                 new EthCapabilitiesProvider(

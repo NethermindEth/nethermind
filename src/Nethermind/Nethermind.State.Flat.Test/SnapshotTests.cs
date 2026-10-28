@@ -1,11 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
@@ -19,6 +25,17 @@ public class SnapshotTests
 
     [SetUp]
     public void SetUp() => _pool = new ResourcePool(new FlatDbConfig());
+
+    [Test]
+    public void Storage_value_layout_matches_memory_estimate_assumptions()
+    {
+        // SnapshotContentCounts budgets both the UInt256 key and nullable value at these sizes.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unsafe.SizeOf<UInt256>(), Is.EqualTo(32));
+            Assert.That(Unsafe.SizeOf<UInt256?>(), Is.EqualTo(40));
+        }
+    }
 
     [Test]
     public void CountsSealOnFirstObservationNotBefore()
@@ -39,13 +56,13 @@ public class SnapshotTests
     public void CountsAndEstimatesAreSealedByFirstObservation()
     {
         // The repository adds EstimateMemory() to its memory ledger when a snapshot is published and
-        // subtracts a later call on removal: both sides must see the same value even if a straggling
-        // writer (e.g. a trie-warmer job) mutates the content in between, and serving sealed counts
-        // avoids the all-stripe-locks ConcurrentDictionary.Count on live maps.
+        // subtracts a later call on removal: both sides must see the same value even if the content
+        // changes in between, and serving sealed counts avoids the all-stripe-locks
+        // ConcurrentDictionary.Count on live maps.
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
-            content.Storages[new((TestItem.AddressA, 1))] = new SlotValue(TestItem.KeccakA.Bytes);
+            content.Storages[new((TestItem.AddressA, 1))] = new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true);
         });
 
         long estimate = snapshot.EstimateMemory();
@@ -82,6 +99,10 @@ public class SnapshotTests
             Assert.That(snapshot.EstimateCompactedMemory(), Is.EqualTo(snapshot.Content.EstimateCompactedMemory()));
         }
     }
+
+    [Test]
+    public void CompactedEstimateDoesNotOverflowForLargeCounts() =>
+        Assert.That(new SnapshotContentCounts(0, 16_000_000, 0, 0, 0).EstimateCompactedMemory(), Is.EqualTo(2_176_000_000L));
 
     [Test]
     public void ArenaSizingUsesLiveCountsNotSealedCounts()
@@ -130,37 +151,171 @@ public class SnapshotTests
         }
     }
 
-    [TestCase(256, false)]
-    [TestCase(8_192, true)]
-    public void AddressOwnedStorageNodesRetainBoundedInnerCapacityAfterQuiescentClear(
-        int requestedCapacity,
-        bool shouldShrink)
+    [Test]
+    public void FilteredLookupsFindEveryWrittenKeyAndNoOthers([Values] bool reusedContent)
     {
-        AddressStorageNodeDictionary storageNodes = new();
-        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
-        AddressStorageNodeDictionary.AddressNodes original = storageNodes.GetOrAddAddress(addressA);
-        original.EnsureAdditionalCapacity(requestedCapacity);
-        original.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
-        int capacityBeforeClear = original.Nodes.Capacity;
+        const int Count = 1_000;
+        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+        if (reusedContent)
+        {
+            // An earlier, larger build over the keys asserted absent below: its filter arrays are reused, not reallocated.
+            Populate(Count, 4 * Count);
+            using (Snapshot previous = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing))
+            {
+                previous.BuildFilters();
+            }
 
-        storageNodes.NoLockClear();
-        AddressStorageNodeDictionary.AddressNodes reused = storageNodes.GetOrAddAddress(addressB);
+            SnapshotContent reused = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+            Assert.That(reused, Is.SameAs(content));
+            content = reused;
+        }
+
+        Populate(0, Count);
+        using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        snapshot.BuildFilters();
+
+        SnapshotContentFilters filters = content.Filters!;
+        int[] maybePresent = new int[5];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 2 * Count; i++)
+            {
+                bool written = i < Count;
+                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
+                HashedKey<Address> account = new(address);
+                HashedKey<(Address, UInt256)> storage = new((address, (UInt256)i));
+                HashedKey<TreePath> stateNode = new(path);
+                HashedKey<(Hash256, TreePath)> storageNode = new((hash, path));
+                HashedKey<(Hash256, TreePath)> otherStorageNode = new((hash, otherPath));
+                Assert.That(snapshot.TryGetAccount(account, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorage(storage, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStateNode(stateNode, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(storageNode, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(otherStorageNode, out _), Is.EqualTo(written));
+
+                // The dictionaries decide the lookups above, so also check that the filters reject absent keys.
+                if (written) continue;
+                if (filters.Accounts.MightContain((uint)account.GetHashCode())) maybePresent[0]++;
+                if (filters.Storages.MightContain((uint)storage.GetHashCode())) maybePresent[1]++;
+                if (filters.StateNodes.MightContain((uint)stateNode.GetHashCode())) maybePresent[2]++;
+                if (filters.StorageNodes.MightContain((uint)storageNode.GetHashCode())) maybePresent[3]++;
+                if (filters.StorageNodes.MightContain((uint)otherStorageNode.GetHashCode())) maybePresent[4]++;
+            }
+
+            Assert.That(maybePresent, Is.All.LessThan(Count / 10));
+        }
+
+        void Populate(int from, int to)
+        {
+            for (int i = from; i < to; i++)
+            {
+                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
+                content.Accounts[new(address)] = new((ulong)i, 1);
+                content.Storages[new((address, (UInt256)i))] = (UInt256)i;
+                content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, otherPath)] = new TrieNode(NodeType.Leaf, hash);
+            }
+        }
+
+        static (Address, Hash256, TreePath, TreePath) Key(int i)
+        {
+            Hash256 hash = Keccak.Compute(i.ToString());
+            return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes), TreePath.FromPath(hash.Bytes[..16]));
+        }
+    }
+
+    [Test]
+    public void RebuildingFiltersDoesNotHidePublishedStorageNodes()
+    {
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing);
+        HashedKey<(Hash256, TreePath)> key = new((TestItem.KeccakA, TreePath.Empty));
+        snapshot.Content.StorageNodes[key] = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
+        snapshot.BuildFilters();
+
+        // A stale queued compaction job can resolve to a snapshot whose filters are already published.
+        // Observe a lookup exactly between clearing the storage filter and adding its first key if it rebuilds.
+        FieldInfo field = typeof(AddressStorageNodeDictionary).GetField("_cachedAddressEnumerator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>> original =
+            (IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>)field.GetValue(snapshot.Content.StorageNodes)!;
+        field.SetValue(snapshot.Content.StorageNodes,
+            new LookupCheckingEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>(original, () =>
+                Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True, "published filters must never hide a written key")));
+
+        try
+        {
+            snapshot.BuildFilters();
+            Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True);
+        }
+        finally
+        {
+            field.SetValue(snapshot.Content.StorageNodes, original);
+        }
+    }
+
+    private sealed class LookupCheckingEnumerator<T>(IEnumerator<T> inner, Action checkLookup) : IEnumerator<T>
+    {
+        public T Current => inner.Current;
+        object IEnumerator.Current => Current!;
+
+        public bool MoveNext()
+        {
+            checkLookup();
+            return inner.MoveNext();
+        }
+
+        public void Reset() => inner.Reset();
+        public void Dispose() => inner.Dispose();
+    }
+
+    [TestCase(256)]
+    [TestCase(8_192)]
+    public void AddressNodesResetForPoolingKeepsSmallCapacityAndDropsLargeCapacity(int requestedCapacity)
+    {
+        AddressStorageNodeDictionary.AddressNodes nodes = new();
+        nodes.EnsureAdditionalCapacity(requestedCapacity);
+        nodes.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+        int capacityBeforeReset = nodes.Nodes.Capacity;
+
+        nodes.ResetForPooling();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(original.Nodes, Is.Empty);
-            Assert.That(reused.Nodes, Is.Empty);
+            Assert.That(nodes.Nodes, Is.Empty);
 
-            if (shouldShrink)
+            if (requestedCapacity > 4_096)
             {
-                Assert.That(original.Nodes.Capacity, Is.GreaterThan(0));
-                Assert.That(original.Nodes.Capacity, Is.LessThan(capacityBeforeClear));
+                Assert.That(nodes.Nodes.Capacity, Is.Zero);
             }
             else
             {
-                Assert.That(original.Nodes.Capacity, Is.EqualTo(capacityBeforeClear));
+                Assert.That(nodes.Nodes.Capacity, Is.EqualTo(capacityBeforeReset));
             }
+        }
+    }
+
+    [Test]
+    public void AddressOwnedStorageNodesReuseRetainedLargeDictionaryForLargeBatches()
+    {
+        const int LargeBatch = 12_345;
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        AddressStorageNodeDictionary.AddressNodes first = storageNodes.GetOrAddAddress(addressA);
+        first.EnsureAdditionalCapacity(LargeBatch);
+        first.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+
+        storageNodes.NoLockClear();
+        AddressStorageNodeDictionary.AddressNodes second = storageNodes.GetOrAddAddress(addressB);
+        Dictionary<HashedKey<TreePath>, TrieNode> beforeBatch = second.Nodes;
+        second.EnsureAdditionalCapacity(LargeBatch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Growing in place keeps the dictionary instance, so a new instance means one was rented from the retained pool.
+            Assert.That(second.Nodes, Is.Not.SameAs(beforeBatch));
+            Assert.That(second.Nodes, Is.Empty);
+            Assert.That(second.Nodes.Capacity, Is.GreaterThanOrEqualTo(LargeBatch));
         }
     }
 

@@ -31,36 +31,23 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
     public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        if (!TryAddNode(networkNode))
+        bool added = TryAddNode(networkNode);
+        if (_logger.IsInfo) _logger.Info(added ? $"Static node added: {networkNode}" : $"Static node was already added: {networkNode}");
+
+        if (added)
         {
-            if (_logger.IsInfo) _logger.Info($"Static node was already added: {networkNode}");
-            return false;
+            NodeAdded?.Invoke(this, new NodeEventArgs(new Node(networkNode, isStatic: true)));
         }
 
-        if (_logger.IsInfo) _logger.Info($"Static node added: {networkNode}");
-
-        Node node = new(networkNode, isStatic: true);
-        NodeAdded?.Invoke(this, new NodeEventArgs(node));
-
-        if (updateFile)
-        {
-            await SaveFileAsync(cancellationToken);
-        }
-
-        return true;
+        return await PersistAsync(added, networkNode, updateFile, cancellationToken);
     }
 
     public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        if (!TryRemoveNode(networkNode.NodeId))
-        {
-            if (_logger.IsInfo) _logger.Info($"Static node was not found: {networkNode}");
-            return false;
-        }
+        bool removed = TryRemoveNode(networkNode.NodeId);
+        if (_logger.IsInfo) _logger.Info(removed ? $"Static node was removed: {networkNode}" : $"Static node was not found: {networkNode}");
 
-        if (_logger.IsInfo) _logger.Info($"Static node was removed: {networkNode}");
-        if (updateFile) await SaveFileAsync(cancellationToken);
-        return true;
+        return await UnpersistAsync(removed, networkNode, updateFile, cancellationToken);
     }
 
     public bool IsStatic(NetworkNode node) =>

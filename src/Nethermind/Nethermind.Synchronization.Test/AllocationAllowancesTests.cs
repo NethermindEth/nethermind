@@ -17,6 +17,7 @@ namespace Nethermind.Synchronization.Test
             AllocationContexts.State,
             AllocationContexts.Snap,
             AllocationContexts.ForwardHeader,
+            AllocationContexts.BlockAccessLists,
         ];
 
         [TestCaseSource(nameof(SingleBitContextCases))]
@@ -34,12 +35,16 @@ namespace Nethermind.Synchronization.Test
         {
             // Production: SyncPeerPool builds (headers: 1, others: AllocationSlots) — default 2.
             AllocationAllowances d = AllocationAllowances.Default;
-            Assert.That(d.Headers, Is.EqualTo(1));
-            Assert.That(d.Bodies, Is.EqualTo(2));
-            Assert.That(d.Receipts, Is.EqualTo(2));
-            Assert.That(d.State, Is.EqualTo(2));
-            Assert.That(d.Snap, Is.EqualTo(2));
-            Assert.That(d.ForwardHeader, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(d.Headers, Is.EqualTo(1));
+                Assert.That(d.Bodies, Is.EqualTo(2));
+                Assert.That(d.Receipts, Is.EqualTo(2));
+                Assert.That(d.State, Is.EqualTo(2));
+                Assert.That(d.Snap, Is.EqualTo(2));
+                Assert.That(d.ForwardHeader, Is.EqualTo(2));
+                Assert.That(d.BlockAccessLists, Is.EqualTo(2));
+            }
         }
     }
 }

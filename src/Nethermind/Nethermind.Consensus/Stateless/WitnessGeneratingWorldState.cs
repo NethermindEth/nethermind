@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Blockchain.Headers;
@@ -10,7 +11,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -36,6 +39,10 @@ public class WitnessGeneratingWorldState(
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
     private readonly List<ValueHash256> _deployOrder = [];
     private readonly List<(Snapshot Snapshot, int DeployCountSoFar)> _deployFrames = [];
+    // EIP-8360 TCREATE code, excluded until the transaction ends: like the verifier's state, it is not journaled,
+    // and is dropped on DiscardTransientCode, Commit and Reset, after which a read of the same code needs the witness.
+    private readonly HashSet<ValueHash256> _transientDeployed =
+        new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
     /// <summary>Clears the per-call witness accumulators so this instance can be reused across pooled rents.</summary>
     public void Reset()
@@ -45,6 +52,7 @@ public class WitnessGeneratingWorldState(
         _inBlockDeployed.Clear();
         _deployOrder.Clear();
         _deployFrames.Clear();
+        _transientDeployed.Clear();
     }
 
     public Witness GetWitness(BlockHeader parentHeader)
@@ -64,8 +72,8 @@ public class WitnessGeneratingWorldState(
             codes.AsSpan().Sort(Bytes.Comparer);
 
             state = new ArrayPoolList<byte[]>(sink.Nodes.Count);
-            foreach (byte[] node in sink.Nodes.Values)
-                state.Add(node);
+            foreach (KeyValuePair<Hash256AsKey, byte[]> node in sink.Nodes)
+                state.Add(node.Value);
             state.AsSpan().Sort(Bytes.Comparer);
 
             int totalKeysCount = _storageSlots.Count;
@@ -112,7 +120,7 @@ public class WitnessGeneratingWorldState(
 
         if (_storageSlots.Count > 0)
         {
-            using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
+            using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> accountEntries = new(_storageSlots.Count);
             foreach (AddressAsKey address in _storageSlots.Keys)
             {
                 PatriciaTrieWitnessGenerator.AccessType access = base.AccountExists(address)
@@ -120,8 +128,11 @@ public class WitnessGeneratingWorldState(
                     : PatriciaTrieWitnessGenerator.AccessType.Delete;
                 accountEntries.Add(new(address.Value.ToAccountPath, access));
             }
-            PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(null), stateRoot, accountEntries.AsSpan(), sink);
 
+            // The world state is not thread-safe, so every storage trie's paths are gathered here and only the
+            // trie walks, which read the immutable pre-state, run in parallel.
+            using ArrayPoolList<StorageWalk> storageWalks = new(_storageSlots.Count);
+            using ArrayPoolList<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(_storageSlots.Count);
             foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
             {
                 // Account touched only at the account level (e.g. self-destruct with no SLOAD): no slots to walk.
@@ -131,16 +142,33 @@ public class WitnessGeneratingWorldState(
                 ValueHash256 storageRoot = account.StorageRoot;
                 if (storageRoot == Keccak.EmptyTreeHash.ValueHash256) continue;
 
-                using ArrayPoolListRef<PatriciaTrieWitnessGenerator.PathEntry> slotEntries = new(kvp.Value.Count);
+                int start = slotEntries.Count;
                 foreach (UInt256 slot in kvp.Value)
                 {
                     ValueHash256 slotKey = default;
                     StorageTree.ComputeKeyWithLookup(slot, ref slotKey);
-                    bool deleted = base.Get(new StorageCell(address, slot)).IndexOfAnyExcept((byte)0) < 0;
+                    base.Get(new StorageCell(address, slot), out UInt256 storageValue);
+                    bool deleted = storageValue.IsZero;
                     slotEntries.Add(new(slotKey, deleted ? PatriciaTrieWitnessGenerator.AccessType.Delete : PatriciaTrieWitnessGenerator.AccessType.Upsert));
                 }
-                PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(address), new Hash256(storageRoot), slotEntries.AsSpan(), sink);
+                storageWalks.Add(new StorageWalk(address, new Hash256(storageRoot), start, slotEntries.Count - start));
             }
+
+            // Index 0 is the account trie; the rest are storage tries. Each trie is walked independently, and a large
+            // one also fans out across its own branches; the scope makes those nested walks share one worker budget.
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Core.Cpu.RuntimeInformation.ProcessorCount);
+            ParallelUnbalancedWork.For(0, storageWalks.Count + 1, ParallelUnbalancedWork.DefaultOptions, i =>
+            {
+                if (i == 0)
+                {
+                    PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(null), stateRoot, accountEntries.AsSpan(), sink, parallelize: true);
+                    return;
+                }
+
+                StorageWalk walk = storageWalks[i - 1];
+                PatriciaTrieWitnessGenerator.Generate(trieStore.GetTrieStore(walk.Address), walk.StorageRoot,
+                    slotEntries.AsSpan().Slice(walk.Start, walk.Count), sink, parallelize: true);
+            });
         }
 
         // Nothing touched but a non-empty state root: anchor the witness with the root node.
@@ -154,12 +182,17 @@ public class WitnessGeneratingWorldState(
         }
     }
 
-    // Not thread-safe (plain dictionary), so the generator is always invoked with parallelize off.
+    private readonly record struct StorageWalk(Address Address, Hash256 StorageRoot, int Start, int Count);
+
     private sealed class CollectingSink : PatriciaTrieWitnessGenerator.ISink
     {
-        public Dictionary<Hash256AsKey, byte[]> Nodes { get; } = [];
+        public ConcurrentDictionary<Hash256AsKey, byte[]> Nodes { get; } = new();
 
-        public void Add(in TreePath path, TrieNode node) => Nodes[node.Keccak!] = node.FullRlp.ToArray();
+        // Storage tries often share subtrees, so look up first rather than copy a node that is already held.
+        public void Add(in TreePath path, TrieNode node)
+        {
+            if (!Nodes.ContainsKey(node.Keccak!)) Nodes.TryAdd(node.Keccak!, node.FullRlp.ToArray());
+        }
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
@@ -174,23 +207,17 @@ public class WitnessGeneratingWorldState(
         return base.GetNonce(address);
     }
 
-    public override bool IsStorageEmpty(Address address)
+    public override ReadOnlyMemory<byte> GetCode(Address address)
     {
         RecordEmptySlots(address);
-        return base.IsStorageEmpty(address);
-    }
-
-    public override byte[]? GetCode(Address address)
-    {
-        RecordEmptySlots(address);
-        byte[]? code = base.GetCode(address);
+        ReadOnlyMemory<byte> code = base.GetCode(address);
         RecordBytecode(code);
         return code;
     }
 
-    public override byte[]? GetCode(in ValueHash256 codeHash)
+    public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
     {
-        byte[]? code = base.GetCode(in codeHash);
+        ReadOnlyMemory<byte> code = base.GetCode(in codeHash);
         // Hash already known: skip re-Keccaking the (potentially large) bytecode
         RecordBytecode(in codeHash, code);
         return code;
@@ -230,22 +257,34 @@ public class WitnessGeneratingWorldState(
         return ref base.GetCodeHash(address);
     }
 
-    public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);
-        return base.GetOriginal(in storageCell);
+        base.GetOriginal(in storageCell, out value);
     }
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override UInt256 GetOriginalBalance(Address address)
+    {
+        RecordEmptySlots(address);
+        return base.GetOriginalBalance(address);
+    }
+
+    public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);
-        return base.Get(in storageCell);
+        base.Get(in storageCell, out value);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         RecordSlot(storageCell);
         base.Set(in storageCell, newValue);
+    }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        RecordSlot(storageCell);
+        State.Set(in storageCell, in newValue, in currentValue);
     }
 
     public override void ClearStorage(Address address)
@@ -274,9 +313,45 @@ public class WitnessGeneratingWorldState(
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
+        RecordDeploy(address, in codeHash);
+        return base.InsertCode(address, in codeHash, code, spec, isGenesis);
+    }
+
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        RecordDeploy(address, in codeHash);
+        return base.AdoptCode(address, in codeHash, code, spec);
+    }
+
+    private void RecordDeploy(Address address, in ValueHash256 codeHash)
+    {
         RecordEmptySlots(address);
         if (_inBlockDeployed.Add(codeHash)) _deployOrder.Add(codeHash);
-        return base.InsertCode(address, in codeHash, code, spec, isGenesis);
+    }
+
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        RecordEmptySlots(address);
+        _transientDeployed.Add(codeHash);
+        base.InsertTransientCode(address, in codeHash, code, spec);
+    }
+
+    public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
+    {
+        base.Commit(releaseSpec, tracer, isGenesis, commitRoots);
+        _transientDeployed.Clear();
+    }
+
+    public override void DiscardTransientCode()
+    {
+        base.DiscardTransientCode();
+        _transientDeployed.Clear();
+    }
+
+    public override void Reset(bool resetBlockChanges = true)
+    {
+        base.Reset(resetBlockChanges);
+        _transientDeployed.Clear();
     }
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false)
@@ -367,16 +442,18 @@ public class WitnessGeneratingWorldState(
         return slots;
     }
 
-    private void RecordBytecode(byte[]? code)
+    private void RecordBytecode(ReadOnlyMemory<byte> code)
     {
         // Address-keyed paths don't carry the code hash, so compute it here.
-        if (code?.Length > 0)
-            RecordBytecode(ValueKeccak.Compute(code), code);
+        if (code.Length > 0)
+            RecordBytecode(ValueKeccak.Compute(code.Span), code);
     }
 
-    private void RecordBytecode(in ValueHash256 codeHash, byte[]? code)
+    private void RecordBytecode(in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
-        if (code is not { Length: > 0 } || _inBlockDeployed.Contains(codeHash)) return;
-        _bytecodes.TryAdd(codeHash, code);
+        if (code.Length == 0 || _inBlockDeployed.Contains(codeHash) || _transientDeployed.Contains(codeHash)) return;
+        // The witness serialises exact arrays, so only code in a larger buffer is copied, once per contract.
+        ref byte[]? recorded = ref CollectionsMarshal.GetValueRefOrAddDefault(_bytecodes, codeHash, out bool exists);
+        if (!exists) recorded = code.AsArray();
     }
 }

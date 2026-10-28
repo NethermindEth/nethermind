@@ -12,7 +12,7 @@ namespace Nethermind.Stats.Model
         public string ProtocolCode { get; } = protocolCode;
         public int Version { get; } = version;
 
-        public bool Equals(Capability other)
+        public bool Equals(Capability? other)
         {
             if (other is null)
             {
@@ -27,7 +27,7 @@ namespace Nethermind.Stats.Model
             return string.Equals(ProtocolCode, other.ProtocolCode) && Version == other.Version;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (obj is null)
             {

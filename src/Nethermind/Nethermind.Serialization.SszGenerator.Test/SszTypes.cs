@@ -111,11 +111,34 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public byte[]? Bytes { get; set; }
     }
 
+    /// <summary>A byte list whose field name matches a local of the generated array decoder.</summary>
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListItselfNamedDecoded
+    {
+        [SszList(3)]
+        public byte[]? Decoded { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial class ByteListClassItself
     {
         [SszList(3)]
         public byte[]? Bytes { get; set; }
+    }
+
+    /// <summary>A byte collection built from a span of its bytes, as a decoded witness code is.</summary>
+    public sealed class SpanBuiltBytes(ReadOnlySpan<byte> bytes)
+    {
+        private readonly byte[] _bytes = bytes.ToArray();
+
+        public ReadOnlySpan<byte> AsSpan() => _bytes;
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteListItself
+    {
+        [SszList(3)]
+        public SpanBuiltBytes? Bytes { get; set; }
     }
 
     [SszContainer]
@@ -319,6 +342,32 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public TestBytes48[]? Items { get; set; }
     }
 
+    /// <summary>
+    /// A list of fixed-size byte vectors modelled the verbose way: one wrapper container per item,
+    /// each holding its own <c>byte[]</c>. Paired with <see cref="ConverterItemListContainer"/> to
+    /// pin that switching such a list to a converter-backed item type is encoding-neutral.
+    /// </summary>
+    [SszContainer]
+    public partial struct WrappedItemListContainer
+    {
+        [SszList(4)]
+        public WrappedByteVectorItem[]? Items { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct WrappedByteVectorItem
+    {
+        [SszVector(TestBytes48SszVectorTypeConverter.Length)]
+        public byte[]? Bytes { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ConverterItemListContainer
+    {
+        [SszList(4)]
+        public TestBytes48[]? Items { get; set; }
+    }
+
     public readonly struct TestBytes4(uint value)
     {
         public uint Value { get; } = value;
@@ -451,6 +500,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszProgressiveList]
         public ulong[]? Items { get; set; }
+    }
+
+    [SszContainer]
+    public partial struct ProgressiveByteListContainer
+    {
+        [SszProgressiveList]
+        public byte[]? Bytes { get; set; }
     }
 
     [SszContainer(isCollectionItself: true)]

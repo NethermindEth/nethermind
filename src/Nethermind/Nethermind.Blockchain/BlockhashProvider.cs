@@ -4,25 +4,25 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
+    /// <summary>Serves <c>BLOCKHASH</c> from the block tree.</summary>
+    /// <remarks>Under EIP-7709 the opcode reads the EIP-2935 history contract itself, with SLOAD semantics,
+    /// and never reaches this provider.</remarks>
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
-        IWorldState worldState,
         ILogManager? logManager,
         IUnresolvedBlockhashPolicy? unresolvedBlockhashPolicy = null)
         : IBlockhashProvider
     {
-        public const ulong MaxDepth = 256;
-        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
+        public const ulong MaxDepth = Eip2935Constants.BlockHashServeWindow;
+        private readonly Lock _prefetchLock = new();
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IUnresolvedBlockhashPolicy _unresolvedBlockhashPolicy = unresolvedBlockhashPolicy ?? ThrowingUnresolvedBlockhashPolicy.Instance;
         private Hash256[]? _hashes;
@@ -30,11 +30,6 @@ namespace Nethermind.Blockchain
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
-            if (spec.IsBlockHashInStateAvailable)
-            {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
-            }
-
             ulong depth = currentBlock.Number - number;
             if (depth == 0 || depth > MaxDepth)
             {
@@ -46,7 +41,9 @@ namespace Nethermind.Blockchain
             return depth switch
             {
                 1UL => currentBlock.ParentHash,
-                _ => hashes is not null
+                // The array holds the ancestors of the last prefetched block, which need not be this one,
+                // so serve it only when it starts at this block's parent.
+                _ => hashes is not null && hashes[0] == currentBlock.ParentHash
                     ? hashes[(int)(depth - 1)]
                     : blockhashCache.GetHash(currentBlock, depth)
                       ?? _unresolvedBlockhashPolicy.Resolve(currentBlock, number)
@@ -61,15 +58,20 @@ namespace Nethermind.Blockchain
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
-            long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
-            Volatile.Write(ref _hashes, null);
+            long prefetchVersion;
+            // Under the same lock as the publish below, so a previous block's prefetch cannot publish after this clear.
+            lock (_prefetchLock)
+            {
+                prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
+                Volatile.Write(ref _hashes, null);
+            }
             Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
 
             // This leverages that branch processing is single threaded
             // If the cancellation was requested it means block processing finished before prefetching is done
             // This means we don't want to set hashes, as next block might already be prefetching
             // This allows us to avoid await on Prefetch in BranchProcessor
-            lock (_blockhashStore)
+            lock (_prefetchLock)
             {
                 if (!token.IsCancellationRequested && prefetchVersion == Interlocked.Read(ref _prefetchVersion))
                 {

@@ -3,24 +3,29 @@
 
 using System.IO.Abstractions;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
+using Nethermind.Api.Monitoring;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
+using Nethermind.Era1;
+using Nethermind.EraE.Config;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -40,8 +45,17 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 {
     protected override void Load(ContainerBuilder builder)
     {
+        FlatArchiveMode.Apply(
+            configProvider.GetConfig<IFlatDbConfig>(),
+            configProvider.GetConfig<IPruningConfig>(),
+            configProvider.GetConfig<ISyncConfig>(),
+            configProvider,
+            logManager.GetClassLogger(typeof(FlatArchiveMode)));
+
         builder
             .AddServiceStopper()
+            .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
+            .AddSingleton<GCKeeper>()
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
@@ -65,14 +79,13 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))
             .AddModule(new KeyStoreModule())
-            .AddModule(new MonitoringModule(configProvider.GetConfig<IMetricsConfig>()))
+            .AddSingleton<IMonitoringService, NoopMonitoringService>()
             .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
 
             // Sequences deferred block-data flushing before state persistence (see IStatePersistenceBarrier).
             .AddSingleton<IStatePersistenceBarrier, StatePersistenceBarrier>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INodeKeyManager>().LoadNodeKey())
-            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 
@@ -80,8 +93,9 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .Bind<IEcdsa, IEthereumEcdsa>()
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
-            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader>(
-                (specProvider, blockTree, stateReader) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader))
+            .AddSingleton<IBlockBuildingTracker, BlockBuildingTracker>()
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader, IBlockBuildingTracker>(
+                (specProvider, blockTree, stateReader, blockBuildingTracker) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader, blockBuildingTracker))
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
@@ -102,6 +116,53 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             builder.AddSingleton<IBlobTxStorage>(NullBlobTxStorage.Instance);
         }
 
+        // An era step holds the network back until ReviewBlockTree has processed the blocks left at the last
+        // shutdown, so it is registered only when it has a job to do. Keep the conditions in sync with EraCliRunner.Run.
+        IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
+        if (!string.IsNullOrEmpty(eraConfig.ImportDirectory) || !string.IsNullOrEmpty(eraConfig.ExportDirectory))
+        {
+            builder.AddStep(typeof(EraStep));
+        }
+
+        IEraEConfig eraEConfig = configProvider.GetConfig<IEraEConfig>();
+        if (!string.IsNullOrEmpty(eraEConfig.ImportDirectory) || !string.IsNullOrEmpty(eraEConfig.ExportDirectory))
+        {
+            builder.AddStep(typeof(EraEStep));
+        }
+
+        if (configProvider.GetConfig<IReceiptConfig>().DeriveFromState)
+        {
+            ValidateReceiptDerivationConfig(configProvider);
+            builder.AddModule(new ReceiptRegenerationModule());
+        }
+    }
+
+    /// <summary>
+    /// Refuses configurations under which receipt derivation would silently lose data.
+    /// </summary>
+    /// <remarks>
+    /// Refused rather than warned: the first derived block stops writing bodies that cannot be reconstructed
+    /// afterwards, so a node started on the wrong combination loses receipts permanently.
+    /// </remarks>
+    internal static void ValidateReceiptDerivationConfig(IConfigProvider configProvider)
+    {
+        if (!configProvider.GetConfig<IReceiptConfig>().StoreReceipts)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} requires Receipt.{nameof(IReceiptConfig.StoreReceipts)}: without the receipt database neither pre-Byzantium bodies nor the transaction index are written, so transaction-addressed queries cannot locate their block.", -1);
+        }
+
+        if (!configProvider.GetConfig<IFlatDbConfig>().HistoryEnabled)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} requires FlatDb.{nameof(IFlatDbConfig.HistoryEnabled)}: receipt bodies are not written and can only be reproduced by re-executing over state history.", -1);
+        }
+
+        if (configProvider.GetConfig<ILogIndexConfig>().Enabled)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(IReceiptConfig.DeriveFromState)} cannot be combined with LogIndex.{nameof(ILogIndexConfig.Enabled)}: the index builder reads stored receipt bodies and would stall at the first derived block.", -1);
+        }
     }
 
     // Just a wrapper to make it clear, these three are expected to be available at the time of configurations.

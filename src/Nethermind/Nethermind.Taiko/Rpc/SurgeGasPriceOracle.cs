@@ -4,6 +4,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -25,12 +26,12 @@ public class SurgeGasPriceOracle : GasPriceOracle
     private const ulong BlobGasPerBlob = Eip4844Constants.GasPerBlob;
 
     // ABI signatures and encoded function selectors for TaikoInbox contract.
-    private static readonly AbiSignature GetCoreStateSignature = new("getCoreState");
-    private static readonly AbiSignature GetConfigSignature = new("getConfig");
+    private static readonly AbiSignature<ValueTuple> GetCoreStateSignature = new AbiSignature("getCoreState").With();
+    private static readonly AbiSignature<ValueTuple> GetConfigSignature = new AbiSignature("getConfig").With();
     private static readonly string GetCoreStateHexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetCoreStateSignature));
+        AbiCodec.Encode(GetCoreStateSignature, default));
     private static readonly string GetConfigHexData = "0x" + Convert.ToHexString(
-        AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, GetConfigSignature));
+        AbiCodec.Encode(GetConfigSignature, default));
 
     private readonly IJsonRpcClient _l1RpcClient;
     private readonly ISurgeConfig _surgeConfig;
@@ -288,11 +289,14 @@ public class SurgeGasPriceOracle : GasPriceOracle
     {
         try
         {
-            return await _l1RpcClient.Post<string>("eth_call", new
+            JsonObject call = [];
+            if (_surgeConfig.TaikoInboxAddress is { } to)
             {
-                to = _surgeConfig.TaikoInboxAddress,
-                data
-            }, "latest");
+                call["to"] = to;
+            }
+
+            call["data"] = data;
+            return await _l1RpcClient.Post<string>("eth_call", call, "latest");
         }
         catch (Exception ex)
         {

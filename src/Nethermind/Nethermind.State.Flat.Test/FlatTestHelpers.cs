@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -22,6 +26,22 @@ internal static class FlatTestHelpers
         return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
     }
 
+    /// <summary>
+    /// Writes <paramref name="entry"/> under the pre-<c>(To, tier)</c> catalog key: big-endian To block, To root,
+    /// big-endian depth. The row value layout is unchanged by the re-key, so the current catalog produces it.
+    /// </summary>
+    public static void PutLegacyCatalogRow(IDb catalogDb, CatalogEntry entry)
+    {
+        byte[] key = new byte[48];
+        BinaryPrimitives.WriteInt64BigEndian(key, (long)entry.To.BlockNumber);
+        entry.To.StateRoot.Bytes.CopyTo(key.AsSpan(8));
+        BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(40), (long)(entry.To.BlockNumber - entry.From.BlockNumber));
+
+        using MemDb scratch = new();
+        new SnapshotCatalog(scratch).Add(entry);
+        catalogDb[key] = scratch.GetAllValues().Single();
+    }
+
     public static SnapshotPooledList SnapshotList(params Snapshot[] snapshots)
     {
         SnapshotPooledList list = new(snapshots.Length == 0 ? 1 : snapshots.Length);
@@ -34,7 +54,15 @@ internal static class FlatTestHelpers
     /// optionally pre-populating the snapshot content via <paramref name="populate"/>.
     /// </summary>
     public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, Action<SnapshotContent>? populate = null) =>
-        new(SnapshotList(MakeSnapshot(pool, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
+        MakeBundle(pool, Substitute.For<IPersistence.IPersistenceReader>(), populate);
+
+    /// <inheritdoc cref="MakeBundle(ResourcePool, Action{SnapshotContent})"/>
+    /// <param name="reader">Persistence reader to back the bundle with, for tests that assert on its reads.</param>
+    public static ReadOnlySnapshotBundle MakeBundle(
+        ResourcePool pool,
+        IPersistence.IPersistenceReader reader,
+        Action<SnapshotContent>? populate = null) =>
+        new(SnapshotList(MakeSnapshot(pool, populate)), reader,
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 
@@ -48,20 +76,21 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 {
     public List<Address> SelfDestructCalls { get; } = [];
     public List<(Address Addr, Account? Account)> SetAccountCalls { get; } = [];
-    public List<(Address Addr, UInt256 Slot, SlotValue? Value)> SetStorageCalls { get; } = [];
+    public List<(Address Addr, UInt256 Slot, UInt256? Value)> SetStorageCalls { get; } = [];
     public List<(TreePath Path, byte[] Rlp)> SetStateTrieNodeCalls { get; } = [];
     public List<(Hash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
     public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)> SetStorageRawEncodedCalls { get; } = [];
     public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 FromPath, ValueHash256 ToPath)> DeleteStorageRangeCalls { get; } = [];
+    public List<(ValueHash256 FromPath, ValueHash256 ToPath)> SelfDestructRangeCalls { get; } = [];
     public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
     public int DisposeCount { get; private set; }
 
     public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
     public void SetAccount(Address addr, Account? account) => SetAccountCalls.Add((addr, account));
-    public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => SetStorageCalls.Add((addr, slot, value));
+    public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => SetStorageCalls.Add((addr, slot, value));
 
     public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStateTrieNodeCalls.Add((path, rlp.ToArray()));
@@ -79,6 +108,9 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
 
     public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteStorageRangeCalls.Add((addressHash, fromPath, toPath));
+
+    public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+        SelfDestructRangeCalls.Add((fromPath, toPath));
 
     public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
         DeleteStateTrieNodeRangeCalls.Add((from, to));

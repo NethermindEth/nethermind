@@ -166,6 +166,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 
+    IpMasker.Enabled = initConfig.MaskIpsInLogs;
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
     DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
 #if !DEBUG
@@ -234,7 +235,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     processExitSource = new(cancellationToken);
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
-    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
 
     try
     {
@@ -354,40 +355,20 @@ void ConfigureLogger(ParseResult parseResult)
 
     logger = logManager.GetClassLogger<Program>();
 
-    string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
-
-    // TODO: dynamically switch log levels from CLI
-    if (logLevel is not null)
-        NLogConfigurator.ConfigureLogLevels(logLevel);
-
-    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat)!;
-
-    try
-    {
-        NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
-    }
-    catch (ArgumentException ex)
-    {
-        logger.Error(ex.Message);
-    }
+    NLogConfigurator.ConfigureCommandLineOverrides(
+        parseResult.GetValue(BasicOptions.LogLevel),
+        parseResult.GetValue(BasicOptions.LoggingFormat)!,
+        logger);
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
 {
     ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
 
-    if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal))
-    {
-        if (logger.IsInfo)
-            logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
+    if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal) && logger.IsInfo)
+        logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
 
-        NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
-    }
-    else
-    {
-        // Clear it up; otherwise, internally it will keep requesting localhost as `all` target includes this.
-        NLogConfigurator.ClearSeqTarget();
-    }
+    NLogConfigurator.ConfigureSeq(seqConfig, logger);
 }
 
 IConfigProvider CreateConfigProvider(ParseResult parseResult)
@@ -413,54 +394,11 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configFile = parseResult.GetValue(BasicOptions.Configuration)
+    string config = parseResult.GetValue(BasicOptions.Configuration)
         ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
         ?? "mainnet";
 
-    // If configFile is not a path, handle it
-    if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
-    {
-        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
-            ?? "configs".GetApplicationResourcePath();
-
-        configFile = Path.Join(configsDir, configFile);
-
-        // If the configFile doesn't have an extension, try with supported file extensions
-        if (!Path.HasExtension(configFile))
-        {
-            string? fallback;
-
-            foreach (string ext in new[] { ".json", ".cfg" })
-            {
-                fallback = $"{configFile}{ext}";
-
-                if (File.Exists(fallback))
-                {
-                    configFile = fallback;
-                    break;
-                }
-            }
-        }
-        // For backward compatibility. To be removed in the future.
-        else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
-        {
-            string name = Path.GetFileNameWithoutExtension(configFile)!;
-
-            configFile = $"{configFile[..^4]}.json";
-
-            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
-        }
-    }
-
-    // Resolve the full path for logging purposes
-    configFile = Path.GetFullPath(configFile);
-
-    if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration file not found.", configFile);
-
-    logger.Info($"Loading configuration from {configFile}");
-
-    configProvider.AddSource(new JsonConfigSource(configFile));
+    configProvider.AddSource(CreateConfigSource(config, parseResult.GetValue(BasicOptions.ConfigurationDirectory)));
     configProvider.Initialize();
 
     (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
@@ -471,10 +409,38 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     return configProvider;
 }
 
+JsonConfigSource CreateConfigSource(string config, string? configsDir)
+{
+    string? configFile = ConfigFileLocator.Find(config, configsDir);
+
+    if (configFile is not null)
+    {
+        logger.Info($"Loading configuration from {configFile}");
+        return new JsonConfigSource(configFile);
+    }
+
+    using Stream stream = BuiltInConfigs.Open(config)
+        ?? throw new FileNotFoundException(ConfigFileLocator.NotFoundMessage(config), config);
+
+    if (configsDir is not null)
+        logger.Warn($"Configuration '{config}' not found in --configs-dir {configsDir}. Loading the built-in configuration.");
+    else
+        logger.Info($"Loading built-in configuration {config}");
+
+    // The node used to read configs/ next to the binary, so an edited or mounted file there is now ignored.
+    string oldConfigFile = Path.Join(AppContext.BaseDirectory, "configs", Path.ChangeExtension(config, ".json"));
+
+    if (File.Exists(oldConfigFile))
+        logger.Warn($"File {oldConfigFile} is ignored. To use it, set --config {oldConfigFile}.");
+
+    return new JsonConfigSource(stream);
+}
+
 RootCommand CreateRootCommand()
 {
     RootCommand rootCommand =
     [
+        BasicOptions.Command,
         BasicOptions.Configuration,
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
@@ -578,17 +544,23 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
 static class BasicOptions
 {
+    public static Argument<string?> Command { get; } = new("command")
+    {
+        Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
+        Arity = ArgumentArity.ZeroOrOne
+    };
+
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
-            Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
+            Description = "The path to a configuration file, or the name of a built-in configuration (for example, mainnet or sepolia).",
             HelpName = "network or file name"
         };
 
     public static Option<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
-            Description = "The path to the configuration files directory.",
+            Description = "The path to a directory with your own configuration files. A name given with --config is looked up in this directory before the built-in configurations.",
             HelpName = "path"
         };
 

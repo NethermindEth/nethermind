@@ -26,7 +26,9 @@ public class CompactionScheduleTests
 
         Assert.That(schedule.Offset, Is.InRange(0UL, (ulong)int.MaxValue - 1));
         byte[]? stored = metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(stored, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(new RlpReader(stored).DecodeLong(), Is.EqualTo(schedule.Offset));
     }
 
@@ -70,13 +72,15 @@ public class CompactionScheduleTests
 
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
-        Assert.That(schedule.Offset, Is.EqualTo(7));
-        Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.Offset, Is.EqualTo(7));
+            Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
+        }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Constructor_ConfiguredOffset_TakesPrecedenceOverStoredValue(bool regenerateFlag)
+    [Test]
+    public void Constructor_ConfiguredOffset_TakesPrecedenceOverStoredValue([Values] bool regenerateFlag)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(5));
@@ -89,9 +93,8 @@ public class CompactionScheduleTests
         Assert.That(stored, Is.EqualTo(5), "configured offset should not modify the stored offset");
     }
 
-    [TestCase(1_000_000L)]
-    [TestCase(int.MaxValue - 1L)]
-    public void Constructor_StoredLargePositiveValue_KeptAsIs(long stored)
+    [Test]
+    public void Constructor_StoredLargePositiveValue_KeptAsIs([Values(1_000_000L, int.MaxValue - 1L)] long stored)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(stored));
@@ -116,9 +119,8 @@ public class CompactionScheduleTests
         Assert.That(stored, Is.EqualTo(schedule.Offset));
     }
 
-    [TestCase(-1L)]
-    [TestCase(-100L)]
-    public void Constructor_StoredNegative_Regenerates(long badStored)
+    [Test]
+    public void Constructor_StoredNegative_Regenerates([Values(-1L, -100L)] long badStored)
     {
         MemDb metadataDb = new();
         metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, EncodedOffset(badStored));
@@ -139,8 +141,11 @@ public class CompactionScheduleTests
 
         CompactionSchedule schedule = new(metadataDb, config, LimboLogs.Instance);
 
-        Assert.That(schedule.Offset, Is.EqualTo(0));
-        Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.Offset, Is.EqualTo(0));
+            Assert.That(metadataDb.Get(MetadataDbKeys.FlatDbCompactionOffset), Is.Null);
+        }
     }
 
     [TestCase(1UL, 1)]    // odd block: 1 & -1 = 1
@@ -186,10 +191,13 @@ public class CompactionScheduleTests
         for (ulong block = 1UL; block <= 64UL; block++)
         {
             StateId state = new(block, Hash256.Zero);
-            Assert.That(large.GetCompactSize(block), Is.EqualTo(small.GetCompactSize(block)),
-                $"Tier mismatch at block {block} between offset {smallOffset} and {largeOffset}");
-            Assert.That(large.NextFullCompactionAfter(state), Is.EqualTo(small.NextFullCompactionAfter(state)),
-                $"Next boundary mismatch from block {block} between offset {smallOffset} and {largeOffset}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(large.GetCompactSize(block), Is.EqualTo(small.GetCompactSize(block)),
+                    $"Tier mismatch at block {block} between offset {smallOffset} and {largeOffset}");
+                Assert.That(large.NextFullCompactionAfter(state), Is.EqualTo(small.NextFullCompactionAfter(state)),
+                    $"Next boundary mismatch from block {block} between offset {smallOffset} and {largeOffset}");
+            }
         }
     }
 

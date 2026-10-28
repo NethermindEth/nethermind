@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie.Test.Pruning
@@ -21,7 +22,13 @@ namespace Nethermind.Trie.Test.Pruning
             return (ShouldPruneEnabled || WithMemoryLimit is not null && state.DirtyCacheMemory > WithMemoryLimit);
         }
 
-        public bool ShouldPrunePersistedNode(TrieStoreState state) => (ShouldPrunePersistedEnabled || WithPersistedMemoryLimit is not null && state.PersistedCacheMemory > WithPersistedMemoryLimit);
+        public Action? BeforePersistedPruneCheck { get; set; }
+
+        public bool ShouldPrunePersistedNode(TrieStoreState state)
+        {
+            BeforePersistedPruneCheck?.Invoke();
+            return ShouldPrunePersistedEnabled || WithPersistedMemoryLimit is not null && state.PersistedCacheMemory > WithPersistedMemoryLimit;
+        }
 
         public bool ShouldPruneEnabled { get; set; } = shouldPrune;
         public bool ShouldPrunePersistedEnabled { get; set; } = shouldPrune;

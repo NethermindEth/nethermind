@@ -18,6 +18,20 @@ public class AddressConverterTests : ConverterTestBase<Address>
     [TestCaseSource(nameof(AddressTestCases))]
     public void Test_roundtrip(Address? value) => TestConverter(value!, static (address, address1) => address == address1, converter);
 
+    [TestCaseSource(nameof(SerializationCases))]
+    public void Serializes_as_prefixed_lowercase_hex(Address value, string expectedJson) => TestConverter(
+        value,
+        expectedJson,
+        converter,
+        static (address, address1) => address == address1);
+
+    static IEnumerable<TestCaseData> SerializationCases =
+    [
+        new TestCaseData(TestItem.AddressA, "\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\"").SetName("testItemA"),
+        // The zero address keeps its full width: an address is DATA, not a QUANTITY.
+        new TestCaseData(Address.Zero, "\"0x0000000000000000000000000000000000000000\"").SetName("zero"),
+    ];
+
     [TestCase("\"0xc94770007dda54cf92009bff0de90c06f603a09\"", TestName = "Rejects_39_hex_odd_short")]
     [TestCase("\"0xc94770007dda54cf92009bff0de90c06f603a09f1\"", TestName = "Rejects_41_hex_odd_long")]
     public void Rejects_odd_length_hex(string json)
@@ -68,10 +82,9 @@ public class AddressConverterTests : ConverterTestBase<Address>
         }
     }
 
+    // The non-null roundtrips live in Serializes_as_prefixed_lowercase_hex.
     static IEnumerable<TestCaseData> AddressTestCases =
     [
         new TestCaseData(null).SetName("null"),
-        new TestCaseData(Address.Zero).SetName("zero"),
-        new TestCaseData(TestItem.AddressA).SetName("testItemA"),
     ];
 }

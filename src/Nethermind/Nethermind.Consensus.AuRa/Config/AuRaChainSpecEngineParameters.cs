@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -20,8 +21,8 @@ namespace Nethermind.Consensus.AuRa.Config;
 public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public const ulong TransitionDisabled = ulong.MaxValue;
-    public string? EngineName => "AuthorityRound";
-    public string? SealEngineType => Core.SealEngineType.AuRa;
+    public string EngineName => "AuthorityRound";
+    public string SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
     public SortedDictionary<ulong, long> StepDuration { get; set; } = [];
@@ -117,7 +118,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         return validator;
     }
 
-    private class StepDurationJsonConverter : JsonConverter<SortedDictionary<ulong, long>>
+    internal class StepDurationJsonConverter : JsonConverter<SortedDictionary<ulong, long>>
     {
         public override void Write(Utf8JsonWriter writer, SortedDictionary<ulong, long> value, JsonSerializerOptions options) => throw new NotSupportedException();
 
@@ -126,7 +127,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
             SortedDictionary<ulong, long> value = [];
             if (reader.TokenType == JsonTokenType.String)
             {
-                value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
+                value.Add(0, TypeInfoJsonSerializer.Deserialize<long>(ref reader, options));
             }
             else if (reader.TokenType == JsonTokenType.Number)
             {

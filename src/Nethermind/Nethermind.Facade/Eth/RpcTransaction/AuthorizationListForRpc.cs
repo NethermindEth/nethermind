@@ -75,7 +75,7 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
     {
         public override AuthorizationListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            List<RpcAuthTuple>? list = JsonSerializer.Deserialize<List<RpcAuthTuple>>(ref reader, options);
+            List<RpcAuthTuple>? list = TypeInfoJsonSerializer.Deserialize<List<RpcAuthTuple>>(ref reader, options);
             if (list is not null)
             {
                 foreach (RpcAuthTuple tuple in list)
@@ -87,6 +87,6 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             return list is null ? null : new AuthorizationListForRpc(list);
         }
 
-        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._tuples, options);
+        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options) => TypeInfoJsonSerializer.Serialize(writer, value._tuples, options);
     }
 }

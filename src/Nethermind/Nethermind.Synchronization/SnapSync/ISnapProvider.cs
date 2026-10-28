@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,9 +23,19 @@ namespace Nethermind.Synchronization.SnapSync
 
         AddRangeResult RefreshAccounts(AccountsToRefreshRequest request, AccountsAndProofs response);
 
-        void RetryRequest(SnapSyncBatch batch);
+        /// <inheritdoc cref="ProgressTracker.BeginResponse"/>
+        IDisposable? BeginResponse();
+
+        /// <summary>Hands the request back, once per batch from <see cref="IsFinished"/>.</summary>
+        /// <param name="responseHandled">False requeues the work; true means the handler already did.</param>
+        void ReleaseRequest(SnapSyncBatch batch, bool responseHandled);
 
         bool IsSnapGetRangesFinished();
+
+        /// <summary>
+        /// Asks the state sync pivot to move in response to a streak of unusable range responses. Rate-limited, so a
+        /// call is a request rather than a move; see <see cref="ProgressTracker.UpdatePivot"/>.
+        /// </summary>
         void UpdatePivot();
         void Dispose();
     }

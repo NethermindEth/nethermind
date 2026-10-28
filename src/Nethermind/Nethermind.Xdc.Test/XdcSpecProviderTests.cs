@@ -5,6 +5,7 @@ using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
@@ -56,9 +57,12 @@ public class XdcSpecProviderTests
 
         XdcChainSpecEngineParameters p = new() { V2Configs = unsorted };
 
-        Assert.That(p.V2Configs[0].SwitchRound, Is.EqualTo(0));
-        Assert.That(p.V2Configs[1].SwitchRound, Is.EqualTo(2000));
-        Assert.That(p.V2Configs[2].SwitchRound, Is.EqualTo(8000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p.V2Configs[0].SwitchRound, Is.EqualTo(0));
+            Assert.That(p.V2Configs[1].SwitchRound, Is.EqualTo(2000));
+            Assert.That(p.V2Configs[2].SwitchRound, Is.EqualTo(8000));
+        }
     }
 
     [TestCase(0UL, 0UL)]
@@ -118,6 +122,110 @@ public class XdcSpecProviderTests
     }
 
     [Test]
+    public void DynamicGasLimitBlock_takes_effect_on_its_own_block()
+    {
+        // The block gates block production, so it needs its own release spec boundary rather than rounding to
+        // whichever transition happens to enclose it.
+        const ulong dynamicGasLimitBlock = 1000;
+        XdcChainSpecEngineParameters parameters = new()
+        {
+            SwitchBlock = 1,
+            DynamicGasLimitBlock = dynamicGasLimitBlock,
+            V2Configs = [new V2ConfigParams { SwitchRound = 0 }],
+        };
+        IChainSpecParametersProvider parametersProvider = Substitute.For<IChainSpecParametersProvider>();
+        parametersProvider.AllChainSpecParameters.Returns([parameters]);
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip1559Transition = 5 },
+            EngineChainSpecParametersProvider = parametersProvider,
+        };
+
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, parameters, Substitute.For<ILogManager>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock - 1).IsDynamicGasLimitBlock, Is.False);
+            Assert.That(specProvider.GetXdcSpec(dynamicGasLimitBlock).IsDynamicGasLimitBlock, Is.True);
+        }
+    }
+
+    private static XdcChainSpecBasedSpecProvider BuildProvider(XdcChainSpecEngineParameters parameters)
+    {
+        parameters.V2Configs = [new V2ConfigParams { SwitchRound = 0 }];
+        IChainSpecParametersProvider parametersProvider = Substitute.For<IChainSpecParametersProvider>();
+        parametersProvider.AllChainSpecParameters.Returns([parameters]);
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip1559Transition = 5 },
+            EngineChainSpecParametersProvider = parametersProvider,
+        };
+        return new XdcChainSpecBasedSpecProvider(chainSpec, parameters, Substitute.For<ILogManager>());
+    }
+
+    private const ulong Raised = XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier;
+
+    [Test]
+    public void MinimumGasPrice_is_raised_50x_on_Gas50xBlock()
+    {
+        const ulong gas50xBlock = 1000;
+        XdcChainSpecBasedSpecProvider specProvider =
+            BuildProvider(new XdcChainSpecEngineParameters { SwitchBlock = 1, Gas50xBlock = gas50xBlock });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetXdcSpec(gas50xBlock - 1).MinimumGasPrice, Is.EqualTo((UInt256)XdcConstants.DefaultMinGasPrice));
+            Assert.That(specProvider.GetXdcSpec(gas50xBlock).MinimumGasPrice, Is.EqualTo((UInt256)Raised));
+        }
+    }
+
+    [TestCase(null, XdcConstants.DefaultMinGasPrice, TestName = "Unset uses the reference default")]
+    [TestCase(1ul, XdcConstants.DefaultMinGasPrice, TestName = "Below the default is raised to it")]
+    [TestCase(0ul, XdcConstants.DefaultMinGasPrice, TestName = "Zero is not gasless outside a subnet")]
+    [TestCase(XdcConstants.DefaultMinGasPrice * 2, XdcConstants.DefaultMinGasPrice * 2, TestName = "Above the default is used")]
+    public void MinimumGasPrice_follows_the_stated_floor(ulong? stated, ulong expectedBeforeGas50x)
+    {
+        XdcChainSpecBasedSpecProvider specProvider = BuildProvider(new XdcChainSpecEngineParameters
+        {
+            SwitchBlock = 1,
+            Gas50xBlock = 1000,
+            MinGasPrice = stated is null ? null : (UInt256)stated.Value,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetXdcSpec(999).MinimumGasPrice, Is.EqualTo((UInt256)expectedBeforeGas50x));
+            Assert.That(specProvider.GetXdcSpec(1000).MinimumGasPrice,
+                Is.EqualTo((UInt256)expectedBeforeGas50x * XdcConstants.Gas50xMultiplier));
+        }
+    }
+
+    [Test]
+    public void MinimumGasPrice_is_never_raised_without_a_Gas50xBlock()
+    {
+        XdcChainSpecBasedSpecProvider specProvider =
+            BuildProvider(new XdcChainSpecEngineParameters { SwitchBlock = 1, Gas50xBlock = null });
+
+        Assert.That(specProvider.GetXdcSpec(10_000_000).MinimumGasPrice, Is.EqualTo((UInt256)XdcConstants.DefaultMinGasPrice));
+    }
+
+    [Test]
+    public void MinimumGasPrice_on_a_subnet_is_raised_from_genesis_and_zero_means_gasless()
+    {
+        XdcChainSpecBasedSpecProvider raised =
+            BuildProvider(new XdcSubnetChainSpecEngineParameters { SwitchBlock = 1 });
+        XdcChainSpecBasedSpecProvider gasless =
+            BuildProvider(new XdcSubnetChainSpecEngineParameters { SwitchBlock = 1, MinGasPrice = UInt256.Zero });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(raised.GetXdcSpec(0).MinimumGasPrice, Is.EqualTo((UInt256)Raised), "no 50x transition on a subnet");
+            Assert.That(raised.GetXdcSpec(1_000_000).MinimumGasPrice, Is.EqualTo((UInt256)Raised));
+            Assert.That(gasless.GetXdcSpec(0).MinimumGasPrice, Is.EqualTo(UInt256.Zero), "gasless disables the check");
+        }
+    }
+
+    [Test]
     public void GetXdcSpec_ReturnsDifferentSpecInstances()
     {
         ChainSpec chainSpec = new()
@@ -145,10 +253,13 @@ public class XdcSpecProviderTests
         Assert.That(specA.SwitchRound, Is.EqualTo(0));
 
         IXdcReleaseSpec specB = specProvider.GetXdcSpec(11, 11);
-        Assert.That(specB.SwitchRound, Is.EqualTo(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specB.SwitchRound, Is.EqualTo(10));
 
-        Assert.That(specA.SwitchRound, Is.EqualTo(0));
+            Assert.That(specA.SwitchRound, Is.EqualTo(0));
 
-        Assert.That(ReferenceEquals(specA, specB), Is.False);
+            Assert.That(ReferenceEquals(specA, specB), Is.False);
+        }
     }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -43,10 +44,13 @@ public class SessionTests
     public void Constructor_sets_the_values()
     {
         Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
-        Assert.That(session.LocalPort, Is.EqualTo(30312));
-        Assert.That(session.Direction, Is.EqualTo(ConnectionDirection.Out));
-        Assert.That(session.SessionId, Is.Not.EqualTo(default(Guid)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
+            Assert.That(session.LocalPort, Is.EqualTo(30312));
+            Assert.That(session.Direction, Is.EqualTo(ConnectionDirection.Out));
+            Assert.That(session.SessionId, Is.Not.EqualTo(default(Guid)));
+        }
     }
 
     [Test]
@@ -90,8 +94,11 @@ public class SessionTests
 
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        Assert.That(session.P2PVersion, Is.EqualTo(5));
-        Assert.That(wasCalled, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.P2PVersion, Is.EqualTo(5));
+            Assert.That(wasCalled, Is.True);
+        }
     }
 
     [Test]
@@ -100,8 +107,11 @@ public class SessionTests
         Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyB);
         session.Init(4, _channelHandlerContext, _packetSender);
-        Assert.That(session.P2PVersion, Is.EqualTo(4));
-        Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.P2PVersion, Is.EqualTo(4));
+            Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
+        }
     }
 
     [Test]
@@ -143,18 +153,26 @@ public class SessionTests
     }
 
     [Test]
-    public void Can_enable_snappy()
+    public void Can_enable_snappy_only_with_outbound_splitter([Values] bool hasSplitter)
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         _pipeline.Get<ZeroNettyP2PHandler>().Returns(handler);
+        _pipeline.Get<ZeroPacketSplitter>().Returns(hasSplitter ? new ZeroPacketSplitter() : null);
         Assert.That(handler.SnappyEnabled, Is.False);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.EnableSnappy();
+        if (hasSplitter)
+        {
+            Assert.That(() => session.EnableSnappy(), Throws.Nothing);
+        }
+        else
+        {
+            Assert.That(() => session.EnableSnappy(), Throws.InvalidOperationException.With.Message.Contains(nameof(ZeroPacketSplitter)));
+        }
         Assert.That(handler.SnappyEnabled, Is.True);
         _pipeline.Received().Get<ZeroPacketSplitter>();
-        _pipeline.Received().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());
+        _pipeline.DidNotReceive().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());
     }
 
     [Test]
@@ -313,8 +331,11 @@ public class SessionTests
         session.Init(5, _channelHandlerContext, _packetSender);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
 
-        Assert.That(firstCalls, Is.EqualTo(1));
-        Assert.That(secondCalls, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCalls, Is.EqualTo(1));
+            Assert.That(secondCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -345,8 +366,11 @@ public class SessionTests
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
         session.InitiateDisconnect(DisconnectReason.Other);
-        Assert.That(wasCalled, Is.True);
-        Assert.That(session.IsClosing, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wasCalled, Is.True);
+            Assert.That(session.IsClosing, Is.True);
+        }
     }
 
     // Privileged (static or trusted) nodes are kept connected through capacity/transient reasons, but
@@ -355,6 +379,8 @@ public class SessionTests
     [TestCase(true, DisconnectReason.TooManyPeers, false)]
     [TestCase(false, DisconnectReason.UselessPeer, false)]
     [TestCase(true, DisconnectReason.UselessPeer, false)]
+    [TestCase(false, DisconnectReason.ConnectionReset, false)]
+    [TestCase(true, DisconnectReason.ConnectionReset, false)]
     [TestCase(false, DisconnectReason.InvalidNetworkId, true)]
     [TestCase(true, DisconnectReason.InvalidNetworkId, true)]
     [TestCase(false, DisconnectReason.InvalidForkId, true)]
@@ -372,8 +398,11 @@ public class SessionTests
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
         session.InitiateDisconnect(reason);
-        Assert.That(wasCalled, Is.EqualTo(shouldDisconnect));
-        Assert.That(session.IsClosing, Is.EqualTo(shouldDisconnect));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wasCalled, Is.EqualTo(shouldDisconnect));
+            Assert.That(session.IsClosing, Is.EqualTo(shouldDisconnect));
+        }
     }
 
     [Test]
@@ -532,9 +561,12 @@ public class SessionTests
         _packetSender.Enqueue(message).Returns(10);
         session.DeliverMessage(message);
         _packetSender.Received().Enqueue(message);
-        Assert.That(message.WasDisposed, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.WasDisposed, Is.True);
 
-        Assert.That(Metrics.P2PBytesSent, Is.EqualTo(10));
+            Assert.That(Metrics.P2PBytesSent, Is.EqualTo(10));
+        }
     }
 
     [Test]
@@ -578,6 +610,26 @@ public class SessionTests
         session.DeliverMessage(message);
         _packetSender.DidNotReceive().Enqueue(Arg.Any<TestMessage>());
         Assert.That(message.WasDisposed, Is.True);
+    }
+
+    [Test]
+    public void Initiated_disconnect_is_not_logged_at_debug()
+    {
+        TestLogger logger = new() { IsTrace = false };
+        Session session = new(
+            30312,
+            new Node(TestItem.PublicKeyA, "127.0.0.1", 8545),
+            _channel,
+            NullDisconnectsAnalyzer.Instance,
+            new OneLoggerLogManager(new ILogger(logger)));
+        session.Disconnected += static (_, _) => { };
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        logger.LogList.Clear();
+
+        session.InitiateDisconnect(DisconnectReason.BreachOfProtocol);
+
+        Assert.That(logger.LogList, Has.None.Contains("initiating disconnect"));
     }
 
     [Test]
@@ -684,8 +736,11 @@ public class SessionTests
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, string.Empty);
         long afterLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         long afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
-        Assert.That(afterLocal, Is.EqualTo(beforeLocal + 1));
-        Assert.That(afterRemote, Is.EqualTo(beforeRemote));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterLocal, Is.EqualTo(beforeLocal + 1));
+            Assert.That(afterRemote, Is.EqualTo(beforeRemote));
+        }
 
         session = new Session(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
@@ -698,8 +753,11 @@ public class SessionTests
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, string.Empty);
         afterLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
-        Assert.That(afterLocal, Is.EqualTo(beforeLocal));
-        Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterLocal, Is.EqualTo(beforeLocal));
+            Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
+        }
     }
 
     private class TestMessage : P2PMessage

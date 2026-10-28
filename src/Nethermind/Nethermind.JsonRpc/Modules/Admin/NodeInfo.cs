@@ -42,6 +42,8 @@ public class NodeInfo
 
     public string Enode { get; set; }
 
+    public string? Enr { get; set; }
+
     public string Id { get; set; }
 
     public string? Ip { get; set; }

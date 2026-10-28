@@ -35,19 +35,36 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
             .AddSingleton<IReceiptMigrationStore, PersistentReceiptStorage>()
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
-            .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder>(CreateBadBlockStore)
+            .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder, ILogManager>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
+            .AddSingleton<IBlobCustodyTracker, BlobCustodyTracker>()
             .AddSingleton<IReceiptsRecovery, IEthereumEcdsa, ISpecProvider, IReceiptConfig>((ecdsa, specProvider, receiptConfig) =>
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
             )
-            .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
+            .AddSingleton<FullInfoReceiptFinder>()
+            .Bind<IReceiptFinder, FullInfoReceiptFinder>()
+            // Defaults to whatever the unkeyed finder is (not FullInfoReceiptFinder directly), so an override of
+            // IReceiptFinder — a plugin's or a test's — propagates here. With derivation on,
+            // ReceiptRegenerationModule replaces this registration with a wrapper around the same unkeyed finder.
+            .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<IReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
+            .AddSingleton<BlockAccessListServingWindow>()
+            .AddSingleton<BlockTreeMutationLock>()
             .AddSingleton<IBlockTree, BlockTree>()
+            .AddSingleton<IStateHeaderProvider, ReorgDepthStateHeaderProvider>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
+
+        // Registered to LOSE: this module loads after FlatWorldStateModule, and Autofac's default is
+        // last-registration-wins, so a plain registration here would silently beat the flat-history module's
+        // SlicedReceiptRetention and turn the whole retention half of that feature into a no-op.
+        builder.RegisterInstance(NullPrunedReceiptRetention.Instance)
+            .As<IPrunedReceiptRetention>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
 
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
             .AddDecorator<ILogIndexConfig>((ctx, config) =>
@@ -56,6 +73,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
                 config.MaxReorgDepth ??= pruningConfig.PruningBoundary;
                 return config;
             });
+
+        builder.AddSingleton<IRpcLogFinder, RangeLimitedLogFinder>();
 
         if (logIndexConfig.Enabled)
         {
@@ -83,6 +102,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         if (receiptConfig.DeferredPersistence)
         {
             ctx.ResolveKeyed<IDb>(DbNames.Blocks);
+            ctx.ResolveKeyed<IDb>(DbNames.Headers);
+            ctx.ResolveKeyed<IDb>(DbNames.BlockNumbers);
             ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
             ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
         }
@@ -92,8 +113,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IHeaderDecoder headerDecoder, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockStore(blocksDb, headerDecoder, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
 
-    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig, IHeaderDecoder headerDecoder) =>
-        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100, headerDecoder);
+    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig, IHeaderDecoder headerDecoder, ILogManager logManager) =>
+        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100, headerDecoder, logManager: logManager);
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);

@@ -105,8 +105,11 @@ public class SnapshotRepositoryTests
         bool added1 = _repository.TryAdd(snapshot1, tier);
         bool added2 = _repository.TryAdd(snapshot2, tier);
 
-        Assert.That(added1, Is.True);
-        Assert.That(added2, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(added1, Is.True);
+            Assert.That(added2, Is.False);
+        }
 
         snapshot2.Dispose();
     }
@@ -126,8 +129,23 @@ public class SnapshotRepositoryTests
         _repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase);
         bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
 
-        Assert.That(leasedBefore, Is.True);
-        Assert.That(leasedAfter, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leasedBefore, Is.True);
+            Assert.That(leasedAfter, Is.False);
+        }
+    }
+
+    [TestCase(SnapshotTier.InMemoryBase, 1L)]
+    [TestCase(SnapshotTier.InMemoryCompacted, 0L)]
+    public void RemoveAndReleaseInMemoryKnownState_CountsOnlyBaseRemovals(SnapshotTier tier, long expectedRemovedBaseSnapshots)
+    {
+        AddSnapshotToRepository(0, 1, compacted: tier == SnapshotTier.InMemoryCompacted);
+
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), tier);
+        _repository.RemoveAndReleaseInMemoryKnownState(CreateStateId(1), tier);
+
+        Assert.That(_repository.RemovedBaseSnapshotCount, Is.EqualTo(expectedRemovedBaseSnapshots));
     }
 
     [Test]
@@ -139,8 +157,11 @@ public class SnapshotRepositoryTests
         bool leased1 = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? snapshot1);
         bool leased2 = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out Snapshot? snapshot2);
 
-        Assert.That(leased1, Is.True);
-        Assert.That(leased2, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leased1, Is.True);
+            Assert.That(leased2, Is.True);
+        }
 
         _repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase);
 
@@ -161,13 +182,19 @@ public class SnapshotRepositoryTests
         AddSnapshotToRepository(0, 1, compacted: compacted);
 
         bool leasedExisting = TryLease(CreateStateId(1), compacted, out Snapshot? snapshot);
-        Assert.That(leasedExisting, Is.True);
-        Assert.That(snapshot, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leasedExisting, Is.True);
+            Assert.That(snapshot, Is.Not.Null);
+        }
         snapshot!.Dispose();
 
         bool leasedNonExistent = TryLease(CreateStateId(999), compacted, out Snapshot? nonExistentSnapshot);
-        Assert.That(leasedNonExistent, Is.False);
-        Assert.That(nonExistentSnapshot, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leasedNonExistent, Is.False);
+            Assert.That(nonExistentSnapshot, Is.Null);
+        }
     }
 
     [Test]
@@ -180,12 +207,15 @@ public class SnapshotRepositoryTests
         bool leased2 = TryLease(to, compacted, out Snapshot? snapshot2);
         bool leased3 = TryLease(to, compacted, out Snapshot? snapshot3);
 
-        Assert.That(leased1, Is.True);
-        Assert.That(leased2, Is.True);
-        Assert.That(leased3, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leased1, Is.True);
+            Assert.That(leased2, Is.True);
+            Assert.That(leased3, Is.True);
 
-        Assert.That(snapshot1, Is.SameAs(snapshot2));
-        Assert.That(snapshot2, Is.SameAs(snapshot3));
+            Assert.That(snapshot1, Is.SameAs(snapshot2));
+            Assert.That(snapshot2, Is.SameAs(snapshot3));
+        }
 
         snapshot1!.Dispose();
         snapshot2!.Dispose();
@@ -206,8 +236,11 @@ public class SnapshotRepositoryTests
         bool hasExisting = _repository.HasState(existing);
         bool hasNonExistent = _repository.HasState(nonExistent);
 
-        Assert.That(hasExisting, Is.True);
-        Assert.That(hasNonExistent, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hasExisting, Is.True);
+            Assert.That(hasNonExistent, Is.False);
+        }
     }
 
     [Test]
@@ -347,8 +380,11 @@ public class SnapshotRepositoryTests
 
         using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 
-        Assert.That(result.Persisted.Count, Is.EqualTo(1));
-        Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Persisted.Count, Is.EqualTo(1));
+            Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        }
         Assert.That(result.Persisted[0].From.BlockNumber, Is.LessThan(s2.BlockNumber));
     }
 
@@ -376,8 +412,11 @@ public class SnapshotRepositoryTests
 
         using AssembledSnapshotResult result = _repository.AssembleSnapshots(s5, s2, 4);
 
-        Assert.That(result.Persisted.Count, Is.EqualTo(1));
-        Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Persisted.Count, Is.EqualTo(1));
+            Assert.That(result.InMemory.Count, Is.EqualTo(0));
+        }
         Assert.That(result.Persisted[0].From.BlockNumber, Is.EqualTo(s2.BlockNumber));
     }
 
@@ -389,8 +428,11 @@ public class SnapshotRepositoryTests
         using AssembledSnapshotResult assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(0), 10);
 
         Assert.That(assembled.InMemory.Count, Is.EqualTo(5));
-        Assert.That(assembled.InMemory[0].From, Is.EqualTo(CreateStateId(0)));
-        Assert.That(assembled.InMemory[^1].To, Is.EqualTo(CreateStateId(5)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assembled.InMemory[0].From, Is.EqualTo(CreateStateId(0)));
+            Assert.That(assembled.InMemory[^1].To, Is.EqualTo(CreateStateId(5)));
+        }
     }
 
     [Test]
@@ -401,8 +443,11 @@ public class SnapshotRepositoryTests
         using AssembledSnapshotResult assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(0), 10);
 
         Assert.That(assembled.InMemory.Count, Is.EqualTo(1));
-        Assert.That(assembled.InMemory[0].From, Is.EqualTo(CreateStateId(0)));
-        Assert.That(assembled.InMemory[0].To, Is.EqualTo(CreateStateId(5)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assembled.InMemory[0].From, Is.EqualTo(CreateStateId(0)));
+            Assert.That(assembled.InMemory[0].To, Is.EqualTo(CreateStateId(5)));
+        }
     }
 
     [Test]
@@ -414,8 +459,11 @@ public class SnapshotRepositoryTests
         using AssembledSnapshotResult assembled = _repository.AssembleSnapshots(CreateStateId(5), CreateStateId(2), 10);
 
         Assert.That(assembled.InMemory.Count, Is.EqualTo(3));
-        Assert.That(assembled.InMemory[0].From, Is.EqualTo(CreateStateId(2)));
-        Assert.That(assembled.InMemory[^1].To, Is.EqualTo(CreateStateId(5)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assembled.InMemory[0].From, Is.EqualTo(CreateStateId(2)));
+            Assert.That(assembled.InMemory[^1].To, Is.EqualTo(CreateStateId(5)));
+        }
     }
 
     [Test]
@@ -476,12 +524,15 @@ public class SnapshotRepositoryTests
 
         _repository.RemoveSiblingAndDescendents(CreateStateId(5));
 
-        Assert.That(_repository.HasState(CreateStateId(6, rootByte: 1)), Is.False, "orphan NC(6) should be pruned");
-        Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.False, "orphan NC(7) should be pruned");
-        Assert.That(_repository.HasState(CreateStateId(6)), Is.True, "canonical C(6) should be kept");
-        Assert.That(_repository.HasState(CreateStateId(7)), Is.True, "canonical C(7) should be kept");
-        Assert.That(_repository.HasState(CreateStateId(5, rootByte: 1)), Is.True, "NC(5) at the persisted block is left to RemoveStatesUntil");
-        Assert.That(_repository.HasState(CreateStateId(4, rootByte: 1)), Is.True, "NC(4) below the persisted block is left to RemoveStatesUntil");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_repository.HasState(CreateStateId(6, rootByte: 1)), Is.False, "orphan NC(6) should be pruned");
+            Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.False, "orphan NC(7) should be pruned");
+            Assert.That(_repository.HasState(CreateStateId(6)), Is.True, "canonical C(6) should be kept");
+            Assert.That(_repository.HasState(CreateStateId(7)), Is.True, "canonical C(7) should be kept");
+            Assert.That(_repository.HasState(CreateStateId(5, rootByte: 1)), Is.True, "NC(5) at the persisted block is left to RemoveStatesUntil");
+            Assert.That(_repository.HasState(CreateStateId(4, rootByte: 1)), Is.True, "NC(4) below the persisted block is left to RemoveStatesUntil");
+        }
     }
 
     [Test]
@@ -493,9 +544,59 @@ public class SnapshotRepositoryTests
 
         _repository.RemoveSiblingAndDescendents(CreateStateId(3));
 
-        Assert.That(_repository.HasState(CreateStateId(7)), Is.True);
-        Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_repository.HasState(CreateStateId(7)), Is.True);
+            Assert.That(_repository.HasState(CreateStateId(7, rootByte: 1)), Is.True);
+        }
     }
 
     #endregion
+
+    [Test]
+    public void RemoveUnreachableFrom_KeepsOnlyHeadAncestry([Values] bool knownHead, [Values] bool sideBranchPersisted)
+    {
+        // Main chain 0->8, side branch (3,0)->(6,1); a compacted on the ancestry and one off it. The head
+        // at (5,0) keeps 1..5 only: descendants on its own chain and the whole side branch go.
+        BuildSnapshotChain(0, 8);
+        BuildSnapshotChain(CreateStateId(3), 6, rootByte: 1);
+        AddSnapshotToRepository(CreateStateId(0), CreateStateId(4), compacted: true);
+        AddSnapshotToRepository(CreateStateId(3), CreateStateId(6, rootByte: 1), compacted: true);
+        if (sideBranchPersisted)
+            _tier.ConvertToPersistedBase(CreateSnapshot(CreateStateId(5, rootByte: 1), CreateStateId(6, rootByte: 1))).Dispose();
+
+        StateId head = CreateStateId(5, rootByte: knownHead ? (byte)0 : (byte)7);
+        int snapshotCountBefore = _repository.SnapshotCount;
+        int persistedCountBefore = _repository.PersistedSnapshotCount;
+
+        int pruned = _repository.RemoveUnreachableFrom(head, StateId.PreGenesis);
+
+        using ArrayPoolList<StateId> remaining = _repository.GetStatesUpToBlock(long.MaxValue);
+        if (!knownHead)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pruned, Is.EqualTo(0));
+                Assert.That(_repository.SnapshotCount, Is.EqualTo(snapshotCountBefore));
+                Assert.That(_repository.PersistedSnapshotCount, Is.EqualTo(persistedCountBefore));
+                Assert.That(_repository.GetLastCommittedStateId(), Is.Null);
+            }
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruned, Is.EqualTo(sideBranchPersisted ? 7 : 6));
+            for (ulong block = 1; block <= 5; block++)
+                Assert.That(_repository.HasState(CreateStateId(block)), Is.True, $"ancestor {block} should be kept");
+            Assert.That(TryLease(CreateStateId(4), compacted: true, out Snapshot? compactedOnAncestry), Is.True, "compacted on the ancestry should be kept");
+            compactedOnAncestry?.Dispose();
+            foreach (StateId removed in new[] { CreateStateId(6), CreateStateId(7), CreateStateId(8), CreateStateId(4, rootByte: 1), CreateStateId(5, rootByte: 1), CreateStateId(6, rootByte: 1) })
+                Assert.That(_repository.HasState(removed), Is.False, $"{removed} should be removed");
+            Assert.That(TryLease(CreateStateId(6, rootByte: 1), compacted: true, out _), Is.False, "compacted off the ancestry should be removed");
+            Assert.That(_repository.HasBasePersistedSnapshot(CreateStateId(6, rootByte: 1)), Is.False);
+            Assert.That(remaining, Is.EquivalentTo(new[] { CreateStateId(1), CreateStateId(2), CreateStateId(3), CreateStateId(4), CreateStateId(5) }));
+            Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(head));
+        }
+    }
 }

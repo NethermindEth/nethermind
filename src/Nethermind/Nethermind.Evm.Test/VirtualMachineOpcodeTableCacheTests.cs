@@ -28,7 +28,7 @@ public class VirtualMachineOpcodeTableCacheTests : VirtualMachineTestsBase
 
         Assert.That(specReference.IsAlive, Is.False,
             "The process-wide opcode-table cache must not keep transient specs alive; " +
-            "eth_simulateV1 wraps the spec per simulated block (WithoutEip3607), so strong keys grow without bound.");
+            "eth_simulateV1 wraps the spec per simulated block, so strong keys grow without bound.");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

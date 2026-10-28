@@ -10,6 +10,7 @@ namespace Nethermind.Network.Dns.Test;
 public class EnrTreeParserTests
 {
     [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=2779 sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE")]
+    [TestCase("enrtree-root:v1 e=TPLRUM3FAKJZIRMXADWOHSU3PM l=FDXN3SN67NA5DKA4J2GOK7BVQI seq=4102444800 sig=CNoJofW_lNh7QFQkaVGhEX2ifbEZ3UkiBQCVyZCkM_I-72cEh8Bfd21cSS9BP5tyAqWF3jMVov8duUCdSByEQAE", TestName = "seq past 2038 (beyond int.MaxValue)")]
     public void Can_parse_sample_root_texts(string enrTreeRootText)
     {
         EnrTreeRoot root = EnrTreeParser.ParseEnrRoot(enrTreeRootText);
@@ -23,8 +24,11 @@ public class EnrTreeParserTests
     {
         EnrTreeBranch branch = EnrTreeParser.ParseBranch(enrBranchText);
         string actual = branch.ToString();
-        Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
-        Assert.That(actual, Is.EqualTo(enrBranchText));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(branch.Hashes.Length, Is.EqualTo(hashCount));
+            Assert.That(actual, Is.EqualTo(enrBranchText));
+        }
     }
 
     [Test]
@@ -34,12 +38,18 @@ public class EnrTreeParserTests
         EnrTreeNode node = EnrTreeParser.ParseNode(enr);
         Assert.That(node, Is.TypeOf<EnrLeaf>());
         EnrLeaf leaf = (EnrLeaf)node;
-        Assert.That(leaf.ToString(), Is.EqualTo(enr));
-        Assert.That(leaf.Links, Is.Empty);
-        Assert.That(leaf.Refs, Is.Empty);
-        Assert.That(leaf.Records.Length, Is.EqualTo(1));
-        Assert.That(leaf.Records[0], Is.EqualTo(enr));
-        Assert.That(leaf.NodeRecord, Is.EqualTo(enr.Substring(4)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leaf.ToString(), Is.EqualTo(enr));
+            Assert.That(leaf.Links, Is.Empty);
+            Assert.That(leaf.Refs, Is.Empty);
+            Assert.That(leaf.Records.Length, Is.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(leaf.Records[0], Is.EqualTo(enr));
+            Assert.That(leaf.NodeRecord, Is.EqualTo(enr.Substring(4)));
+        }
     }
 
     // Malformed input must surface as a FormatException the crawler can catch, not an unhandled exception that aborts the crawl.
@@ -64,10 +74,16 @@ public class EnrTreeParserTests
         EnrTreeNode node = EnrTreeParser.ParseNode(text);
         Assert.That(node, Is.TypeOf<EnrLinkedTree>());
         EnrLinkedTree linked = (EnrLinkedTree)node;
-        Assert.That(linked.ToString(), Is.EqualTo(text));
-        Assert.That(linked.Links.Length, Is.EqualTo(1));
-        Assert.That(linked.Links[0], Is.EqualTo(text.Substring("enrtree://".Length)));
-        Assert.That(linked.Refs, Is.Empty);
-        Assert.That(linked.Records, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(linked.ToString(), Is.EqualTo(text));
+            Assert.That(linked.Links.Length, Is.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(linked.Links[0], Is.EqualTo(text.Substring("enrtree://".Length)));
+            Assert.That(linked.Refs, Is.Empty);
+            Assert.That(linked.Records, Is.Empty);
+        }
     }
 }

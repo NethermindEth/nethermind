@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
@@ -14,15 +16,42 @@ using Nethermind.Serialization.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
-public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
+public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 {
+    [Test]
+    public void Serialized_trace_reflects_entry_mutations([Values(0, 1)] long limit)
+    {
+        byte[] code = Prepare.EvmCode.PushData("0x1").Op(Instruction.STOP).Done;
+        using GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { Limit = limit }, code);
+        EthereumJsonSerializer serializer = new();
+        using JsonDocument original = JsonDocument.Parse(serializer.Serialize(trace));
+        Assert.That(original.RootElement.GetProperty("structLogs").GetArrayLength(), Is.EqualTo(limit == 0 ? 2 : 1));
+
+        GethTxTraceEntry entry = trace.Entries[0];
+        entry.ProgramCounter = 123;
+        trace.Entries.Clear();
+        trace.Entries.Add(entry);
+        trace.Entries.Add(new GethTxTraceEntry { Opcode = "ADDED" });
+
+        using JsonDocument modified = JsonDocument.Parse(serializer.Serialize(trace));
+        JsonElement entries = modified.RootElement.GetProperty("structLogs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.GetArrayLength(), Is.EqualTo(2));
+            Assert.That(entries[0].GetProperty("pc").GetInt64(), Is.EqualTo(123));
+            Assert.That(entries[1].GetProperty("op").GetString(), Is.EqualTo("ADDED"));
+        }
+    }
+
     [Test]
     public void Can_trace_gas_halt_with_stop()
     {
@@ -76,7 +105,57 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
+    public void Unpaid_memory_expansion_cost_reaches_a_tracer_behind_wrappers([Values] bool wrapped)
+    {
+        const int offset = 0x100000;
+        byte[] code = Prepare.EvmCode
+            .PushData("0x1")
+            .PushData(offset)
+            .Op(Instruction.MSTORE)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, tracer))
+            : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), executionTracer);
+
+        // As in geth, the opcode that runs out of gas reports the cost it could not pay.
+        const ulong words = offset / EvmStack.WordSize + 1;
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.Memory * words + words * words / 512));
+    }
+
+    [Test]
+    public void AccessGasDiagnostics_WhenOperationRepeats_PreservesColdAndWarmCosts(
+        [Values(Instruction.SLOAD, Instruction.BALANCE, Instruction.EXTCODESIZE, Instruction.EXTCODEHASH)] Instruction opcode,
+        [Values] bool wrapped)
+    {
+        UInt256 argument = opcode == Instruction.SLOAD ? UInt256.One : new UInt256(TestItem.AddressC.Bytes, isBigEndian: true);
+        byte[] code = Prepare.EvmCode
+            .PushData(argument).Op(opcode).Op(Instruction.POP)
+            .PushData(argument).Op(opcode).Op(Instruction.STOP)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        using ITxTracer executionTracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(new TestAllTracerWithOutput(), tracer))
+            : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), executionTracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        ulong coldCost = opcode == Instruction.SLOAD ? GasCostOf.ColdSLoad : GasCostOf.ColdAccountAccess;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False, "tracing diagnostics must preserve successful execution");
+            Assert.That(trace.Entries.Where(entry => entry.Opcode == opcode.ToString()).Select(entry => entry.GasCost),
+                Is.EqualTo(new[] { coldCost, GasCostOf.WarmStateRead }), "the tracer must receive cold and warm access costs");
+        }
+    }
+
+    [Test]
     public void Can_trace_stack_underflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -87,7 +166,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
+            Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
         }
     }
 
@@ -111,7 +190,6 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_jump_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -123,12 +201,11 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_opcode_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -139,7 +216,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 
@@ -410,17 +487,20 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
+            Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
+            Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
 
-        Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
-        Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
+            Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
+            Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
+            Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
 
-        Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+        }
     }
 
     [Test]
@@ -442,20 +522,23 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
+            Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
 
-        Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
+            Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
 
-        Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
 
-        Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
+            Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
+            Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
 
-        Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+            Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
+            Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+        }
     }
 
     [Test]
@@ -466,33 +549,27 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertEntry(trace.Entries[^4], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+            AssertEntry(trace.Entries[^3], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+            AssertEntry(trace.Entries[^2], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+            Assert.That(trace.Entries[^1].ProgramCounter, Is.EqualTo(49));
+            Assert.That(trace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+        }
     }
 
     [Test]
     public void Can_trace_refund_on_storage_clear()
     {
-        // Seed a non-zero slot so clearing it to zero grants a storage-clearing refund.
-        TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(ClearSstoreCode());
 
         GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
         GethTxTraceEntry stop = trace.Entries.Single(e => e.Opcode == "STOP");
 
         using (Assert.EnterMultipleScope())
         {
-            // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
-            Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
+            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
         }
     }
@@ -500,24 +577,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Refund_is_rolled_back_when_frame_reverts()
     {
-        byte[] calleeCode = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .PushData(0)
-            .PushData(0)
-            .Op(Instruction.REVERT)
-            .Done;
-
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.Set(new StorageCell(TestItem.AddressC, 0), new byte[] { 1 });
-        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .Call(TestItem.AddressC, 50000)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(ChildClearThenRevertCode());
 
         GethTxTraceEntry revert = trace.Entries.Single(e => e.Opcode == "REVERT");
         GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
@@ -527,6 +587,38 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
             Assert.That(revert.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund visible inside the reverting frame");
             Assert.That(topLevelStop.Refund, Is.Null, "refund rolled back after the frame reverts");
         }
+    }
+
+    [Test]
+    public void Parent_frame_refund_survives_child_revert()
+    {
+        GethLikeTxTrace trace = ExecuteAndTrace(RefundThenChildRevertCode());
+
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        Assert.That(
+            topLevelStop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
+            "parent refund must persist after the child frame reverts"
+        );
+    }
+
+    [Test]
+    public void Legacy_self_destruct_refund_is_reported_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        GethLikeTxMemoryTracer tracer = new(null, GethTraceOptions.Default, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportActionEnd(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+
+        Assert.That(tracer.BuildResult().Entries.Single().Refund, Is.EqualTo(destroyRefund));
     }
 
     [Test]
@@ -556,8 +648,47 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.ReturnData, Is.Null, "no return data before the call executes");
-            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{word}"), "return data visible after the inner call returns");
+            Assert.That(topLevelStop.ReturnData?.ToArray(), Is.EqualTo(Bytes.FromHexString(word)), "return data visible after the inner call returns");
         }
+    }
+
+    [Test]
+    public void Unchanged_returndata_shares_one_copy_across_opcodes()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+        const string otherWord = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100";
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, word).Return(32, 0).Done, Spec);
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.InsertCode(TestItem.AddressD, Prepare.EvmCode.StoreDataInMemory(0, otherWord).Return(32, 0).Done, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressD, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { EnableReturnData = true }, code);
+
+        byte[] wordBytes = Bytes.FromHexString(word);
+        GethTxTraceEntry[] firstReturn = trace.Entries.Where(e => e.Depth == 1 && e.ReturnData is { } data && data.Span.SequenceEqual(wordBytes)).ToArray();
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+        string json = new EthereumJsonSerializer().Serialize(trace);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturn, Has.Length.GreaterThan(1));
+            Assert.That(firstReturn.All(e => ReturnDataArray(e) == ReturnDataArray(firstReturn[0])), Is.True);
+            Assert.That(topLevelStop.ReturnData?.ToArray(), Is.EqualTo(Bytes.FromHexString(otherWord)));
+            Assert.That(json, Does.Contain($"\"returnData\":\"0x{word}\""));
+            Assert.That(json, Does.Contain($"\"returnData\":\"0x{otherWord}\""));
+        }
+
+        static byte[]? ReturnDataArray(GethTxTraceEntry entry) =>
+            MemoryMarshal.TryGetArray(entry.ReturnData!.Value, out ArraySegment<byte> segment) ? segment.Array : null;
     }
 
     [Test]
@@ -630,6 +761,28 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 
         Assert.That(trace.Entries.Any(e => e.Opcode == "SLOAD"), Is.True, "expected an SLOAD entry");
 
+        AssertStreamingMatchesInMemory(code);
+    }
+
+    [Test]
+    public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
+    {
+        const int depth = 300;
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++)
+        {
+            prepare.PushData((i % 4) switch
+            {
+                0 => UInt256.Zero,
+                1 => (UInt256)i,
+                2 => (UInt256.One << 159) + (UInt256)i,
+                _ => UInt256.MaxValue >> (i % 8),
+            });
+        }
+        byte[] code = prepare.Op(Instruction.STOP).Done;
+
+        Assert.That(ExecuteStreamingTracerEntries(code)[^1].GetProperty("stack").GetArrayLength(), Is.EqualTo(depth),
+            "precondition: the last entry carries the whole stack");
         AssertStreamingMatchesInMemory(code);
     }
 

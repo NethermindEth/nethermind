@@ -4,20 +4,23 @@
 using System.Globalization;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Rlp
 {
+    /// <inheritdoc cref="RlpDecodeReceiptBenchmark"/>
     public class RlpDecodeAccountBenchmark
     {
-        private static byte[] _account;
+        private const int Batch = 256;
 
-        private byte[][] _scenarios =
-        {
+        private byte[] _account;
+
+        private readonly byte[][] _scenarios =
+        [
             Serialization.Rlp.Rlp.Encode(Account.TotallyEmpty).Bytes,
-            Serialization.Rlp.Rlp.Encode(Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject).Bytes,
-        };
+            Serialization.Rlp.Rlp.Encode(
+                new Account(123, UInt256.Parse("1000000000000000000000", NumberStyles.HexNumber))).Bytes,
+        ];
 
         [Params(0, 1)]
         public int ScenarioIndex { get; set; }
@@ -25,10 +28,16 @@ namespace Nethermind.Benchmarks.Rlp
         [GlobalSetup]
         public void Setup() => _account = _scenarios[ScenarioIndex];
 
-        [Benchmark]
-        public Account Improved() => Serialization.Rlp.Rlp.Decode<Account>(_account);
+        [Benchmark(OperationsPerInvoke = Batch)]
+        public Account Current()
+        {
+            Account account = null;
+            for (int i = 0; i < Batch; i++)
+            {
+                account = Serialization.Rlp.Rlp.Decode<Account>(_account);
+            }
 
-        [Benchmark]
-        public Account Current() => Serialization.Rlp.Rlp.Decode<Account>(_account);
+            return account;
+        }
     }
 }

@@ -187,9 +187,25 @@ namespace Nethermind.Evm.Test
                 }
                 else
                 {
-                    Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
-                    Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
+                        Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
+                    }
                 }
+            }
+        }
+
+        // Two names on one byte compile silently but let the later dispatch-table entry shadow the earlier one.
+        [Test]
+        public void Every_opcode_owns_a_distinct_byte()
+        {
+            Dictionary<Instruction, string> claimed = [];
+            foreach (string name in Enum.GetNames<Instruction>())
+            {
+                Instruction opcode = Enum.Parse<Instruction>(name);
+                Assert.That(claimed.TryAdd(opcode, name), Is.True,
+                    $"0x{(byte)opcode:x2} is claimed by both {claimed.GetValueOrDefault(opcode)} and {name}");
             }
         }
     }

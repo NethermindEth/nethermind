@@ -115,23 +115,22 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(Instruction.CALLDATACOPY)]
-    [TestCase(Instruction.CODECOPY)]
-    [TestCase(Instruction.EXTCODECOPY)]
-    public void Copy_ZeroLength_ConsumesBaseGas(Instruction instruction)
+    [Test]
+    public void Copy_ZeroLength_ConsumesBaseGas([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.EXTCODECOPY)] Instruction instruction)
     {
         byte[] code = BuildCopyCode(instruction, 0);
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction)));
+        }
     }
 
-    [TestCase(Instruction.CALLDATACOPY)]
-    [TestCase(Instruction.CODECOPY)]
-    [TestCase(Instruction.EXTCODECOPY)]
-    public void Copy_ZeroLength_InsufficientGas_ReturnsOutOfGas(Instruction instruction)
+    [Test]
+    public void Copy_ZeroLength_InsufficientGas_ReturnsOutOfGas([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.EXTCODECOPY)] Instruction instruction)
     {
         byte[] code = BuildCopyCode(instruction, 0);
         ulong gasLimit = GetBaseGas(instruction) - 1UL;
@@ -141,17 +140,18 @@ public class DataCopyGasTests : VirtualMachineTestsBase
         Assert.That(result.Error, Is.EqualTo("OutOfGas"));
     }
 
-    [TestCase(Instruction.CALLDATACOPY)]
-    [TestCase(Instruction.CODECOPY)]
-    [TestCase(Instruction.EXTCODECOPY)]
-    public void Copy_OneWord_ConsumesMemoryGas(Instruction instruction)
+    [Test]
+    public void Copy_OneWord_ConsumesMemoryGas([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.EXTCODECOPY)] Instruction instruction)
     {
         byte[] code = BuildCopyCode(instruction, 32);
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.Error, Is.Null);
-        Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2UL * GasCostOf.Memory));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.GasSpent, Is.EqualTo(GetBaseGas(instruction) + 2UL * GasCostOf.Memory));
+        }
     }
 
     private static byte[] BuildCopyCode(Instruction instruction, int length)

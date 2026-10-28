@@ -50,7 +50,7 @@ public class BackgroundTaskSchedulerBurstTests
 
             for (int i = 0; i < tasksPerCycle; i++)
             {
-                bool accepted = scheduler.TryScheduleTask(i, (_, _) =>
+                bool accepted = scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
                 {
                     Interlocked.Increment(ref totalExecuted);
                     return Task.CompletedTask;
@@ -67,15 +67,18 @@ public class BackgroundTaskSchedulerBurstTests
             await Task.Delay(200);
         }
 
-        Assert.That(totalDropped, Is.EqualTo(0), $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
-        Assert.That(totalScheduled, Is.EqualTo(cycles * tasksPerCycle));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(totalDropped, Is.EqualTo(0), $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
+            Assert.That(totalScheduled, Is.EqualTo(cycles * tasksPerCycle));
+        }
 
         // After all block processing cycles, new tasks should execute normally
         int postCycleExecuted = 0;
         int postCycleCount = Math.Min(capacity, 100);
         for (int i = 0; i < postCycleCount; i++)
         {
-            Assert.That(scheduler.TryScheduleTask(i, (_, _) =>
+            Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
             {
                 Interlocked.Increment(ref postCycleExecuted);
                 return Task.CompletedTask;

@@ -56,14 +56,31 @@ public class TxPriorityContractTests
     }
 
     [Test]
+    public async Task getters_return_empty_when_contract_does_not_exist()
+    {
+        using TxPermissionContractBlockchain chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+        TxPriorityContract contract = new(Address.FromNumber(1000), chain.ReadOnlyTxProcessingEnvFactory.Create());
+        BlockHeader head = chain.BlockTree.Head.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(contract.GetSendersWhitelist(head), Is.Empty);
+            Assert.That(contract.GetMinGasPrices(head), Is.Empty);
+            Assert.That(contract.GetPriorities(head), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task whitelist_should_return_correctly()
     {
         using TxPermissionContractBlockchainWithBlocks chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
         IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
         IEnumerable<Address> whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
         object[] expected = { TestItem.AddressA, TestItem.AddressC };
-        Assert.That(whiteList, Is.EquivalentTo(expected));
-        Assert.That(whiteListInContract, Is.EquivalentTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whiteList, Is.EquivalentTo(expected));
+            Assert.That(whiteListInContract, Is.EquivalentTo(expected));
+        }
     }
 
     [Test]
@@ -79,10 +96,13 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
         };
 
-        Assert.That(priorities, Is.EquivalentTo(expected)
-            .UsingPropertiesComparer<TxPriorityContract.Destination>(
-                static options => options.Excluding(static destination => destination.BlockNumber)));
-        Assert.That(prioritiesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(priorities, Is.EquivalentTo(expected)
+                .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                    static options => options.Excluding(static destination => destination.BlockNumber)));
+            Assert.That(prioritiesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        }
     }
 
     [Test]
@@ -97,53 +117,42 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
         };
 
-        Assert.That(minGasPrices, Is.EquivalentTo(expected)
-            .UsingPropertiesComparer<TxPriorityContract.Destination>(
-                static options => options.Excluding(static destination => destination.BlockNumber)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(minGasPrices, Is.EquivalentTo(expected)
+                .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                    static options => options.Excluding(static destination => destination.BlockNumber)));
 
-        Assert.That(minGasPricesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+            Assert.That(minGasPricesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        }
     }
 
     [Test]
-    [Explicit]
     public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
         using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst
             ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
             : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
-        SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
-        chain.LocalDataSource.Changed += (sender, args) =>
-        {
-            TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-            if (localData is not null)
-            {
-                Assert.That(localData.Whitelist, Is.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }));
-                semaphoreSlim.Release();
-            }
-        };
-
         if (!await chain.FileSemaphore.WaitAsync(100))
         {
             Assert.Fail("File not written");
         }
 
-        if (!await semaphoreSlim.WaitAsync(100))
-        {
-            if (chain.LocalDataSource.Data is null)
-            {
-                Assert.Fail("Local file rule storage has not been loaded.");
-            }
-        }
+        // Poll on the test thread until the file watcher loads the data. A timeout with
+        // stale or empty data fails here instead of skipping the assert.
+        Assert.That(() => chain.LocalDataSource.Data?.Whitelist,
+            Is.Not.Null.And.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }).After(5000, 50));
 
         object[] expected = { TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC };
 
-        IEnumerable<Address> whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(whiteList, Is.EquivalentTo(expected));
+        // The stores consume the data inside the Changed event, after Data is already visible;
+        // poll so this assert does not race that handoff.
+        Assert.That(() => chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header),
+            Is.EquivalentTo(expected).After(5000, 50));
     }
 
     [Test]
-    [Explicit]
     public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
         using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst
@@ -158,37 +167,20 @@ public class TxPriorityContractTests
             new(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
         };
 
-        SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
-        chain.LocalDataSource.Changed += (sender, args) =>
-        {
-            TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-            if (localData is not null)
-            {
-                Assert.That(chain.LocalDataSource.Data.Priorities,
-                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
-                semaphoreSlim.Release();
-            }
-        };
-
         if (!await chain.FileSemaphore.WaitAsync(100))
         {
             Assert.Fail("File not written");
         }
 
-        if (!await semaphoreSlim.WaitAsync(100))
-        {
-            if (chain.LocalDataSource.Data is null)
-            {
-                Assert.Fail("Local file rule storage has not been loaded.");
-            }
-        }
+        Assert.That(() => chain.LocalDataSource.Data?.Priorities,
+            Is.Not.Null.And.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
+                .UsingPropertiesComparer().After(5000, 50));
 
-        IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(priorities, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        Assert.That(() => chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header),
+            Is.EquivalentTo(expected).UsingPropertiesComparer().After(5000, 50));
     }
 
     [Test]
-    [Explicit]
     public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
         using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst
@@ -202,33 +194,17 @@ public class TxPriorityContractTests
             new(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
         };
 
-        SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
-        chain.LocalDataSource.Changed += (sender, args) =>
-        {
-            TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-            if (localData is not null)
-            {
-                Assert.That(chain.LocalDataSource.Data.MinGasPrices,
-                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
-                semaphoreSlim.Release();
-            }
-        };
-
         if (!await chain.FileSemaphore.WaitAsync(100))
         {
             Assert.Fail("File not written");
         }
 
-        if (!await semaphoreSlim.WaitAsync(100))
-        {
-            if (chain.LocalDataSource.Data is null)
-            {
-                Assert.Fail("Local file rule storage has not been loaded.");
-            }
-        }
+        Assert.That(() => chain.LocalDataSource.Data?.MinGasPrices,
+            Is.Not.Null.And.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
+                .UsingPropertiesComparer().After(5000, 50));
 
-        IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(minGasPrices, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        Assert.That(() => chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header),
+            Is.EquivalentTo(expected).UsingPropertiesComparer().After(5000, 50));
     }
 
     public class TxPermissionContractBlockchain : TestContractBlockchain
@@ -249,7 +225,7 @@ public class TxPriorityContractTests
         protected override Task AddBlocksOnStart()
         {
 
-            TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA,
+            TxPriorityContract = new TxPriorityContract(TestItem.AddressA,
                 ReadOnlyTxProcessingEnvFactory.Create());
 
             Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
@@ -280,6 +256,15 @@ public class TxPriorityContractTests
 
     public class TxPermissionContractBlockchainWithBlocks : TxPermissionContractBlockchain
     {
+        private static readonly AbiSignature<(Address, byte[], UInt256)> SetPrioritySignature =
+            new AbiSignature("setPriority").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+
+        private static readonly AbiSignature<Address[]> SetSendersWhitelistSignature =
+            new AbiSignature("setSendersWhitelist").With(AbiType.Array(AbiType.Address));
+
+        private static readonly AbiSignature<(Address, byte[], UInt256)> SetMinGasPriceSignature =
+            new AbiSignature("setMinGasPrice").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+
         protected override async Task AddBlocksOnStart()
         {
             await base.AddBlocksOnStart();
@@ -288,24 +273,47 @@ public class TxPriorityContractTests
 
             await AddBlock(
                 SignTransactions(ecdsa, TestItem.PrivateKeyA, 1,
-                    TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
-                    TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 10),
-                    TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature2, 4),
+                    SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
+                    SetPriority(TestItem.AddressB, FnSignature, 10),
+                    SetPriority(TestItem.AddressB, FnSignature2, 4),
 
-                    TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 10),
-                    TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature2, 4),
-                    TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB))
+                    SetMinGasPrice(TestItem.AddressB, FnSignature, 10),
+                    SetMinGasPrice(TestItem.AddressB, FnSignature2, 4),
+                    SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB))
             );
 
             await AddBlock(
                 SignTransactions(ecdsa, TestItem.PrivateKeyA, StateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address),
                     // overrides for some of previous block values:
-                    TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
+                    SetPriority(TestItem.AddressB, FnSignature, 3),
 
-                    TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 2),
+                    SetMinGasPrice(TestItem.AddressB, FnSignature, 2),
 
-                    TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
+                    SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
             );
+        }
+
+        private Transaction SetPriority(Address target, byte[] fnSignature, UInt256 weight) =>
+            GenerateTransaction(AbiCodec.Encode(SetPrioritySignature, (target, fnSignature, weight)));
+
+        private Transaction SetSendersWhitelist(params Address[] addresses) =>
+            GenerateTransaction(AbiCodec.Encode(SetSendersWhitelistSignature, addresses));
+
+        private Transaction SetMinGasPrice(Address target, byte[] fnSignature, UInt256 weight) =>
+            GenerateTransaction(AbiCodec.Encode(SetMinGasPriceSignature, (target, fnSignature, weight)));
+
+        private Transaction GenerateTransaction(byte[] data)
+        {
+            GeneratedTransaction transaction = new()
+            {
+                Data = data,
+                To = TxPriorityContract.ContractAddress,
+                SenderAddress = TxPriorityContract.ContractAddress,
+                GasLimit = Blockchain.Contracts.Contract.DefaultContractGasLimit,
+            };
+
+            transaction.Hash = transaction.CalculateHash();
+            return transaction;
         }
 
         public override async Task<Block> AddBlock(params Transaction[] transactions)
@@ -363,7 +371,7 @@ public class TxPriorityContractTests
 
             FileSemaphore = new SemaphoreSlim(0);
             Semaphore = new SemaphoreSlim(0);
-            LocalDataSource.Changed += (o, e) => Semaphore.Release();
+            LocalDataSource.Changed += OnLocalDataChanged;
 
             LocalData = new TxPriorityContract.LocalData()
             {
@@ -387,12 +395,15 @@ public class TxPriorityContractTests
 
         public override void Dispose()
         {
+            LocalDataSource.Changed -= OnLocalDataChanged;
+            LocalDataSource.Dispose();
             base.Dispose();
-            LocalDataSource?.Dispose();
             TempFile?.Dispose();
             Semaphore.Dispose();
             FileSemaphore?.Dispose();
         }
+
+        private void OnLocalDataChanged(object? sender, EventArgs args) => Semaphore.Release();
 
         protected virtual bool FileFirst => false;
 
@@ -402,7 +413,11 @@ public class TxPriorityContractTests
         {
             if (FileFirst)
             {
-                await AddFile();
+                // The data stores do not exist yet, so only write the file here. The stores
+                // load it when they start. Subscribing to their Loaded events at this point
+                // dereferences null.
+                WriteFile(LocalData);
+                FileSemaphore.Release();
             }
 
             await base.AddBlocksOnStart();

@@ -10,10 +10,8 @@ namespace Nethermind.Core.Test.Json;
 
 public class IPAddressConverterTests
 {
-    [TestCase("127.0.0.1")]
-    [TestCase("::1")]
-    [TestCase("2001:db8::1")]
-    public void Can_roundtrip_ip_address(string address)
+    [Test]
+    public void Can_roundtrip_ip_address([Values("127.0.0.1", "::1", "2001:db8::1")] string address)
     {
         IPAddress ipAddress = IPAddress.Parse(address);
 

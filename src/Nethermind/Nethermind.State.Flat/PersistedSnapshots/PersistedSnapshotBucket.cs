@@ -28,6 +28,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     private readonly Lock _lock = new();
     private long _memoryBytes;
     private long _count;
+    private readonly SnapshotTier _tier = tier;
     private readonly string _tierName = tier.MetricTierLabel();
 
     public long MemoryBytes => Interlocked.Read(ref _memoryBytes);
@@ -55,6 +56,24 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
 
     public bool TryGet(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
         _byTo.TryGetValue(to, out snapshot);
+
+    public bool TryLease(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
+    {
+        if (!_byTo.TryGetValue(to, out snapshot)) return false;
+        return TryAcquire(to, ref snapshot);
+    }
+
+    /// <summary>Acquires the observed entry, or retries its replacement under the mutation lock.</summary>
+    /// <remarks>Writers must unpublish an entry before releasing its bucket lease.</remarks>
+    internal bool TryAcquire(in StateId to, [NotNullWhen(true)] ref PersistedSnapshot? snapshot)
+    {
+        if (snapshot is not null && snapshot.TryAcquire()) return true;
+        if (_byTo.TryGetValue(to, out snapshot) && snapshot.TryAcquire()) return true;
+        using Lock.Scope scope = _lock.EnterScope();
+        if (_byTo.TryGetValue(to, out snapshot) && snapshot.TryAcquire()) return true;
+        snapshot = null;
+        return false;
+    }
 
     public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
 
@@ -97,9 +116,9 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
             PersistedSnapshotLabel oldLabel = LabelFor(old);
             Metrics.PersistedSnapshotMemory.AddBy(oldLabel, -old.Size);
             Metrics.PersistedSnapshotCount.AddBy(oldLabel, -1);
-            old.Dispose();
         }
         _byTo[to] = snapshot;
+        old?.Dispose();
         _ordered.Add(to);
         Interlocked.Add(ref _memoryBytes, snapshot.Size);
         Interlocked.Increment(ref _count);
@@ -167,14 +186,15 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     {
         using Lock.Scope scope = _lock.EnterScope();
         if (logger.IsDebug && _byTo.Count > 0) logger.Debug($"Releasing {_byTo.Count} persisted snapshot(s) ({_tierName}) on teardown");
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+        KeyValuePair<StateId, PersistedSnapshot>[] snapshots = _byTo.ToArray();
+        _byTo.Clear();
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in snapshots)
         {
             PersistedSnapshotLabel label = LabelFor(kv.Value);
             Metrics.PersistedSnapshotMemory.AddBy(label, -kv.Value.Size);
             Metrics.PersistedSnapshotCount.AddBy(label, -1);
             kv.Value.Dispose();
         }
-        _byTo.Clear();
         _ordered.Clear();
         Interlocked.Exchange(ref _memoryBytes, 0);
         Interlocked.Exchange(ref _count, 0);
@@ -188,18 +208,13 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     {
         _ordered.Remove(to);
         if (!_byTo.TryRemove(to, out PersistedSnapshot? snapshot)) return false;
-        // Capture depth before Dispose — From/To stay valid on the still-alive object, but the
-        // underlying reservation/file leases are released by Dispose. The catalog key scopes the
-        // removal to this bucket's entry (the other buckets' entries at the same To carry a
-        // different depth and stay put).
-        long depth = (long)(to.BlockNumber - snapshot.From.BlockNumber);
         Interlocked.Add(ref _memoryBytes, -snapshot.Size);
         Interlocked.Decrement(ref _count);
         PersistedSnapshotLabel label = LabelFor(snapshot);
         Metrics.PersistedSnapshotMemory.AddBy(label, -snapshot.Size);
         Metrics.PersistedSnapshotCount.AddBy(label, -1);
         Interlocked.Increment(ref Metrics._persistedSnapshotPrunes);
-        catalog.Remove(to, depth);
+        catalog.Remove(to, _tier);
         if (logger.IsDebug) logger.Debug($"Released persisted snapshot {_tierName} {snapshot.From.BlockNumber}->{to.BlockNumber}");
         snapshot.Dispose();
         return true;

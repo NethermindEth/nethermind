@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -44,6 +45,42 @@ namespace Nethermind.Core.Test
         {
             ReadOnlySpan<byte> span = new byte[192];
             Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
+        }
+
+        [Test]
+        public void Unsupported_lengths_are_not_cached([Values(0, 93, 128, 192)] int length)
+        {
+            byte[] input = new byte[length];
+            new Random(513).NextBytes(input);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+            KeccakCache.Store(input, in expected);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+                Assert.That(KeccakCache.Compute(input), Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Output_aliasing_the_input_caches_the_input([Values(20, 32, 64)] int length)
+        {
+            byte[] input = new byte[length];
+            new Random(7919 + length).NextBytes(input);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            byte[] buffer = new byte[Math.Max(length, ValueHash256.MemorySize)];
+            input.CopyTo(buffer, 0);
+            ref ValueHash256 output = ref Unsafe.As<byte, ValueHash256>(ref buffer[0]);
+
+            KeccakCache.ComputeTo(buffer.AsSpan(0, length), out output);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(output, Is.EqualTo(expected));
+                Assert.That(KeccakCache.TryGet(input, out ValueHash256 cached), Is.True);
+                Assert.That(cached, Is.EqualTo(expected));
+            }
         }
 
         private string[] GetBucketCollisions()
@@ -121,16 +158,21 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Hash256_32_byte_path()
+        [NonParallelizable]
+        public void Compute_WithUnalignedInput_MatchesUncachedHash(
+            [Values(20, 32, 63, 64, 65, 92)] int length,
+            [Values(0, 1, 7, 15)] int offset,
+            [Values] bool storeComputedHash)
         {
-            // Tests the optimized 32-byte path (most common - Hash256/UInt256)
             Random random = new(42);
             for (int i = 0; i < 1000; i++)
             {
-                byte[] bytes = new byte[32];
-                random.NextBytes(bytes);
+                byte[] buffer = new byte[length + offset];
+                random.NextBytes(buffer);
+                ReadOnlySpan<byte> bytes = buffer.AsSpan(offset, length);
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
+                if (storeComputedHash) KeccakCache.Store(bytes, in expected);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
                 using (Assert.EnterMultipleScope())
                 {
@@ -138,38 +180,18 @@ namespace Nethermind.Core.Test
 
                     // Second call should hit cache
                     Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                    Assert.That(KeccakCache.TryGet(bytes, out ValueHash256 cached), Is.True);
+                    Assert.That(cached, Is.EqualTo(expected));
                 }
             }
         }
 
         [Test]
-        public void Address_20_byte_path()
-        {
-            // Tests the optimized 20-byte path (Address)
-            Random random = new(42);
-            for (int i = 0; i < 1000; i++)
-            {
-                byte[] bytes = new byte[20];
-                random.NextBytes(bytes);
-
-                ValueHash256 expected = ValueKeccak.Compute(bytes);
-                ValueHash256 actual = KeccakCache.Compute(bytes);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(actual, Is.EqualTo(expected));
-
-                    // Second call should hit cache
-                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
-                }
-            }
-        }
-
-        [Test]
-        public void Concurrent_read_write_stress()
+        public void Concurrent_read_write_stress([Values(20, 32, 64)] int length, [Values] bool storeComputedHash)
         {
             // Stress test the seqlock pattern with concurrent readers and writers
             const int iterations = 100_000;
-            byte[] bytes = new byte[32];
+            byte[] bytes = new byte[length];
             new Random(123).NextBytes(bytes);
 
             // Prime the cache
@@ -183,7 +205,7 @@ namespace Nethermind.Core.Test
             int found = 1;
             while (found < 4)
             {
-                byte[] candidate = new byte[32];
+                byte[] candidate = new byte[length];
                 random.NextBytes(candidate);
                 if (KeccakCache.GetBucket(candidate) == bucket)
                 {
@@ -198,8 +220,11 @@ namespace Nethermind.Core.Test
             {
                 int idx = i % 4;
                 byte[] input = collisions[idx];
+                if (storeComputedHash) KeccakCache.Store(input, in expectedValues[idx]);
                 ValueHash256 result = KeccakCache.Compute(input);
                 Assert.That(result, Is.EqualTo(expectedValues[idx]), $"iteration {i}, index {idx}");
+                if (KeccakCache.TryGet(input, out ValueHash256 cached))
+                    Assert.That(cached, Is.EqualTo(expectedValues[idx]), $"cached iteration {i}, index {idx}");
             });
         }
     }

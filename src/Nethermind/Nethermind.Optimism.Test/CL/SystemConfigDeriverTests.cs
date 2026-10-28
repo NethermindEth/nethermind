@@ -17,25 +17,24 @@ public class SystemConfigDeriverTests
 {
     private static readonly Address SystemConfigProxy = new("0x229047fed2591dbec1eF1118d64F7aF3dB9EB290");
 
-    private static readonly AbiSignature AddressSignature = new("address", AbiType.Address);
-    private static readonly AbiSignature BytesSignature = new("bytes", AbiType.DynamicBytes);
-    private static readonly AbiSignature UInt256Signature = new("oneUint256", AbiType.UInt256);
-    private static readonly AbiSignature UInt256TupleSignature = new("twoUint256", AbiType.UInt256, AbiType.UInt256);
+    private static readonly AbiSignature<Address> AddressSignature = new AbiSignature().With(AbiType.Address);
+    private static readonly AbiSignature<byte[]> BytesSignature = new AbiSignature().With(AbiType.Bytes);
+    private static readonly AbiSignature<UInt256> UInt256Signature = new AbiSignature().With(AbiType.UInt256);
+    private static readonly AbiSignature<(UInt256, UInt256)> UInt256TupleSignature = new AbiSignature().With(AbiType.UInt256, AbiType.UInt256);
+
+    private static LogEntryForRpc BuildLog(byte[] data, Hash256 topic) => new()
+    {
+        Address = SystemConfigProxy,
+        Topics = [SystemConfigUpdate.EventABIHash, SystemConfigUpdate.EventVersion0, topic],
+        Data = data,
+    };
 
     private ReceiptForRpc[] BuildReceipts(byte[] data, Hash256 topic) =>
     [
         new()
         {
             Status = StatusCode.Success,
-            Logs =
-            [
-                new()
-                {
-                    Address = SystemConfigProxy,
-                    Topics = [SystemConfigUpdate.EventABIHash, SystemConfigUpdate.EventVersion0, topic],
-                    Data = data,
-                }
-            ]
+            Logs = [BuildLog(data, topic)]
         }
     ];
 
@@ -46,8 +45,8 @@ public class SystemConfigDeriverTests
         rawAddress[19] = 0xAA;
         Address address = new(rawAddress);
 
-        byte[] encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+        byte[] encodedAddress = AbiCodec.Encode(AddressSignature, address);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedAddress);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.Batcher);
 
@@ -63,8 +62,8 @@ public class SystemConfigDeriverTests
     {
         UInt256 scalar = 0xAA;
 
-        byte[] encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
+        byte[] encodedScalar = AbiCodec.Encode(UInt256Signature, scalar);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedScalar);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
@@ -88,8 +87,8 @@ public class SystemConfigDeriverTests
         scalarData[28 + 3] = 0xBB;
         UInt256 scalar = new ValueHash256(scalarData).ToUInt256();
 
-        byte[] encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
+        byte[] encodedScalar = AbiCodec.Encode(UInt256Signature, scalar);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedScalar);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
@@ -105,21 +104,16 @@ public class SystemConfigDeriverTests
         Assert.That(actualConfig, Is.EqualTo(expectedConfig));
     }
 
-    [TestCase(1)]
-    [TestCase(8)]
-    [TestCase(10)]
-    [TestCase(12)]
-    [TestCase(20)]
-    [TestCase(23)]
-    public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_InvalidEcotone(int indexOfNonZero)
+    [Test]
+    public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_InvalidEcotone([Values(1, 8, 10, 12, 20, 23)] int indexOfNonZero)
     {
         byte[] scalarData = new byte[Hash256.Size];
         scalarData[0] = 1;
         scalarData[indexOfNonZero] = 0xFF;
         UInt256 scalar = new ValueHash256(scalarData).ToUInt256();
 
-        byte[] encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
+        byte[] encodedScalar = AbiCodec.Encode(UInt256Signature, scalar);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedScalar);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
@@ -138,8 +132,8 @@ public class SystemConfigDeriverTests
         rawAddress[19] = 0xAA;
         Address address = new(rawAddress);
 
-        byte[] encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+        byte[] encodedAddress = AbiCodec.Encode(AddressSignature, address);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedAddress);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.UnsafeBlockSigner);
 
@@ -158,8 +152,8 @@ public class SystemConfigDeriverTests
     {
         UInt256 gasLimit = 0xBB;
 
-        byte[] encodedGasLimit = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedGasLimit);
+        byte[] encodedGasLimit = AbiCodec.Encode(UInt256Signature, gasLimit);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedGasLimit);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.GasLimit);
 
@@ -180,8 +174,8 @@ public class SystemConfigDeriverTests
         byte[] eip1559ParamsRaw = [0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8];
         UInt256 eip1559Params = new(eip1559ParamsRaw, isBigEndian: true);
 
-        byte[] encodedEIP1559Params = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, eip1559Params);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedEIP1559Params);
+        byte[] encodedEIP1559Params = AbiCodec.Encode(UInt256Signature, eip1559Params);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedEIP1559Params);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.EIP1559Params);
 
@@ -194,6 +188,40 @@ public class SystemConfigDeriverTests
         };
 
         Assert.That(actualConfig, Is.EqualTo(expectedConfig));
+    }
+
+    /// <summary>EIP-8141: the receipt status is the aggregate over the frames, so an update is applied exactly
+    /// when the frame that emitted it succeeded, not when every frame of the transaction did.</summary>
+    [TestCase(TxFrameReceipt.StatusSuccess, 0xBBul)]
+    [TestCase(TxFrameReceipt.StatusFailure, 0ul)]
+    [TestCase(TxFrameReceipt.StatusSkipped, 0ul)]
+    public void UpdateSystemConfigFromL1BLock_FrameTx_AppliesByEmittingFrameStatus(byte updateFrameStatus, ulong expectedGasLimit)
+    {
+        UInt256 gasLimit = 0xBB;
+
+        byte[] encodedGasLimit = AbiCodec.Encode(UInt256Signature, gasLimit);
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedGasLimit);
+        LogEntryForRpc log = BuildLog(encodedData, SystemConfigUpdate.GasLimit);
+
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.FrameTx,
+                Status = StatusCode.Failure, // Aggregate: the second frame reverted
+                Logs = [log],
+                FrameReceipts =
+                [
+                    new FrameReceiptForRpc { Status = updateFrameStatus, Logs = [log] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [] },
+                ]
+            }
+        ];
+
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+
+        Assert.That(actualConfig, Is.EqualTo(new SystemConfig { GasLimit = expectedGasLimit }));
     }
 
     [Test]
@@ -227,8 +255,8 @@ public class SystemConfigDeriverTests
         UInt256 overhead = 0xFF;
         UInt256 scalar = 0xAA;
 
-        byte[] encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
-        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
+        byte[] encodedPair = AbiCodec.Encode(UInt256TupleSignature, (overhead, scalar));
+        byte[] encodedData = AbiCodec.Encode(BytesSignature, encodedPair);
 
         ReceiptForRpc[] receipts = BuildReceipts([.. encodedData, 0x00], SystemConfigUpdate.FeeScalars);
 

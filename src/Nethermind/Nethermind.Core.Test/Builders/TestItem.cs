@@ -3,8 +3,8 @@
 
 using System;
 using System.Net;
-using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -138,7 +138,7 @@ namespace Nethermind.Core.Test.Builders
         {
             EthereumJsonSerializer serializer = new();
             string data = serializer.Serialize(value);
-            return serializer.Deserialize<T>(data);
+            return serializer.Deserialize<T>(data)!;
         }
 
         public static Address GetRandomAddress(Random? random = null)

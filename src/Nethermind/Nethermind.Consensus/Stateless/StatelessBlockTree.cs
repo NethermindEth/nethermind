@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -17,14 +17,22 @@ namespace Nethermind.Consensus.Stateless;
 /// <summary>
 /// This class is part of the StatelessExecution tool. It's intended to be used only inside the processing pipeline.
 /// </summary>
-public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
-    : IBlockTree, IBlockhashCache
+public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
 {
-    private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader =
-        headers.ToDictionary(header => (Hash256AsKey)(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash))), header => header);
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _hashToHeader;
+    private readonly Dictionary<ulong, BlockHeader> _numberToHeader;
 
-    private readonly Dictionary<ulong, BlockHeader> _numberToHeader =
-        headers.ToDictionary(header => header.Number, header => header);
+    public StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
+    {
+        _hashToHeader = new(headers.Count);
+        _numberToHeader = new(headers.Count);
+
+        foreach (BlockHeader header in headers)
+        {
+            _hashToHeader.Add(header.Hash ?? throw new ArgumentNullException(nameof(header.Hash)), header);
+            _numberToHeader.Add(header.Number, header);
+        }
+    }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
         throw new NotSupportedException();
@@ -40,6 +48,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
     public BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options)
         => _numberToHeader.GetValueOrDefault(blockNumber);
+
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
+        => _hashToHeader.GetValueOrDefault(blockHash);
 
     public Hash256? FindBlockHash(ulong blockNumber)
         => _numberToHeader.GetValueOrDefault(blockNumber)?.Hash;
@@ -104,6 +115,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
         WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
+
+    /// <inheritdoc/>
+    public bool TryRewindHead(Hash256 blockHash) => throw new NotSupportedException();
 
     public void UpdateHeadBlock(Hash256 blockHash)
         => throw new NotSupportedException();
@@ -210,6 +224,8 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
 
     public void NewOldestBlock(ulong oldestBlock) => throw new NotImplementedException();
 
+    public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new NotImplementedException();
+
     public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new NotImplementedException();
 
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated
@@ -225,21 +241,10 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
                 ? header?.Hash
                 : null;
 
-    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken)
-    {
-        const ulong length = BlockhashCache.MaxDepth + 1;
-        Hash256[] result = new Hash256[(int)length];
-        result[0] = blockHeader.Hash;
-        for (ulong i = 1; i < length; i++)
-        {
-            if (_numberToHeader.TryGetValue(blockHeader.Number - i, out BlockHeader header))
-            {
-                result[i] = header.Hash;
-            }
-        }
-
-        return Task.FromResult(result);
-    }
+    /// <inheritdoc/>
+    /// <remarks>Returns <see langword="null"/>: <see cref="GetHash"/> answers every lookup from the witness headers.</remarks>
+    public Task<Hash256[]?> Prefetch(BlockHeader blockHeader, CancellationToken cancellationToken) =>
+        Task.FromResult<Hash256[]?>(null);
 
     // No-op: the stateless block tree is its own cache (headers are fixed for the verification scope),
     // there is no auxiliary growing structure to drop. Required by IBlockhashCache.

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -53,7 +52,6 @@ internal sealed class AuRaBlockProducerEnvFactory(
     ISigner engineSigner,
     IGasPriceOracle gasPriceOracle,
     ReportingContractBasedValidator.Cache reportingContractValidatorCache,
-    IAbiEncoder abiEncoder,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
     TxAuRaFilterBuilders txAuRaFilterBuilders,
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey protectedPrivateKey,
@@ -89,7 +87,7 @@ internal sealed class AuRaBlockProducerEnvFactory(
     }
 
     private IAuRaValidator CreateAuRaValidator(IWorldState worldState, ITransactionProcessor transactionProcessor) =>
-        new AuRaValidatorFactory(abiEncoder,
+        new AuRaValidatorFactory(
                 worldState,
                 transactionProcessor,
                 blockTree,
@@ -126,12 +124,10 @@ internal sealed class AuRaBlockProducerEnvFactory(
         {
             IList<IRandomContract> GetRandomContracts(
                 IDictionary<ulong, Address> randomnessContractAddressPerBlock,
-                IAbiEncoder abiEncoder,
                 IReadOnlyTxProcessorSource txProcessorSource,
                 ISigner signerLocal) =>
                 randomnessContractAddressPerBlock
                     .Select(kvp => new RandomContract(
-                        abiEncoder,
                         kvp.Value,
                         txProcessorSource,
                         kvp.Key,
@@ -141,7 +137,7 @@ internal sealed class AuRaBlockProducerEnvFactory(
             if (randomnessContractAddress?.Any() == true)
             {
                 RandomContractTxSource randomContractTxSource = new(
-                    GetRandomContracts(randomnessContractAddress, abiEncoder,
+                    GetRandomContracts(randomnessContractAddress,
                         readOnlyTxProcessingEnvFactory.Create(),
                         signer),
                     new EciesCipher(cryptoRandom),
@@ -175,7 +171,7 @@ internal sealed class AuRaBlockProducerEnvFactory(
         if (txPermissionFilter is not null)
         {
             // we now only need to filter generated transactions here, as regular ones are filtered on TxPoolTxSource filter based on CreateTxSourceFilter method
-            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager, specProvider, blocksConfig);
+            txSource = new FilteredTxSource<GeneratedTransaction>(txSource, txPermissionFilter, logManager, specProvider);
         }
 
         return txSource;

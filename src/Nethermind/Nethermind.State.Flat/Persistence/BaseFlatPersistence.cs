@@ -4,11 +4,11 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -44,17 +44,18 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BaseFlatPersistence
 {
-    private const int AccountKeyLength = 20;
+    internal const int AccountKeyLength = 20;
+    internal const int StorageValueSize = 32;
 
     private const int StoragePrefixPortion = BasePersistence.StoragePrefixPortion;
     private const int StorageSlotKeySize = 32;
     private const int StoragePostfixPortion = 16;
-    private const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
+    internal const int StorageKeyLength = StoragePrefixPortion + StorageSlotKeySize + StoragePostfixPortion;
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
-    private const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+    internal const int RlpSlotValueBufferSize = StorageValueSize + 1;
 
-    private static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
+    internal static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
         return buffer[..AccountKeyLength];
@@ -82,6 +83,13 @@ public static class BaseFlatPersistence
         return buffer[..StorageKeyLength];
     }
 
+    /// <summary>
+    /// Hashed-layout storage key (<c>[4B addrHash | 32B slotHash | 16B addrHash]</c>) — the encoding the history
+    /// columns capture and read.
+    /// </summary>
+    internal static ReadOnlySpan<byte> EncodeStorageKeyHashedWithShortPrefix(Span<byte> buffer, in ValueHash256 addrHash, in ValueHash256 slotHash) =>
+        EncodeStorageKey(buffer, addrHash, slotHash, fullAddressStorageKey: false);
+
     /// <summary>Length of the leading address portion of a storage key, which is also the slot offset.</summary>
     private static int StoragePrefixLength(bool fullAddressStorageKey) =>
         fullAddressStorageKey ? AccountKeyLength : StoragePrefixPortion;
@@ -93,10 +101,39 @@ public static class BaseFlatPersistence
     private static ReadOnlySpan<byte> StorageAddressSuffix(in ValueHash256 addrHash, bool fullAddressStorageKey) =>
         fullAddressStorageKey ? default : addrHash.Bytes[StoragePrefixPortion..(StoragePrefixPortion + StoragePostfixPortion)];
 
+    internal static UInt256 DecodeSlotValue(ReadOnlySpan<byte> data)
+    {
+        if (data.Length > StorageValueSize) ThrowInvalidLength();
+        return new UInt256(data, isBigEndian: true);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInvalidLength() => throw new ArgumentException("Slot value cannot exceed 32 bytes", nameof(data));
+    }
+
+    /// <summary>
+    /// Encodes a storage slot value into <paramref name="buffer"/> exactly as the flat Storage column stores it:
+    /// the stripped (leading-zeros-removed) bytes, RLP-wrapped when <paramref name="rlpWrapSlots"/> is set.
+    /// <paramref name="buffer"/> must be at least <see cref="RlpSlotValueBufferSize"/> bytes. Returns the number
+    /// of bytes written. Shared so callers (flat writes and the history changeset) produce byte-identical values.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static int EncodeSlotValue(in UInt256 slot, bool rlpWrapSlots, Span<byte> buffer)
+    {
+        Unsafe.SkipInit(out EvmWord word);
+        ReadOnlySpan<byte> withoutLeadingZeros = slot.ToMinimalBigEndian(ref word);
+        if (!rlpWrapSlots)
+        {
+            withoutLeadingZeros.CopyTo(buffer);
+            return withoutLeadingZeros.Length;
+        }
+
+        return Rlp.Encode(withoutLeadingZeros, buffer);
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
         throw new InvalidConfigurationException(
-            $"Flat DB storage slot value is {length} bytes, exceeding the {SlotValue.ByteCount}-byte maximum " +
+            $"Flat DB storage slot value is {length} bytes, exceeding the {StorageValueSize}-byte maximum " +
             $"(rlpWrapSlots={rlpWrapSlots}). The slot-encoding metadata is likely missing or mismatched " +
             $"(RLP-wrapped values read as raw). Re-sync the flat DB to recover.", -1);
 
@@ -108,8 +145,61 @@ public static class BaseFlatPersistence
         bool fullAddressStorageKey = false
     ) : BasePersistence.IHashedFlatReader
     {
+        // One native batch per this many keys keeps the key scratch on the stack.
+        private const int PrefetchBatchSize = 64;
+
         public bool IsPreimageMode => isPreimageMode;
 
+        /// <summary>True when a store reads ahead; preimage keys are not hashed, so the hashed prefetch keys do not apply.</summary>
+        public bool SupportsPrefetch => !isPreimageMode && (state is IReadPrefetcher || storage is IReadPrefetcher);
+
+        [SkipLocalsInit]
+        public bool IsAccountCached(in ValueHash256 account) =>
+            state is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], account));
+
+        [SkipLocalsInit]
+        public bool IsSlotCached(in ValueHash256 account, in ValueHash256 slot) =>
+            storage is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeStorageKey(stackalloc byte[StorageKeyLength], account, slot, fullAddressStorageKey));
+
+        [SkipLocalsInit]
+        public void Prefetch<TKeys>(ref TKeys keys, CancellationToken cancellationToken) where TKeys : struct, BasePersistence.IHashedPrefetchKeys, allows ref struct
+        {
+            int accounts = keys.AccountCount;
+            if (accounts != 0 && state is IReadPrefetcher accountPrefetcher)
+            {
+                Span<byte> batch = stackalloc byte[PrefetchBatchSize * AccountKeyLength];
+                for (int start = 0; start < accounts; start += PrefetchBatchSize)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    int count = Math.Min(PrefetchBatchSize, accounts - start);
+                    for (int i = 0; i < count; i++)
+                    {
+                        keys.GetAccount(start + i, out ValueHash256 account);
+                        EncodeAccountKeyHashed(batch.Slice(i * AccountKeyLength, AccountKeyLength), account);
+                    }
+                    accountPrefetcher.Prefetch(batch[..(count * AccountKeyLength)], AccountKeyLength);
+                }
+            }
+
+            int slots = keys.SlotCount;
+            if (slots != 0 && storage is IReadPrefetcher storagePrefetcher)
+            {
+                Span<byte> batch = stackalloc byte[PrefetchBatchSize * StorageKeyLength];
+                for (int start = 0; start < slots; start += PrefetchBatchSize)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    int count = Math.Min(PrefetchBatchSize, slots - start);
+                    for (int i = 0; i < count; i++)
+                    {
+                        keys.GetSlot(start + i, out ValueHash256 account, out ValueHash256 slot);
+                        EncodeStorageKey(batch.Slice(i * StorageKeyLength, StorageKeyLength), account, slot, fullAddressStorageKey);
+                    }
+                    storagePrefetcher.Prefetch(batch[..(count * StorageKeyLength)], StorageKeyLength);
+                }
+            }
+        }
+
+        [SkipLocalsInit]
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {
             ReadOnlySpan<byte> key = EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], address);
@@ -117,7 +207,7 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue)
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue)
         {
             ReadOnlySpan<byte> storageKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], address, slot, fullAddressStorageKey);
 
@@ -132,32 +222,8 @@ public static class BaseFlatPersistence
                 value = ctx.DecodeByteArraySpan();
             }
 
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
-            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
-            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
-            int len = value.Length;
-            if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
-
-            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
-            if (len == SlotValue.ByteCount)
-            {
-                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-            }
-            else
-            {
-                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-
-                // Zero-initialize the leading bytes before copying the value
-                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-
-                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-
-                Unsafe.CopyBlockUnaligned(
-                    ref destPtr,
-                    ref MemoryMarshal.GetReference(value),
-                    (uint)len);
-            }
+            if (value.Length > StorageValueSize) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
+            outValue = new UInt256(value, isBigEndian: true);
 
             return true;
         }
@@ -200,7 +266,6 @@ public static class BaseFlatPersistence
     public struct AccountIterator(ISortedView view) : IPersistence.IFlatIterator
     {
         private ValueHash256 _currentKey = default;
-        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
@@ -212,12 +277,13 @@ public static class BaseFlatPersistence
             // Build 32-byte ValueHash256 from 20-byte key (zero-padded)
             _currentKey = ValueKeccak.Zero;
             view.CurrentKey.CopyTo(_currentKey.BytesAsSpan);
-            _currentValue = view.CurrentValue.ToArray();
             return true;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        // Not copied: valid only until the next MoveNext, per IFlatIterator contract.
+        public ReadOnlySpan<byte> CurrentValue => view.CurrentValue;
 
         public void Dispose() => view.Dispose();
     }
@@ -226,7 +292,6 @@ public static class BaseFlatPersistence
     {
         // 16-byte suffix to match
         private ValueHash256 _currentKey = default;
-        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
@@ -241,21 +306,26 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(slotOffset, StorageSlotKeySize));
-                ReadOnlySpan<byte> slotValue = rlpWrapSlots
-                    ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
-                    : view.CurrentValue;
+                ReadOnlySpan<byte> slotValue = DecodeCurrentValue();
                 // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
                 // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
                 // bad value that would build wrong trie nodes.
-                if (slotValue.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
-                _currentValue = slotValue.ToArray();
+                if (slotValue.Length > StorageValueSize) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
                 return true;
             }
             return false;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        // Re-derived per access instead of copied per slot; valid only until the next MoveNext,
+        // per IFlatIterator contract.
+        public ReadOnlySpan<byte> CurrentValue => DecodeCurrentValue();
+
+        private readonly ReadOnlySpan<byte> DecodeCurrentValue() =>
+            rlpWrapSlots
+                ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
+                : view.CurrentValue;
 
         public void Dispose() => view.Dispose();
     }
@@ -277,7 +347,19 @@ public static class BaseFlatPersistence
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
             BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey, StoragePrefixLength(fullAddressStorageKey));
             BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
-                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(accountPath, fullAddressStorageKey));
+                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(accountPath, fullAddressStorageKey), flags);
+        }
+
+        [SkipLocalsInit]
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            int prefixLength = StoragePrefixLength(fullAddressStorageKey);
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            toPath.Bytes[..prefixLength].CopyTo(lastKey);
+            lastKey[prefixLength..].Fill(0xff);
+            BasePersistence.DeleteKeysOfAccountRange(storageSnap, storage, fromPath.Bytes[..prefixLength], lastKey,
+                StorageKeyLength, prefixOffset: 0, prefixLength, suffixOffset: prefixLength + StorageSlotKeySize,
+                fromPath.Bytes[..AccountKeyLength], toPath.Bytes[..AccountKeyLength], flags);
         }
 
         public void RemoveAccount(in ValueHash256 addrHash)
@@ -287,23 +369,15 @@ public static class BaseFlatPersistence
         }
 
         [SkipLocalsInit]
-        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? slot)
+        public void SetStorage(in ValueHash256 addrHash, in ValueHash256 slotHash, in UInt256? slot)
         {
             ReadOnlySpan<byte> theKey = EncodeStorageKey(stackalloc byte[StorageKeyLength], addrHash, slotHash, fullAddressStorageKey);
 
             if (slot.HasValue)
             {
-                ReadOnlySpan<byte> withoutLeadingZeros = slot.Value.AsSpan.WithoutLeadingZeros();
-                if (rlpWrapSlots)
-                {
-                    Span<byte> rlpBuffer = stackalloc byte[RlpSlotValueBufferSize];
-                    int written = Rlp.Encode(withoutLeadingZeros, rlpBuffer);
-                    storage.PutSpan(theKey, rlpBuffer[..written], flags);
-                }
-                else
-                {
-                    storage.PutSpan(theKey, withoutLeadingZeros, flags);
-                }
+                Span<byte> valueBuffer = stackalloc byte[RlpSlotValueBufferSize];
+                int written = EncodeSlotValue(slot.Value, rlpWrapSlots, valueBuffer);
+                storage.PutSpan(theKey, valueBuffer[..written], flags);
             }
             else
             {
@@ -341,7 +415,7 @@ public static class BaseFlatPersistence
             fromPath.Bytes[..AccountKeyLength].CopyTo(firstKey);
             toPath.Bytes[..AccountKeyLength].CopyTo(lastKey);
             lastKey[AccountKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength);
+            BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength, flags);
         }
 
         [SkipLocalsInit]
@@ -353,7 +427,7 @@ public static class BaseFlatPersistence
             EncodeStorageKey(lastKey[..StorageKeyLength], addressHash, toPath, fullAddressStorageKey);
             lastKey[StorageKeyLength] = 0;
             BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
-                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(addressHash, fullAddressStorageKey));
+                StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(addressHash, fullAddressStorageKey), flags);
         }
     }
 }

@@ -10,9 +10,8 @@ namespace Nethermind.Analyzers.Test;
 
 public class BannedConcurrentDictionaryKeysValuesAnalyzerTests
 {
-    [TestCase("Keys")]
-    [TestCase("Values")]
-    public async Task ConcurrentDictionary_Keys_or_Values_reports_diagnostic(string member)
+    [Test]
+    public async Task ConcurrentDictionary_Keys_or_Values_reports_diagnostic([Values("Keys", "Values")] string member)
     {
         string source = $$"""
             using System.Collections.Concurrent;
@@ -29,9 +28,8 @@ public class BannedConcurrentDictionaryKeysValuesAnalyzerTests
         await Verify(source, Diagnostic().WithLocation(0).WithArguments(member));
     }
 
-    [TestCase("Keys")]
-    [TestCase("Values")]
-    public async Task NonBlocking_ConcurrentDictionary_Keys_or_Values_reports_diagnostic(string member)
+    [Test]
+    public async Task NonBlocking_ConcurrentDictionary_Keys_or_Values_reports_diagnostic([Values("Keys", "Values")] string member)
     {
         // Stub a NonBlocking.ConcurrentDictionary<TKey,TValue> with the same shape
         // since the analyzer matches on full metadata name.

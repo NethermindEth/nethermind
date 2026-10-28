@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -16,36 +21,77 @@ public class SnapSyncRunnerTests
 {
     public enum DispatcherOutcome { Completes, Throws, Cancels }
 
+    // Only a shutdown saves a checkpoint on the way out: it stops every request first, so the checkpoint loses nothing.
     [TestCase(DispatcherOutcome.Completes, null)]
     [TestCase(DispatcherOutcome.Throws, typeof(InvalidOperationException))]
     [TestCase(DispatcherOutcome.Cancels, typeof(OperationCanceledException))]
-    public async Task Run_invokes_lifecycle_in_order(DispatcherOutcome outcome, Type? expectedException)
+    public void Finalizes_whatever_the_dispatcher_does(DispatcherOutcome outcome, Type? expectedException)
     {
-        List<string> calls = [];
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
-        factory.When(f => f.EnsureInitialize()).Do(_ => calls.Add("EnsureInitialize"));
-        factory.When(f => f.FinalizeSync()).Do(_ => calls.Add("FinalizeSync"));
+        factory.SupportsCheckpoints.Returns(true);
+        using ProgressTracker tracker = CreateProgressTracker(factory);
 
         using CancellationTokenSource cts = new();
         if (outcome == DispatcherOutcome.Cancels) cts.Cancel();
 
         SnapSyncRunner runner = new(token =>
         {
-            calls.Add("dispatcher");
+            tracker.IsFinished(out SnapSyncBatch? batch);
+            batch?.Dispose();
             return outcome switch
             {
                 DispatcherOutcome.Throws => throw new InvalidOperationException("boom"),
                 DispatcherOutcome.Cancels => throw new OperationCanceledException(token),
                 _ => Task.CompletedTask,
             };
-        }, factory);
+        }, factory, tracker);
 
-        Func<Task> act = () => runner.Run(cts.Token);
-        if (expectedException is null)
-            Assert.That(async () => await act(), Throws.Nothing);
-        else
-            Assert.That(async () => await act(), Throws.InstanceOf(expectedException));
+        Assert.That(async () => await runner.Run(cts.Token),
+            expectedException is null ? Throws.Nothing : Throws.InstanceOf(expectedException));
 
-        Assert.That(calls, Is.EqualTo(new[] { "EnsureInitialize", "dispatcher", "FinalizeSync" }));
+        Received.InOrder(() =>
+        {
+            factory.EnsureInitialize();
+            factory.FinalizeSync();
+        });
+        factory.Received(outcome == DispatcherOutcome.Cancels ? 1 : 0).SaveCheckpoint(Arg.Is<SnapCheckpoint?>(static c => c != null));
+    }
+
+    // Healing restarts snap sync in the same process after a reorg, so a run has to start from scratch
+    // rather than resume the partitions the previous one consumed.
+    [Test]
+    public async Task Requests_the_account_ranges_again_when_run_twice()
+    {
+        ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
+        using ProgressTracker tracker = CreateProgressTracker(factory);
+        SnapSyncRunner runner = new(_ => Task.CompletedTask, factory, tracker);
+
+        await runner.Run(default);
+        ConsumeAccountRange(tracker);
+        Assert.That(tracker.IsSnapGetRangesFinished(), Is.True);
+
+        await runner.Run(default);
+
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
+        Assert.That(tracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+#pragma warning restore NUnit2045
+        Assert.That(batch!.AccountRangeRequest, Is.Not.Null);
+        batch.Dispose();
+    }
+
+    private static void ConsumeAccountRange(ProgressTracker tracker)
+    {
+        tracker.IsFinished(out SnapSyncBatch? batch);
+        ValueHash256 limit = batch!.AccountRangeRequest!.LimitHash!.Value;
+        tracker.UpdateAccountRangePartitionProgress(limit, Keccak.MaxValue, false);
+        tracker.ReportAccountRangePartitionFinished(limit);
+        batch.Dispose();
+    }
+
+    private static ProgressTracker CreateProgressTracker(ISnapTrieFactory factory)
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
+        SyncConfig syncConfig = new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 };
+        return new(factory, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }

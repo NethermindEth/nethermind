@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Security;
 using System.Threading.Tasks;
@@ -42,6 +43,31 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task Personal_list_accounts_reports_wallet_failure()
+        {
+            const string failureMessage = "Wallet account enumeration failed.";
+            InvalidOperationException exception = new(failureMessage);
+            IWallet wallet = Substitute.For<IWallet>();
+            wallet.GetAccounts().Returns(_ => throw exception);
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(
+                _ecdsa,
+                wallet,
+                _keyStore,
+                new OneLoggerLogManager(new ILogger(logger)));
+
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain("\"error\""));
+                Assert.That(serialized, Does.Not.Contain(failureMessage));
+                logger.Received(1).Error("Error while getting key addresses from wallet.", exception);
+            }
+        }
+
+        [Test]
         public async Task Personal_import_raw_key()
         {
             Address expectedAddress = new("707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072");
@@ -61,8 +87,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_newAccount", passphrase);
             Address[] accountsNow = _wallet.GetAccounts();
-            Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
-            Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
+                Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
+            }
         }
 
         [Test]
@@ -76,8 +105,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
 
             string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), passphrase);
-            Assert.That(signed, Does.Contain("\"result\""));
-            Assert.That(_wallet.IsUnlocked(address), Is.False, "passphrase sign must not persistently unlock the account");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signed, Does.Contain("\"result\""));
+                Assert.That(_wallet.IsUnlocked(address), Is.False, "passphrase sign must not persistently unlock the account");
+            }
 
             string withoutPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString());
             Assert.That(withoutPassphrase, Does.Contain("\"error\""));
@@ -92,7 +124,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IKeyStore keyStore = Substitute.For<IKeyStore>();
             keyStore.GetKey(address, Arg.Any<SecureString>())
-                .Returns<(PrivateKey, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
+                .Returns<(PrivateKey?, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
                     ? (new PrivateKey(privateKeyHex), Result.Success)
                     : (null!, Result.Fail("authentication failed")));
 
@@ -100,8 +132,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, wallet, keyStore);
 
             string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), correctPassphrase);
-            Assert.That(signed, Does.Contain("\"result\""));
-            Assert.That(wallet.IsUnlocked(address), Is.False, "passphrase sign must not unlock the keystore account");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signed, Does.Contain("\"result\""));
+                Assert.That(wallet.IsUnlocked(address), Is.False, "passphrase sign must not unlock the keystore account");
+            }
 
             string wrongPassphrase = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", "0xdeadbeef", address.ToString(), "wrong");
             Assert.That(wrongPassphrase, Does.Contain("\"error\""));

@@ -92,8 +92,11 @@ internal class ProposedBlockTests
 
         await blockChain.SimulateVoting();
 
-        Assert.That(blockChain.XdcContext.HighestCommitBlock, Is.EqualTo(beforeTimeoutFinalized));
-        Assert.That(blockChain.XdcContext.HighestQC, Is.Not.EqualTo(beforeTimeoutQC));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockChain.XdcContext.HighestCommitBlock, Is.EqualTo(beforeTimeoutFinalized));
+            Assert.That(blockChain.XdcContext.HighestQC, Is.Not.EqualTo(beforeTimeoutQC));
+        }
     }
 
     [Test]
@@ -147,10 +150,8 @@ internal class ProposedBlockTests
         Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.Hash, Is.EqualTo(head.Hash!));
     }
 
-    [TestCase(1)]
-    [TestCase(10)]
-    [TestCase(30)]
-    public async Task CanBuildAFinalizedChain(int count)
+    [Test]
+    public async Task CanBuildAFinalizedChain([Values(1, 10, 30)] int count)
     {
         using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(0, true);
         blockChain.ChangeReleaseSpec((s) =>
@@ -168,9 +169,12 @@ internal class ProposedBlockTests
         for (ulong i = 1; i <= (ulong)count; i++)
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + i));
-            Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + i));
-            Assert.That(blockChain.XdcContext.HighestCommitBlock.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2UL));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + i));
+                Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + i));
+                Assert.That(blockChain.XdcContext.HighestCommitBlock.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2UL));
+            }
         }
     }
 
@@ -260,20 +264,27 @@ internal class ProposedBlockTests
 
         // Round-trip through RLP to simulate receiving the block from a peer and remove IsSelfMined
         BlockDecoder blockDecoder = mainChain.Container.Resolve<BlockDecoder>();
-        Block externalForkBlock = blockDecoder.Decode(blockDecoder.Encode(forkBlock).Bytes);
+        Block externalForkBlock = blockDecoder.Decode(blockDecoder.Encode(forkBlock).Bytes)
+            ?? throw new InvalidOperationException("Expected a decoded fork block.");
         AddBlockResult result = mainChain.BlockTree.SuggestBlock(externalForkBlock);
 
-        Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
 
-        Assert.That(mainChain.StateReader.HasStateForBlock(mainBlock.Header), Is.True);
-        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.False);
+            Assert.That(mainChain.StateReader.HasStateForBlock(mainBlock.Header), Is.True);
+            Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.False);
+        }
 
         mainChain.StartHotStuffModule();
 
         mainChain.CreateAndCommitQC((XdcBlockHeader)forkBlock.Header);
         await mainChain.TriggerBlockProposal();
 
-        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.True);
-        Assert.That(mainChain.BlockTree.Head!.Header.ParentHash, Is.EqualTo(externalForkBlock.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.True);
+            Assert.That(mainChain.BlockTree.Head!.Header.ParentHash, Is.EqualTo(externalForkBlock.Hash));
+        }
     }
 }

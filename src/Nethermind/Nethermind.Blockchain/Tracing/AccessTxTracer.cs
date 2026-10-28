@@ -14,6 +14,7 @@ namespace Nethermind.Blockchain.Tracing;
 public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 {
     public override bool IsTracingReceipt => true;
+    public override bool IsCollectingLogs => false;
     public override bool IsTracingAccess => true;
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
@@ -24,17 +25,18 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
-        Dictionary<Address, ISet<UInt256>> dictionary = [];
+        // Geth orders the list by address and each address's keys ascending; execution-apis leaves the order open.
+        SortedDictionary<Address, SortedSet<UInt256>?> dictionary = new(new AddressComparer());
         foreach (Address address in accessedAddresses)
         {
-            dictionary.Add(address, new HashSet<UInt256>());
+            dictionary.Add(address, null);
         }
 
         foreach (StorageCell storageCell in accessedStorageCells)
         {
-            if (!dictionary.TryGetValue(storageCell.Address, out ISet<UInt256> set))
+            if (!dictionary.TryGetValue(storageCell.Address, out SortedSet<UInt256>? set) || set is null)
             {
-                dictionary[storageCell.Address] = set = new HashSet<UInt256>();
+                dictionary[storageCell.Address] = set = [];
             }
 
             set.Add(storageCell.Index);
@@ -43,19 +45,22 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
         for (int i = 0; i < addressesToOptimize.Length; i++)
         {
             Address address = addressesToOptimize[i];
-            if (dictionary.TryGetValue(address, out ISet<UInt256> set) && set.Count == 0)
+            if (dictionary.TryGetValue(address, out SortedSet<UInt256>? set) && set is null)
             {
                 dictionary.Remove(address);
             }
         }
 
         AccessList.Builder builder = new();
-        foreach ((Address address, ISet<UInt256> storageKeys) in dictionary)
+        foreach ((Address address, SortedSet<UInt256>? storageKeys) in dictionary)
         {
             builder.AddAddress(address);
-            foreach (UInt256 storageKey in storageKeys)
+            if (storageKeys is not null)
             {
-                builder.AddStorage(storageKey);
+                foreach (UInt256 storageKey in storageKeys)
+                {
+                    builder.AddStorage(storageKey);
+                }
             }
         }
 

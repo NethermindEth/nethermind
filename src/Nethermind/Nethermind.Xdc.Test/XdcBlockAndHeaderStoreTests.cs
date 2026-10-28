@@ -76,12 +76,13 @@ internal class XdcBlockAndHeaderStoreTests
         parent.Validators = [1, 2, 3];
         parent.Validator = [4, 5, 6];
         parent.Penalties = [7, 8, 9];
+        parent.SlotNumber = 3;
 
         BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
 
         Assert.That(child, Is.TypeOf<XdcBlockHeader>());
         XdcBlockHeader xdcChild = (XdcBlockHeader)child;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(xdcChild.ParentHash, Is.EqualTo(parent.Hash!));
             Assert.That(xdcChild.Number, Is.EqualTo(parent.Number + 1));
@@ -89,11 +90,25 @@ internal class XdcBlockAndHeaderStoreTests
             Assert.That(xdcChild.ExtraData, Is.Empty);
             Assert.That(xdcChild.MixHash, Is.EqualTo(Hash256.Zero));
             Assert.That(xdcChild.RequestsHash, Is.EqualTo(parent.RequestsHash!));
+            Assert.That(xdcChild.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
             Assert.That(xdcChild.Validators, Is.Null);
             Assert.That(xdcChild.Validator, Is.Null);
             Assert.That(xdcChild.Penalties, Is.Null);
             Assert.That(xdcChild.ExtraConsensusData, Is.Null);
-        });
+        }
+    }
+
+    // FromBlockHeader builds the genesis header, which carries a slot of its own once EIP-7843 is active.
+    [Test]
+    public void FromBlockHeader_ShouldCarrySlotNumber()
+    {
+        BlockHeader src = Build.A.BlockHeader.WithSlotNumber(3).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(XdcBlockHeader.FromBlockHeader(src).SlotNumber, Is.EqualTo(3));
+            Assert.That(XdcSubnetBlockHeader.FromBlockHeader(src).SlotNumber, Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -102,19 +117,21 @@ internal class XdcBlockAndHeaderStoreTests
         XdcSubnetBlockHeader parent = Build.A.XdcSubnetBlockHeader().WithGeneratedExtraConsensusData().TestObject;
         parent.Hash = TestItem.KeccakA;
         parent.NextValidators = [1, 2, 3];
+        parent.SlotNumber = 3;
 
         BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
 
         Assert.That(child, Is.TypeOf<XdcSubnetBlockHeader>());
         XdcSubnetBlockHeader subnetChild = (XdcSubnetBlockHeader)child;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(subnetChild.ParentHash, Is.EqualTo(parent.Hash));
             Assert.That(subnetChild.Number, Is.EqualTo(parent.Number + 1));
             Assert.That(subnetChild.Timestamp, Is.EqualTo(parent.Timestamp + 12));
             Assert.That(subnetChild.ExtraData, Is.Empty);
             Assert.That(subnetChild.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(subnetChild.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
             Assert.That(subnetChild.NextValidators, Is.Null);
-        });
+        }
     }
 }

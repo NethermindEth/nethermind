@@ -9,7 +9,6 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
@@ -77,11 +76,10 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         List<Transaction> result = [];
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
-            foreach (LogEntryForRpc log in receipt.Logs)
+            foreach (LogEntryForRpc log in CommittedLogs.Of(receipt))
             {
                 if (log.Address != engineParameters.OptimismPortalProxy) continue;
-                if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
+                if (log.Topics is not { Length: > 0 } topics || topics[0] != DepositEvent.ABIHash) continue;
 
                 try
                 {
@@ -169,7 +167,7 @@ public readonly ref struct DepositLogEventV0
     public bool IsCreation { get; init; }
     public ReadOnlySpan<byte> Data { get; init; }
 
-    private static readonly AbiSignature Signature = new(string.Empty, AbiType.DynamicBytes);
+    private static readonly AbiSignature<byte[]> Signature = new AbiSignature().With(AbiType.Bytes);
 
     public byte[] ToBytes()
     {
@@ -191,14 +189,14 @@ public readonly ref struct DepositLogEventV0
             span.TakeAndMove(1)[0] = (byte)(IsCreation ? 1 : 0);
             Data.CopyTo(span.TakeAndMove(Data.Length));
         }
-        byte[] result = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, Signature, opaqueData[..opaqueDataLength]);
+        byte[] result = AbiCodec.Encode(Signature, opaqueData[..opaqueDataLength]);
         ArrayPool<byte>.Shared.Return(opaqueData);
         return result;
     }
 
     public static DepositLogEventV0 FromBytes(byte[] source) // TODO: Add `ReadOnlySpan<byte>` overloads
     {
-        byte[] opaqueData = (byte[])AbiEncoder.Instance.Decode(AbiEncodingStyle.None, Signature, source)[0];
+        byte[] opaqueData = AbiCodec.Decode(Signature, source);
         Span<byte> span = opaqueData;
 
         return new()

@@ -23,11 +23,13 @@ public static class StateOverridesExtensions
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec)
     {
+        // As in geth, each simulated block starts from the spec's precompiles, even one without overrides.
+        overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            overridableCodeInfoRepository.ResetPrecompileOverrides();
-            foreach ((Address address, AccountOverride accountOverride) in overrides)
+            foreach ((Address address, AccountOverride? value) in overrides)
             {
+                AccountOverride accountOverride = value ?? new AccountOverride();
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
                     throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
 
@@ -44,24 +46,31 @@ public static class StateOverridesExtensions
                     state.UpdateNonce(account, accountOverride, address);
                 }
 
-                state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
+                state.UpdateCode(overridableCodeInfoRepository, spec, overrides, accountOverride, address);
                 state.UpdateState(accountOverride, address);
             }
         }
     }
 
+    /// <summary>Applies <paramref name="overrides"/> to <paramref name="state"/> and commits them.</summary>
+    /// <remarks>
+    /// With <paramref name="merkleize"/> set to <c>false</c>, the commit leaves storage roots, the trie at <paramref name="blockNumber"/>
+    /// and the state root alone. The overrides are then visible only through <paramref name="state"/>, which suits a call
+    /// that reads the overridden state and never resolves it through a root.
+    /// </remarks>
     public static void ApplyStateOverrides(
         this IWorldState state,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        ulong blockNumber)
+        ulong blockNumber,
+        bool merkleize = true)
     {
-        // EIP-158 must not delete accounts whose code/nonce were zeroed
-        // while storage remains, or EIP-7610 CREATE collision checks will miss it.
         spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-        state.Commit(spec, commitRoots: true);
+        state.Commit(spec, commitRoots: merkleize);
+        if (!merkleize) return;
+
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }
@@ -72,7 +81,7 @@ public static class StateOverridesExtensions
         {
             foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), value.ToUInt256());
             }
         }
 
@@ -87,19 +96,31 @@ public static class StateOverridesExtensions
         }
     }
 
+    /// <summary>
+    /// Returns the error for an invalid precompile move, or <see langword="null"/> if the move is valid.
+    /// </summary>
+    /// <param name="source">The account to move.</param>
+    /// <param name="destination">The account to move the precompile to.</param>
+    /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
+    /// <param name="overrides">The account overrides to apply.</param>
+    public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
+        !isPrecompile ? $"Account {source} is not a precompile"
+        : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
+        : null;
+
     private static void UpdateCode(
         this IWorldState stateProvider,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
+        Dictionary<Address, AccountOverride> overrides,
         AccountOverride accountOverride,
         Address address)
     {
         if (accountOverride.MovePrecompileToAddress is not null)
         {
-            if (!overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile)
-            {
-                throw new ArgumentException($"Account {address} is not a precompile");
-            }
+            string? error = GetPrecompileMoveError(address, accountOverride.MovePrecompileToAddress,
+                overridableCodeInfoRepository.GetCachedCodeInfoNoDelegation(address, currentSpec).IsPrecompile, overrides);
+            if (error is not null) throw new ArgumentException(error);
 
             overridableCodeInfoRepository.MovePrecompile(
                 currentSpec,
@@ -109,12 +130,18 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            OverrideCodeCache.Resolve(accountOverride.Code, out ValueHash256 codeHash, out CodeInfo codeInfo);
+            stateProvider.InsertCode(address, codeHash, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                codeInfo);
+        }
+        else if (accountOverride.MovePrecompileToAddress is null && overridableCodeInfoRepository.GetPrecompile(address, currentSpec) is not null)
+        {
+            // As in geth, any override of a precompile's address turns it into an ordinary account.
+            overridableCodeInfoRepository.SetCodeOverride(currentSpec, address, new CodeInfo(stateProvider.GetCode(address)));
         }
     }
 
@@ -161,4 +188,3 @@ public static class StateOverridesExtensions
         }
     }
 }
-

@@ -177,6 +177,7 @@ public class BeaconHeadersSyncTests
     public async Task Finishes_when_all_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
         blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         ISyncReport report = Substitute.For<ISyncReport>();
@@ -215,7 +216,7 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
-    public void Feed_able_to_sync_when_new_pivot_is_set()
+    public async Task Feed_able_to_sync_when_new_pivot_is_set()
     {
         BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(1000).TestObject;
         Block genesisBlock = syncedBlockTree.FindBlock(syncedBlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
@@ -233,19 +234,19 @@ public class BeaconHeadersSyncTests
 
         Context ctx = new() { BlockTree = blockTree, SyncConfig = syncConfig, BeaconPivot = pivot };
 
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0UL, 501UL);
+        await BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 0UL, 501UL);
 
         // move best pointers forward as proxy for chain merge
         Block highestBlock = syncedBlockTree.FindBlock(700, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
 
         pivot.EnsurePivot(syncedBlockTree.FindHeader(900, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700UL, 701UL);
+        await BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700UL, 701UL);
 
         highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900UL, 901UL);
+        await BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900UL, 901UL);
     }
 
     [Test]
@@ -270,14 +271,56 @@ public class BeaconHeadersSyncTests
             parent = block;
         }
 
-        Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
-        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
-        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
+        }
+        await BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
         using HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
-        Assert.That(result, Is.Null);
-        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
-        Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
-        Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(6));
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
+            Assert.That(ctx.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Feed_does_not_join_at_known_level_whose_header_was_lost()
+    {
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+        BlockTreeBuilder persisted = Build.A.BlockTree();
+        BlockTree beforeCrash = persisted.TestObject;
+        for (ulong i = 0; i <= 6; i++)
+        {
+            beforeCrash.SuggestBlock(syncedBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!);
+        }
+
+        // Crash after block 6's chain level persisted but before its deferred header and body writes landed.
+        Hash256 lostHash = syncedBlockTree.FindHeader(6, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        persisted.HeaderStore.Delete(lostHash);
+        persisted.BlockStore.Delete(6, lostHash);
+
+        BlockTree blockTree = Build.A.BlockTree().WithDatabaseFrom(persisted).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.IsKnownBlock(6, lostHash), Is.True);
+            Assert.That(blockTree.FindHeader(lostHash, BlockTreeLookupOptions.None, 6), Is.Null);
+        }
+
+        BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
+        IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
+        Context ctx = new() { BlockTree = blockTree, BeaconPivot = pivot };
+
+        await BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 6);
+        using HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(blockTree.FindHeader(lostHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, 6), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -300,8 +343,11 @@ public class BeaconHeadersSyncTests
         Hash256 headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         Hash256 lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
-        Assert.That(invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Hash256? storedLastValidHash), Is.True);
-        Assert.That(storedLastValidHash, Is.EqualTo(lastValidHeader));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Hash256? storedLastValidHash), Is.True);
+            Assert.That(storedLastValidHash, Is.EqualTo(lastValidHeader));
+        }
     }
 
     [Test]
@@ -310,6 +356,7 @@ public class BeaconHeadersSyncTests
         // PivotDestinationNumber rising above _lowestRequestedHeaderNumber mid-sync must not produce
         // a batch with negative RequestSize.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
 
@@ -400,7 +447,7 @@ public class BeaconHeadersSyncTests
         Assert.That(request, Is.Null);
     }
 
-    private async void BuildAndProcessHeaderSyncBatches(
+    private async Task BuildAndProcessHeaderSyncBatches(
         Context ctx,
         BlockTree blockTree,
         BlockTree syncedBlockTree,
@@ -420,7 +467,7 @@ public class BeaconHeadersSyncTests
             Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(pivotHeader?.Number));
         }
 
-        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
+        await BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
 
         HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
         using (Assert.EnterMultipleScope())
@@ -437,7 +484,7 @@ public class BeaconHeadersSyncTests
         }
     }
 
-    private async void BuildHeadersSyncBatches(
+    private async Task BuildHeadersSyncBatches(
         Context ctx,
         BlockTree blockTree,
         BlockTree syncedBlockTree,
@@ -456,8 +503,11 @@ public class BeaconHeadersSyncTests
             if (lowestHeaderNumber < endLowestBeaconHeader) lowestHeaderNumber = endLowestBeaconHeader;
 
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
-            Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lowestHeader?.Number));
-            Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(lowestHeader?.Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(lowestHeader?.Number));
+                Assert.That(blockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(lowestHeader?.Hash));
+            }
         }
     }
 

@@ -65,8 +65,11 @@ public class TimeoutCertificateManagerTests
             NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
-        Assert.That(ok, Is.False);
-        Assert.That(err, Does.Contain("Failed to get snapshot"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(err, Does.Contain("Failed to get snapshot"));
+        }
     }
 
     [Test]
@@ -96,8 +99,11 @@ public class TimeoutCertificateManagerTests
             NullLogManager.Instance);
 
         bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
-        Assert.That(ok, Is.False);
-        Assert.That(err, Does.Contain("Empty master node"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(err, Does.Contain("Empty master node"));
+        }
     }
 
     public static IEnumerable<TestCaseData> TcCases()
@@ -181,9 +187,8 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
 
-    [TestCase(4UL)]
-    [TestCase(6UL)]
-    public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly(ulong round)
+    [Test]
+    public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly([Values(4UL, 6UL)] ulong round)
     {
         XdcConsensusContext ctx = new() { CurrentRound = 5 };
         TimeoutCertificateManager tcManager = BuildTimeoutCertificateManager(ctx);

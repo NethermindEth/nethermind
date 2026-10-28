@@ -44,10 +44,13 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
         local.CompareTrees(remote, _logger, "END");
-        Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
-        // I guess state root will be requested regardless
-        Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+            // I guess state root will be requested regardless
+            Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+        }
     }
 
     [Test]
@@ -189,10 +192,10 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         AccountProofCollector accountProofCollector = new(startingHash.Bytes);
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-        byte[][] firstProof = accountProofCollector.BuildResult().Proof!;
+        byte[][] firstProof = accountProofCollector.BuildResult().Proof;
         accountProofCollector = new(endHash.Bytes);
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-        byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
+        byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
         _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
     }

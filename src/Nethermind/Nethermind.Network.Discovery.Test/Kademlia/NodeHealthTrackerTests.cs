@@ -48,8 +48,11 @@ public class NodeHealthTrackerTests
         tracker.OnIncomingMessageFrom(Remote);
 
         Assert.That(routing.AddCalls, Has.Count.EqualTo(2));
-        Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(Self));
-        Assert.That(routing.AddCalls[1].Node, Is.EqualTo(Self));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(routing.AddCalls[1].Hash, Is.EqualTo(Self));
+            Assert.That(routing.AddCalls[1].Node, Is.EqualTo(Self));
+        }
     }
 
     [Test]
@@ -210,7 +213,7 @@ public class NodeHealthTrackerTests
         public IEnumerable<RoutingTableBucket<int, int>> IterateBuckets() =>
             throw new NotSupportedException();
 
-        public int GetByHash(int nodeId) => throw new NotSupportedException();
+        public bool TryGet(in int hash, out int node) => throw new NotSupportedException();
 
         public void LogDebugInfo() => throw new NotSupportedException();
 
@@ -226,12 +229,6 @@ public class NodeHealthTrackerTests
             remove { }
         }
 
-        public int Size
-        {
-            get
-            {
-                lock (AddCalls) return AddCalls.Count;
-            }
-        }
+        public RoutingTableOccupancy GetOccupancy() => throw new NotSupportedException();
     }
 }

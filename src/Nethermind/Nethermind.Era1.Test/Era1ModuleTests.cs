@@ -71,8 +71,11 @@ public class Era1ModuleTests
         AssertReceiptMessagesEquivalent(ImportedReceipts0, [receipt0]);
         AssertReceiptMessagesEquivalent(ImportedReceipts1, [receipt1]);
 
-        Assert.That(importedBlock0.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
-        Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importedBlock0.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
+            Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
+        }
     }
 
     [TestCase("mainnet")]
@@ -110,8 +113,11 @@ public class Era1ModuleTests
             int i = 0;
             await foreach ((Block b, TxReceipt[] r) in exportedToImported)
             {
-                Assert.That(i, Is.LessThan(readFromFile.Count), "Exceeded the block count read from the file.");
-                Assert.That(b.ToString(Block.Format.Full), Is.EqualTo(readFromFile[i].b.ToString(Block.Format.Full)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(i, Is.LessThan(readFromFile.Count), "Exceeded the block count read from the file.");
+                    Assert.That(b.ToString(Block.Format.Full), Is.EqualTo(readFromFile[i].b.ToString(Block.Format.Full)));
+                }
                 AssertReceiptMessagesEquivalent(r, readFromFile[i].r);
                 i++;
             }
@@ -159,7 +165,7 @@ public class Era1ModuleTests
                 .WithParent(blocks[i]).TestObject);
         }
 
-        blocks = testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
+        blocks = [genesis, .. testBlockchain.BranchProcessor.Process(genesis.Header!, blocks.GetRange(1, numOfBlocks), ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer())];
         {
             using EraWriter builder = new(tmpFile.Path, testBlockchain.SpecProvider);
 
@@ -262,7 +268,7 @@ public class Era1ModuleTests
                 .WithGasLimit(30_000_000).TestObject);
         }
 
-        testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
+        testBlockchain.BranchProcessor.Process(genesis.Header!, blocks.GetRange(1, blocks.Count - 1), ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
         {
             using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
@@ -352,8 +358,11 @@ public class Era1ModuleTests
         EraCliRunner cliRunner = inCtx.Resolve<EraCliRunner>();
         await cliRunner.Run(default);
 
-        Assert.That(minSuggestedNumber, Is.EqualTo(expectedMinSuggestedBlock));
-        Assert.That(maxSuggestedBlock, Is.EqualTo(expectedMaxSuggestedBlock));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(minSuggestedNumber, Is.EqualTo(expectedMinSuggestedBlock));
+            Assert.That(maxSuggestedBlock, Is.EqualTo(expectedMaxSuggestedBlock));
+        }
     }
 
     private static void AssertBlockEquivalent(Block actual, Block expected) =>
@@ -371,12 +380,12 @@ public class Era1ModuleTests
 
     private static void AssertReceiptMessageEquivalent(TxReceipt actual, TxReceipt expected)
     {
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(actual.TxType, Is.EqualTo(expected.TxType));
             Assert.That(actual.GasUsedTotal, Is.EqualTo(expected.GasUsedTotal));
             Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
-        });
+        }
 
         if (expected.PostTransactionState is null)
         {

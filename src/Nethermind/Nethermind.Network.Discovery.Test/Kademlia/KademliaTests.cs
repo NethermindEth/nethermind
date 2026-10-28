@@ -23,13 +23,13 @@ public class KademliaTests
 
     private IContainer CreateKadContainer(KademliaConfig<ValueHash256> config) =>
         new ContainerBuilder()
-            .AddModule(new KademliaModule<ValueHash256, ValueHash256, Hash256>())
+            .AddModule(new KademliaModule<ValueHash256, ValueHash256, ValueHash256>())
             .AddSingleton<ITimestamper>(new ManualTimestamper(new System.DateTime(2025, 5, 13, 21, 0, 0, System.DateTimeKind.Utc)))
-            .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
-            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, Hash256>>(new ValueHashKeyOperator<ValueHash256>(static node => node))
+            .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
+            .AddSingleton<IKeyOperator<ValueHash256, ValueHash256, ValueHash256>>(new ValueHashKeyOperator<ValueHash256>(static node => node))
             .AddSingleton(config)
             .AddSingleton(_kademliaMessageSender)
-            .AddSingleton<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>()
+            .AddSingleton<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>()
             .Build();
 
     [Test]
@@ -40,7 +40,7 @@ public class KademliaTests
             KSize = 5,
             Beta = 0,
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
         int nodeAddedTriggered = 0;
         kad.OnNodeAdded += (sender, hash256) => nodeAddedTriggered++;
@@ -61,7 +61,7 @@ public class KademliaTests
             KSize = 5,
             Beta = 0,
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
         int nodeRemovedTriggered = 0;
         ValueHash256 testHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
@@ -77,6 +77,17 @@ public class KademliaTests
         Assert.That(nodeRemovedTriggered, Is.EqualTo(1));
     }
 
+    /// <summary>Guards the wiring both discv4 and discv5 rely on, as they share this module.</summary>
+    [Test]
+    public void ShouldResolveRandomWalkDiscovery()
+    {
+        using IContainer container = CreateKadContainer(new KademliaConfig<ValueHash256>());
+
+        Assert.That(
+            container.Resolve<IKademliaDiscovery<ValueHash256, ValueHash256>>(),
+            Is.InstanceOf<RandomWalkKademliaDiscovery<ValueHash256, ValueHash256, ValueHash256>>());
+    }
+
     [Test]
     public void ShouldSeedBootnodes()
     {
@@ -87,7 +98,7 @@ public class KademliaTests
             Beta = 0,
             BootNodes = [bootNode],
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
         Assert.That(kad.IterateNodes(), Does.Contain(bootNode));
     }
@@ -113,7 +124,7 @@ public class KademliaTests
             Beta = 0,
             RefreshPingDelay = TimeSpan.Zero,
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
         ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => RandomValueHashAtDistance(ValueKeccak.Zero, 250)).ToArray();
         kad.OnNodeRemoved += (_, node) =>
@@ -153,7 +164,7 @@ public class KademliaTests
             KSize = 5,
             Beta = 0,
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
         try
         {
@@ -163,19 +174,25 @@ public class KademliaTests
                 kad.AddOrRefresh(valueHash256);
             }
 
-            Assert.That(kad.GetKNeighbour(ValueKeccak.Zero), Has.Length.EqualTo(5));
-            Assert.That(kad.GetKNeighbour(kad.CurrentNode), Does.Contain(kad.CurrentNode));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(kad.GetKNeighbour(ValueKeccak.Zero), Has.Length.EqualTo(5));
+                Assert.That(kad.GetKNeighbour(kad.CurrentNode), Does.Contain(kad.CurrentNode));
+            }
             foreach (ValueHash256 testHash in testHashes)
             {
                 // It must return K items exactly, taking from other bucket if necessary.
                 Assert.That(kad.GetKNeighbour(testHash), Has.Length.EqualTo(5));
 
                 // It must find the closest one at least.
-                Assert.That(kad.GetKNeighbour(testHash), Does.Contain(testHash));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(kad.GetKNeighbour(testHash), Does.Contain(testHash));
 
-                // It must exclude a node when hash is specified
-                Assert.That(kad.GetKNeighbour(testHash, testHash), Has.Length.EqualTo(5));
-                Assert.That(kad.GetKNeighbour(testHash, excludeSelf: true), Does.Not.Contain(kad.CurrentNode));
+                    // It must exclude a node when hash is specified
+                    Assert.That(kad.GetKNeighbour(testHash, testHash), Has.Length.EqualTo(5));
+                    Assert.That(kad.GetKNeighbour(testHash, excludeSelf: true), Does.Not.Contain(kad.CurrentNode));
+                }
             }
         }
         finally
@@ -198,7 +215,7 @@ public class KademliaTests
             Beta = 1,
             RefreshPingDelay = TimeSpan.Zero,
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
         ValueHash256[] testHashes = new IEnumerable<ValueHash256>[]
         {
@@ -224,9 +241,12 @@ public class KademliaTests
         HashSet<ValueHash256> expected248 = testHashes[..5].ToHashSet();
         HashSet<ValueHash256> expected249 = testHashes[5..10].ToHashSet();
         HashSet<ValueHash256> expected250 = testHashes[10..].ToHashSet();
-        Assert.That(kad.GetAllAtDistance(248).ToHashSet(), Is.EquivalentTo(expected248));
-        Assert.That(kad.GetAllAtDistance(249).ToHashSet(), Is.EquivalentTo(expected249));
-        Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(expected250));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(kad.GetAllAtDistance(248).ToHashSet(), Is.EquivalentTo(expected248));
+            Assert.That(kad.GetAllAtDistance(249).ToHashSet(), Is.EquivalentTo(expected249));
+            Assert.That(kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(expected250));
+        }
     }
 
     [Test]
@@ -237,30 +257,32 @@ public class KademliaTests
             KSize = 5,
             Beta = 0,
         });
-        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>>();
+        Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 
-        Hash256 activePrefix = new("0x1111111111111111111111111111111111111111111111111111111111111111");
-        Hash256 stalePrefix = new("0x2222222222222222222222222222222222222222222222222222222222222222");
-        Dictionary<Hash256, long> lastRefreshTicks = GetLastBucketRefreshTicks(kad);
+        ValueHash256 activePrefix = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+        ValueHash256 stalePrefix = new("0x2222222222222222222222222222222222222222222222222222222222222222");
+        Dictionary<ValueHash256, long> lastRefreshTicks = GetLastBucketRefreshTicks(kad);
         lastRefreshTicks[activePrefix] = 1;
         lastRefreshTicks[stalePrefix] = 2;
 
-        HashSet<Hash256> activePrefixes = [activePrefix, new("0x3333333333333333333333333333333333333333333333333333333333333333")];
+        HashSet<ValueHash256> activePrefixes = [activePrefix, new("0x3333333333333333333333333333333333333333333333333333333333333333")];
 
-        typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>)
+        typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>)
             .GetMethod("PruneLastBucketRefreshTicks", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(kad, [activePrefixes]);
 
-        Assert.That(lastRefreshTicks.ContainsKey(activePrefix), Is.True);
-        Assert.That(lastRefreshTicks.ContainsKey(stalePrefix), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastRefreshTicks.ContainsKey(activePrefix), Is.True);
+            Assert.That(lastRefreshTicks.ContainsKey(stalePrefix), Is.False);
+        }
     }
 
     private static ValueHash256 RandomValueHashAtDistance(ValueHash256 currentHash, int distance) =>
-        ValueHashKeyOperator<ValueHash256>.ToValueHash(
-            Hash256KademliaDistance.Instance.GetRandomHashAtDistance(ValueHashKeyOperator<ValueHash256>.ToHash(currentHash), distance));
+        ValueHash256TestHelper.CreateRandomHashAtDistance(currentHash, distance, Random.Shared);
 
-    private static Dictionary<Hash256, long> GetLastBucketRefreshTicks(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256> kad)
-        => (Dictionary<Hash256, long>)typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, Hash256>)
+    private static Dictionary<ValueHash256, long> GetLastBucketRefreshTicks(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad)
+        => (Dictionary<ValueHash256, long>)typeof(Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>)
             .GetField("_lastBucketRefreshTicks", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(kad)!;
 }

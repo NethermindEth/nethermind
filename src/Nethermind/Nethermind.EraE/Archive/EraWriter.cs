@@ -179,85 +179,79 @@ public sealed class EraWriter : IDisposable
         }
 
         long[] tdOffsets = needsTd ? ArrayPool<long>.Shared.Rent(blockCount) : [];
-        try
+        // Write sections in EraE spec order:
+        // Version | Header* | Body* | Receipts* | TD* | Accumulator? | ComponentIndex
+
+        for (int i = 0; i < blockCount; i++)
         {
-            // Write sections in EraE spec order:
-            // Version | Header* | Body* | Receipts* | TD* | Accumulator? | ComponentIndex
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                _headerOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedHeader, _headers[i].AsReadOnlyMemory(), cancellation);
-            }
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                _bodyOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedBody, _bodies[i].AsReadOnlyMemory(), cancellation);
-            }
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                _receiptsOffsets.Add(_e2StoreWriter.Position);
-                await WriteCompressed(EntryTypes.CompressedSlimReceipts, _receipts[i].AsReadOnlyMemory(), cancellation);
-            }
-
-            if (needsTd)
-            {
-                for (int i = 0; i < blockCount; i++)
-                {
-                    tdOffsets[i] = _e2StoreWriter.Position;
-                    await _e2StoreWriter.WriteEntry(
-                        EntryTypes.TotalDifficulty,
-                        _totalDifficulties[i].ToLittleEndian(),
-                        cancellation);
-                }
-            }
-
-            ValueHash256 accumulatorRoot = default;
-            if (needsTd)
-            {
-                accumulatorRoot = _blocksRootContext!.AccumulatorRoot;
-                await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
-            }
-
-            // ComponentIndex
-            // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
-            // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
-            long componentIndexStart = _e2StoreWriter.Position;
-            int indexDataLength = IndexFieldSize + blockCount * componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
-
-            using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
-            Span<byte> span = indexBytes.AsSpan();
-
-            WriteUInt64(span, 0, _startNumber);
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                int baseOff = IndexFieldSize + i * componentCount * IndexFieldSize;
-                WriteInt64(span, baseOff + IndexFieldSize * 0, _headerOffsets[i] - componentIndexStart);
-                WriteInt64(span, baseOff + IndexFieldSize * 1, _bodyOffsets[i] - componentIndexStart);
-                WriteInt64(span, baseOff + IndexFieldSize * 2, _receiptsOffsets[i] - componentIndexStart);
-                if (needsTd)
-                    WriteInt64(span, baseOff + IndexFieldSize * 3, tdOffsets[i] - componentIndexStart);
-            }
-
-            int tailOff = IndexFieldSize + blockCount * componentCount * IndexFieldSize;
-            WriteInt64(span, tailOff, componentCount);
-            WriteInt64(span, tailOff + IndexFieldSize, blockCount);
-
-            await _e2StoreWriter.WriteEntry(EntryTypes.ComponentIndex, indexBytes.AsMemory(), cancellation);
-            await _e2StoreWriter.Flush(cancellation);
-
-            _finalized = true;
-            DisposePayloads();
-            return (accumulatorRoot, _e2StoreWriter.FinalizeChecksum());
+            _headerOffsets.Add(_e2StoreWriter.Position);
+            await WriteCompressed(EntryTypes.CompressedHeader, _headers[i].AsReadOnlyMemory(), cancellation);
         }
-        finally
+
+        for (int i = 0; i < blockCount; i++)
         {
-            if (needsTd)
-                ArrayPool<long>.Shared.Return(tdOffsets);
+            _bodyOffsets.Add(_e2StoreWriter.Position);
+            await WriteCompressed(EntryTypes.CompressedBody, _bodies[i].AsReadOnlyMemory(), cancellation);
         }
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            _receiptsOffsets.Add(_e2StoreWriter.Position);
+            await WriteCompressed(EntryTypes.CompressedSlimReceipts, _receipts[i].AsReadOnlyMemory(), cancellation);
+        }
+
+        if (needsTd)
+        {
+            for (int i = 0; i < blockCount; i++)
+            {
+                tdOffsets[i] = _e2StoreWriter.Position;
+                await _e2StoreWriter.WriteEntry(
+                    EntryTypes.TotalDifficulty,
+                    _totalDifficulties[i].ToLittleEndian(),
+                    cancellation);
+            }
+        }
+
+        ValueHash256 accumulatorRoot = default;
+        if (needsTd)
+        {
+            accumulatorRoot = _blocksRootContext!.AccumulatorRoot;
+            await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
+        }
+
+        // ComponentIndex
+        // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
+        // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
+        long componentIndexStart = _e2StoreWriter.Position;
+        int indexDataLength = IndexFieldSize + blockCount * componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
+
+        using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
+        Span<byte> span = indexBytes.AsSpan();
+
+        WriteUInt64(span, 0, _startNumber);
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            int baseOff = IndexFieldSize + i * componentCount * IndexFieldSize;
+            WriteInt64(span, baseOff + IndexFieldSize * 0, _headerOffsets[i] - componentIndexStart);
+            WriteInt64(span, baseOff + IndexFieldSize * 1, _bodyOffsets[i] - componentIndexStart);
+            WriteInt64(span, baseOff + IndexFieldSize * 2, _receiptsOffsets[i] - componentIndexStart);
+            if (needsTd)
+                WriteInt64(span, baseOff + IndexFieldSize * 3, tdOffsets[i] - componentIndexStart);
+        }
+
+        int tailOff = IndexFieldSize + blockCount * componentCount * IndexFieldSize;
+        WriteInt64(span, tailOff, componentCount);
+        WriteInt64(span, tailOff + IndexFieldSize, blockCount);
+
+        await _e2StoreWriter.WriteEntry(EntryTypes.ComponentIndex, indexBytes.AsMemory(), cancellation);
+        await _e2StoreWriter.Flush(cancellation);
+
+        _finalized = true;
+        DisposePayloads();
+        ValueHash256 checksum = _e2StoreWriter.FinalizeChecksum();
+        if (needsTd) ArrayPool<long>.Shared.Return(tdOffsets);
+        return (accumulatorRoot, checksum);
     }
 
     public void Dispose()

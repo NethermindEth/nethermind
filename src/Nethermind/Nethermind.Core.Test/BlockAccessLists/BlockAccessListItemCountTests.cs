@@ -75,6 +75,14 @@ public class BlockAccessListItemCountTests
         slice.AddStorageRead(TestItem.AddressA, 2);
         slice.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)1);
         slice.AddStorageRead(TestItem.AddressB, 7);
+        slice.AddStorageRead(TestItem.AddressB, 7);
+        slice.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
+        slice.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slice.GetAccountChanges(TestItem.AddressA)!.StorageReads, Is.EquivalentTo(new UInt256[] { 2 }));
+            Assert.That(slice.GetAccountChanges(TestItem.AddressB)!.StorageReads, Is.EquivalentTo(new UInt256[] { 7 }));
+        }
 
         GeneratedBlockAccessList bal = new();
         bal.Merge(slice);
@@ -88,7 +96,7 @@ public class BlockAccessListItemCountTests
     /// the next block's <c>ItemCount</c> must report a fresh count, never the stale prior one.
     /// </summary>
     [Test]
-    public void ItemCount_reflects_reuse_across_blocks_through_Reset()
+    public void ItemCount_reflects_reuse_across_blocks_through_Reset([Values] bool reuseSlice)
     {
         BlockAccessListAtIndex sliceBlock1 = new() { Index = 0 };
         sliceBlock1.AddStorageRead(TestItem.AddressA, 1);
@@ -100,7 +108,18 @@ public class BlockAccessListItemCountTests
 
         bal.Reset();
 
-        BlockAccessListAtIndex sliceBlock2 = new() { Index = 0 };
+        BlockAccessListAtIndex sliceBlock2;
+        if (reuseSlice)
+        {
+            sliceBlock1.Clear();
+            sliceBlock2 = sliceBlock1;
+            sliceBlock2.AddStorageRead(TestItem.AddressA, 99);
+            sliceBlock2.Clear();
+        }
+        else
+        {
+            sliceBlock2 = new() { Index = 0 };
+        }
         sliceBlock2.AddStorageRead(TestItem.AddressB, 1);
         sliceBlock2.AddStorageRead(TestItem.AddressB, 2);
         sliceBlock2.AddStorageRead(TestItem.AddressB, 3);
@@ -109,6 +128,64 @@ public class BlockAccessListItemCountTests
 
         Assert.That(bal.ItemCount, Is.EqualTo(5),
             "block 2: 1 account + 4 storage reads, no carryover from block 1");
+    }
+
+    public static IEnumerable<TestCaseData> CountNewItemsCases()
+    {
+        yield return new TestCaseData(
+            (Action<BlockAccessListAtIndex>)(static s => s.AddAccountRead(TestItem.AddressA)),
+            0).SetName("CountNewItems_existing_account_read_adds_nothing");
+        yield return new TestCaseData(
+            (Action<BlockAccessListAtIndex>)(static s => s.AddAccountRead(TestItem.AddressC)),
+            1).SetName("CountNewItems_new_account_adds_one");
+        yield return new TestCaseData(
+            (Action<BlockAccessListAtIndex>)(static s =>
+            {
+                s.AddStorageRead(TestItem.AddressA, 1);
+                s.AddStorageRead(TestItem.AddressA, 2);
+                s.AddStorageChange(TestItem.AddressB, 7, before: UInt256.Zero, after: UInt256.One);
+            }),
+            0).SetName("CountNewItems_existing_keys_add_nothing_whether_read_or_written");
+        yield return new TestCaseData(
+            (Action<BlockAccessListAtIndex>)(static s =>
+            {
+                s.AddStorageRead(TestItem.AddressA, 3);
+                s.AddStorageChange(TestItem.AddressA, 4, before: UInt256.Zero, after: UInt256.One);
+                s.AddStorageRead(TestItem.AddressA, 4);
+            }),
+            2).SetName("CountNewItems_new_keys_of_existing_account_count_once_each");
+        yield return new TestCaseData(
+            (Action<BlockAccessListAtIndex>)(static s =>
+            {
+                s.AddStorageChange(TestItem.AddressC, 1, before: UInt256.Zero, after: UInt256.One);
+                s.AddStorageRead(TestItem.AddressC, 1);
+                s.AddStorageRead(TestItem.AddressC, 2);
+                s.AddBalanceChange(TestItem.AddressD, before: UInt256.Zero, after: UInt256.One);
+            }),
+            4).SetName("CountNewItems_new_accounts_count_with_their_keys");
+    }
+
+    [TestCaseSource(nameof(CountNewItemsCases))]
+    public void CountNewItems_matches_the_item_count_a_merge_adds(Action<BlockAccessListAtIndex> mutate, int expected)
+    {
+        BlockAccessListAtIndex first = new() { Index = 1 };
+        first.AddStorageRead(TestItem.AddressA, 1);
+        first.AddStorageChange(TestItem.AddressA, 2, before: UInt256.Zero, after: UInt256.One);
+        first.AddStorageRead(TestItem.AddressB, 7);
+        GeneratedBlockAccessList bal = new();
+        bal.Merge(first);
+        int before = bal.ItemCount;
+
+        BlockAccessListAtIndex next = new() { Index = 2 };
+        mutate(next);
+        int counted = bal.CountNewItems(next);
+        bal.Merge(next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counted, Is.EqualTo(expected));
+            Assert.That(bal.ItemCount - before, Is.EqualTo(counted));
+        }
     }
 
     [Test]
@@ -121,9 +198,9 @@ public class BlockAccessListItemCountTests
             "_accountChanges",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(bal)!;
         MethodInfo ensureCapacity = accountChanges.GetType().GetMethod(
-            nameof(Dictionary<int, int>.EnsureCapacity),
+            nameof(Dictionary<,>.EnsureCapacity),
             [typeof(int)])!;
-        PropertyInfo capacity = accountChanges.GetType().GetProperty(nameof(Dictionary<int, int>.Capacity))!;
+        PropertyInfo capacity = accountChanges.GetType().GetProperty(nameof(Dictionary<,>.Capacity))!;
         ensureCapacity.Invoke(accountChanges, [OversizedCapacity]);
         int capacityBeforeReset = (int)capacity.GetValue(accountChanges)!;
 

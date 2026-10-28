@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Nethermind.Core.Collections;
@@ -38,6 +39,9 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     /// Creates and caches delegates to private lock methods of <see cref="ConcurrentDictionary{TKey,TValue}"/>.
     /// </summary>
     /// <exception cref="NotSupportedException">Thrown when private members of <see cref="ConcurrentDictionary{TKey,TValue}"/> changed and we cannot create delegates.</exception>
+    [DynamicDependency("AcquireAllLocks", typeof(ConcurrentDictionary<,>))]
+    [DynamicDependency("ReleaseLocks", typeof(ConcurrentDictionary<,>))]
+    [UnconditionalSuppressMessage("Trimming", "IL2090", Justification = "ConcurrentDictionary<,>'s AcquireAllLocks/ReleaseLocks are preserved by the DynamicDependency above.")]
     static ConcurrentDictionaryLock()
     {
         static TDelegate CreateDelegate<TType, TDelegate>(TType? target = default, string? methodName = null) where TDelegate : Delegate

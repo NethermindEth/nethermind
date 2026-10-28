@@ -11,10 +11,10 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -54,6 +54,55 @@ namespace Nethermind.Db.Test.LogIndex
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
+
+        [Test]
+        public async Task Compressor_waits_for_pending_work_and_supports_cancelled_waits([Values] bool enqueueAsync)
+        {
+            LogIndexStorage storage = (LogIndexStorage)CreateLogIndexStorage();
+            using Compressor compressor = new(storage, compressionDistance: 1, parallelism: 2);
+            byte[] key = new byte[24];
+            if (enqueueAsync) await compressor.EnqueueAsync(null, key);
+            else Assert.That(compressor.TryEnqueue(null, key, new byte[8]), Is.True);
+
+            try
+            {
+                using CancellationTokenSource cancellation = new();
+                Task cancelledWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), cancellation.Token);
+                Task completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                Assert.That(completedWait.IsCompleted, Is.False);
+                cancellation.Cancel();
+                Assert.That(async () => await cancelledWait, Throws.InstanceOf<OperationCanceledException>());
+
+                await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
+                Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                compressor.Start();
+                await completedWait.WaitAsync(TimeSpan.FromSeconds(5));
+
+                await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
+                {
+                    for (int i = 0; i < 20; i++)
+                    {
+                        await compressor.EnqueueAsync(null, key);
+                        await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                }));
+            }
+            finally
+            {
+                compressor.Start();
+                await compressor.StopAsync();
+            }
+
+            if (enqueueAsync) await compressor.EnqueueAsync(null, key);
+            else Assert.That(compressor.TryEnqueue(null, key, new byte[8]), Is.False);
+            await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(storage.HasBackgroundError, Is.False);
+        }
+
+        [Test]
+        public void Rejects_compression_parallelism_below_one([Values(0, -1)] int parallelism) =>
+            Assert.That(() => CreateLogIndexStorage(compressionParallelism: parallelism),
+                Throws.TypeOf<InvalidConfigurationException>().With.Message.Contain($"LogIndex.{nameof(ILogIndexConfig.MaxCompressionParallelism)}"));
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
@@ -154,6 +203,20 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData);
         }
 
+        [Test]
+        public async Task ABackwardBatchOfOneBlock_ExtendsTheIndexDownwards()
+        {
+            await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage();
+
+            BlockReceipts[] blocks = testData.Batches.SelectMany(static batch => batch).ToArray();
+            await logIndexStorage.AddReceiptsAsync(blocks[1..], isBackwardSync: false);
+
+            await logIndexStorage.AddReceiptsAsync([blocks[0]], isBackwardSync: true);
+
+            Assert.That(logIndexStorage.MinBlockNumber, Is.EqualTo(blocks[0].BlockNumber),
+                "a batch of one block has the same first and last number, so the direction cannot be read back from them");
+        }
+
         [Combinatorial]
         public async Task SetIntersecting_Get_Test(
             [Values(100, 200, int.MaxValue)] int compactionDistance,
@@ -216,8 +279,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: false);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        }
                     }
                 });
 
@@ -228,8 +294,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: true);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        }
                     }
                 });
 
@@ -562,7 +631,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN);
 
-            Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+            Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
             Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
 
             VerifyReceipts(
@@ -582,7 +651,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using (ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN))
             {
-                Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+                Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
                 Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
             }
 
@@ -633,8 +702,8 @@ namespace Nethermind.Db.Test.LogIndex
                 Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
             );
 
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
         }
 
         [Combinatorial]

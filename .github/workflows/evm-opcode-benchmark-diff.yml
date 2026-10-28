@@ -5,9 +5,12 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "src/Nethermind/Nethermind.Evm/**"
+      - "src/Nethermind/Nethermind.Evm.Benchmark/EvmOpcodesBenchmark.cs"
+      - "src/Nethermind/Nethermind.Evm.Benchmark/EvmOpcodeGasColumnProvider.cs"
+      - "src/Nethermind/Nethermind.Evm.Benchmark/EvmPooledMemoryBenchmarkHelper.cs"
       - "Directory.Packages.props"
       - ".github/workflows/evm-opcode-benchmark-diff.yml"
-      - "scripts/evm_benchmark_utils.py"
+      - "scripts/compare-evm-benchmarks.cs"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,8 +54,8 @@ jobs:
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Run if the workflow or its utility script changed
-          if git diff --name-only "$base" "$head" | grep -qE "^(\.github/workflows/evm-opcode-benchmark-diff\.yml|scripts/evm_benchmark_utils\.py)$"; then
+          # Run if the benchmark harness, workflow, or utility script changed
+          if git diff --name-only "$base" "$head" | grep -qE "^(src/Nethermind/Nethermind\.Evm\.Benchmark/(EvmOpcodesBenchmark|EvmOpcodeGasColumnProvider|EvmPooledMemoryBenchmarkHelper)\.cs|\.github/workflows/evm-opcode-benchmark-diff\.yml|scripts/compare-evm-benchmarks\.cs)$"; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -105,9 +108,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Create base worktree
         shell: bash
@@ -119,6 +119,55 @@ jobs:
           git worktree remove --force "${base_dir}" >/dev/null 2>&1 || true
           git worktree add --detach -f "${base_dir}" "${base_sha}"
           echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
+
+      - name: Use PR opcode benchmark harness for base (probe, fall back to base harness)
+        shell: bash
+        run: |
+          set -euo pipefail
+          benchmark_sources=(
+            "src/Nethermind/Nethermind.Evm.Benchmark/EvmOpcodesBenchmark.cs"
+            "src/Nethermind/Nethermind.Evm.Benchmark/EvmOpcodeGasColumnProvider.cs"
+            "src/Nethermind/Nethermind.Evm.Benchmark/EvmPooledMemoryBenchmarkHelper.cs"
+          )
+          for source in "${benchmark_sources[@]}"; do
+            cp "${GITHUB_WORKSPACE}/${source}" "${BASE_WORKTREE}/${source}"
+          done
+
+          # A PR that changes an EVM API the harness calls (e.g. the opcode delegate signature) leaves
+          # the PR harness uncompilable against base. Fall back to base's own harness so the comparison
+          # still runs; the compare step flags that the two sides measured with different sources.
+          # Probing the runner rather than the harness alone matches what the benchmark steps build.
+          probe_project="Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj"
+          probe_log="${GITHUB_WORKSPACE}/evm-base-harness-probe.log"
+          # Taken before the probe so it can gate the fallback: an unchanged harness cannot be why base
+          # fails to build. `|| true` keeps a git failure from aborting a run the probe may yet pass.
+          harness_delta="$(git -C "${GITHUB_WORKSPACE}" diff --shortstat "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- "${benchmark_sources[@]}" | sed 's/^[[:space:]]*//')" || true
+          pushd "${BASE_WORKTREE}/src/Nethermind" >/dev/null
+          dotnet restore Benchmarks.slnx --locked-mode
+          if ! dotnet build "${probe_project}" -c Release --no-restore 2>&1 | tee "${probe_log}"; then
+            if [[ -z "${harness_delta}" ]]; then
+              echo "::error::Base build failed with no benchmark harness delta against base (unchanged, or undeterminable); this is not a harness incompatibility."
+              exit 1
+            fi
+            # Restore only the sources base tracks; a harness file the PR adds has no base version.
+            mapfile -t tracked < <(git -C "${BASE_WORKTREE}" ls-files -- "${benchmark_sources[@]}")
+            if [[ "${#tracked[@]}" -gt 0 ]]; then
+              git -C "${BASE_WORKTREE}" checkout -- "${tracked[@]}"
+            fi
+            for source in "${benchmark_sources[@]}"; do
+              git -C "${BASE_WORKTREE}" ls-files --error-unmatch -- "${source}" >/dev/null 2>&1 || rm -f "${BASE_WORKTREE}/${source}"
+            done
+            # A base that fails to build on its own sources was never a harness incompatibility; let it
+            # fail here rather than publish a comparison whose two sides ran different harnesses. Its
+            # output appends to the probe log so a red check shows which of the two builds broke.
+            dotnet build "${probe_project}" -c Release --no-restore 2>&1 | tee -a "${probe_log}"
+            {
+              echo "BASE_HARNESS_FALLBACK=true"
+              echo "BASE_HARNESS_DELTA=${harness_delta}"
+            } >> "${GITHUB_ENV}"
+            echo "::warning::PR opcode benchmark harness does not compile against base; the base side used its own harness sources (${harness_delta})."
+          fi
+          popd >/dev/null
 
       - name: Run base benchmark
         shell: bash
@@ -157,30 +206,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts${PYTHONPATH:+:$PYTHONPATH}"
-          python3 <<'PY'
-          import os
-          from evm_benchmark_utils import collect_logs, read_env_config, aggregate, compare_opcodes
-
-          config = read_env_config()
-          base_logs, pr_logs = collect_logs()
-          base_data = aggregate(base_logs)
-          pr_data = aggregate(pr_logs)
-
-          rerun_opcodes = [
-              opcode for opcode, info in compare_opcodes(base_data, pr_data, config)
-              if info["is_flagged"] and info["is_noisy"]
-          ]
-
-          with open("evm-rerun-opcodes.txt", "w", encoding="utf-8") as f:
-              for opcode in rerun_opcodes:
-                  f.write(opcode + "\n")
-
-          github_output = os.environ["GITHUB_OUTPUT"]
-          with open(github_output, "a", encoding="utf-8") as f:
-              f.write(f"rerun_needed={'true' if rerun_opcodes else 'false'}\n")
-              f.write(f"rerun_count={len(rerun_opcodes)}\n")
-          PY
+          dotnet run --file scripts/compare-evm-benchmarks.cs -- detect-noisy
 
       - name: Rerun base benchmark for flagged noisy opcodes
         if: steps.detect_noisy.outputs.rerun_needed == 'true'
@@ -243,82 +269,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PYTHONPATH="${GITHUB_WORKSPACE}/scripts${PYTHONPATH:+:$PYTHONPATH}"
-          python3 <<'PY'
-          import os
-          from evm_benchmark_utils import (
-              collect_logs, read_env_config, aggregate, compare_opcodes, fmt_cv,
-          )
-
-          config = read_env_config()
-          base_logs, pr_logs = collect_logs()
-          base_data = aggregate(base_logs)
-          pr_data = aggregate(pr_logs)
-
-          flagged = [
-              (opcode, info) for opcode, info in compare_opcodes(base_data, pr_data, config)
-              if info["is_flagged"]
-          ]
-
-          TABLE_HEADER = "| Opcode | Base Median (ns) | PR Median (ns) | Delta | Abs Δ (ns) | Base CV | PR CV | Threshold | Uncertainty | Effective |"
-          TABLE_SEPARATOR = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
-
-          def format_row(opcode, d):
-              base_str = "N/A" if d["base_val"] is None else f"{d['base_val']:.3f}"
-              pr_str = "N/A" if d["pr_val"] is None else f"{d['pr_val']:.3f}"
-              delta_str = "N/A" if d["delta_pct"] is None else f"{d['delta_pct']:+.2f}%"
-              delta_abs_str = "N/A" if d["delta_abs_ns"] is None else f"{d['delta_abs_ns']:.3f}"
-              base_cv = fmt_cv(d["base_mean"], d["base_stddev"])
-              pr_cv = fmt_cv(d["pr_mean"], d["pr_stddev"])
-              return f"| {opcode} | {base_str} | {pr_str} | {delta_str} | {delta_abs_str} | {base_cv} | {pr_cv} | ±{d['threshold']:.1f}% | ±{d['uncertainty_floor']:.1f}% | ±{d['effective_threshold']:.1f}% |"
-
-          regressions = [(op, d) for op, d in flagged if d["delta_pct"] is not None and d["delta_pct"] > 0]
-          improvements = [(op, d) for op, d in flagged if d["delta_pct"] is not None and d["delta_pct"] < 0]
-          unknown = [(op, d) for op, d in flagged if d["delta_pct"] is None]
-
-          summary_lines = []
-          summary_lines.append("## EVM Opcode Benchmark Diff")
-          summary_lines.append("")
-          summary_lines.append(f"Aggregated runs: base={len(base_logs)}, pr={len(pr_logs)}")
-          if os.path.exists("evm-rerun-opcodes.txt"):
-              with open("evm-rerun-opcodes.txt", "r", encoding="utf-8") as f:
-                  rerun_ops = [line.strip() for line in f if line.strip()]
-              if rerun_ops:
-                  summary_lines.append(f"Noisy rerun opcodes: {', '.join(rerun_ops)}")
-          summary_lines.append("")
-
-          def append_table(title, rows):
-              summary_lines.append(f"### {title} ({len(rows)})")
-              summary_lines.append("")
-              summary_lines.append(TABLE_HEADER)
-              summary_lines.append(TABLE_SEPARATOR)
-              for opcode, d in rows:
-                  summary_lines.append(format_row(opcode, d))
-              summary_lines.append("")
-
-          if regressions:
-              append_table("Regressions", regressions)
-          if improvements:
-              append_table("Improvements", improvements)
-          if unknown:
-              append_table("New / Removed", unknown)
-
-          if not flagged:
-              summary_lines.append("No significant regressions or improvements detected.")
-
-          output = "\n".join(summary_lines) + "\n"
-          output = "<!-- evm-opcode-benchmark-diff -->\n" + output
-
-          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary_file:
-              with open(summary_file, "a", encoding="utf-8") as f:
-                  f.write(output)
-
-          with open("evm-opcode-comment.md", "w", encoding="utf-8") as f:
-              f.write(output)
-
-          print(output)
-          PY
+          dotnet run --file scripts/compare-evm-benchmarks.cs -- compare
 
           {
             echo "comment_body<<EOF"
@@ -389,6 +340,7 @@ jobs:
             evm-opcodes-base-rerun-*.log
             evm-opcodes-pr-rerun-*.log
             evm-rerun-opcodes.txt
+            evm-base-harness-probe.log
           if-no-files-found: warn
 
       - name: Cleanup base worktree

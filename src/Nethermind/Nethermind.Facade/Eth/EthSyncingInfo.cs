@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
+using SyncMetrics = Nethermind.Synchronization.Metrics;
 
 namespace Nethermind.Facade.Eth
 {
@@ -17,9 +19,11 @@ namespace Nethermind.Facade.Eth
         ISyncConfig syncConfig,
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
+        IBeaconSyncStrategy beaconSyncStrategy,
         ILogManager logManager) : IEthSyncingInfo
     {
         public const int MaxDistanceForSynced = 8;
+        private const ulong NoStartingBlock = ulong.MaxValue;
 
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ISyncConfig _syncConfig = syncConfig;
@@ -27,10 +31,23 @@ namespace Nethermind.Facade.Eth
         private readonly ISyncPointers _syncPointers = syncPointers;
         private readonly ISyncModeSelector _syncModeSelector = syncModeSelector;
         private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
+        private ulong _startingBlock = blockTree.Head?.Number ?? 0;
 
+        /// <remarks>
+        /// CL-driven catch-up keeps <c>Head</c> close to <c>BestSuggestedHeader</c> while the beacon sync target is far ahead,
+        /// so the highest block is widened with <see cref="IBeaconSyncStrategy.GetTargetBlockHeight"/>.
+        /// <c>BestSuggestedBeaconHeader</c> is not used: it is a high-water mark that an abandoned fork can leave above the head.
+        /// </remarks>
         public SyncingResult GetFullInfo()
         {
             (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
+            ulong beaconSyncTarget = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
+            if (beaconSyncTarget > bestSuggestedNumber)
+            {
+                bestSuggestedNumber = beaconSyncTarget;
+                isSyncing |= bestSuggestedNumber > headNumberOrZero + (ulong)MaxDistanceForSynced;
+            }
             SyncMode syncMode = _syncModeSelector.Current;
 
             if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");
@@ -60,39 +77,40 @@ namespace Nethermind.Facade.Eth
             }
 
             if (_logger.IsTrace) _logger.Trace($"Node is not syncing - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");
+            Volatile.Write(ref _startingBlock, NoStartingBlock);
             return SyncingResult.NotSyncing;
         }
 
-        private static SyncingResult ReturnSyncing(ulong headNumberOrZero, ulong bestSuggestedNumber, SyncMode syncMode) => new()
+        /// <remarks>The head stays at genesis during snap sync, so the warp chunk fields carry the snap range progress.</remarks>
+        private SyncingResult ReturnSyncing(ulong headNumberOrZero, ulong bestSuggestedNumber, SyncMode syncMode)
         {
-            CurrentBlock = headNumberOrZero,
-            HighestBlock = bestSuggestedNumber,
-            StartingBlock = 0L,
-            SyncMode = syncMode,
-            IsSyncing = true
-        };
-
-        private readonly Stopwatch _syncStopwatch = new();
-
-        public TimeSpan UpdateAndGetSyncTime()
-        {
-            if (!_syncStopwatch.IsRunning)
+            ulong startingBlock = Interlocked.CompareExchange(ref _startingBlock, headNumberOrZero, NoStartingBlock);
+            SyncingResult result = new()
             {
-                if (IsSyncing())
-                {
-                    _syncStopwatch.Start();
-                }
-                return TimeSpan.Zero;
+                StartingBlock = Math.Min(startingBlock, headNumberOrZero),
+                CurrentBlock = headNumberOrZero,
+                HighestBlock = bestSuggestedNumber,
+                SyncMode = syncMode,
+                IsSyncing = true
+            };
+
+            if (_syncConfig.SnapSync && (syncMode & SyncMode.StateNodes) != 0)
+            {
+                result.SyncedAccounts = (ulong)SyncMetrics.SnapSyncedAccounts;
+                result.SyncedStorage = (ulong)SyncMetrics.SnapSyncedStorageSlots;
+                result.SyncedBytecodes = (ulong)SyncMetrics.SnapSyncedCodes;
+                result.HealedTrienodes = (ulong)(SyncMetrics.SyncedStateTrieNodes + SyncMetrics.SyncedStorageTrieNodes);
+                result.HealedBytecodes = (ulong)SyncMetrics.SyncedCodes;
+                result.WarpChunksAmount = ProgressTracker.RangesProgressScale;
+                result.WarpChunksProcessed = (ulong)Math.Clamp(SyncMetrics.SnapRangesProgress, 0, ProgressTracker.RangesProgressScale);
             }
 
-            if (!IsSyncing())
-            {
-                _syncStopwatch.Stop();
-                return TimeSpan.Zero;
-            }
-
-            return _syncStopwatch.Elapsed;
+            return result;
         }
+
+        private readonly SyncTimeStopwatch _syncStopwatch = new();
+
+        public TimeSpan UpdateAndGetSyncTime() => _syncStopwatch.UpdateAndGet(IsSyncing());
 
         public SyncMode SyncMode => _syncModeSelector.Current;
 

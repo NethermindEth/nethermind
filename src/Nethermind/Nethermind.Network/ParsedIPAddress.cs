@@ -71,6 +71,14 @@ internal readonly struct ParsedIPAddress(IpFamily family, uint v4, ulong hi, ulo
             : IsIPv6LoopbackOrPrivateOrLinkLocal(Hi, Lo);
     }
 
+    public bool IsWildcardOrNone
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Family == IpFamily.IPv4
+            ? V4 is 0 or uint.MaxValue
+            : Hi == 0 && Lo == 0;
+    }
+
     public bool IsMulticast
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

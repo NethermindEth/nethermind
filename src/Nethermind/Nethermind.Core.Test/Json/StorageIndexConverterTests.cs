@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
+using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -29,11 +32,19 @@ public class StorageIndexConverterTests
     public void Rejects_key_longer_than_32_bytes() =>
         Assert.That(
             () => JsonSerializer.Deserialize<StorageIndex>("\"0x" + new string('f', 65) + "\""),
-            Throws.InstanceOf<JsonException>());
+            Throws.TypeOf<SafePublicMessageFormatException>()
+                .With.Message.EqualTo("storage key too long (want at most 32 bytes): \"0x" + new string('f', 65) + "\""));
 
-    [TestCase("\"0x\"")]
-    [TestCase("\"10\"")]
-    public void Rejects_invalid_key(string json) =>
+    [Test]
+    public void Rejects_non_hex_key_keeping_the_cause() =>
+        Assert.That(
+            () => JsonSerializer.Deserialize<StorageIndex>("\"0x1zz\""),
+            Throws.TypeOf<SafePublicMessageFormatException>()
+                .With.Message.EqualTo("invalid hex in storage key: \"0x1zz\"")
+                .And.InnerException.InstanceOf<FormatException>());
+
+    [Test]
+    public void Rejects_invalid_key([Values("\"0x\"", "\"10\"")] string json) =>
         Assert.That(() => JsonSerializer.Deserialize<StorageIndex>(json), Throws.InstanceOf<JsonException>());
 
     [Test]
@@ -53,4 +64,15 @@ public class StorageIndexConverterTests
         UInt256 value = index;
         Assert.That(value, Is.EqualTo(new UInt256(42)));
     }
+
+    [Test]
+    public void Storage_keys_keep_request_order_and_duplicates()
+    {
+        StorageKeys keys = JsonSerializer.Deserialize<StorageKeys>("[\"0x2\",\"0x1\",\"0x1\",\"0x0000000000000000000000000000000000000000000000000000000000000001\"]")!;
+        Assert.That(keys.ToArray(), Is.EqualTo(new UInt256[] { 2, 1, 1, 1 }));
+    }
+
+    [Test]
+    public void Storage_keys_read_empty_hex_as_zero() =>
+        Assert.That(JsonSerializer.Deserialize<StorageKeys>("[\"0x\"]")!.ToArray(), Is.EqualTo(new[] { UInt256.Zero }));
 }

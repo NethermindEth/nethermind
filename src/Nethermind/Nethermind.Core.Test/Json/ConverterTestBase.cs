@@ -16,17 +16,33 @@ public class ConverterTestBase<T>
 
     protected void TestConverter<TItem>(TItem? item, JsonConverter<T> converter, Func<TItem, TItem, bool>? equalityComparer = null)
     {
-        JsonSerializerOptions options = new()
-        {
-            Converters =
-            {
-                converter
-            }
-        };
+        JsonSerializerOptions options = BuildOptions(converter);
+
+        AssertRoundtrip(item, JsonSerializer.Serialize(item, options), options, equalityComparer);
+    }
+
+    /// <summary>Asserts the exact serialized JSON before the roundtrip check.</summary>
+    protected void TestConverter<TItem>(TItem? item, string expectedJson, JsonConverter<T> converter, Func<TItem, TItem, bool>? equalityComparer = null)
+    {
+        JsonSerializerOptions options = BuildOptions(converter);
 
         string result = JsonSerializer.Serialize(item, options);
+        Assert.That(result, Is.EqualTo(expectedJson), result.Replace("\"", "\\\""));
 
-        TItem? deserialized = JsonSerializer.Deserialize<TItem>(result, options);
+        AssertRoundtrip(item, result, options, equalityComparer);
+    }
+
+    private static JsonSerializerOptions BuildOptions(JsonConverter<T> converter) => new()
+    {
+        Converters =
+        {
+            converter
+        }
+    };
+
+    private static void AssertRoundtrip<TItem>(TItem? item, string json, JsonSerializerOptions options, Func<TItem, TItem, bool>? equalityComparer)
+    {
+        TItem? deserialized = JsonSerializer.Deserialize<TItem>(json, options);
 
 #pragma warning disable CS8604
         if (equalityComparer is not null)

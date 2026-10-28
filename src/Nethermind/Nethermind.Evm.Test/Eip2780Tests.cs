@@ -28,7 +28,9 @@ public class Eip2780Tests
     public void Call_value_cost_is_flat_under_eip2780()
     {
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
-        Assert.That(EthereumGasPolicy.ConsumeCallValueTransferEip2780(ref gas), Is.True);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
+        Assert.That(EthereumGasPolicy.TryConsumeCallValueTransferEip2780(ref gas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas), Is.EqualTo(Eip8038Constants.CallValue));
     }
 
@@ -37,15 +39,18 @@ public class Eip2780Tests
         EthereumGasPolicy gas = EthereumGasPolicy.FromULong(1_000_000);
         using StackAccessTracker tracker = new();
         if (prewarm) tracker.WarmUp(TestItem.AddressB);
-        Assert.That(EthereumGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB), Is.True);
+        Assert.That(EthereumGasPolicy.TryConsumeAccountAccessGas(ref gas, spec, in tracker, isTracingAccess: false, TestItem.AddressB), Is.True);
         return 1_000_000 - EthereumGasPolicy.GetRemainingGas(in gas);
     }
 
     [Test]
     public void Cold_account_touch_is_flat()
     {
-        Assert.That(ChargeAccountAccess(Eip2780Spec, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccess), "cold account");
-        Assert.That(ChargeAccountAccess(Eip2780Spec, prewarm: true), Is.EqualTo(GasCostOf.WarmStateRead), "warm account stays at WARM_STATE_READ");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ChargeAccountAccess(Eip2780Spec, prewarm: false), Is.EqualTo(GasCostOf.ColdAccountAccess), "cold account");
+            Assert.That(ChargeAccountAccess(Eip2780Spec, prewarm: true), Is.EqualTo(GasCostOf.WarmStateRead), "warm account stays at WARM_STATE_READ");
+        }
     }
 
     private static Task<BasicTestBlockchain> CreateChain() =>
@@ -53,8 +58,8 @@ public class Eip2780Tests
             new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true })));
 
     // Whole-transaction totals; recipient existence is irrelevant (state-independent intrinsic).
-    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (20600)")]
-    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (20600)")]
+    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780, TestName = "value transfer to existing EOA (20600)")]
+    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780, TestName = "value transfer to new account (20600)")]
     [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess, TestName = "no-transfer to existing EOA (14600)")]
     [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess, TestName = "no-transfer to empty account (14600)")]
     public async Task Simple_transfer_spends_eip2780_total_gas(bool recipientIsNew, ulong value, ulong expectedGas)

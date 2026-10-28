@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Threading.Tasks;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching;
@@ -59,7 +62,9 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Can_reset()
     {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Set(in _keys[0], 0), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Set(in _keys[0], 1), Is.False);
         AssertValue(in _keys[0], 1);
     }
@@ -117,18 +122,18 @@ public abstract class AssociativeCacheTestsBase
     public void Can_delete()
     {
         Set(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Delete(in _keys[0]), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Get(in _keys[0]), Is.False);
         Assert.That(Delete(in _keys[0]), Is.False);
     }
 
-    [TestCase(-1)]
-    [TestCase(134_217_729)]
-    public void Capacity_out_of_range_throws(int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
+    [Test]
+    public void Capacity_out_of_range_throws([Values(-1, 134_217_729)] int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(0)]
-    [TestCase(4096)]
-    public void Capacity_valid_boundary(int capacity)
+    [Test]
+    public void Capacity_valid_boundary([Values(0, 4096)] int capacity)
     {
         CreateCache(capacity);
         Set(in _keys[0], 0);
@@ -146,27 +151,6 @@ public abstract class AssociativeCacheTestsBase
             AssertValue(in _keys[0], 0);
             Assert.That(GetCount(), Is.EqualTo(1));
         }
-    }
-
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(256)]
-    [TestCase(1024)]
-    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
-    {
-        // Catches hash signature extraction bugs: if the signature is computed from
-        // wrong bits, Get won't find keys that were just inserted (tag mismatch).
-        // Insert only 50% of capacity to avoid set-conflict eviction.
-        CreateCache(capacity);
-        int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
-
-        for (int i = 0; i < insertCount; i++)
-            Assert.That(Set(in _keys[i], i), Is.True);
-
-        for (int i = 0; i < insertCount; i++)
-            AssertValue(in _keys[i], i);
-
-        Assert.That(GetCount(), Is.EqualTo(insertCount));
     }
 
     [Test]
@@ -199,7 +183,9 @@ public abstract class AssociativeCacheTestsBase
         });
 
         AssertValue(in _keys[0], 0);
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(GetCount(), Is.GreaterThan(0));
+#pragma warning restore NUnit2045
 
         Assert.That(Delete(in _keys[0]), Is.True);
         Assert.That(Get(in _keys[0]), Is.False);
@@ -226,7 +212,9 @@ public abstract class AssociativeCacheTestsBase
         Assert.That(GetCount(), Is.EqualTo(1));
 
         Clear();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(GetCount(), Is.EqualTo(0));
+#pragma warning restore NUnit2045
 
         // Delete after Clear — entry is stale, delete should be a no-op
         Assert.That(Delete(in _keys[0]), Is.False);
@@ -259,7 +247,9 @@ public abstract class AssociativeCacheTestsBase
         Clear();
 
         // Epoch bump makes entry invisible, count resets
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Get(in _keys[0]), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(GetCount(), Is.EqualTo(0));
 
         // Capacity is free — Set returns true (new), value is retrievable
@@ -313,5 +303,122 @@ public abstract class AssociativeCacheTestsBase
             Assert.That(Set(in _keys[i], i), Is.True, $"key {i} should be new after Clear");
 
         Assert.That(GetCount(), Is.EqualTo(16));
+    }
+}
+
+[TestFixture]
+public class AssociativeCacheDeterministicHashTests
+{
+    private const int Ways = 8;
+
+    [Test]
+    public void All_inserted_keys_retrievable_at_various_capacities([Values(8, 32, 256, 1024)] int capacity)
+    {
+        int insertCount = capacity / 2;
+        DeterministicHashKey[] keys = BuildKeys(capacity, insertCount);
+        TestValue[] values = new TestValue[insertCount];
+        AssociativeCache<DeterministicHashKey, TestValue> cache = new(capacity);
+        AssociativeKeyCache<DeterministicHashKey> keyCache = new(capacity);
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            values[i] = new TestValue();
+            bool cacheInserted = cache.Set(in keys[i], values[i]);
+            bool keyCacheInserted = keyCache.Set(in keys[i]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
+            }
+        }
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            TestValue? actualValue = cache.Get(in keys[i]);
+            bool keyFound = keyCache.Get(in keys[i]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(insertCount));
+            Assert.That(keyCache.Count, Is.EqualTo(insertCount));
+        }
+    }
+
+    [Test]
+    public void Refreshed_entry_survives_sustained_churn_in_its_set()
+    {
+        const int capacity = 64;
+        int setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + Ways - 1) / Ways));
+        int hashShift = BitOperations.Log2((uint)setCount);
+        // Every key collides into set 0, so each insert past the way count must evict from it.
+        static DeterministicHashKey MakeKey(int i, int shift) => new(i, (long)(i + 1) << shift);
+
+        AssociativeCache<DeterministicHashKey, TestValue> cache = new(capacity);
+        AssociativeKeyCache<DeterministicHashKey> keyCache = new(capacity);
+        DeterministicHashKey hot = MakeKey(0, hashShift);
+        TestValue hotValue = new();
+        cache.Set(in hot, hotValue);
+        keyCache.Set(in hot);
+
+        for (int i = 1; i <= 200; i++)
+        {
+            // The refreshing lookup gives the hot entry the newest eviction age, so 3-random
+            // eviction (which removes the oldest of its sample) must never select it. This pins
+            // the ticker semantics: a recency clock coarse enough to tie a refresh with the
+            // surrounding churn would make this probabilistic.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Get(in hot), Is.SameAs(hotValue), $"hot entry evicted after {i - 1} churn inserts");
+                Assert.That(keyCache.Get(in hot), Is.True, $"hot key evicted after {i - 1} churn inserts");
+            }
+            DeterministicHashKey filler = MakeKey(i, hashShift);
+            cache.Set(in filler, new TestValue());
+            keyCache.Set(in filler);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Get(in hot), Is.SameAs(hotValue));
+            Assert.That(keyCache.Get(in hot), Is.True);
+        }
+    }
+
+    private static DeterministicHashKey[] BuildKeys(int capacity, int count)
+    {
+        int setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + Ways - 1) / Ways));
+        int hashShift = BitOperations.Log2((uint)setCount);
+        DeterministicHashKey[] keys = new DeterministicHashKey[count];
+
+        for (int i = 0; i < keys.Length; i++)
+        {
+            int setIndex = i % setCount;
+            // Put the signature immediately above the set-index bits while spreading keys
+            // evenly across sets, so retrievability is tested without incidental eviction.
+            long hashCode = ((long)(i + 1) << hashShift) | (uint)setIndex;
+            keys[i] = new DeterministicHashKey(i, hashCode);
+        }
+
+        return keys;
+    }
+
+    private sealed class TestValue
+    {
+    }
+
+    private readonly struct DeterministicHashKey(int value, long hashCode) : IHash64bit<DeterministicHashKey>
+    {
+        private readonly int _value = value;
+        private readonly long _hashCode = hashCode;
+
+        public long GetHashCode64() => _hashCode;
+        public bool Equals(in DeterministicHashKey other) => _value == other._value;
     }
 }

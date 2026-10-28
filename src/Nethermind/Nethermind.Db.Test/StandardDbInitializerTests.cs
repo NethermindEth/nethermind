@@ -30,9 +30,8 @@ public class StandardDbInitializerTests
     [OneTimeSetUp]
     public void Initialize() => _folderWithDbs = Guid.NewGuid().ToString();
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task InitializerTests_MemDbProvider(bool useReceipts)
+    [Test]
+    public async Task InitializerTests_MemDbProvider([Values] bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, true, "mem");
         Type receiptsType = GetReceiptsType(useReceipts, typeof(SnapshotableMemColumnsDb<ReceiptsColumns>));
@@ -40,9 +39,8 @@ public class StandardDbInitializerTests
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task InitializerTests_RocksDbProvider(bool useReceipts)
+    [Test]
+    public async Task InitializerTests_RocksDbProvider([Values] bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, false, $"rocks_{useReceipts}");
         Type receiptsType = GetReceiptsType(useReceipts);
@@ -50,17 +48,19 @@ public class StandardDbInitializerTests
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task InitializerTests_ReadonlyDbProvider(bool useReceipts)
+    [Test]
+    public async Task InitializerTests_ReadonlyDbProvider([Values] bool useReceipts)
     {
         using IDbProvider dbProvider = await InitializeStandardDb(useReceipts, false, $"readonly_{useReceipts}");
         using ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true);
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
         AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
-        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
-        Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
+            Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
+        }
     }
 
     [Test]
@@ -103,11 +103,14 @@ public class StandardDbInitializerTests
 
     private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
     {
-        Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
-        Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
+            Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+        }
     }
 
     [OneTimeTearDown]

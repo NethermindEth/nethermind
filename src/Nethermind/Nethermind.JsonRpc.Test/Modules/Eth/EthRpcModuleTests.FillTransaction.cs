@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -37,14 +38,20 @@ public partial class EthRpcModuleTests
     {
         LegacyTransactionForRpc filled = (LegacyTransactionForRpc)await FillTransactionForResult(rpcTx);
 
-        Assert.That(filled.Nonce, Is.EqualTo(0UL), "nonce must be filled from the pending-pool view of the sender");
-        Assert.That(filled.Gas, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated - a plain value transfer costs exactly 21000");
-        Assert.That(filled.ChainId, Is.Not.Null, "chainId must be filled so the signature is replay-protected");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filled.Nonce, Is.EqualTo(0UL), "nonce must be filled from the pending-pool view of the sender");
+            Assert.That(filled.Gas, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated - a plain value transfer costs exactly 21000");
+            Assert.That(filled.ChainId, Is.Not.Null, "chainId must be filled so the signature is replay-protected");
+        }
 
         if (filled is EIP1559TransactionForRpc eip1559)
         {
-            Assert.That(eip1559.MaxPriorityFeePerGas, Is.Not.Null, "maxPriorityFeePerGas must be filled from the gas-price oracle");
-            Assert.That(eip1559.MaxFeePerGas, Is.Not.Null, "maxFeePerGas must be filled so the tx can be submitted as-is");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(eip1559.MaxPriorityFeePerGas, Is.Not.Null, "maxPriorityFeePerGas must be filled from the gas-price oracle");
+                Assert.That(eip1559.MaxFeePerGas, Is.Not.Null, "maxFeePerGas must be filled so the tx can be submitted as-is");
+            }
         }
         else
         {
@@ -68,10 +75,33 @@ public partial class EthRpcModuleTests
 
         EIP1559TransactionForRpc filled = (EIP1559TransactionForRpc)await FillTransactionForResult(rpcTx);
 
-        Assert.That(filled.Nonce, Is.EqualTo(7UL), "caller-supplied nonce must be preserved");
-        Assert.That(filled.Gas, Is.EqualTo(0x76c0UL), "caller-supplied gas must be preserved - fill only touches omitted fields");
-        Assert.That(filled.MaxFeePerGas, Is.EqualTo((UInt256)0x9184e72a000), "caller-supplied maxFeePerGas must be preserved");
-        Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)0x3b9aca00), "caller-supplied maxPriorityFeePerGas must be preserved");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filled.Nonce, Is.EqualTo(7UL), "caller-supplied nonce must be preserved");
+            Assert.That(filled.Gas, Is.EqualTo(0x76c0UL), "caller-supplied gas must be preserved - fill only touches omitted fields");
+            Assert.That(filled.MaxFeePerGas, Is.EqualTo((UInt256)0x9184e72a000), "caller-supplied maxFeePerGas must be preserved");
+            Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)0x3b9aca00), "caller-supplied maxPriorityFeePerGas must be preserved");
+        }
+    }
+
+    [Test]
+    public async Task FillTransaction_WhenTypedTxSuppliesOnlyGasPrice_FillsLegacyWithIt()
+    {
+        // Serializes with type 0x2, which is ignored as in geth: gasPrice alone picks a legacy transaction.
+        EIP1559TransactionForRpc rpcTx = new()
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressB,
+            Value = 1,
+            GasPrice = 7,
+        };
+
+        TransactionForRpc filled = await FillTransactionForResult(rpcTx);
+
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
+        Assert.That(filled, Is.TypeOf<LegacyTransactionForRpc>());
+#pragma warning restore NUnit2045
+        Assert.That(((LegacyTransactionForRpc)filled).GasPrice, Is.EqualTo((UInt256)7), "gasPrice must be kept instead of being replaced by the oracle");
     }
 
     private static IEnumerable<TestCaseData> InvalidInputCases()
@@ -95,8 +125,47 @@ public partial class EthRpcModuleTests
             "invalid chain id").SetName("ChainIdMismatch");
 
         yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                GasPrice = 1,
+                MaxFeePerGas = 2,
+            },
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithMaxFeePerGas");
+
+        yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                GasPrice = 1,
+                MaxPriorityFeePerGas = 2,
+            },
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithMaxPriorityFeePerGas");
+
+        yield return new TestCaseData(
             (TransactionForRpc)new EIP1559TransactionForRpc { From = TestItem.AddressC, To = null, Value = 1 },
             null).SetName("ContractCreationWithoutData");
+
+        // With gas omitted, the fill first estimates the gas on the same request, which estimates a zero blob fee cap as a call does.
+        foreach (bool gasOmitted in new[] { true, false })
+        {
+            yield return new TestCaseData(
+                (TransactionForRpc)new BlobTransactionForRpc
+                {
+                    From = TestItem.AddressC,
+                    To = TestItem.AddressB,
+                    Gas = gasOmitted ? null : 0x5208UL,
+                    MaxFeePerGas = UInt256.Zero,
+                    MaxPriorityFeePerGas = UInt256.Zero,
+                    MaxFeePerBlobGas = UInt256.Zero,
+                    BlobVersionedHashes = [Bytes.FromHexString("0x0122000000000000000000000000000000000000000000000000000000000000")],
+                },
+                RpcTransactionErrors.ZeroMaxFeePerBlobGas).SetName(gasOmitted ? "ZeroBlobFeeCapWithGasOmitted" : "ZeroBlobFeeCap");
+        }
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]
@@ -134,9 +203,12 @@ public partial class EthRpcModuleTests
         BlobTransactionForRpc filled = (BlobTransactionForRpc)await FillTransactionForResult(rpcTx);
 
         Assert.That(filled.Commitments, Is.Not.Null, "commitments must be derived from the caller-supplied blobs");
-        Assert.That(filled.Commitments!.Length, Is.EqualTo(1), "one KZG commitment per blob");
-        Assert.That(filled.Proofs, Is.Not.Null, "proofs must be derived from the caller-supplied blobs");
-        Assert.That(filled.BlobVersionedHashes, Is.Not.Null, "versioned hashes must be derived from the commitments");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filled.Commitments!.Length, Is.EqualTo(1), "one KZG commitment per blob");
+            Assert.That(filled.Proofs, Is.Not.Null, "proofs must be derived from the caller-supplied blobs");
+            Assert.That(filled.BlobVersionedHashes, Is.Not.Null, "versioned hashes must be derived from the commitments");
+        }
         Assert.That(filled.BlobVersionedHashes!.Length, Is.EqualTo(1), "one versioned hash per blob");
     }
 

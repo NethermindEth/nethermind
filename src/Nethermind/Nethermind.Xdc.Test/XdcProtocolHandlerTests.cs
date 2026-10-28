@@ -17,6 +17,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Types;
@@ -33,7 +34,7 @@ public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100)
+        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100, ISyncPeerPool? syncPeerPool = null)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -55,11 +56,12 @@ public class XdcProtocolHandlerTests
             : Build.A.BlockHeader.WithNumber(headHeader.Number + (ulong)suggestedAheadOfHead).TestObject;
         blockTree.FindBestSuggestedHeader().Returns(bestSuggested);
 
+        XdcConsensusMessageHandler.Factory consensusMessages =
+            new(timeoutManager, votesManager, syncInfoManager, blockTree,
+                syncPeerPool ?? Substitute.For<ISyncPeerPool>(), LimboLogs.Instance);
+
         XdcProtocolHandler handler = new(
-            timeoutManager,
-            votesManager,
-            syncInfoManager,
-            blockTree,
+            consensusMessages,
             session,
             serializer,
             nodeStatsManager,
@@ -97,12 +99,12 @@ public class XdcProtocolHandlerTests
         handler.HandleMessage(packet);
     }
 
-    private static SyncInfo CreateSyncInfo(ulong qcRound = 1)
+    private static SyncInfo CreateSyncInfo(ulong qcRound = 1, bool isMine = false)
     {
         BlockRoundInfo blockInfo = new(TestItem.KeccakA, qcRound, 100);
         QuorumCertificate qc = new(blockInfo, Array.Empty<Signature>(), 0);
         TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
-        return new SyncInfo(qc, tc);
+        return new SyncInfo(qc, tc, isMine);
     }
 
 
@@ -138,12 +140,12 @@ public class XdcProtocolHandlerTests
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            timeoutManager.Received(1).OnReceiveTimeout(Arg.Any<Timeout>());
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
         }
     }
 
     [Test]
-    public void HandleMessage_SyncInfoMsg_WhenVerificationSucceeds_CallsProcessSyncInfo()
+    public void HandleMessage_SyncInfoMsg_ProcessesBothCertificates()
     {
         (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             _, _, ISyncInfoManager syncInfoManager) = CreateAll();
@@ -152,32 +154,84 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+            syncInfoManager.Received(1).ProcessQuorumCertificate(syncInfo.HighestQuorumCert);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
         }
     }
 
+    // An empty RLP list decodes to a null SyncInfo, so a peer can send a message carrying nothing at all.
     [Test]
-    public void HandleMessage_SyncInfoMsg_WhenVerificationFails_DoesNotCallProcessSyncInfo()
+    public void HandleMessage_SyncInfoMsgWithoutContent_IsSkippedInsteadOfThrowing()
     {
         (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
             _, _, ISyncInfoManager syncInfoManager) = CreateAll();
         using (handler)
         {
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = null });
+
+            HandleIncomingStatus(handler, serializer);
+            Assert.DoesNotThrow(() => handler.HandleMessage(packet));
+
+            syncInfoManager.Received(1).ProcessQuorumCertificate(null);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(null);
+        }
+    }
+
+    // A SyncInfo that advanced us is forwarded to the other peers the way a vote or a timeout is, and the
+    // per-peer filter keeps it from going straight back to the peer it came from.
+    [Test]
+    public void HandleMessage_SyncInfoMsgThatAdvancedUs_IsRelayedToTheOtherPeers()
+    {
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            _, _, ISyncInfoManager syncInfoManager) = CreateAll(syncPeerPool: syncPeerPool);
+        (XdcProtocolHandler otherHandler, _, ISession otherSession, _, _, _) = CreateAll();
+        using (handler)
+        using (otherHandler)
+        {
+            syncPeerPool.AllPeers.Returns([new PeerInfo(handler), new PeerInfo(otherHandler)]);
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>())
-                .Returns(x => { x[1] = "rounds too low"; return false; });
+
+            // One accepted half is enough to pass the message on.
+            syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert).Returns((string?)null);
+            syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert).Returns("TC is stale");
 
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            syncInfoManager.DidNotReceive().ProcessSyncInfo(Arg.Any<SyncInfo>());
+            otherSession.Received(1).DeliverMessage(Arg.Any<SyncInfoMsg>());
+            session.DidNotReceive().DeliverMessage(Arg.Any<SyncInfoMsg>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_SyncInfoMsgWithNothingNewInIt_IsNotRelayed()
+    {
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            _, _, ISyncInfoManager syncInfoManager) = CreateAll(syncPeerPool: syncPeerPool);
+        (XdcProtocolHandler otherHandler, _, ISession otherSession, _, _, _) = CreateAll();
+        using (handler)
+        using (otherHandler)
+        {
+            syncPeerPool.AllPeers.Returns([new PeerInfo(otherHandler)]);
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
+            syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert).Returns("QC is stale");
+            syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert).Returns("TC is stale");
+
+            HandleIncomingStatus(handler, serializer);
+            handler.HandleMessage(packet);
+
+            otherSession.DidNotReceive().DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
     }
 
@@ -189,7 +243,7 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 1);
 
-            handler.SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
 
             session.Received(1).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -203,8 +257,8 @@ public class XdcProtocolHandlerTests
         {
             Vote vote = CreateVote(round: 7);
 
-            handler.SendVote(vote);
-            handler.SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
+            ((IXdcConsensusPeer)handler).SendVote(vote);
 
             session.Received(1).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -219,8 +273,8 @@ public class XdcProtocolHandlerTests
             Vote vote1 = CreateVote(round: 1);
             Vote vote2 = CreateVote(round: 2);
 
-            handler.SendVote(vote1);
-            handler.SendVote(vote2);
+            ((IXdcConsensusPeer)handler).SendVote(vote1);
+            ((IXdcConsensusPeer)handler).SendVote(vote2);
 
             session.Received(2).DeliverMessage(Arg.Any<VoteMsg>());
         }
@@ -234,7 +288,7 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 1);
 
-            handler.SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
 
             session.Received(1).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -248,8 +302,8 @@ public class XdcProtocolHandlerTests
         {
             Timeout timeout = CreateTimeout(round: 4);
 
-            handler.SendTimeout(timeout);
-            handler.SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout);
 
             session.Received(1).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -264,8 +318,8 @@ public class XdcProtocolHandlerTests
             Timeout timeout1 = CreateTimeout(round: 1);
             Timeout timeout2 = CreateTimeout(round: 2);
 
-            handler.SendTimeout(timeout1);
-            handler.SendTimeout(timeout2);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout1);
+            ((IXdcConsensusPeer)handler).SendTimeout(timeout2);
 
             session.Received(2).DeliverMessage(Arg.Any<TimeoutMsg>());
         }
@@ -279,25 +333,27 @@ public class XdcProtocolHandlerTests
         {
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
 
-            handler.SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
             session.Received(1).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
     }
 
-    [Test]
-    public void SendSyncInfo_SameSyncInfoTwice_IsDeliveredTwice()
+    // Our own announcement is a liveness signal, so an unchanged one still has to go out again;
+    // a relayed one is deduplicated per peer, the way a vote or a timeout is.
+    [TestCase(true, 2)]
+    [TestCase(false, 1)]
+    public void SendSyncInfo_SameSyncInfoTwice_IsDeliveredAgainOnlyIfItIsOurs(bool isMine, int expectedDeliveries)
     {
-        // SyncInfo has no deduplication cache; each call should send
         (XdcProtocolHandler handler, _, ISession session, _, _, _) = CreateAll();
         using (handler)
         {
-            SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
+            SyncInfo syncInfo = CreateSyncInfo(qcRound: 5, isMine: isMine);
 
-            handler.SendSyncInfo(syncInfo);
-            handler.SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
+            ((IXdcConsensusPeer)handler).SendSyncInfo(syncInfo);
 
-            session.Received(2).DeliverMessage(Arg.Any<SyncInfoMsg>());
+            session.Received(expectedDeliveries).DeliverMessage(Arg.Any<SyncInfoMsg>());
         }
     }
 
@@ -374,7 +430,7 @@ public class XdcProtocolHandlerTests
     public void HandleMessage_SyncInfoMsgWhileSyncing_IsNeverIgnored()
     {
         // SyncInfo is the node's own catch-up path (carries the network's HighestQC/HighestTC) and
-        // already guards itself via VerifySyncInfo, so unlike Vote/Timeout it must never be dropped
+        // already guards each certificate itself, so unlike Vote/Timeout it must never be dropped
         // by the syncing check - not even while genuinely far behind, as this test's 900-block gap
         // simulates.
         (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
@@ -387,11 +443,11 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 10);
             ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
 
             handler.HandleMessage(syncInfoPacket);
 
-            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+            syncInfoManager.Received(1).ProcessQuorumCertificate(syncInfo.HighestQuorumCert);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
         }
     }
 
@@ -422,18 +478,17 @@ public class XdcProtocolHandlerTests
             SyncInfo syncInfo = CreateSyncInfo(qcRound: 5);
             ZeroPacket syncInfoPacket = CreatePacket(XdcMessageCode.SyncInfoMsg);
             serializer.Deserialize<SyncInfoMsg>(syncInfoPacket.Content).Returns(new SyncInfoMsg { SyncInfo = syncInfo });
-            syncInfoManager.VerifySyncInfo(syncInfo, out Arg.Any<string>()).Returns(true);
             handler.HandleMessage(syncInfoPacket);
 
             votesManager.Received(1).OnReceiveVote(vote);
             timeoutManager.Received(1).OnReceiveTimeout(timeout);
-            syncInfoManager.Received(1).ProcessSyncInfo(syncInfo);
+            syncInfoManager.Received(1).ProcessQuorumCertificate(syncInfo.HighestQuorumCert);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert);
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes(bool sendFullTx)
+    [Test]
+    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes([Values] bool sendFullTx)
     {
         // In XdcProtocolHandler tx gossip must go via TransactionsMessage (0x02),
         // never via NewPooledTransactionHashesMessage (0x08 from Eth65) which conflicts with XDC OrderTxMsg.

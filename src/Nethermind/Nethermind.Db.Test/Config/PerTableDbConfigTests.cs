@@ -94,13 +94,21 @@ public class PerTableDbConfigTests
         IDictionary<string, string> receiptsBlocks = DbOnTheRocks.ExtractOptions(
             new PerTableDbConfig(dbConfig, DbNames.Receipts, nameof(ReceiptsColumns.Blocks)).RocksDbOptions);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(ulong.Parse(receiptsBlocks["write_buffer_size"]),
                 Is.GreaterThanOrEqualTo(ulong.Parse(generic["write_buffer_size"])));
             Assert.That(int.Parse(receiptsBlocks["max_write_buffer_number"]),
                 Is.GreaterThanOrEqualTo(int.Parse(generic["max_write_buffer_number"])));
-        });
+        }
+    }
+
+    [Test]
+    public void CodeDb_has_no_row_cache_by_default()
+    {
+        // Code is cached above as CodeInfo; a row cache copies every loaded contract, up to 64 KiB, again.
+        PerTableDbConfig config = new(new DbConfig(), DbNames.Code);
+        Assert.That(config.RowCacheSize ?? 0, Is.Zero);
     }
 
     [Test]

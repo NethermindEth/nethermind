@@ -20,17 +20,6 @@ public class McsLockTests
     public void Setup() => mcsLock = new McsLock();
 
     [Test]
-    public void SingleThreadAcquireRelease()
-    {
-        using (McsLock.Disposable handle = mcsLock.EnterScope())
-        {
-            Thread.Sleep(10);
-        }
-
-        Assert.Pass(); // Test passes if no deadlock or exception occurs.
-    }
-
-    [Test]
     public void MultipleThreads()
     {
         int counter = 0;
@@ -63,9 +52,8 @@ public class McsLockTests
         const int numberOfThreads = 10;
         List<int> executionOrder = [];
         List<Thread> threads = [];
+        McsLock.ThreadNode[] nodes = new McsLock.ThreadNode[numberOfThreads];
         SemaphoreSlim[] gates = Enumerable.Range(0, numberOfThreads)
-            .Select(_ => new SemaphoreSlim(0, 1)).ToArray();
-        SemaphoreSlim[] reachedAcquire = Enumerable.Range(0, numberOfThreads)
             .Select(_ => new SemaphoreSlim(0, 1)).ToArray();
 
         using (McsLock.Disposable orchestrator = mcsLock.Acquire())
@@ -75,20 +63,26 @@ public class McsLockTests
                 int threadId = i;
                 Thread thread = new(() =>
                 {
+                    nodes[threadId] = mcsLock.CurrentThreadNodeForTesting;
                     gates[threadId].Wait();
-                    reachedAcquire[threadId].Release();
                     using McsLock.Disposable handle = mcsLock.Acquire();
                     executionOrder.Add(threadId);
-                });
+                })
+                // A failed queue wait leaves later threads blocked on their gates; they must not keep the test host alive.
+                { IsBackground = true };
                 threads.Add(thread);
                 thread.Start();
             }
 
+            // Release each thread only once the previous one is queued, so the queue order is the release order.
             for (int i = 0; i < numberOfThreads; i++)
             {
                 gates[i].Release();
-                reachedAcquire[i].Wait();
-                Thread.Sleep(5);
+                int threadId = i;
+                Assert.That(
+                    SpinWait.SpinUntil(() => mcsLock.TailForTesting == nodes[threadId], TimeSpan.FromSeconds(10)),
+                    Is.True,
+                    $"thread {threadId} did not queue");
             }
         }
 
@@ -112,12 +106,17 @@ public class McsLockTests
     [Test]
     public void ReacquireAfterReleaseSucceeds()
     {
-        for (int i = 0; i < 3; i++)
+        // Run on a worker thread. A broken release then causes a fast, explicit
+        // failure instead of a deadlocked test host.
+        Task reacquisitions = Task.Run(() =>
         {
-            using McsLock.Disposable handle = mcsLock.Acquire();
-        }
+            for (int i = 0; i < 3; i++)
+            {
+                using McsLock.Disposable handle = mcsLock.Acquire();
+            }
+        });
 
-        Assert.Pass();
+        Assert.That(reacquisitions.Wait(TimeSpan.FromSeconds(10)), Is.True, "a released lock could not be re-acquired");
     }
 
     [Test]
@@ -206,7 +205,9 @@ public class McsLockTests
         {
             tasks[i] = Task.Factory.StartNew(Body, TaskCreationOptions.LongRunning);
         }
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(Task.WaitAll(tasks, TimeSpan.FromSeconds(60)), Is.True, "stress run deadlocked");
+#pragma warning restore NUnit2045
 
         Assert.That(failure, Is.Null);
         Assert.That(Interlocked.Read(ref total), Is.EqualTo((long)threadCount * iterations));

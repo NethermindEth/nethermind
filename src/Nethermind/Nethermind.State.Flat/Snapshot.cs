@@ -9,6 +9,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Collections;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -29,7 +31,7 @@ public class Snapshot : RefCountingDisposable
     private readonly bool _isSorted;
     // Counts sealed on first observation: ConcurrentDictionary.Count acquires every stripe lock, so
     // serving live counts would stall concurrent writers on each estimate, and the repository's
-    // add/remove memory ledger needs the same value on both sides even if stragglers still write.
+    // add/remove memory ledger needs the same value on both sides.
     // Sealing lazily (not in the constructor) keeps ResourcePool.CreateSnapshot's
     // construct-then-populate contract working: population always precedes the first count observation.
     // Boxed so publication is a single reference CAS.
@@ -86,7 +88,7 @@ public class Snapshot : RefCountingDisposable
     public StateId To => _to;
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
+    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
@@ -100,19 +102,65 @@ public class Snapshot : RefCountingDisposable
     internal SortedSnapshotContent SortedContent => _sorted!;
 
     public bool TryGetAccount(HashedKey<Address> key, out Account? acc)
-        => _isSorted ? _sorted!.TryGetAccount(key, out acc) : _mutable!.Accounts.TryGetValue(key, out acc);
+        => _isSorted ? _sorted!.TryGetAccount(key, out acc) : (MayContain(_mutable!.Filters?.Accounts, key) ? _mutable!.Accounts.TryGetValue(key, out acc) : NotFound(out acc));
 
     public bool HasSelfDestruct(HashedKey<Address> key)
         => _isSorted ? _sorted!.HasSelfDestruct(key) : _mutable!.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
 
-    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out SlotValue? value)
-        => _isSorted ? _sorted!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
+    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value)
+        => _isSorted ? _sorted!.TryGetStorage(key, out value) : (MayContain(_mutable!.Filters?.Storages, key) ? _mutable!.Storages.TryGetValue(key, out value) : NotFound(out value));
+
+    /// <summary>The key a storage key is filed under in a slot filter built by <see cref="AddStorageKeysTo"/>.</summary>
+    /// <remarks>The hash the dictionaries already bucket on, so a probe hashes nothing new.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong StorageFilterKey(in HashedKey<(Address, UInt256)> key) => (uint)key.GetHashCode();
+
+    /// <summary>Adds every storage key of this snapshot to <paramref name="filter"/> under <see cref="StorageFilterKey"/>.</summary>
+    /// <remarks>
+    /// Requires storage keys to be fully populated before the snapshot is published to readers and unchanged
+    /// afterwards (see <see cref="SnapshotContent.Storages"/>), so a built filter cannot miss a later key.
+    /// </remarks>
+    internal void AddStorageKeysTo(BloomFilter filter)
+    {
+        if (_isSorted)
+        {
+            // Entry.HashCode is (uint)key.GetHashCode(), i.e. StorageFilterKey, and reading it skips copying the keys.
+            foreach (ref readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?>.Entry entry in _sorted!.SortedStorages.Entries)
+            {
+                filter.AddUnsynchronized(entry.HashCode);
+            }
+        }
+        else
+        {
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in _mutable!.Storages)
+            {
+                filter.AddUnsynchronized(StorageFilterKey(kv.Key));
+            }
+        }
+    }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
+        => _isSorted ? _sorted!.TryGetStateNode(key, out node) : (MayContain(_mutable!.Filters?.StateNodes, key) ? _mutable!.StateNodes.TryGetValue(key, out node!) : NotFound(out node));
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
-        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : _mutable!.StorageNodes.TryGetValue(key, out node!);
+        => _isSorted ? _sorted!.TryGetStorageNode(key, out node) : (MayContain(_mutable!.Filters?.StorageNodes, key) ? _mutable!.StorageNodes.TryGetValue(key, out node!) : NotFound(out node));
+
+    /// <summary>Builds key filters over the mutable content, so lookups of absent keys skip its dictionaries.</summary>
+    /// <remarks>See <see cref="SnapshotContent.BuildFilters"/>.</remarks>
+    internal void BuildFilters()
+    {
+        if (!_isSorted) _mutable!.BuildFilters(Counts);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool MayContain<T>(SplitBlockFilter? filter, in HashedKey<T> key) where T : IEquatable<T>
+        => filter is null || filter.MightContain((uint)key.GetHashCode());
+
+    private static bool NotFound<T>(out T value)
+    {
+        value = default!;
+        return false;
+    }
 
     protected override void CleanUp()
     {
@@ -123,29 +171,76 @@ public class Snapshot : RefCountingDisposable
     public bool TryAcquire() => TryAcquireLease();
 }
 
+/// <summary>The writes of one block, or of a run of blocks, that a <see cref="Snapshot"/> serves.</summary>
+/// <remarks>
+/// Writes to <see cref="Accounts"/>, <see cref="Storages"/>, <see cref="StateNodes"/> and <see cref="StorageNodes"/>
+/// must finish before the snapshot is published to readers, including when content is populated after construction
+/// through <see cref="ResourcePool.CreateSnapshot"/>. The key filters of <see cref="BuildFilters"/> and the slot filter
+/// of <see cref="ReadOnlySnapshotBundle"/> rely on this: a key added afterwards would be missing from a filter already
+/// built, and a filtered read would skip it. <see cref="ReadAccounts"/> is not filtered, so it can still take writes.
+/// </remarks>
 public sealed class SnapshotContent : IDisposable, IResettable
 {
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
+
+    /// <summary>Slot writes; <c>null</c> is a zero write (a deletion).</summary>
+    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
     public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
     public readonly AddressStorageNodeDictionary StorageNodes = new();
 
+    /// <summary>Accounts the block only read, cached for its later reads.</summary>
+    /// <remarks>
+    /// Kept apart from <see cref="Accounts"/>, so a snapshot never exports them: persisting them would rewrite
+    /// unchanged values and evict them from the carry-forward cache.
+    /// </remarks>
+    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> ReadAccounts = new();
+
+    // Kept across resets so each build reuses the arrays of an earlier one. Rebuilt in place, which is safe for the
+    // same reason Reset is: no reader holds the previous snapshot.
+    private readonly SnapshotContentFilters _filters = new();
+    private SnapshotContentFilters? _publishedFilters;
+    private int _filterBuildStarted;
+
+    /// <summary>The key filters of this content, or <c>null</c> until <see cref="BuildFilters"/> publishes them.</summary>
+    internal SnapshotContentFilters? Filters => _publishedFilters;
+
+    /// <summary>Builds key filters over the four filtered maps, so lookups of absent keys skip their dictionaries.</summary>
+    /// <remarks>
+    /// Call after the content is final. Only the first caller after a <see cref="Reset"/> builds; readers probe the
+    /// dictionaries until the filters are published.
+    /// </remarks>
+    internal void BuildFilters(in SnapshotContentCounts counts)
+    {
+        if (Interlocked.CompareExchange(ref _filterBuildStarted, 1, 0) != 0) return;
+
+        _filters.Build(this, counts);
+        Volatile.Write(ref _publishedFilters, _filters);
+    }
+
     public void Reset()
     {
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
+        // Enumerating even an empty StorageNodes walks its whole bucket table; read-only scopes rarely write any.
+        bool hasStorageNodes = StorageNodes.MayHaveAddresses;
+        if (hasStorageNodes)
+        {
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
+        }
 
         // Reset runs at a quiescent pool-return boundary (final snapshot lease released, or the
         // bundle returning its current content on disposal), so no writer can hold a stripe;
         // the lock-free clear skips ~thousands of inflated Monitor acquisitions per return.
         Accounts.NoLockClear();
+        ReadAccounts.NoLockClear();
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateNodes.Clear();
-        StorageNodes.NoLockClear();
+        if (hasStorageNodes) StorageNodes.NoLockClear();
+        _publishedFilters = null;
+        _filterBuildStarted = 0;
     }
 
     /// <summary>
@@ -186,7 +281,7 @@ internal readonly record struct SnapshotContentCounts(
     public long EstimateMemory() =>
         // Cast Count to long before multiplying to avoid int overflow for large snapshots
         (long)Accounts * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
-            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B UInt256?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             (long)StateNodes * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
             (long)StorageNodes * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
@@ -200,7 +295,7 @@ internal readonly record struct SnapshotContentCounts(
         // ConcurrentDictionary entry overhead ~48 bytes
         // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
         (long)Accounts * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
-            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B UInt256?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             (long)StateNodes * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
             (long)StorageNodes * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)

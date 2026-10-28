@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -35,9 +35,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
-            foreach (Transaction transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes, filterSource))
+            foreach (Transaction transaction in _contractValidator.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
             }
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         {
                             SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
                         }
-                        catch (AbiException e)
+                        catch (ContractException e)
                         {
                             if (_logger.IsWarn) _logger.Warn($"Cannot report validator {persistentReport.MaliciousValidator} for misbehavior on block {persistentReport.BlockNumber}: {e.Message}.");
                         }
@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         if (_logger.IsTrace) _logger.Trace($"Successfully removed report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber} from report cache.");
                     }
                 }
-                catch (AbiException e)
+                catch (ContractException e)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to query report status, dropping pending report of malicious validator {persistentReport.MaliciousValidator} at block {persistentReport.BlockNumber}. {new StackTrace()}", e);
                     _persistentReports.Remove(node);

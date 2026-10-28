@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Rlp;
 
@@ -28,10 +29,11 @@ public class AuRaHeaderModule : Module
         Rlp.RegisterDecoder(typeof(Block), blockDecoder);
         Rlp.RegisterDecoder(typeof(BlockBody), blockBodyDecoder);
 
+        // The DI decoders also resolve EIP-7668 activation; InitTxTypesAndRlp registers them globally.
         builder
-            .AddSingleton<IHeaderDecoder>(headerDecoder)
-            .AddSingleton(blockDecoder)
-            .AddSingleton(blockBodyDecoder)
+            .AddSingleton<IHeaderDecoder, ISpecProvider>(static specProvider => new AuRaHeaderDecoder(specProvider))
+            .AddSingleton<BlockDecoder, IHeaderDecoder>(static decoder => new BlockDecoder(decoder))
+            .AddSingleton<BlockBodyDecoder, IHeaderDecoder>(static decoder => new BlockBodyDecoder(decoder))
             .AddDecorator<IGenesisBuilder, AuRaGenesisBuilder>()
             .AddSingleton<IBlockForRpcFactory, AuRaBlockForRpcFactory>();
     }
