@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
@@ -83,6 +84,31 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
 
         node = null!;
         return false;
+    }
+
+    /// <summary>Adds the <see cref="HashedKey{T}"/> hash code of every key to <paramref name="filter"/>.</summary>
+    /// <remarks>
+    /// Combines each address hash, computed once, with the cached path hashes as the key tuple does, so no combined
+    /// key is built and no path is rehashed.
+    /// </remarks>
+    internal void AddKeyHashesTo(SplitBlockFilter filter)
+    {
+        IEnumerator<KeyValuePair<Hash256AsKey, AddressNodes>> addresses = RentAddressEnumerator();
+        try
+        {
+            while (addresses.MoveNext())
+            {
+                int addressHash = addresses.Current.Key.GetHashCode();
+                foreach (HashedKey<TreePath> path in addresses.Current.Value.Nodes.Keys)
+                {
+                    filter.Add((uint)HashCode.Combine(addressHash, path.GetHashCode()));
+                }
+            }
+        }
+        finally
+        {
+            ReturnAddressEnumerator(addresses);
+        }
     }
 
     internal bool RemoveAddress(Hash256 address) => _byAddress.TryRemove(address, out _);
