@@ -653,11 +653,17 @@ public partial class DebugRpcModuleTests
 
         if (expected == "lookup")
         {
+            string message = method switch
+            {
+                "debug_traceBlockByNumber" => $"block #{blockNumber} not found",
+                "debug_traceBlockByHash" => $"block {selector} not found",
+                _ => $"Cannot find header for block hash: {selector}"
+            };
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo(method == "debug_traceBlockByNumber"
-                    ? $"block #{blockNumber} not found" : $"Cannot find header for block hash: {selector}"), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+                Assert.That(json["result"], Is.Null, response);
             }
             return;
         }
