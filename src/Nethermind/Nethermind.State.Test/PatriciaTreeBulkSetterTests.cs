@@ -566,8 +566,11 @@ public class PatriciaTreeBulkSetterTests
                 }
             }
 
-            Assert.That(newWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
-            Assert.That(pTree.RootHash, Is.EqualTo(root));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(newWriteCount, Is.LessThanOrEqualTo(baselineWriteCount));
+                Assert.That(pTree.RootHash, Is.EqualTo(root));
+            }
         }
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Bulk: {newTime}");

@@ -67,8 +67,11 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         foreach (Thread t in threads) t.Start();
         foreach (Thread t in threads) t.Join();
 
-        Assert.That(factory.Created, Is.EqualTo(n), "each renter held concurrently forced a distinct env");
-        Assert.That(new HashSet<SimulateReadOnlyBlocksProcessingScope>(scopes), Has.Count.EqualTo(n), "every concurrent renter got an independent scope");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Created, Is.EqualTo(n), "each renter held concurrently forced a distinct env");
+            Assert.That(new HashSet<SimulateReadOnlyBlocksProcessingScope>(scopes), Has.Count.EqualTo(n), "every concurrent renter got an independent scope");
+        }
     }
 
     [Test]
@@ -119,8 +122,11 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         pool.Begin(null).Dispose();
         pool.Begin(null).Dispose();
 
-        Assert.That(factory.Created, Is.EqualTo(1), "sequential rents reuse the idle env instead of growing");
-        Assert.That(factory.Envs[0].BeginCount, Is.EqualTo(2), "each rent re-begins the env, resetting its temp state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Created, Is.EqualTo(1), "sequential rents reuse the idle env instead of growing");
+            Assert.That(factory.Envs[0].BeginCount, Is.EqualTo(2), "each rent re-begins the env, resetting its temp state");
+        }
     }
 
     private sealed class FakeEnvFactory(bool throwOnBegin = false)

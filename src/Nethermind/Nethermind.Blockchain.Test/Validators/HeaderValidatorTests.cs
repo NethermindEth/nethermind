@@ -471,8 +471,11 @@ public class HeaderValidatorTests
         HeaderValidator sut = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
 
-        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
-        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
+            Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
+        }
     }
 
     [Test]
@@ -482,8 +485,11 @@ public class HeaderValidatorTests
 
         bool result = _validator.Validate(_block.Header, Build.A.BlockHeader.WithNonce(999).TestObject, false, out string? error);
 
-        Assert.That(result, Is.False);
-        Assert.That(error, Does.StartWith("Mismatched parent"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Does.StartWith("Mismatched parent"));
+        }
     }
 
     [Test]
@@ -495,8 +501,11 @@ public class HeaderValidatorTests
 
         bool result = _validator.Validate(_block.Header, parentHeader, false, out string? error);
 
-        Assert.That(result, Is.False);
-        Assert.That(parentHeader.SlotNumber, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(parentHeader.SlotNumber, Is.Null);
+        }
     }
 
     [Test]

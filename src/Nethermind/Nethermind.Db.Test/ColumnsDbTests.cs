@@ -202,8 +202,11 @@ public class ColumnsDbTests
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
         IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
 
-        Assert.That(prefetcher.IsCached(key), Is.False);
-        Assert.That(reopened.GetColumnDb(ReceiptsColumns.Blocks).Get(key), Is.EqualTo(new byte[] { 9, 9 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefetcher.IsCached(key), Is.False);
+            Assert.That(reopened.GetColumnDb(ReceiptsColumns.Blocks).Get(key), Is.EqualTo(new byte[] { 9, 9 }));
+        }
         Assert.That(prefetcher.IsCached(key), Is.True);
     }
 
@@ -316,10 +319,13 @@ public class ColumnsDbTests
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
 
-        Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
-        Assert.That(colB.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(colB.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
 
-        Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
+            Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
+        }
     }
 
     [Test]
@@ -348,9 +354,12 @@ public class ColumnsDbTests
 
         Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
         defaultCol.Set(TestItem.KeccakB, TestItem.KeccakC.BytesToArray());
-        Assert.That(defaultCol.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(defaultCol.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
 
-        Assert.That(_db.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+            Assert.That(_db.Get(TestItem.KeccakB), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+        }
     }
 
     [Test]
@@ -365,8 +374,11 @@ public class ColumnsDbTests
 
         batch.Dispose();
 
-        Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
-        Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        }
     }
 
     [Test]
@@ -404,10 +416,13 @@ public class ColumnsDbTests
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
 
         colA.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
-        Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
 
-        Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
-            .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(snapshot.GetColumn(ReceiptsColumns.Blocks)
+                .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        }
     }
 
     [TestCase(3)]
