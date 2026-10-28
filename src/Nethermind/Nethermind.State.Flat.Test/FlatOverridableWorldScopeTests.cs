@@ -339,13 +339,17 @@ public class FlatOverridableWorldScopeTests
         overriddenBase.StateRoot = CommitAccount(worldState.BeginScope(overriddenBase), overriddenBase.Number, TestItem.AddressA);
         BlockHeader child = Build.A.BlockHeader.WithParent(overriddenBase).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(worldState.HasStateForTargetBlock(child), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(worldState.TryBeginScopeAtTarget(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope? childScope), Is.True);
         Assert.That(childScope!.Get(TestItem.AddressA), Is.Not.Null);
         child.StateRoot = CommitAccount(childScope, child.Number, TestItem.AddressB);
         BlockHeader grandchild = Build.A.BlockHeader.WithParent(child).TestObject;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(worldState.TryBeginScopeAtTarget(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope? grandchildScope), Is.True);
         using (Assert.EnterMultipleScope())
         {

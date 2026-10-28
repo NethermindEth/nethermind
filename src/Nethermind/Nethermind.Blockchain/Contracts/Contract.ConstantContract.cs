@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -22,90 +21,61 @@ namespace Nethermind.Blockchain.Contracts
 
         protected interface IConstantContract
         {
-            public object[] Call(CallInfo callInfo);
+            /// <summary>Calls <paramref name="function"/> without modifying state.</summary>
+            /// <exception cref="ContractException">The call fails, its return data cannot be decoded, or there is no contract at the contract address.</exception>
+            TResult Call<TArgs, TResult>(BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments);
 
-            public T Call<T>(CallInfo callInfo) => (T)Call(callInfo)[0];
-
-            public (T1, T2) Call<T1, T2>(CallInfo callInfo)
-            {
-                object[] objects = Call(callInfo);
-                return ((T1)objects[0], (T2)objects[1]);
-            }
-
-            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
-                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments));
-
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments) =>
-                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments));
-
-            public T Call<T>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
-                Call<T>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
-
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, Address contractAddress, string functionName, Address sender, params object[] arguments) =>
-                Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
-        }
-
-        protected abstract class ConstantContractBase(Contract contract) : IConstantContract
-        {
-            protected readonly Contract _contract = contract;
-
-            protected Transaction GenerateTransaction(CallInfo callInfo) =>
-                _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
-
-            protected byte[] CallCore(CallInfo callInfo, ITransactionProcessor readOnlyTransactionProcessor, Transaction transaction) =>
-                _contract.CallCore(readOnlyTransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, true);
-
-            protected object[] DecodeReturnData(string functionName, byte[] data) => _contract.DecodeReturnData(functionName, data);
-
-            public abstract object[] Call(CallInfo callInfo);
+            /// <summary>Calls <paramref name="function"/> without modifying state, returning <paramref name="missingContractResult"/> when there is no contract at the contract address.</summary>
+            /// <exception cref="ContractException">The call fails or its return data cannot be decoded.</exception>
+            TResult Call<TArgs, TResult>(BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments, TResult missingContractResult);
         }
 
         /// <summary>
         /// Constant version of the contract. Allows to call contract methods without state modification.
         /// </summary>
-        protected class ConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : ConstantContractBase(contract)
+        protected class ConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : IConstantContract
         {
-            private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource = readOnlyTxProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTxProcessorSource));
+            protected readonly Contract _contract = contract;
+            protected readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource = readOnlyTxProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTxProcessorSource));
 
-            public override object[] Call(CallInfo callInfo)
+            public TResult Call<TArgs, TResult>(BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments)
             {
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader);
-                    return CallRaw(callInfo, scope);
+                    using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(parentHeader);
+                    return Call(scope, parentHeader, function, sender, arguments);
                 }
             }
 
-            protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
+            public TResult Call<TArgs, TResult>(BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments, TResult missingContractResult)
             {
-                Transaction transaction = GenerateTransaction(callInfo);
-                if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
+                lock (_readOnlyTxProcessorSource)
                 {
-                    byte[] result = CallCore(callInfo, scope.TransactionProcessor, transaction);
-                    return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
-                }
-                else if (callInfo.MissingContractResult is not null)
-                {
-                    return callInfo.MissingContractResult;
-                }
-                else
-                {
-                    throw new AbiException($"Missing contract on address {_contract.ContractAddress} when calling function {callInfo.FunctionName}.");
+                    using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(parentHeader);
+                    return TryCall(scope, parentHeader, function, sender, arguments, out TResult result) ? result : missingContractResult;
                 }
             }
-        }
 
-        public class CallInfo(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
-        {
-            public BlockHeader ParentHeader { get; } = parentHeader;
-            public string FunctionName { get; } = functionName;
-            public Address Sender { get; } = sender;
-            public object[] Arguments { get; } = arguments;
-            public object[]? Result { get; set; }
-            public object[]? MissingContractResult { get; set; }
-            public Address? ContractAddress { get; set; }
+            protected TResult Call<TArgs, TResult>(IReadOnlyTxProcessingScope scope, BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments) =>
+                TryCall(scope, parentHeader, function, sender, arguments, out TResult result)
+                    ? result
+                    : throw new ContractException($"Missing contract on address {_contract.ContractAddress} when calling function {function}.");
 
-            public bool IsDefaultResult => ReferenceEquals(Result, MissingContractResult);
+            private bool TryCall<TArgs, TResult>(IReadOnlyTxProcessingScope scope, BlockHeader parentHeader, ContractFunction<TArgs, TResult> function, Address sender, TArgs arguments, out TResult result)
+            {
+                byte[] callData = _contract.EncodeCallData(function, arguments);
+                Address? contractAddress = _contract.GetContractAddress(parentHeader);
+                if (contractAddress is not null && scope.WorldState.IsContract(contractAddress))
+                {
+                    Transaction transaction = _contract.GenerateTransaction<SystemTransaction>(contractAddress, callData, sender, DefaultConstantContractGasLimit);
+                    byte[] output = _contract.CallCore(scope.TransactionProcessor, parentHeader, function.Signature.Name, transaction, true);
+                    result = _contract.DecodeReturnData(function, output);
+                    return true;
+                }
+
+                result = default;
+                return false;
+            }
         }
     }
 }

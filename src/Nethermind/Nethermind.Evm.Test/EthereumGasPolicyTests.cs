@@ -40,8 +40,11 @@ public class EthereumGasPolicyTests
 
         tracker.Restore();
 
-        Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
-        Assert.That(tracker.IsCold(in other), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
+            Assert.That(tracker.IsCold(in other), Is.True);
+        }
     }
 
     /// <summary>Returning a tracker to the pool must drop the remembered warm cell, or the next rental
@@ -561,9 +564,12 @@ public class EthereumGasPolicyTests
         EthereumGasPolicy floor = new() { Value = 21_000 };
         IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
 
-        Assert.That(intrinsic.StandardGas, Is.EqualTo(213_600UL));
-        Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(213_600UL));
-        Assert.That(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas), Is.EqualTo(30_000UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic.StandardGas, Is.EqualTo(213_600UL));
+            Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(213_600UL));
+            Assert.That(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas), Is.EqualTo(30_000UL));
+        }
     }
 
     [Test]
