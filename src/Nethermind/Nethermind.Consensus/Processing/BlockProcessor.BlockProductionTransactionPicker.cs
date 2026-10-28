@@ -45,17 +45,15 @@ namespace Nethermind.Consensus.Processing
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
                 // No more gas available in block for any transactions, the only case we have to really stop. EIP-2780
-                // lowers the base cost and an EIP-8141 frame transaction reserves from its own lower intrinsic cost,
-                // so the legacy floor gates the spec read.
-                if (GasCostOf.Transaction > gasRemaining)
+                // lowers the base cost and an EIP-8141 frame transaction reserves from its own lower intrinsic cost.
+                if (GasCostOf.Transaction > gasRemaining
+                    && (!spec.IsEip2780Enabled || GasCostOf.TransactionEip2780 > gasRemaining)
+                    && (!spec.IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
                 {
-                    IReleaseSpec blockSpec = _specProvider.GetSpec(block.Header);
-                    if ((!blockSpec.IsEip2780Enabled || GasCostOf.TransactionEip2780 > gasRemaining)
-                        && (!blockSpec.IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
-                    {
-                        return args.Set(TxAction.Stop, "Block full");
-                    }
+                    return args.Set(TxAction.Stop, "Block full");
                 }
 
                 if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
@@ -70,8 +68,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(TxAction.Skip, "Null sender");
                 }
-
-                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
