@@ -590,7 +590,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await Task.Delay(50, cancellationToken);
             }
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(blockTree.WasProcessed(dropped.Number, dropped.Hash!), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await forkchoiceUpdated.Handle(forkchoiceState, null, 3)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(blockTree.HeadHash, Is.EqualTo(head.Hash));
         });
@@ -1093,7 +1095,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
             Assert.That(blockProductionContext, Is.Not.Null);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(blockProductionContext!.CurrentBestBlock, Is.Not.Null);
+#pragma warning restore NUnit2045
 
             Assert.That(await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!), Is.EqualTo(AddBlockResult.Added));
 
@@ -1337,8 +1341,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;
                 TxReceipt[] clientReceipts = receiptStorage.Get(clientBlock);
-                Assert.That(clientBlock, Is.Not.Null);
-                Assert.That(clientReceipts, Is.Not.Null);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(clientBlock, Is.Not.Null);
+                    Assert.That(clientReceipts, Is.Not.Null);
+                }
 
                 if (checkContent)
                 {
@@ -1528,11 +1535,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                         $"headerBalHash={syncedBlock.Header.BlockAccessListHash}");
                 }
 
-                Assert.That(sourceBal, Is.Not.Null, $"Source BAL missing at block {blockNumber}.");
-                Assert.That(syncedBal, Is.Not.Null, $"Synced BAL missing at block {blockNumber}.");
-                Assert.That(syncedBal, Is.EqualTo(sourceBal), $"BAL mismatch at block {blockNumber}.");
-                Assert.That(new Hash256(ValueKeccak.Compute(syncedBal!).Bytes), Is.EqualTo(syncedBlock.Header.BlockAccessListHash),
-                    $"BAL hash mismatch at block {blockNumber}.");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(sourceBal, Is.Not.Null, $"Source BAL missing at block {blockNumber}.");
+                    Assert.That(syncedBal, Is.Not.Null, $"Synced BAL missing at block {blockNumber}.");
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(syncedBal, Is.EqualTo(sourceBal), $"BAL mismatch at block {blockNumber}.");
+                    Assert.That(new Hash256(ValueKeccak.Compute(syncedBal!).Bytes), Is.EqualTo(syncedBlock.Header.BlockAccessListHash),
+                        $"BAL hash mismatch at block {blockNumber}.");
+                }
             }
         }
 
