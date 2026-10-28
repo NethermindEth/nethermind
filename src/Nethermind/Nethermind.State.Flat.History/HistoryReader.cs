@@ -44,6 +44,7 @@ public sealed class HistoryReader
     // Accounts are immutable, so a hit hands out the cached instance without allocating.
     private readonly SeqlockCache<AccountAtBlock, Account?> _accounts = new(ReadCacheSetsBits);
     private readonly SeqlockCache<SlotAtBlock, CachedSlot> _slots = new(ReadCacheSetsBits);
+    private long _cachedRecords;
 
     public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
     {
@@ -108,11 +109,12 @@ public sealed class HistoryReader
     /// <summary>Resolves the account as of <paramref name="block"/>; null when it did not exist there.</summary>
     internal Account? GetAccount(ulong block, Address address, ReadScope? scope)
     {
+        long records = CurrentRecords();
         AccountAtBlock key = new(block, address);
         if (_accounts.TryGetValue(in key, out Account? cached)) return cached;
 
         Account? account = ReadAccount(block, address, out AccountStruct value, scope) ? value.ToAccount() : null;
-        _accounts.Set(in key, account);
+        if (IsSettled(block, records)) _accounts.Set(in key, account);
         return account;
     }
 
@@ -167,6 +169,7 @@ public sealed class HistoryReader
     /// <param name="clearsCache">Skips the per-slot destruct probes for an account with no clear markers.</param>
     internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache, ReadScope? scope = null)
     {
+        long records = CurrentRecords();
         SlotAtBlock key = new(block, address, index);
         if (_slots.TryGetValue(in key, out CachedSlot cached))
         {
@@ -175,7 +178,7 @@ public sealed class HistoryReader
         }
 
         bool exists = ReadStorage(block, address, index, out value, clearsCache, scope);
-        _slots.Set(in key, new CachedSlot(exists, value));
+        if (IsSettled(block, records)) _slots.Set(in key, new CachedSlot(exists, value));
         return exists;
     }
 
@@ -307,6 +310,24 @@ public sealed class HistoryReader
 
         return BaseFlatPersistence.DecodeSlotValue(stored);
     }
+
+    /// <summary>The records generation, after dropping every cached answer resolved against removed records.</summary>
+    private long CurrentRecords()
+    {
+        long records = _availability.RecordsGeneration;
+        if (records != Volatile.Read(ref _cachedRecords))
+        {
+            _accounts.Clear();
+            _slots.Clear();
+            Volatile.Write(ref _cachedRecords, records);
+        }
+
+        return records;
+    }
+
+    /// <summary>Only a covered block's answer is final, and only if no restart removed the records it was read from.</summary>
+    private bool IsSettled(ulong block, long records) =>
+        _availability.IsCovered(block) && _availability.RecordsGeneration == records;
 
     // The cache indexes sets with low and high hash bits, so the block is spread over all of them.
     private static long MixBlock(long hash, ulong block) =>
