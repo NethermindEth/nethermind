@@ -1322,7 +1322,7 @@ public partial class DebugRpcModuleTests
             ["gasPrice"] = "0x1",
             ["maxFeePerGas"] = "0x2"
         };
-        Dictionary<string, object> validFees = new(mixedFees);
+        Dictionary<string, object> validFees = [with(mixedFees)];
         validFees.Remove("maxFeePerGas");
         string selector = block.Hash!.ToString();
         string feeResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", mixedFees, selector);

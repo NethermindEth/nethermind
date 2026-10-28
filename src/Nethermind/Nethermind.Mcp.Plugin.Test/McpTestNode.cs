@@ -248,8 +248,8 @@ internal sealed record SeededChain(
 /// </summary>
 internal sealed class FaultInjectingRpcModuleProvider(IRpcModuleProvider inner) : IRpcModuleProvider
 {
-    private readonly Dictionary<string, Func<ValueTask<IRpcModule>>> _overrides = new(StringComparer.Ordinal);
-    private readonly HashSet<IRpcModule> _injected = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, Func<ValueTask<IRpcModule>>> _overrides = [with(StringComparer.Ordinal)];
+    private readonly HashSet<IRpcModule> _injected = [with(ReferenceEqualityComparer.Instance)];
     private readonly Lock _lock = new();
     private int _rented;
     private int _returned;

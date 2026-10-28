@@ -1425,7 +1425,7 @@ internal sealed class McpContractTools(
             return false;
         }
 
-        List<RawLog> parsed = new(logs.Length);
+        List<RawLog> parsed = [with(logs.Length)];
         for (int i = 0; i < logs.Length; i++)
         {
             JsonElement log = logs[i];

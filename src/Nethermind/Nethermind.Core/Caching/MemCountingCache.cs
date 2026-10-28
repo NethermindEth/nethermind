@@ -37,7 +37,7 @@ namespace Nethermind.Core.Caching
         public MemCountingCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
-            _cacheMap = new(startCapacity); // do not initialize it at the full capacity
+            _cacheMap = [with(startCapacity)]; // do not initialize it at the full capacity
         }
 #pragma warning restore IDE0290
 

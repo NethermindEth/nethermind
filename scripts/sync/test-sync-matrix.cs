@@ -29,7 +29,7 @@ Cases.Test("matrix required fields and types", () =>
 foreach (var (type, count, pass) in new[] { ("c2-standard-8", 2, true), ("c3d-standard-8-lssd", 1, true), ("c3d-standard-30-lssd", 2, true), ("c3d-highmem-8-lssd", 1, true), ("c3d-highmem-360-lssd", 32, true), ("c3d-standard-8", 0, true), ("c3-standard-8-lssd", 2, true), ("n2-standard-8", 4, true), ("c3d-standard-8-lssd", 2, false), ("c3d-standard-16-lssd", 2, false), ("c3d-highmem-8-lssd", 2, false), ("c3d-highcpu-8-lssd", 1, false), ("c3d-standard-8", 1, false) })
     Cases.Test($"shape {type} {count}", () =>
     {
-        var errors = Sync.ShapeErrors(new JsonArray(new JsonObject { ["network"] = "n", ["machine_type"] = type, ["local_ssd_count"] = count })).ToArray();
+        var errors = Sync.ShapeErrors([new JsonObject { ["network"] = "n", ["machine_type"] = type, ["local_ssd_count"] = count }]).ToArray();
         Cases.Equal(pass, errors.Length == 0);
         if (!pass) Cases.True(errors[0].StartsWith($"n: {type}", StringComparison.Ordinal), "error identifies entry");
     });

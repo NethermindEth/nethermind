@@ -317,7 +317,7 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
         string status = nonce < latest ? "nonce_too_low" : blockedBy is not null && nonce > blockedBy.Nonce ? "pending_blocked"
             : nonce > firstMissing ? "pending_queued" : ownFeeStatus;
         nonceGaps ??= firstMissing < nonce && nonce >= latest
-            ? new JsonArray(new JsonObject { ["from"] = firstMissing.ToString(), ["to"] = firstMissing.ToString() }) : [];
+            ? [new JsonObject { ["from"] = firstMissing.ToString(), ["to"] = firstMissing.ToString() }] : [];
         JsonObject fees = [];
         if (legacy) SetFee(fees, "gasPrice", cap);
         else

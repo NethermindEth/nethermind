@@ -38,7 +38,7 @@ public class DebugTraceStreamingBenchmarks
     [Benchmark(Baseline = true, Description = "Throughput: buffered — accumulate N entries, then serialize the full envelope")]
     public int Throughput_Buffered()
     {
-        List<GethTxTraceEntry> entries = new(OpcodeCount);
+        List<GethTxTraceEntry> entries = [with(OpcodeCount)];
         for (int i = 0; i < OpcodeCount; i++) entries.Add(BuildEntry(i));
 
         GethLikeTxTrace trace = new() { Entries = entries, Gas = 21000, ReturnValue = [] };
@@ -66,10 +66,10 @@ public class DebugTraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<GethLikeTxTrace> live = new(Concurrency);
+        List<GethLikeTxTrace> live = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
-            List<GethTxTraceEntry> entries = new(OpcodeCount);
+            List<GethTxTraceEntry> entries = [with(OpcodeCount)];
             for (int i = 0; i < OpcodeCount; i++) entries.Add(BuildEntry(i));
             GethLikeTxTrace trace = new() { Entries = entries, Gas = 21000, ReturnValue = [] };
 
@@ -93,7 +93,7 @@ public class DebugTraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<DiscardingBufferWriter> live = new(Concurrency);
+        List<DiscardingBufferWriter> live = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             DiscardingBufferWriter sink = new();
@@ -115,7 +115,7 @@ public class DebugTraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<GethLikeTxMemoryTracer> live = new(Concurrency);
+        List<GethLikeTxMemoryTracer> live = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             GethLikeTxMemoryTracer tracer = new(_tx, GethTraceOptions.Default);
@@ -139,9 +139,9 @@ public class DebugTraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<GethLikeTxDirectStreamingTracer> live = new(Concurrency);
-        List<DiscardingBufferWriter> sinks = new(Concurrency);
-        List<Utf8JsonWriter> writers = new(Concurrency);
+        List<GethLikeTxDirectStreamingTracer> live = [with(Concurrency)];
+        List<DiscardingBufferWriter> sinks = [with(Concurrency)];
+        List<Utf8JsonWriter> writers = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             DiscardingBufferWriter sink = new();

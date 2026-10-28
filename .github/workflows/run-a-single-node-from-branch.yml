@@ -261,8 +261,6 @@ jobs:
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
 
       - name: Wait for Docker Build Action to complete
         if: steps.check_conditions.outputs.skip_docker_build != 'true'
@@ -358,8 +356,6 @@ jobs:
 
       - name: Set up .NET for CI scripts
         uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
 
       - name: Wait for creation of node
         id: wait_node

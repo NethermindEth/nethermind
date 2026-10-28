@@ -17,7 +17,7 @@ namespace Nethermind.State.Proofs
 
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
-        private readonly HashSet<Hash256AsKey> _visitingFilter = new(Hash256AsKeyComparer.Instance);
+        private readonly HashSet<Hash256AsKey> _visitingFilter = [with(Hash256AsKeyComparer.Instance)];
         private readonly HashSet<Hash256AsKey>.AlternateLookup<ValueHash256> _visitingFilterLookup;
 
         private readonly List<byte[]> _proofBits = [];

@@ -44,7 +44,7 @@ public class NativeCallTracerCallFrame : IDisposable
 
     private ArrayPoolList<NativeCallTracerCallFrame>? _calls;
 
-    public ArrayPoolList<NativeCallTracerCallFrame> Calls => _calls ??= new(8);
+    public ArrayPoolList<NativeCallTracerCallFrame> Calls => _calls ??= [with(8)];
 
     internal ReadOnlySpan<NativeCallTracerCallFrame> CallsSpan => _calls is null ? [] : _calls.AsSpan();
 

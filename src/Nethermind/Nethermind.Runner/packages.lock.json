@@ -1,7 +1,7 @@
 {
   "version": 2,
   "dependencies": {
-    "net10.0": {
+    "net11.0": {
       "AspNetCore.HealthChecks.UI.Client": {
         "type": "Direct",
         "requested": "[9.0.0, )",
@@ -13,18 +13,18 @@
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Direct",
-        "requested": "[10.0.403, )",
-        "resolved": "10.0.403",
-        "contentHash": "1furteBFeemMmZ4s+ORjQb7YtO+wG63NJahbQbRUi91FV6V87BdV0U3vX1jbMC6iKSELYYoXWssSzLu3mx0i2w==",
+        "requested": "[11.0.100-rc.3.26522.148, )",
+        "resolved": "11.0.100-rc.3.26522.148",
+        "contentHash": "fjkYVfRG6wkiY/40Rz/d1pyqhxH1rn72ISjty4CF0CRVcEqKrkKZ2KBWKQlCmLbRS1NaXH1hRSvF7aFevMtapg==",
         "dependencies": {
-          "System.IO.Hashing": "10.0.14"
+          "System.IO.Hashing": "11.0.0-rc.3.26522.148"
         }
       },
       "Microsoft.Extensions.FileProviders.Embedded": {
         "type": "Direct",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "v+KNMXj2RktQ690ijlFYniH8gggO+EVMjCZSou+NcpI2mKNAT27Dgn2UfiJKbwQ84v2Avp6Mwceqog8gvQn5Cw=="
+        "requested": "[11.0.0-rc.3.26522.148, )",
+        "resolved": "11.0.0-rc.3.26522.148",
+        "contentHash": "RaZixcnCvEPIOnlRwEfLQ6SRNx0HUP2JTsVrbDheXh9PI7/MktcIMrHh3JZW8T1lZKm7ROKUfBR4kIH2nfc5RQ=="
       },
       "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
         "type": "Direct",
@@ -49,9 +49,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.14, )",
-        "resolved": "2.0.14",
-        "contentHash": "15fyVO4aG6poR6IKmhM74zf7PUzaU6FZAGm2d3SQSO9yIyGAeo44e6t9qeKjjaqyMEqYdqcb2G1B0gpLoDU2cA=="
+        "requested": "[3.0.0-rc.3.26522.148, )",
+        "resolved": "3.0.0-rc.3.26522.148",
+        "contentHash": "74wNDGDJLPe1LWWsiYMJseo1NEIEvvbEYz6UemdX+/ZzQFDX/huCec/Wd75xeSKHnXNQZWp1tdedxPGC1OVGdw=="
       },
       "AspNetCore.HealthChecks.UI.Core": {
         "type": "Transitive",
@@ -70,10 +70,7 @@
       "BinaryEncoding": {
         "type": "Transitive",
         "resolved": "1.4.0",
-        "contentHash": "1cnkP90c+zNcRyabjKSA3VYJvpYfkGEpXeekfF8KdTFo3VyUUFOioAsANbG8nsMyedGcmUOqHWd1d3fOXke4VA==",
-        "dependencies": {
-          "NETStandard.Library": "1.6.1"
-        }
+        "contentHash": "1cnkP90c+zNcRyabjKSA3VYJvpYfkGEpXeekfF8KdTFo3VyUUFOioAsANbG8nsMyedGcmUOqHWd1d3fOXke4VA=="
       },
       "Common.Logging": {
         "type": "Transitive",
@@ -116,10 +113,7 @@
       "IPNetwork2": {
         "type": "Transitive",
         "resolved": "2.1.2",
-        "contentHash": "DZF2SbtyqukkLSzyu0KqcXUBdhDXQ/K3QWM27vlvdPo3W+iI81pgUCNTwyynNyVc5Q9AIn0znFVVhHGbhiofUg==",
-        "dependencies": {
-          "NETStandard.Library": "1.6.1"
-        }
+        "contentHash": "DZF2SbtyqukkLSzyu0KqcXUBdhDXQ/K3QWM27vlvdPo3W+iI81pgUCNTwyynNyVc5Q9AIn0znFVVhHGbhiofUg=="
       },
       "JetBrains.FormatRipper": {
         "type": "Transitive",
@@ -275,11 +269,6 @@
           "Microsoft.Bcl.Cryptography": "10.0.2",
           "Microsoft.IdentityModel.Logging": "8.23.0"
         }
-      },
-      "Microsoft.NETCore.Platforms": {
-        "type": "Transitive",
-        "resolved": "1.1.0",
-        "contentHash": "kz0PEW2lhqygehI/d6XsPCQzD7ff7gUJaVGPVETX611eadGsA3A877GdSlU0LRVMCTH/+P3o2iDTak+S08V2+A=="
       },
       "ModelContextProtocol.Core": {
         "type": "Transitive",
@@ -465,14 +454,6 @@
           "murmurhash": "1.0.2"
         }
       },
-      "NETStandard.Library": {
-        "type": "Transitive",
-        "resolved": "2.0.0",
-        "contentHash": "7jnbRU+L08FXKMxqUflxEXtVymWvNOrS8yHgu9s6EM8Anr6T/wIX4nZ08j/u3Asz+tCufp3YVwFSEvFTPYmBPA==",
-        "dependencies": {
-          "Microsoft.NETCore.Platforms": "1.1.0"
-        }
-      },
       "Newtonsoft.Json": {
         "type": "Transitive",
         "resolved": "13.0.3",
@@ -483,7 +464,6 @@
         "resolved": "1.0.0",
         "contentHash": "fYnHQ8yZcj9W0fPGbzMkZUnE14aGGTFS8WE0Ow2hXiGhJ61Tv71cTi1yuugHxPCLyb87JpWMkq4lix8Rf06vtA==",
         "dependencies": {
-          "NETStandard.Library": "1.6.1",
           "libsodium": "1.0.16"
         }
       },
@@ -658,7 +638,7 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Network.Enr": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )",
-          "System.Configuration.ConfigurationManager": "[10.0.14, )"
+          "System.Configuration.ConfigurationManager": "[11.0.0-rc.3.26522.148, )"
         }
       },
       "nethermind.consensus": {
@@ -732,7 +712,7 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto.Bls": "[0.3.17.15, )",
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
-          "System.Security.Cryptography.ProtectedData": "[10.0.14, )"
+          "System.Security.Cryptography.ProtectedData": "[11.0.0-rc.3.26522.148, )"
         }
       },
       "nethermind.db": {
@@ -969,9 +949,9 @@
         "type": "Project",
         "dependencies": {
           "ModelContextProtocol.AspNetCore": "[2.2.0, )",
-          "Nethermind.Api": "[2.1.0-preview, )",
-          "Nethermind.Init": "[2.1.0-preview, )",
-          "Nethermind.JsonRpc": "[2.1.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )"
         }
       },
       "nethermind.merge.aura": {
@@ -1097,7 +1077,7 @@
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.14, )",
+          "Microsoft.Extensions.FileProviders.Embedded": "[11.0.0-rc.3.26522.148, )",
           "Nethermind.Api": "[2.3.0-preview, )",
           "Nethermind.Blockchain": "[2.3.0-preview, )",
           "Nethermind.Consensus": "[2.3.0-preview, )",
@@ -1201,7 +1181,7 @@
           "Nethermind.State": "[2.3.0-preview, )",
           "Nethermind.Synchronization": "[2.3.0-preview, )",
           "Nethermind.Trie": "[2.3.0-preview, )",
-          "System.IO.Hashing": "[10.0.14, )"
+          "System.IO.Hashing": "[11.0.0-rc.3.26522.148, )"
         }
       },
       "nethermind.state.flat.history": {
@@ -1386,10 +1366,7 @@
         "type": "CentralTransitive",
         "requested": "[1.2.0, )",
         "resolved": "1.2.0",
-        "contentHash": "wNW/huzolu8MNKUnwCVKxjfAlCFpeI8AZVfF46iAWJ1+P6bTU1AZct7VAkDDEjgeeTJCVTkGZaD6jSd/fOiUkA==",
-        "dependencies": {
-          "NETStandard.Library": "2.0.0"
-        }
+        "contentHash": "wNW/huzolu8MNKUnwCVKxjfAlCFpeI8AZVfF46iAWJ1+P6bTU1AZct7VAkDDEjgeeTJCVTkGZaD6jSd/fOiUkA=="
       },
       "DnsClient": {
         "type": "CentralTransitive",
@@ -1721,24 +1698,24 @@
       },
       "System.Configuration.ConfigurationManager": {
         "type": "CentralTransitive",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "F/bLtwG0JuJ2OnTCsvJbnulvN7hr+BIFJLtE3PzgmW3AWkV8LYO5XF0j+zB4tHn/b4yfR7PAO0dZmoYeaINtnQ==",
+        "requested": "[11.0.0-rc.3.26522.148, )",
+        "resolved": "11.0.0-rc.3.26522.148",
+        "contentHash": "LAYEHRhbRMF9+FLv4ozWBTV8+AInibFb4SQBPX5h5J9qO/AMGNbFrjOi8LRr9ZiCV+UxrBMCN5zxpfDKVqST9w==",
         "dependencies": {
-          "System.Security.Cryptography.ProtectedData": "10.0.14"
+          "System.Security.Cryptography.ProtectedData": "11.0.0-rc.3.26522.148"
         }
       },
       "System.IO.Hashing": {
         "type": "CentralTransitive",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "lVqovhCt3HlZe7ONG5ydaj6BYwYI004gldVfMMkJl/lR5ueeCtWNpW4nejOX75sPmzm8vXCxB69GqwHaYCnyUQ=="
+        "requested": "[11.0.0-rc.3.26522.148, )",
+        "resolved": "11.0.0-rc.3.26522.148",
+        "contentHash": "JIKBvTqt5HSZWU86qQFYO/ia1JY76VgjiJufdATN+lK0v5fIY9GAEo0DzC5nm2Kynj+aSEoQwKojm6sYpmbdQw=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
-        "requested": "[10.0.14, )",
-        "resolved": "10.0.14",
-        "contentHash": "UuaBUHgmtc9h6CMxaQqFDDJxkS5JVy7XEB+DbtCvD68GFcVM9/AccuNwFpARx8nwCnvjaxzoOBjG3gPz32P1Eg=="
+        "requested": "[11.0.0-rc.3.26522.148, )",
+        "resolved": "11.0.0-rc.3.26522.148",
+        "contentHash": "0F1SBb6/RvWg2nBVlgH6FZ0mjyPXFnPSnol8v2BANPrF302feFOAr119sQCuhbIsxhCr/hA6pEYKsOQq0lTxLA=="
       },
       "Testably.Abstractions": {
         "type": "CentralTransitive",
@@ -1772,7 +1749,7 @@
         "contentHash": "UIDFkA5DC3en3tOJ3Mof11yBx9kUQLsaeo/oFdvN6Bbkr9E9+VCqfIadHci8cu+I51K2Sl7XYWVl2R/mA75NBQ=="
       }
     },
-    "net10.0/linux-arm64": {
+    "net11.0/linux-arm64": {
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -1868,7 +1845,7 @@
         "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
-    "net10.0/linux-x64": {
+    "net11.0/linux-x64": {
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -1964,7 +1941,7 @@
         "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
-    "net10.0/osx-arm64": {
+    "net11.0/osx-arm64": {
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2060,7 +2037,7 @@
         "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
-    "net10.0/osx-x64": {
+    "net11.0/osx-x64": {
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2156,7 +2133,7 @@
         "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
-    "net10.0/win-arm64": {
+    "net11.0/win-arm64": {
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",
@@ -2252,7 +2229,7 @@
         "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
-    "net10.0/win-x64": {
+    "net11.0/win-x64": {
       "libsodium": {
         "type": "Transitive",
         "resolved": "1.0.20",

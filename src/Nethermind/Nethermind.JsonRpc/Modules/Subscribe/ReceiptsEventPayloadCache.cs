@@ -38,7 +38,7 @@ internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, in
 {
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]> _payloads = [];
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]>.CreateValueCallback _createSlots = e => new Lazy<byte[]>?[payloadCount(e)];
-    private readonly Dictionary<TKey, Group> _groups = new(comparer);
+    private readonly Dictionary<TKey, Group> _groups = [with(comparer)];
     private readonly Group _unfiltered = new(null);
     private readonly Lock _lock = new();
     private int _members;

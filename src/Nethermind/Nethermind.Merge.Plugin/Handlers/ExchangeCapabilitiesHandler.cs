@@ -27,7 +27,7 @@ public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyLi
     {
         FrozenDictionary<string, RpcCapabilityOptions> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
 
-        List<string>? enabled = _cachedEnabled is null ? new List<string>(capabilities.Count) : null;
+        List<string>? enabled = _cachedEnabled is null ? [with(capabilities.Count)] : null;
         List<string>? missing = null;
 
         foreach ((string key, RpcCapabilityOptions flags) in capabilities)

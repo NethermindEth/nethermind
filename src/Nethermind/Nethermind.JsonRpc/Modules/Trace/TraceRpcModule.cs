@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
             }
 
-            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Count);
+            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = [with(calls.Count)];
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
@@ -556,7 +556,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(BlockHeader Header, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            ArrayPoolList<ParityTxTraceFromStore> result = [with(blocks.Count)];
             try
             {
                 foreach ((BlockHeader header, BlockHeader? parentHeader) in blocks)

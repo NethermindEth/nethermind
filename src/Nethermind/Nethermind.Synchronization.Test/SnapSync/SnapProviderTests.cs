@@ -1152,7 +1152,7 @@ public class SnapProviderTests
         static ValueHash256 SlotKey(int slot) => Keccak.Compute(slot.ToBigEndianByteArray());
 
         static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
-            new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+            [with(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)))];
     }
 
     private static FlatSnapTrieFactory CreateFlatSnapTrieFactory(IColumnsDb<FlatDbColumns> db, ISyncConfig syncConfig) =>
@@ -1291,7 +1291,7 @@ public class SnapProviderTests
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
-        ArrayPoolList<PathWithAccount> accounts = new(accountCount);
+        ArrayPoolList<PathWithAccount> accounts = [with(accountCount)];
         for (int i = 0; i < accountCount; i++)
         {
             accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], Account.TotallyEmpty));
@@ -1302,7 +1302,7 @@ public class SnapProviderTests
 
     private static SlotsAndProofs CreateEmptySlotsResponse(int slotListCount)
     {
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = new(slotListCount);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = [with(slotListCount)];
         for (int i = 0; i < slotListCount; i++)
         {
             pathsAndSlots.Add(new ArrayPoolList<PathWithStorageSlot>(0));

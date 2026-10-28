@@ -235,7 +235,7 @@ try
     Check("summary formats averages missing values and image mapping", () =>
     {
         var root = Directory.CreateDirectory(Path.Combine(temporary.FullName, "summary"));
-        Driver().WriteSummary(root.FullName, new JsonArray((JsonNode)new JsonObject { ["id"] = "image-1", ["image"] = "repo:tag" }), 2,
+        Driver().WriteSummary(root.FullName, [new JsonObject { ["id"] = "image-1", ["image"] = "repo:tag" }], 2,
             new JsonArray((JsonNode)Sample("image-1", 1, "success", 23.007412345678901), (JsonNode)Sample("image-1", 2, "failed", null)));
         var text = File.ReadAllText(Path.Combine(root.FullName, "summary.md"));
         foreach (var expected in new[] { "| image-1-run1 | success | SSE | 1 | 23.0074 | 23.0074 | n/a | n/a | n/a |", "| image-1-run2 | failed | SSE | 1 | n/a | n/a | n/a | n/a | n/a |", "- `image-1` → `repo:tag`", "Image image-1: mean AVG=23.0074 ms;" })

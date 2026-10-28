@@ -250,7 +250,7 @@ namespace Nethermind.Consensus.Producers
                     }
                     else
                     {
-                        candidates ??= new(16);
+                        candidates ??= [with(16)];
 
                         candidates.Add((blobTx, blobChain));
                         countOfRemainingBlobs += txBlobCount;
@@ -298,7 +298,7 @@ namespace Nethermind.Consensus.Producers
                     return fullBlobTxs;
                 }
 
-                Dictionary<Hash256, Transaction> selectedFullBlobTxs = new(selectedBlobTxs.Count);
+                Dictionary<Hash256, Transaction> selectedFullBlobTxs = [with(selectedBlobTxs.Count)];
                 foreach (Transaction selectedBlobTx in selectedBlobTxs)
                 {
                     if (selectedBlobTx.Hash is Hash256 hash

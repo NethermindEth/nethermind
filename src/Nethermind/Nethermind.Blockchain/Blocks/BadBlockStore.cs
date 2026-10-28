@@ -132,7 +132,7 @@ public class BadBlockStore(
     {
         if (_blockAccessListSizes is not null) return;
 
-        _blockAccessListSizes = new(Bytes.EqualityComparer);
+        _blockAccessListSizes = [with(Bytes.EqualityComparer)];
         foreach (KeyValuePair<byte[], byte[]> entry in blockDb.GetAll(true))
         {
             SetBlockAccessListSize(entry.Key, entry.Value.Length - new RlpReader(entry.Value).PeekNextRlpLength());

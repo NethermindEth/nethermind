@@ -109,7 +109,7 @@ internal static class McpTxMethods
 
     private static FrozenDictionary<uint, string> Build()
     {
-        Dictionary<uint, string> table = new(Signatures.Length);
+        Dictionary<uint, string> table = [with(Signatures.Length)];
         foreach (string signature in Signatures)
         {
             ValueHash256 hash = ValueKeccak.Compute(signature);

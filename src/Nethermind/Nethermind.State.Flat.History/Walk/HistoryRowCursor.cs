@@ -22,7 +22,7 @@ internal sealed class HistoryRowCursor : IDisposable
     private readonly ulong _to;
     private readonly CancellationToken _token;
     private readonly RowArena _arena = new();
-    private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = new(ProbeRows);
+    private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = [with(ProbeRows)];
     private int _position = -1;
     private ulong _nextLow;
     private ulong _windowSize;

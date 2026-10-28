@@ -23,7 +23,7 @@ public class SimpleFilePublicKeyDbTests
         SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
 
         Random random = new();
-        Dictionary<byte[], byte[]> dict = new(Bytes.EqualityComparer);
+        Dictionary<byte[], byte[]> dict = [with(Bytes.EqualityComparer)];
         for (int i = 0; i < 1024; i++)
         {
             byte[] key = new byte[random.Next(64, 128)];

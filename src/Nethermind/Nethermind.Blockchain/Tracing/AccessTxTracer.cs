@@ -26,7 +26,7 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {
         // Geth orders the list by address and each address's keys ascending; execution-apis leaves the order open.
-        SortedDictionary<Address, SortedSet<UInt256>?> dictionary = new(new AddressComparer());
+        SortedDictionary<Address, SortedSet<UInt256>?> dictionary = [with(new AddressComparer())];
         foreach (Address address in accessedAddresses)
         {
             dictionary.Add(address, null);

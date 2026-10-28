@@ -22,7 +22,7 @@ public static class EnumerableExtensions
 
     public static bool ContainsDuplicates<T>(this IEnumerable<T> list, int? count = null, IEqualityComparer<T>? comparer = null)
     {
-        HashSet<T> hashSet = count is null ? new HashSet<T>(comparer) : new HashSet<T>(count.Value, comparer);
+        HashSet<T> hashSet = count is null ? [with(comparer)] : new HashSet<T>(count.Value, comparer);
         foreach (T element in list)
         {
             if (!hashSet.Add(element))

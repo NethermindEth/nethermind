@@ -535,7 +535,7 @@ namespace Nethermind.TxPool
         {
             if (!filterToReadyTx) return bySender;
 
-            Dictionary<AddressAsKey, Transaction[]> ready = new(bySender.Count);
+            Dictionary<AddressAsKey, Transaction[]> ready = [with(bySender.Count)];
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
                 if (bucket.Length != 0 && HasReadyTransaction(bucket, sender, baseFee)) ready.Add(sender, bucket);
@@ -1071,7 +1071,7 @@ namespace Nethermind.TxPool
             if (head.Number + 1 < _rewoundHeaders[0].Number) return null;
 
             // At most Reorganization.MaxDepth bodies, as the pending headers are capped.
-            List<Block> blocks = new(_rewoundHeaders.Count);
+            List<Block> blocks = [with(_rewoundHeaders.Count)];
             foreach (BlockHeader header in _rewoundHeaders)
             {
                 if (TryFindRemovedBlock(header) is { } block)

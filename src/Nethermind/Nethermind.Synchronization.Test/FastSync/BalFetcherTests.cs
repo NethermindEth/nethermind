@@ -389,7 +389,7 @@ public class BalFetcherTests
             {
                 asked[peer] = asked.GetValueOrDefault(peer) + 1;
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
-                ArrayPoolList<byte[]> response = new(requested.Count);
+                ArrayPoolList<byte[]> response = [with(requested.Count)];
                 foreach (ValueHash256 hash in requested) response.Add(serves ? _balByHash.GetValueOrDefault(hash, []) : []);
                 onAsked?.Invoke();
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
@@ -416,7 +416,7 @@ public class BalFetcherTests
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
                 int served = Math.Min(requested.Count, _responseLimit);
-                ArrayPoolList<byte[]> response = new(served);
+                ArrayPoolList<byte[]> response = [with(served)];
                 // An invalid BAL is garbage that won't hash to the header's BlockAccessListHash.
                 for (int i = 0; i < served; i++) response.Add(outcome == FetchOutcome.InvalidBal ? [0xDE, 0xAD] : _balByHash.GetValueOrDefault(requested[i], []));
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
@@ -437,7 +437,7 @@ public class BalFetcherTests
             {
                 IReadOnlyList<Hash256> requested = ci.Arg<IReadOnlyList<Hash256>>();
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
-                ArrayPoolList<byte[]?> response = new(requested.Count);
+                ArrayPoolList<byte[]?> response = [with(requested.Count)];
                 foreach (Hash256 hash in requested)
                     response.Add(_balByHash.TryGetValue(hash.ValueHash256, out byte[]? rlp) ? rlp : null);
                 return Task.FromResult<IOwnedReadOnlyList<byte[]?>>(response);

@@ -256,7 +256,7 @@ public partial class EthRpcModule(
         int bufferOffset = 0;
         using ArrayPoolSpan<UInt256> storageValues = new(requests.TotalSlots);
 
-        Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
+        Dictionary<Address, Memory<byte>[]> slots = [with(requests.Entries.Count)];
         foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
         {
             UInt256[] slotKeys = entry.Value;

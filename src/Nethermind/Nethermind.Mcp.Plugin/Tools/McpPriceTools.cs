@@ -78,7 +78,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
         IEnumerable<string> tokens, BlockParameter block, TimeSpan budget, CancellationToken cancellationToken, bool pinnedHead = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Dictionary<string, McpPriceFeed?> requests = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, McpPriceFeed?> requests = [with(StringComparer.OrdinalIgnoreCase)];
         Dictionary<AddressAsKey, McpPriceFeed> feeds = [];
         foreach (string token in tokens)
         {
@@ -147,7 +147,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
 
         Dictionary<string, McpPriceResult> Finish(Dictionary<AddressAsKey, McpPriceResult> results, string fallback)
         {
-            Dictionary<string, McpPriceResult> output = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, McpPriceResult> output = [with(StringComparer.OrdinalIgnoreCase)];
             foreach ((string asset, McpPriceFeed? feed) in requests)
             {
                 McpPriceResult price = feed is null

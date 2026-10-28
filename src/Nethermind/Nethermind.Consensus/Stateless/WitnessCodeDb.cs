@@ -23,7 +23,7 @@ internal sealed class WitnessCodeDb : MemDb, IWorldStateScopeProvider.ICodeDb
 
     public WitnessCodeDb(IReadOnlyList<ReadOnlyMemory<byte>> codes)
     {
-        _codes = new Dictionary<ValueHash256, ReadOnlyMemory<byte>>(codes.Count);
+        _codes = [with(codes.Count)];
         foreach (ReadOnlyMemory<byte> code in codes)
         {
             _codes[ValueKeccak.Compute(code.Span)] = code;
