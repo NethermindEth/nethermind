@@ -74,6 +74,12 @@ public static unsafe partial class EvmInstructions
     internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
         Debug.Assert(!b.IsZero);
+        if (AirbenderFlag.IsActive)
+        {
+            WordDivision.DivRem(in a, in b, out result, out _);
+            return;
+        }
+
         if (!ZiskFlag.IsActive)
         {
             UInt256.Divide(in a, in b, out result);
@@ -89,6 +95,15 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
+        if (AirbenderFlag.IsActive)
+        {
+            if (b.IsZero)
+                result = default;
+            else
+                WordDivision.DivRem(in a, in b, out _, out result);
+            return;
+        }
+
         if (!ZiskFlag.IsActive)
         {
             UInt256.Mod(in a, in b, out result);
