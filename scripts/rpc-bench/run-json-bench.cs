@@ -123,7 +123,12 @@ try
     var lookupHash = "";
     if (lookup)
     {
-        lookupManifest = await TransactionLookupWorkload.PrepareAsync(lookupPath, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token);
+        var existingManifest = File.Exists(lookupPath) ? JsonNode.Parse(await File.ReadAllTextAsync(lookupPath, cancellation.Token)) as JsonObject ?? throw new IOException("Invalid lookup manifest") : null;
+        var expectedHead = existingManifest is null ? long.Parse(Get("SNAPSHOT_BLOCK"), NumberStyles.None, CultureInfo.InvariantCulture) : Convert.ToInt64(existingManifest["headNumber"]!.GetValue<string>(), 16);
+        var expectedHash = existingManifest is null ? null : existingManifest["headHash"]!.GetValue<string>();
+        var stableHead = await TransactionLookupWorkload.WaitForHeadAsync(expectedHead, expectedHash, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token);
+        if (reference.Length > 0) await TransactionLookupWorkload.WaitForHeadAsync(expectedHead, stableHead["hash"]!.GetValue<string>(), (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, reference, method, parameters, cancellation.Token), cancellation.Token);
+        lookupManifest = await TransactionLookupWorkload.PrepareAsync(lookupPath, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token, stableHead);
         lookupHash = TransactionLookupWorkload.Hash(lookupPath);
         var exported = Path.Combine(output, "transaction-lookup-workload.json");
         if (Path.GetFullPath(exported) != Path.GetFullPath(lookupPath)) File.Copy(lookupPath, exported, overwrite: true);

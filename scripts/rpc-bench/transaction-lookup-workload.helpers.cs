@@ -31,10 +31,36 @@ internal static class TransactionLookupWorkload
         return script.Replace(OriginalCheck, StrictCheck, StringComparison.Ordinal);
     }
 
-    internal static async Task<JsonObject> PrepareAsync(string path, Func<string, JsonArray, Task<JsonNode?>> rpc, CancellationToken cancellationToken = default)
+    internal static async Task<JsonObject> WaitForHeadAsync(long expectedNumber, string? expectedHash, Func<string, JsonArray, Task<JsonNode?>> rpc, CancellationToken cancellationToken, TimeSpan? timeout = null, TimeSpan? interval = null)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout ?? TimeSpan.FromSeconds(120));
+        string? previous = null;
+        var observed = "<none>";
+        try
+        {
+            while (true)
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                var head = await rpc("eth_getBlockByNumber", new JsonArray("latest", false)).WaitAsync(deadline.Token) as JsonObject ?? throw new IOException("Missing snapshot head");
+                var number = Quantity(head["number"]);
+                var hash = head["hash"]?.GetValue<string>() ?? throw new IOException("Missing snapshot head hash");
+                observed = $"{number}/{hash}";
+                if (observed != previous) Console.WriteLine($"Snapshot restoration head {observed}; expected {expectedNumber}/{expectedHash ?? "stable hash"}");
+                if (number > expectedNumber || number == expectedNumber && expectedHash is not null && hash != expectedHash) throw new IOException($"Snapshot restoration anchor mismatch: observed {observed}; expected {expectedNumber}/{expectedHash}");
+                if (number == expectedNumber && observed == previous) return head;
+                previous = observed;
+                await Task.Delay(interval ?? TimeSpan.FromSeconds(1), deadline.Token);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        { throw new IOException($"Snapshot restoration timed out: observed {observed}; expected {expectedNumber}/{expectedHash ?? "stable hash"}"); }
+    }
+
+    internal static async Task<JsonObject> PrepareAsync(string path, Func<string, JsonArray, Task<JsonNode?>> rpc, CancellationToken cancellationToken = default, JsonObject? stableHead = null)
     {
         if (File.Exists(path)) return JsonNode.Parse(await File.ReadAllTextAsync(path, cancellationToken)) as JsonObject ?? throw new IOException("Invalid lookup manifest");
-        var head = await Block("latest");
+        var head = stableHead ?? await Block("latest");
         var number = Quantity(head["number"]);
         var entries = new JsonArray();
         for (var scan = 0; scan < 2048 && entries.Count < Count && number >= 64 + scan; scan++)
@@ -132,7 +158,9 @@ internal static class TransactionLookupWorkload
         double Number(string metric, string field)
         {
             var node = metrics[metric];
-            var value = (node?["values"]?[field] ?? node?[field])?.ToJsonString();
+            var fieldValue = node?["values"]?[field] ?? node?[field];
+            if (field == "rate" && fieldValue is null) fieldValue = node?["values"]?["value"] ?? node?["value"];
+            var value = fieldValue?.ToJsonString();
             return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && double.IsFinite(number) ? number : throw new IOException($"Missing k6 {metric}.{field}");
         }
         var count = Number("http_reqs", "count");

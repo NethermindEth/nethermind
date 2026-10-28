@@ -1042,6 +1042,11 @@ blocks starting 64 blocks behind the actual RPC head, rotating first/middle/last
 transaction selection. Selection scans at most 2,048 blocks and fails if either
 lookup is unavailable or inconsistent; it does not use Flood's external samples.
 
+Before selection or reuse, the workload waits up to 120 seconds for consecutive
+matching head probes. Initial selection requires `SNAPSHOT_BLOCK`; reuse requires
+the saved head number and hash. Timeout, an above-anchor head or a different
+hash fails closed rather than changing targets.
+
 The first arm saves the ordered targets and full reference results under the
 sweep output root. Every subsequent arm/round reuses them and must match the same
 head, canonical block/index/hash and complete transaction/receipt JSON, before

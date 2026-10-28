@@ -92,6 +92,38 @@ tests.Case("generation fails closed on null and insufficient blocks", () =>
     RpcScriptTests.Assert(!File.Exists(path), "partial manifest persisted");
     head = 10000;
 });
+tests.Case("snapshot restoration waits for exact pinned head and consecutive stable hash", () =>
+{
+    foreach (var pinned in new[] { false, true })
+    {
+        var probes = 0;
+        Task<JsonNode?> Progress(string method, JsonArray parameters)
+        {
+            probes++;
+            var number = probes == 1 ? 9999 : 10000;
+            var hash = Hash(!pinned && probes == 2 ? 10001 : number);
+            return Task.FromResult<JsonNode?>(new JsonObject { ["number"] = "0x" + number.ToString("x"), ["hash"] = hash });
+        }
+        var stable = TransactionLookupWorkload.WaitForHeadAsync(10000, pinned ? Hash(10000) : null, Progress, CancellationToken.None, interval: TimeSpan.Zero).GetAwaiter().GetResult();
+        RpcScriptTests.Assert(probes == (pinned ? 3 : 4) && stable["hash"]!.GetValue<string>() == Hash(10000), "accepted unstable/wrong anchor");
+    }
+});
+tests.Case("snapshot restoration rejects wrong hash, higher head, timeout and cancellation", () =>
+{
+    foreach (var (number, hash) in new[] { (10000, Hash(10001)), (10001, Hash(10001)), (9999, Hash(9999)) })
+    {
+        Task<JsonNode?> Head(string method, JsonArray parameters) => Task.FromResult<JsonNode?>(new JsonObject { ["number"] = "0x" + number.ToString("x"), ["hash"] = hash });
+        Reject(() => TransactionLookupWorkload.WaitForHeadAsync(10000, Hash(10000), Head, CancellationToken.None, TimeSpan.FromMilliseconds(20), TimeSpan.Zero).GetAwaiter().GetResult());
+    }
+    using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+    try
+    {
+        TransactionLookupWorkload.WaitForHeadAsync(10001, null, Rpc, cancellation.Token).GetAwaiter().GetResult();
+        throw new InvalidOperationException("Cancelled restoration accepted");
+    }
+    catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+    RpcScriptTests.Assert(TransactionLookupWorkload.Hash(manifestPath) == manifestHash, "readiness changed manifest");
+});
 tests.Case("strict summary requires complete successful HTTP requests and both checks", () =>
 {
     JsonObject Summary(int count, int passes, int fails, double rate)
@@ -108,6 +140,33 @@ tests.Case("strict summary requires complete successful HTTP requests and both c
         return summary;
     }
     TransactionLookupWorkload.CheckSummary(Summary(10, 20, 0, 0));
+    var legacy = Summary(10, 20, 0, 0);
+    foreach (var metric in legacy["metrics"]!.AsObject().Select(pair => pair.Key).ToArray())
+    {
+        if (legacy["metrics"]![metric]!["values"] is JsonObject values) legacy["metrics"]![metric] = values.DeepClone();
+        if (!metric.StartsWith("http_req_failed", StringComparison.Ordinal)) continue;
+        legacy["metrics"]![metric]!.AsObject().Remove("rate");
+        legacy["metrics"]![metric]!["value"] = 0;
+        legacy["metrics"]![metric]!["passes"] = 0;
+        legacy["metrics"]![metric]!["fails"] = metric == "http_req_failed" ? 10 : 5;
+    }
+    TransactionLookupWorkload.CheckSummary(legacy);
+    foreach (var metric in legacy["metrics"]!.AsObject().Select(pair => pair.Key).Where(key => key.StartsWith("http_req_failed", StringComparison.Ordinal)))
+    {
+        foreach (var value in new JsonNode?[] { JsonValue.Create(.1), null, JsonValue.Create("NaN") })
+        {
+            var invalid = (JsonObject)legacy.DeepClone();
+            invalid["metrics"]![metric]!["value"] = value?.DeepClone();
+            Reject(() => TransactionLookupWorkload.CheckSummary(invalid));
+        }
+        var explicitRate = (JsonObject)legacy.DeepClone();
+        explicitRate["metrics"]![metric]!["rate"] = .1;
+        Reject(() => TransactionLookupWorkload.CheckSummary(explicitRate));
+    }
+    var missingCount = (JsonObject)legacy.DeepClone();
+    missingCount["metrics"]!["http_reqs"]!.AsObject().Remove("count");
+    missingCount["metrics"]!["http_reqs"]!["value"] = 10;
+    Reject(() => TransactionLookupWorkload.CheckSummary(missingCount));
     foreach (var method in TransactionLookupWorkload.Methods)
     {
         var missing = Summary(10, 20, 0, 0);
@@ -152,4 +211,6 @@ tests.Case("pinned k6 check patched exactly once and unknown upstream fails clos
     var error = process.StandardError.ReadToEnd(); process.WaitForExit();
     RpcScriptTests.Assert(process.ExitCode == 0, error);
 });
+foreach (var summaryPath in args.SelectMany(path => Directory.Exists(path) ? Directory.GetFiles(path, "summary.json", SearchOption.AllDirectories) : [path]))
+    tests.Case("archived summary accepted unchanged: " + summaryPath, () => TransactionLookupWorkload.CheckSummary(JsonNode.Parse(File.ReadAllText(summaryPath))!.AsObject()));
 tests.Complete();
