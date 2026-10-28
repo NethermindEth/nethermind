@@ -1833,10 +1833,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         { "blob_garbage_collection_force_threshold", "0.0" },
     };
 
-    // Blob garbage collection back to its RocksDB defaults. The blob-file-enable state is deliberately not reset
-    // here: it is restored through the tune state machine so _currentTune stays consistent with the live options.
-    private static readonly Dictionary<string, string> BlobGarbageCollectionDisableOptions = new()
+    // RocksDB defaults for the options the blob-GC compaction overrides, used for any key the database's own
+    // configuration leaves unset so the restore never invents a value the node did not run with.
+    private static readonly Dictionary<string, string> BlobGarbageCollectionDefaults = new()
     {
+        { "enable_blob_files", "false" },
         { "enable_blob_garbage_collection", "false" },
         { "blob_garbage_collection_age_cutoff", "0.25" },
         { "blob_garbage_collection_force_threshold", "1.0" },
@@ -1856,7 +1857,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (_logger.IsInfo) _logger.Info($"Compacting {Name} with blob garbage collection to retire stale blob files. This runs until done and aborts cleanly on shutdown.");
 
-        ITunableDb.TuneType tuneToRestore = _currentTune;
+        IDictionary<string, string> optionsToRestore = SnapshotBlobGarbageCollectionOptions();
 
         ApplyOptions(BlobGarbageCollectionOptions);
         try
@@ -1865,7 +1866,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         finally
         {
-            RestoreOptionsAfterBlobGarbageCollection(tuneToRestore);
+            RestoreOptionsAfterBlobGarbageCollection(optionsToRestore);
         }
 
         return true;
@@ -1877,21 +1878,33 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return !long.TryParse(numBlobFiles, out long count) || count > 0;
     }
 
-    /// <summary>Puts blob garbage collection back to its defaults and re-applies the tune the database carried
-    /// before the compaction, so <c>_currentTune</c> stays consistent with the live blob-file options and a later
-    /// <see cref="Tune"/> to the same type is not short-circuited into leaving them unset.</summary>
-    /// <remarks>The transient <see cref="ApplyOptions"/> above left <c>_currentTune</c> untouched, so it is nudged
-    /// off the target first to defeat <see cref="Tune"/>'s no-op guard. A failing restore is logged, not thrown:
-    /// the database stays usable, only its compaction options may differ until the next restart.</remarks>
-    private void RestoreOptionsAfterBlobGarbageCollection(ITunableDb.TuneType tuneToRestore)
+    /// <summary>Snapshots the live values of the options the blob-GC compaction overrides, read from this
+    /// database's own configuration, so the restore puts back exactly what the node runs with - a node that
+    /// enabled blob files or custom GC thresholds keeps them, a default node keeps them off - rather than the
+    /// fixed <see cref="GetStandardOptions"/> a <see cref="Tune"/> to <see cref="ITunableDb.TuneType.Default"/>
+    /// would otherwise impose on a customized blocks database.</summary>
+    private IDictionary<string, string> SnapshotBlobGarbageCollectionOptions()
+    {
+        IDictionary<string, string> configured = ExtractOptions(_perTableDbConfig.RocksDbOptions + _perTableDbConfig.AdditionalRocksDbOptions);
+        Dictionary<string, string> snapshot = new(BlobGarbageCollectionOptions.Count);
+        foreach (string key in BlobGarbageCollectionOptions.Keys)
+        {
+            snapshot[key] = configured.TryGetValue(key, out string? configuredValue)
+                ? configuredValue
+                : BlobGarbageCollectionDefaults[key];
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>Re-applies the blob-GC options the database carried before the compaction. A failing restore is
+    /// logged, not thrown: the database stays usable, only its compaction options may differ until the next
+    /// restart.</summary>
+    private void RestoreOptionsAfterBlobGarbageCollection(IDictionary<string, string> optionsToRestore)
     {
         try
         {
-            ApplyOptions(BlobGarbageCollectionDisableOptions);
-            _currentTune = tuneToRestore == ITunableDb.TuneType.Default
-                ? ITunableDb.TuneType.EnableBlobFiles
-                : ITunableDb.TuneType.Default;
-            Tune(tuneToRestore);
+            ApplyOptions(optionsToRestore);
         }
         catch (RocksDbException e)
         {

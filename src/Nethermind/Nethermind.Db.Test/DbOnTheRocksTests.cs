@@ -1206,13 +1206,54 @@ namespace Nethermind.Db.Test
                     "a ranged reclaim cannot retire the newer blob files while a surviving key still references the oldest one");
                 Assert.That(sstAfter + blobAfter, Is.LessThan((sstBefore + blobBefore) / 2),
                     "the one-shot blob-GC compaction must give the disk back now that only the pinned region survives");
-                // R3: the retained values must be relocated into fresh blob files, never inlined into SST.
+                // The retained values must be relocated into fresh blob files, never inlined into SST.
                 Assert.That(blobAfter, Is.GreaterThan(sstAfter),
                     "the retained values stay in blob files - inlining them into SST would bloat SST by the whole retained dataset");
                 Assert.That(sstAfter, Is.LessThan(blobBefore / 2),
                     "SST must not balloon with the retained values the blob GC relocated");
                 Assert.That(GetValue(db, BlockKey(1, 0x00)), Is.Not.Null, "the pinned bottom key must still read back");
                 Assert.That(GetValue(db, BlockKey(heights / 2, 0x00)), Is.Null, "a removed key must be gone");
+            }
+        }
+
+        [Test]
+        public void CompactReclaimingBlobFiles_RestoresConfiguredBlobAndCompactionOptions_NotTheStandardTuneDefaults()
+        {
+            // A blocks database that runs with blob files and auto-compaction disabled: the one-shot must put both
+            // back exactly as configured, not reset them to the standard tune defaults the way routing the restore
+            // through Tune(Default) did.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            using OptionsCapturingDbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 100;
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            for (ulong number = 1; number <= heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+            Assert.That(BlobBytes(DbPath), Is.GreaterThan(0), "blob mode must actually be engaged before the compaction");
+
+            bool compacted = db.CompactReclaimingBlobFiles();
+
+            // A large value written and flushed after the restore must still land in a blob file: that only happens
+            // while enable_blob_files is the configured true, not the standard default false.
+            long blobBeforeWrite = BlobBytes(DbPath);
+            db.PutSpan(BlockKey(heights + 1, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(BlobBytes(DbPath), Is.GreaterThan(blobBeforeWrite),
+                    "a post-restore write must still produce blob files - resetting enable_blob_files to the standard default would send it to SST");
+                Assert.That(db.AppliedOptions, Is.Not.Empty, "the compaction must have applied and then restored options");
+                Assert.That(db.AppliedOptions[^1].TryGetValue("enable_blob_files", out string? restoredBlobFiles) ? restoredBlobFiles : null, Is.EqualTo("true"),
+                    "the restore must put enable_blob_files back to the configured value");
+                Assert.That(db.AppliedOptions.Any(static options => options.TryGetValue("disable_auto_compactions", out string? flag) && flag == "false"), Is.False,
+                    "the restore must not re-enable auto-compaction the node disabled - the standard tune defaults would");
             }
         }
 
@@ -2265,6 +2306,23 @@ namespace Nethermind.Db.Test
         {
             NativeCloses++;
             base.ReleaseUnmanagedResources();
+        }
+    }
+
+    class OptionsCapturingDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager)
+    {
+        public List<IDictionary<string, string>> AppliedOptions { get; } = [];
+
+        protected override void ApplyOptions(IDictionary<string, string> options)
+        {
+            AppliedOptions.Add(new Dictionary<string, string>(options));
+            base.ApplyOptions(options);
         }
     }
 }
