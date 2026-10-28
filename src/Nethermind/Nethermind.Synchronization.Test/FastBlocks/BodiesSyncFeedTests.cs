@@ -327,6 +327,43 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task Does_not_finish_before_the_barrier_body_is_inserted()
+    {
+        const ulong barrier = 60;
+        _syncConfig.AncientBodiesBarrier = barrier;
+        _feed.InitializeFeed();
+
+        using BodiesSyncBatch first = (await _feed.PrepareRequest())!;
+        BlockInfo[] requested = [.. first.Infos.Where(static i => i is not null)!];
+        Assert.That(requested[^1].BlockNumber, Is.EqualTo(barrier), "the first batch must reach the barrier for this to assert anything");
+        first.Response = new OwnedBlockBodies([.. requested.SkipLast(1).Select(BodyOf)]);
+        _feed.HandleResponse(first);
+
+        using BodiesSyncBatch retry = (await _feed.PrepareRequest())!;
+        Assert.That(retry.Infos[0]!.BlockNumber, Is.EqualTo(barrier));
+        using BodiesSyncBatch? _ = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.False);
+            Assert.That(_syncPointers.LowestInsertedBodyNumber, Is.GreaterThan(barrier));
+        }
+
+        retry.Response = new OwnedBlockBodies([BodyOf(retry.Infos[0]!)]);
+        _feed.HandleResponse(retry);
+        using BodiesSyncBatch? __ = await _feed.PrepareRequest();
+        using BodiesSyncBatch? ___ = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(_syncingToBlockTree.FindBlock(barrier, BlockTreeLookupOptions.None)?.Body, Is.Not.Null);
+        }
+
+        BlockBody BodyOf(BlockInfo info) => _syncingFromBlockTree.FindBlock(info.BlockNumber, BlockTreeLookupOptions.None)!.Body;
+    }
+
+    [Test]
     public void Completion_marker_clears_when_the_barrier_drops_after_a_finished_download()
     {
         _historyPruner.CutoffBlockNumber.Returns((ulong?)60);
