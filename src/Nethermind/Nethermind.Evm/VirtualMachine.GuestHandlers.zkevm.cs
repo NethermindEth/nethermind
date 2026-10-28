@@ -242,6 +242,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : ref stack;
         }
 
+        /// <summary>The running frame's memory, reached through references rounded down to the word boundaries they are already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+        /// <remarks>
+        /// As <see cref="AlignedSlot"/>: the state is a byref parameter and its memory a byref loaded from it, so the JIT tests each one's
+        /// alignment again in every block that reads a field through it. One <c>andi</c> each proves them; both are naturally word-aligned.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe ref EvmPooledMemory AlignedMemory(ref DispatchState state)
+        {
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref state) & (nuint)(sizeof(nint) - 1)) == 0);
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref state.Memory) & (nuint)(sizeof(nint) - 1)) == 0);
+            if (!StrictAlignmentFlag.IsActive) return ref state.Memory;
+            ref DispatchState aligned = ref Unsafe.As<byte, DispatchState>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+                Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<DispatchState, byte>(ref state)) & ~(nint)(sizeof(nint) - 1)));
+            return ref Unsafe.As<byte, EvmPooledMemory>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+                Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<EvmPooledMemory, byte>(ref aligned.Memory)) & ~(nint)(sizeof(nint) - 1)));
+        }
+
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>
         /// The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction
@@ -1459,7 +1476,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
                     // Charged in the carried gas: a separate copy would take a callee-saved register.
-                    ref byte destination = ref state.Memory.TryPrepareWordOverwrite(offset, ref gas);
+                    ref byte destination = ref AlignedMemory(ref state).TryPrepareWordOverwrite(offset, ref gas);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
@@ -1649,7 +1666,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3) | (target >> 32)) == 0)
                         {
                             gas -= cost;
-                            ref byte range = ref state.Memory.TryPrepareRangeOverwrite(target, size, ref gas);
+                            ref byte range = ref AlignedMemory(ref state).TryPrepareRangeOverwrite(target, size, ref gas);
                             if (!Unsafe.IsNullRef(ref range))
                             {
                                 uint copied = 0;
@@ -1744,7 +1761,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
-                    ref byte destination = ref state.Memory.GetActiveInitializedRange(offset, 1);
+                    ref byte destination = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, 1);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset, whose low byte comes first in limb layout.
@@ -1787,7 +1804,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
+                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
@@ -1829,10 +1846,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong offset = slot;
                 // Below 2^32 the offset cannot overflow when the word is added to it.
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (offset >> 32)) == 0 &&
-                    offset + EvmStack.WordSize <= (ulong)stack.InputDataLength)
+                    offset + EvmStack.WordSize <= (ulong)AlignedStack(ref stack).InputDataLength)
                 {
                     // The input holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-                    ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in stack.InputData), (nint)offset);
+                    ref byte source = ref Unsafe.Add(ref Unsafe.AsRef(in AlignedStack(ref stack).InputData), (nint)offset);
                     LoadBigEndian(ref slot, ref source);
                     ip = ref Unsafe.Add(ref ip, 1);
                     nint next = AlignedTable(handlers)[PairAt(ref ip)];
@@ -1876,7 +1893,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                      ((offset | length) >> 32)) == 0)
                 {
                     ulong cost = GasCostOf.Sha3 + GasCostOf.Sha3Word * ((length + (EvmStack.WordSize - 1)) >> 5);
-                    ref byte data = ref state.Memory.GetActiveInitializedRange(offset, length);
+                    ref byte data = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, length);
                     if (gas >= cost && !Unsafe.IsNullRef(ref data))
                     {
                         gas -= cost;
@@ -2409,7 +2426,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             nint target = (nint)Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
             Debug.Assert((nuint)target < (nuint)stack.CodeLength);
-            if (stack.TryMarkJumpDestination(target, ref code))
+            if (AlignedStack(ref stack).TryMarkJumpDestination(target, ref code))
             {
                 head -= TConditional.IsActive ? 2 : 1;
                 sp = ref Moved(ref sp, -(TConditional.IsActive ? 2 : 1));

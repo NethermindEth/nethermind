@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -33,6 +34,8 @@ public record GethTraceOptions
     internal TimeProvider? DeadlineClock { get; init; }
 
     internal GethTraceDeadlineScope? DeadlineScope { get; init; }
+
+    internal CancellationToken ExecutionCancellationToken { get; init; }
 
     public bool DisableStack { get; init; }
 

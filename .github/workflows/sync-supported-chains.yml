@@ -76,7 +76,7 @@ jobs:
           ref: ${{ github.ref_name || 'master' }}
 
       - name: Set up .NET for CI scripts
-        uses: actions/setup-dotnet@v6
+        uses: ./nethermind/.github/actions/setup-dotnet
         with:
           dotnet-version: 10.0.402
 
@@ -90,7 +90,7 @@ jobs:
         run: |
           matrix=$(cat nethermind/scripts/config/testnet-matrix.json)
 
-          matrix=$(echo "$matrix" | dotnet run --file nethermind/scripts/sync/SelectNetworks.cs -- "$NETWORK_FILTER")
+          matrix=$(echo "$matrix" | dotnet run --file nethermind/scripts/sync/select-networks.cs -- "$NETWORK_FILTER")
 
           requested_mode=$(echo "$MODE_INPUT" | tr '[:upper:]' '[:lower:]')
 
@@ -143,7 +143,7 @@ jobs:
             exit 1
           fi
 
-          matrix=$(echo "$matrix" | dotnet run --file nethermind/scripts/sync/CheckRunnerShapes.cs)
+          matrix=$(echo "$matrix" | dotnet run --file nethermind/scripts/sync/check-runner-shapes.cs)
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 

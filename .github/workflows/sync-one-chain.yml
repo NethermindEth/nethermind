@@ -194,7 +194,7 @@ jobs:
           NETWORK: ${{ inputs.network }}
           SYNC_MODE: ${{ inputs.mode }}
           DOCKER_IMAGE: ${{ inputs.docker_image }}
-        run: dotnet run --file scripts/sync-metrics/Collect.cs -- "sync-metrics-${NETWORK}-${SYNC_MODE}.json"
+        run: dotnet run --file scripts/sync-metrics/collect.cs -- "sync-metrics-${NETWORK}-${SYNC_MODE}.json"
 
       - name: Upload sync metrics
         if: success() && inputs.collect_metrics

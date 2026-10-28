@@ -139,8 +139,11 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         // Execute and verify the error message includes block number
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
-        Assert.That(result.Result.Error, Does.Contain("No state available for block"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("No state available for block"));
+        }
         // Verify the error message includes both block number and hash (format: "{number} ({hash})")
         Assert.That(result.Result.Error, Does.Match(@"No state available for block \d+ \(0x[a-fA-F0-9]{64}\)"));
     }

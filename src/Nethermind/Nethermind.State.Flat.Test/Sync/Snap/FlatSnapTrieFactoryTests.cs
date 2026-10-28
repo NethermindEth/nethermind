@@ -136,9 +136,12 @@ public class FlatSnapTrieFactoryTests
         using (ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default))
         using (ISnapTree<PathWithStorageSlot> nonDefaultStorageTree = factory.CreateStorageTree(new ValueHash256(Bytes.FromHexString("11" + new string('0', 62)))))
         {
-            Assert.That(stateTree, Is.Not.Null);
-            Assert.That(storageTree, Is.Not.Null);
-            Assert.That(nonDefaultStorageTree, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stateTree, Is.Not.Null);
+                Assert.That(storageTree, Is.Not.Null);
+                Assert.That(nonDefaultStorageTree, Is.Not.Null);
+            }
         }
 
         // Clear is the runner's responsibility via EnsureInitialize; tree creation must not invoke it.
@@ -164,8 +167,11 @@ public class FlatSnapTrieFactoryTests
         using ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree();
         using ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default);
 
-        Assert.That(stateTree, Is.Not.Null);
-        Assert.That(storageTree, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateTree, Is.Not.Null);
+            Assert.That(storageTree, Is.Not.Null);
+        }
     }
 
     [Test]

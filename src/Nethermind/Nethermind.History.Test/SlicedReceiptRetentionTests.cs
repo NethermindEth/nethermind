@@ -115,8 +115,11 @@ public class SlicedReceiptRetentionTests
         FilterLog[] logs = logFinder.FindLogs(filter).ToArray();
 
         Assert.That(logs.Length, Is.EqualTo(1));
-        Assert.That(logs[0].Address, Is.EqualTo(slicedAddress));
-        Assert.That(logs[0].BlockNumber, Is.EqualTo(slicedBlockNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[0].Address, Is.EqualTo(slicedAddress));
+            Assert.That(logs[0].BlockNumber, Is.EqualTo(slicedBlockNumber));
+        }
 
         TxReceipt[] retained = testBlockchain.ReceiptStorage.Get(slicedBlockHash);
         using (Assert.EnterMultipleScope())
@@ -529,9 +532,12 @@ public class SlicedReceiptRetentionTests
         SlicedReceiptRetention reAdded = new(sliced, Substitute.For<ILogIndexStorage>(), blockTree, dbProvider);
         reAdded.OnPruningPassStarting(oldestStoredReceipts: 6000, reclaimedThrough: 6000, sliceCleanupThrough: 0);
 
-        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
-            "reclaims advanced past the last pass that saw this address, so the depth in between lapsed unretained");
-        Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 1, 9000), Is.False,
+                "reclaims advanced past the last pass that saw this address, so the depth in between lapsed unretained");
+            Assert.That(reAdded.RetainsLogsFor([TestItem.AddressA], 6000, 9000), Is.True);
+        }
     }
 
     [Test]
