@@ -577,7 +577,7 @@ public class HistoryPrunerTests
             syncConfig: syncConfig);
         blockTree.SyncPivot.Returns((100UL, TestItem.KeccakA));
 
-        // The fast-blocks feeds stop at max(1, min(tree pivot, barrier)), so blocks below it are the ones to prune.
+        // The bodies feed stops at max(1, min(tree pivot, bodies barrier)), so blocks below it are the ones to prune.
         Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(BeaconGenesisBlockNumber));
     }
 
