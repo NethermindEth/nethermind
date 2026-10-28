@@ -120,22 +120,32 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             while (next < headers.Length || pending.Count != 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                while (next < headers.Length && pending.Count < LogPrefetchLimit)
+                using ArrayPoolList<BlockHeader> candidates = new(LogPrefetchLimit - pending.Count);
+                while (next < headers.Length && pending.Count + candidates.Count < LogPrefetchLimit)
                 {
                     if (stop.IsCancellationRequested) break;
                     BlockHeader header = headers[next++];
-                    if (MayContainLogs(header.Bloom, addresses, topics)) pending.Add(FetchAsync(header));
+                    if (MayContainLogs(header.Bloom, addresses, topics)) candidates.Add(header);
+                }
+                if (candidates.Count != 0)
+                {
+                    BlockHeader[] window = candidates.AsSpan().ToArray();
+                    Task<TxReceipt[]>[] receipts = source.GetReceiptsAsync(window, stop.Token);
+                    for (int i = 0; i < window.Length; i++) pending.Add(FetchAsync(window[i], receipts[i]));
                 }
                 if (pending.Count == 0) continue;
-                (BlockHeader Header, Block? Block, TxReceipt[] Receipts) completed;
-                try { completed = await pending[0]; }
-                catch
+                do
                 {
-                    await Task.WhenAll(pending);
-                    throw;
-                }
-                if (completed.Block is { } block) Append(completed.Header, block, completed.Receipts);
-                pending.RemoveAt(0);
+                    (BlockHeader Header, Block? Block, TxReceipt[] Receipts) completed;
+                    try { completed = await pending[0]; }
+                    catch
+                    {
+                        await Task.WhenAll(pending);
+                        throw;
+                    }
+                    if (completed.Block is { } block) Append(completed.Header, block, completed.Receipts);
+                    pending.RemoveAt(0);
+                } while (pending.Count != 0 && pending[0].IsCompleted);
             }
             return BoundedJson.ToElement(result);
         }
@@ -145,11 +155,11 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             await ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
 
-        async Task<(BlockHeader, Block?, TxReceipt[])> FetchAsync(BlockHeader header)
+        async Task<(BlockHeader, Block?, TxReceipt[])> FetchAsync(BlockHeader header, Task<TxReceipt[]> pendingReceipts)
         {
             try
             {
-                TxReceipt[] receipts = await source.GetReceiptsAsync(header, stop.Token);
+                TxReceipt[] receipts = await pendingReceipts;
                 bool matches = false;
                 ulong previousGas = 0;
                 foreach (TxReceipt receipt in receipts)

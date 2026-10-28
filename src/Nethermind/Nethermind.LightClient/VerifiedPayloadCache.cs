@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.Extensions.Caching.Memory;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.LightClient;
@@ -48,6 +49,66 @@ internal sealed class VerifiedPayloadCache<T>(Func<T, long> size, CancellationTo
             using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopping);
             if (result is not null) return await result.WaitAsync(waiting.Token);
             await changed.WaitAsync(waiting.Token);
+        }
+    }
+
+    internal Task<T>[] GetManyAsync(Hash256[] hashes, Func<Hash256[], CancellationToken, Task<T>[]> fetch,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(hashes.Length, MaxDownloads);
+        Task<T>[] result = new Task<T>[hashes.Length];
+        using ArrayPoolList<(Hash256 Hash, TaskCompletionSource<T> Completion)> owners = new(hashes.Length);
+        CancellationToken stopping;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_stopping, this);
+            stopping = _stop.Token;
+            stopping.ThrowIfCancellationRequested();
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                Hash256 hash = hashes[i];
+                if (_cache.TryGetValue(hash, out T? cached)) result[i] = Task.FromResult(cached!);
+                else if (_downloads.TryGetValue(hash, out TaskCompletionSource<T>? download)) result[i] = download.Task;
+                else if (_downloads.Count < MaxDownloads)
+                {
+                    TaskCompletionSource<T> owner = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _downloads.Add(hash, owner);
+                    owners.Add((hash, owner));
+                    result[i] = owner.Task;
+                }
+            }
+        }
+        if (owners.Count != 0)
+        {
+            Hash256[] ownedHashes = new Hash256[owners.Count];
+            for (int i = 0; i < owners.Count; i++) ownedHashes[i] = owners[i].Hash;
+            Task<T>[] batch;
+            try { batch = fetch(ownedHashes, stopping); }
+            catch (Exception exception)
+            {
+                batch = new Task<T>[ownedHashes.Length];
+                for (int i = 0; i < batch.Length; i++) batch[i] = Task.FromException<T>(exception);
+            }
+            for (int i = 0; i < owners.Count; i++)
+            {
+                int index = i;
+                _ = FetchAsync(owners[i].Hash, owners[i].Completion, _ => batch[index]);
+            }
+        }
+        for (int i = 0; i < result.Length; i++)
+        {
+            Hash256 hash = hashes[i];
+            result[i] = result[i] is { } pending
+                ? WaitAsync(pending)
+                : GetAsync(hash, token => fetch([hash], token)[0], cancellationToken);
+        }
+        return result;
+
+        async Task<T> WaitAsync(Task<T> pending)
+        {
+            using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopping);
+            return await pending.WaitAsync(waiting.Token);
         }
     }
 

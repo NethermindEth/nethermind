@@ -701,7 +701,7 @@ public class VerifiedRpcTests
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(error!.Code, Is.EqualTo(-32000));
-        Assert.That(source.ReceiptReads, Is.EqualTo(forgery == "receipts" ? 1 : 0));
+        Assert.That(source.ReceiptReads, Is.EqualTo(forgery == "receipts" ? 4 : 0));
     }
 
     [TestCase("0x191", "latest", -32602)]
@@ -992,6 +992,50 @@ public class VerifiedRpcTests
         {
             Assert.That(repeated.GetRawText(), Is.EqualTo(recovered.GetRawText()));
             Assert.That(source.ReceiptReads, Is.EqualTo(reads));
+        }
+    }
+
+    [Test]
+    public async Task Receipt_window_fallback_keeps_synchronous_failures_in_their_owned_tasks()
+    {
+        using Provider provider = new(new Account(7, 123));
+        IExecutionStateSource source = provider;
+        BlockHeader invalid = provider.Header.Clone();
+        invalid.ReceiptsRoot = Keccak.Compute("invalid fallback receipt root");
+        Task<TxReceipt[]>[] receipts = source.GetReceiptsAsync([provider.Header, invalid, provider.Header], CancellationToken.None);
+        try
+        {
+            Assert.That(receipts, Has.Length.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.ReceiptFetches, Is.EqualTo(3), "Every started fallback must remain represented for caller drain.");
+                Assert.That(await receipts[0], Is.Empty);
+                Assert.That(await receipts[2], Is.Empty);
+            }
+            Assert.That(async () => await receipts[1], Throws.TypeOf<InvalidDataException>());
+        }
+        finally { await ((Task)Task.WhenAll(receipts)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing); }
+    }
+
+    [Test]
+    public async Task Log_receipt_windows_batch_only_bloom_candidates_and_refill_completed_prefixes([Values] bool sparse)
+    {
+        ulong last = sparse ? 315UL : 307UL;
+        bool Includes(ulong number) => !sparse || number % 2 == 0;
+        LogRangeSource source = new(300, last, includeLogs: Includes);
+        using VerifiedRpc rpc = new(source, () => source.Head(last), 1, specProvider: MainnetSpecProvider.Instance);
+        JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            fromBlock = VerifiedRpc.Quantity(300), toBlock = "finalized", address = AccountAddress.ToString(),
+        }), CancellationToken.None);
+        ulong[] candidates = Enumerable.Range(300, checked((int)(last - 299)))
+            .Select(number => (ulong)number).Where(Includes).ToArray();
+        AssertRangeLogs(logs, source, 300, last, Includes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.ReceiptWindows.Select(window => window.Length), Is.EqualTo(new[] { 4, 4 }));
+            Assert.That(source.ReceiptWindows.SelectMany(window => window), Is.EqualTo(candidates));
+            Assert.That(source.BodyNumbers, Is.EquivalentTo(candidates));
         }
     }
 
@@ -1966,6 +2010,7 @@ public class VerifiedRpcTests
         internal Func<ulong, CancellationToken, Task>? BeforeReceiptRead { get; init; }
         internal readonly ConcurrentQueue<ulong> BodyNumbers = new();
         internal readonly Channel<ulong> ReceiptsCompleted = Channel.CreateUnbounded<ulong>();
+        internal readonly ConcurrentQueue<ulong[]> ReceiptWindows = new();
         internal bool TamperReceipts { get; set; }
         internal int HeaderReads { get; private set; }
         private int _receiptReads;
@@ -2070,6 +2115,12 @@ public class VerifiedRpcTests
             Block block = _byHash[header.Hash!];
             ExecutionPeerTransport.VerifyBlockBody(header, block.Body);
             return block;
+        }
+
+        public Task<TxReceipt[]>[] GetReceiptsAsync(BlockHeader[] headers, CancellationToken cancellationToken)
+        {
+            ReceiptWindows.Enqueue(headers.Select(header => header.Number).ToArray());
+            return headers.Select(header => GetReceiptsAsync(header, cancellationToken)).ToArray();
         }
 
         public async Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)

@@ -59,6 +59,7 @@ using NSubstitute;
 using NSubstitute.Extensions;
 using ISession = Nethermind.Network.P2P.ISession;
 using Eth62Messages = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Eth63Messages = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Eth66Messages = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using ReferenceCountUtil = DotNetty.Common.Utilities.ReferenceCountUtil;
 
@@ -1891,12 +1892,16 @@ public class TransportTests
         TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         peers.Ordered[0].BeforeResponse = async (_, cancellation) =>
         {
-            using CancellationTokenRegistration registration = cancellation.Register(() => canceled.TrySetResult());
-            await Task.Delay(Timeout.Infinite, cancellation);
+            try { await Task.Delay(Timeout.Infinite, cancellation); }
+            catch (OperationCanceledException)
+            {
+                canceled.TrySetResult();
+                throw;
+            }
         };
 
         await peers.Request(context, token);
-        await canceled.Task.WaitAsync(token);
+        Assert.That(canceled.Task.IsCompletedSuccessfully, Is.True, "The losing attempt must finish cancellation before the request returns.");
         Assert.That(peers.Counts(context), Is.EqualTo(new[] { 1, 1 }));
         Assert.That(peers.Clock.GetTimestamp(), Is.Zero, "a healthy hedge must complete before the stalled peer times out");
 
@@ -2494,14 +2499,460 @@ public class TransportTests
     private static ExecutionPeerTransport SnapTransport() => new("sepolia", Nethermind.Logging.LimboLogs.Instance,
         new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Hash256.Zero), 1_800_000_000);
 
-    private readonly record struct ReceiptRequest(ReceiptPeer Peer, long Id, Hash256 Hash, long Offset);
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_batches_reserve_only_missing_hashes_and_keep_shared_owners(CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        Hash256[] hashes = Enumerable.Range(0, 4).Select(i => Keccak.Compute($"batch {i}")).ToArray();
+        TaskCompletionSource<int> joined = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<int[]> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.That(await cache.GetAsync(hashes[0], _ => Task.FromResult(10), token), Is.EqualTo(10));
+        Task<int> existing = cache.GetAsync(hashes[1], _ => joined.Task, token);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Hash256[]? owned = null;
+        CancellationToken ownerToken = default;
+        Task<int>[] Fetch(Hash256[] requested, CancellationToken stopping)
+        {
+            owned = requested;
+            ownerToken = stopping;
+            return requested.Select((_, index) => ReadAsync(index)).ToArray();
+            async Task<int> ReadAsync(int index) => (await release.Task.WaitAsync(stopping))[index];
+        }
+        Task<int>[] batch = cache.GetManyAsync(hashes, Fetch, caller.Token);
+        Task<int> survivor = cache.GetAsync(hashes[2], _ => throw new AssertionException("A batch owner must be shared."), token);
+        try
+        {
+            Assert.That(owned, Is.EqualTo(hashes.Skip(2)));
+            await caller.CancelAsync();
+            foreach (Task<int> pending in batch.Skip(1))
+                Assert.That(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ownerToken.IsCancellationRequested, Is.False);
+                Assert.That(survivor.IsCompleted, Is.False);
+                Assert.That(existing.IsCompleted, Is.False);
+            }
+            joined.SetResult(20);
+            release.SetResult([30, 40]);
+            Assert.That(await survivor, Is.EqualTo(30));
+            Assert.That(await existing, Is.EqualTo(20));
+            Task<int>[] warm = cache.GetManyAsync(hashes, (_, _) => throw new AssertionException("Warm batches must not download."), token);
+            Assert.That(await Task.WhenAll(warm), Is.EqualTo(new[] { 10, 20, 30, 40 }));
+        }
+        finally
+        {
+            joined.TrySetResult(20);
+            release.TrySetResult([30, 40]);
+            await Task.WhenAll(batch.Cast<Task>().Append(existing).Append(survivor)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_batch_shutdown_joins_the_shared_download_before_disposal([Values] bool prefix, CancellationToken token)
+    {
+        VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource drain = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<int[]> Fetch(Hash256[] hashes, CancellationToken stopping)
+        {
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, stopping); }
+            finally { canceled.TrySetResult(); await drain.Task; }
+            return new int[hashes.Length];
+        }
+        Hash256[] hashes = Enumerable.Range(0, 4).Select(i => Keccak.Compute($"batch stop {i}")).ToArray();
+        Task<int>[] batch = cache.GetManyAsync(hashes, (requested, stopping) =>
+        {
+            Task<int[]> download = Fetch(requested, stopping);
+            return requested.Select((_, index) => prefix && index < 3 ? Task.FromResult(index) : ReadAsync(index)).ToArray();
+            async Task<int> ReadAsync(int index) => (await download)[index];
+        }, token);
+        bool queuedStarted = false;
+        Task<int> queued = prefix ? Task.FromResult(0) : cache.GetAsync(Keccak.Compute("fifth batch owner"), _ => { queuedStarted = true; return Task.FromResult(1); }, token);
+        try
+        {
+            if (prefix) Assert.That(await Task.WhenAll(batch.Take(3)), Is.EqualTo(new[] { 0, 1, 2 }));
+            Task stopping = cache.DisposeAsync().AsTask();
+            await canceled.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stopping.IsCompleted, Is.False, "All reserved per-hash owners must await batch unwind.");
+                Assert.That(queuedStarted, Is.False);
+            }
+            drain.SetResult();
+            await stopping;
+            foreach (Task<int> pending in prefix ? batch.Skip(3) : batch.Append(queued))
+                Assert.That(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
+        }
+        finally
+        {
+            drain.TrySetResult();
+            await cache.DisposeAsync();
+            await Task.WhenAll(batch.Cast<Task>().Append(queued)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_batch_retention_preserves_per_value_size_bounds(
+        [Values(VerifiedPayloadCache<int>.Capacity / 2, VerifiedPayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(_ => bytes, token);
+        Hash256[] hashes = [Keccak.Compute("bounded batch0"), Keccak.Compute("bounded batch1")];
+        int fetches = 0;
+        Task<int>[] Fetch(Hash256[] requested, CancellationToken stopping)
+        {
+            fetches++;
+            return requested.Select((_, index) => Task.FromResult(index + 10)).ToArray();
+        }
+        Assert.That(await Task.WhenAll(cache.GetManyAsync(hashes, Fetch, token)), Is.EqualTo(new[] { 10, 11 }));
+        Assert.That(await Task.WhenAll(cache.GetManyAsync(hashes, Fetch, token)), Is.EqualTo(new[] { 10, 11 }));
+        Assert.That(fetches, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Payload_batch_factory_failures_release_reserved_owners([Values] bool synchronous, CancellationToken token)
+    {
+        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        Hash256[] hashes = Enumerable.Range(0, 4).Select(i => Keccak.Compute($"batch failure {i}")).ToArray();
+        Task<int>[] Fail(Hash256[] requested, CancellationToken stopping)
+        {
+            if (synchronous) throw new InvalidDataException("Invalid receipt prefix.");
+            return requested.Select(_ => Task.FromException<int>(new InvalidDataException("Invalid receipt prefix."))).ToArray();
+        }
+        Task<int>[] failed = cache.GetManyAsync(hashes, Fail, token);
+        Assert.That(async () => await Task.WhenAll(failed), Throws.TypeOf<InvalidDataException>());
+        int fetches = 0;
+        Task<int>[] retry = cache.GetManyAsync(hashes, (requested, stopping) =>
+        {
+            fetches++;
+            return requested.Select((_, index) => Task.FromResult(index)).ToArray();
+        }, token);
+        Assert.That(await Task.WhenAll(retry), Is.EqualTo(new[] { 0, 1, 2, 3 }));
+        Assert.That(fetches, Is.EqualTo(1));
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_batches_publish_verified_prefixes_before_a_held_or_unavailable_tail(
+        [Values(68, 70)] int version, [Values] bool unavailable, CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(false, version);
+        peers.Primary.Respond = null;
+        peers.Fallback.Respond = null;
+        peers.Fallback.SyncPeer.IsInitialized = false;
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number, true)).ToArray();
+        Task<TxReceipt[]>[] pending = peers.Transport.GetReceiptsAsync(headers, token);
+        try
+        {
+            if (version < 70)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    ReceiptRequest first = await peers.Requests.Reader.ReadAsync(token);
+                    Assert.That(first.Hashes, Is.EqualTo(new[] { headers[i].Hash }));
+                    if (unavailable && i == 2) peers.Fallback.SyncPeer.IsInitialized = true;
+                    peers.Reply(first);
+                    await pending[i].WaitAsync(token);
+                }
+            }
+            else
+            {
+                ReceiptRequest first = await peers.Requests.Reader.ReadAsync(token);
+                Assert.That(first.Hashes, Is.EqualTo(headers.Select(header => header.Hash)));
+                if (unavailable) peers.Fallback.SyncPeer.IsInitialized = true;
+                first.Peer.Reply(first, first.Hashes.Take(3).Select(hash => peers.Blocks[hash].Receipts).ToArray(), false);
+            }
+            TxReceipt[][] prefix = await Task.WhenAll(pending.Take(3)).WaitAsync(token);
+            ReceiptRequest tail = await peers.Requests.Reader.ReadAsync(token);
+            Assert.That(tail.Hashes, Is.EqualTo(new[] { headers[3].Hash }));
+            if (unavailable)
+            {
+                tail.Peer.Reply(tail, Array.Empty<TxReceipt[]>(), false);
+                tail = await peers.Requests.Reader.ReadAsync(token);
+                Assert.That(tail.Peer, Is.SameAs(peers.Fallback));
+                Assert.That(tail.Hashes, Is.EqualTo(new[] { headers[3].Hash }));
+            }
+            SemaphoreSlim bulk = (SemaphoreSlim)typeof(ExecutionPeerTransport)
+                .GetField("_executionBulkRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(prefix.Select(receipts => receipts[0].Logs![0].Data[1]), Is.EqualTo(new byte[] { 100, 101, 102 }));
+                Assert.That(headers.Take(3).All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+                Assert.That(peers.Server.FindHeader(headers[3].Hash!), Is.Not.Null);
+                Assert.That(bulk.CurrentCount, Is.EqualTo(2), "The selected prefix must release its physical bulk lease before suffix work.");
+                Assert.That(pending[3].IsCompleted, Is.False);
+            }
+            foreach (BlockHeader header in headers.Take(3))
+                Assert.That(await peers.Transport.GetReceiptsAsync(header, token, 2), Has.Length.EqualTo(2));
+            if (version == 70)
+            {
+                BlockHeader fifth = peers.AddBlock(104, true);
+                Task<TxReceipt[]> refill = peers.Transport.GetReceiptsAsync(fifth, token);
+                ReceiptRequest next = await peers.Requests.Reader.ReadAsync(token);
+                Assert.That(next.Hashes, Is.EqualTo(new[] { fifth.Hash }));
+                peers.Reply(next);
+                Assert.That(await refill.WaitAsync(token), Has.Length.EqualTo(2));
+                Assert.That(pending[3].IsCompleted, Is.False, "An available fifth block must not wait for the fourth block's held response.");
+            }
+            peers.Reply(tail);
+            Assert.That(await pending[3].WaitAsync(token), Has.Length.EqualTo(2));
+            Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Stopping_a_receipt_batch_preserves_completed_prefix_and_joins_its_last_owner(CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(false);
+        peers.Primary.Respond = null;
+        peers.Fallback.SyncPeer.IsInitialized = false;
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number, true)).ToArray();
+        Task<TxReceipt[]>[] pending = peers.Transport.GetReceiptsAsync(headers, token);
+        try
+        {
+            ReceiptRequest first = await peers.Requests.Reader.ReadAsync(token);
+            first.Peer.Reply(first, first.Hashes.Take(3).Select(hash => peers.Blocks[hash].Receipts).ToArray(), false);
+            await Task.WhenAll(pending.Take(3));
+            ReceiptRequest tail = await peers.Requests.Reader.ReadAsync(token);
+            Assert.That(tail.Hashes, Is.EqualTo(new[] { headers[3].Hash }));
+            await peers.DisposeAsync();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pending.Take(3).All(task => task.IsCompletedSuccessfully), Is.True);
+                Assert.That(pending[3].IsCompleted, Is.True, "Shutdown must join the suffix coordinator's last reserved owner.");
+                Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+                Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+            }
+            Assert.That(async () => await pending[3], Throws.InstanceOf<OperationCanceledException>());
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [TestCase(68, false)]
+    [TestCase(70, false)]
+    [TestCase(70, true)]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_batches_authenticate_every_block_across_wire_prefixes(
+        int version, bool partial, CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(version == 70 && partial, version);
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number, true)).ToArray();
+        TxReceipt[][] receipts = await Task.WhenAll(peers.Transport.GetReceiptsAsync(headers, token));
+        for (int i = 0; i < headers.Length; i++)
+        {
+            Assert.That(receipts[i].Select(receipt => receipt.Logs![0].Data[1]), Is.All.EqualTo((byte)headers[i].Number));
+            receipts[i][0].StatusCode = 0;
+            TxReceipt[] cached = await peers.Transport.GetReceiptsAsync(headers[i], token, 2);
+            Assert.That(cached[0].StatusCode, Is.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers.Primary.Requests.First().Hashes, Is.EqualTo(headers.Take(version < 70 ? 1 : 4).Select(header => header.Hash)));
+            Assert.That(peers.Primary.Requests.SelectMany(request => request.Hashes).Distinct().Count(), Is.EqualTo(4));
+            Assert.That(peers.Fallback.Requests, Is.Empty);
+            Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+            Assert.That(peers.Sessions.Sum(peer => peer.BodyRequests), Is.Zero);
+            Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+            if (version == 70 && partial) Assert.That(peers.Primary.Requests.Any(request => request.Offset == 1), Is.True);
+            if (version < 70) Assert.That(peers.Primary.Requests, Has.Count.EqualTo(4));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_batches_reject_invalid_middle_blocks_before_caching_or_credit(
+        [Values(68, 70)] int version, [Values("root", "count", "type", "order", "empty")] string invalid, CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(false, version);
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number, true)).ToArray();
+        bool? retryHadPreference = null;
+        peers.Fallback.Respond = request =>
+        {
+            retryHadPreference ??= ((ConcurrentDictionary<AllocationContexts, PeerInfo>)typeof(ExecutionPeerTransport)
+                .GetField("_preferredPeers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(peers.Transport)!).ContainsKey(AllocationContexts.Receipts);
+            peers.Reply(request);
+        };
+        peers.Primary.Respond = request =>
+        {
+            TxReceipt[][] blocks = request.Hashes.Select(hash => peers.Blocks[hash].Receipts).ToArray();
+            if (version < 70 && request.Hash != headers[1].Hash)
+            {
+                peers.Reply(request);
+                return;
+            }
+            int invalidIndex = version < 70 ? 0 : 1;
+            if (invalid == "empty") blocks = [];
+            else if (invalid == "order")
+            {
+                if (version < 70) blocks[0] = peers.Blocks[headers[2].Hash!].Receipts;
+                else (blocks[0], blocks[1]) = (blocks[1], blocks[0]);
+            }
+            else if (invalid == "count") blocks[invalidIndex] = Enumerable.Repeat(blocks[invalidIndex][0],
+                ExecutionPeerTransport.GetReceiptCountLimit(headers[1], peers.Transport.SpecProvider.GetSpec(headers[1]))!.Value + 1).ToArray();
+            else blocks[invalidIndex] = [new(blocks[invalidIndex][0])
+            {
+                TxType = invalid == "type" ? TxType.EIP1559 : blocks[invalidIndex][0].TxType,
+                Logs = invalid == "root" ? [new LogEntry(Address.Zero, [0xff], [])] : blocks[invalidIndex][0].Logs,
+            }, blocks[invalidIndex][1]];
+            try { request.Peer.Reply(request, blocks, false); }
+            catch (SubprotocolException exception) { request.Peer.WireErrors.Enqueue(exception); }
+        };
+        TxReceipt[][] receipts = await Task.WhenAll(peers.Transport.GetReceiptsAsync(headers, token));
+        for (int i = 0; i < headers.Length; i++)
+        {
+            Assert.That(receipts[i][0].Logs![0].Data, Is.EqualTo(new byte[] { 1, (byte)headers[i].Number }));
+            Assert.That(receipts[i].Select(receipt => receipt.TxType), Is.EqualTo(peers.Blocks[headers[i].Hash!].Receipts.Select(receipt => receipt.TxType)));
+        }
+        int wires = peers.Sessions.Sum(peer => peer.Requests.Count);
+        foreach (BlockHeader header in headers) Assert.That(await peers.Transport.GetReceiptsAsync(header, token, 2), Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            if (version < 70)
+            {
+                Assert.That(peers.Fallback.Requests.Any(request => request.Hash == headers[1].Hash), Is.True);
+                Assert.That(peers.Sessions.SelectMany(peer => peer.Requests).All(request => request.Hashes.Length == 1), Is.True);
+            }
+            else
+            {
+                Assert.That(peers.Fallback.Requests, Has.Count.EqualTo(1));
+                Assert.That(retryHadPreference, Is.False, "An invalid multi-block response must not earn positive receipt preference.");
+            }
+            Assert.That(peers.Sessions.Sum(peer => peer.Requests.Count), Is.EqualTo(wires));
+            if (invalid == "count") Assert.That(peers.Primary.WireErrors.Select(error => error.Message), Has.Some.Contains("exceeds the request"));
+            Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+            Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Receipt_batch_waiter_cancellation_preserves_joined_blocks_and_the_header_lane(CancellationToken token)
+    {
+        await using ReceiptPeers peers = new(false);
+        peers.Primary.Respond = null;
+        peers.Fallback.SyncPeer.IsInitialized = false;
+        BlockHeader[] headers = Enumerable.Range(100, 4).Select(number => peers.AddBlock((ulong)number, true)).ToArray();
+        Task<TxReceipt[]> existing = peers.Transport.GetReceiptsAsync(headers[0], token);
+        ReceiptRequest first = await peers.Requests.Reader.ReadAsync(token);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<TxReceipt[]>[] batch = peers.Transport.GetReceiptsAsync(headers, caller.Token);
+        ReceiptRequest window = await peers.Requests.Reader.ReadAsync(token);
+        Task<TxReceipt[]>[] survivors = headers.Select(header => peers.Transport.GetReceiptsAsync(header, token, 2)).ToArray();
+        try
+        {
+            Assert.That(window.Hashes, Is.EqualTo(headers.Skip(1).Select(header => header.Hash)));
+            Assert.That((await peers.Transport.GetHeaderByHashAsync(headers[3].Hash!, token)).Hash, Is.EqualTo(headers[3].Hash));
+            await caller.CancelAsync();
+            foreach (Task<TxReceipt[]> pending in batch)
+                Assert.That(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is not null), Is.True);
+            peers.Reply(first);
+            peers.Reply(window);
+            await Task.WhenAll(survivors);
+            await existing;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peers.Primary.Requests, Has.Count.EqualTo(2));
+                Assert.That(peers.Fallback.Requests, Is.Empty);
+                Assert.That(headers.All(header => peers.Server.FindHeader(header.Hash!) is null), Is.True);
+                Assert.That(peers.Sessions.All(peer => peer.BuffersReleased), Is.True);
+            }
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await Task.WhenAll(batch.Cast<Task>().Concat(survivors).Append(existing)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    [CancelAfter(30_000)]
+    public async Task Legacy_receipt_gaps_publish_the_first_block_before_reporting_a_weak_peer(
+        [Values(68, 69)] int version, CancellationToken token)
+    {
+        TaskCompletionSource weakPeerReport = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Nethermind.Logging.InterfaceLogger sink = Substitute.For<Nethermind.Logging.InterfaceLogger>();
+        sink.IsWarn.Returns(true);
+        sink.When(logger => logger.Warn(Arg.Any<string>())).Do(call =>
+        {
+            if (call.Arg<string>().StartsWith("Execution Receipts peer ", StringComparison.Ordinal)) weakPeerReport.TrySetResult();
+        });
+        Nethermind.Logging.ILogManager logs = Substitute.For<Nethermind.Logging.ILogManager>();
+        Nethermind.Logging.ILogger logger = new(sink);
+        logs.GetClassLogger<ExecutionPeerTransport>().Returns(logger);
+        await using ReceiptPeers peers = new(false, version, logs);
+        peers.Fallback.SyncPeer.IsInitialized = false;
+        peers.Fallback.Respond = null;
+        BlockHeader[] headers = Enumerable.Range(100, 3).Select(number => peers.AddBlock((ulong)number, true, number - 99)).ToArray();
+        TaskCompletionSource<ReceiptRequest> missing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        peers.Primary.Respond = request =>
+        {
+            if (request.Hashes.Length == 1 && request.Hash == headers[1].Hash)
+            {
+                missing.TrySetResult(request);
+                return;
+            }
+            TxReceipt[][] available = request.Hashes.Where(hash => hash != headers[1].Hash)
+                .Select(hash => peers.Blocks[hash].Receipts).ToArray();
+            request.Peer.Reply(request, available, false);
+        };
+        Task<TxReceipt[]>[] pending = peers.Transport.GetReceiptsAsync(headers, token);
+        try
+        {
+            Task winner = await Task.WhenAny(pending[0], weakPeerReport.Task).WaitAsync(token);
+            Assert.That(winner, Is.SameAs(pending[0]), "A legal legacy reply that skips a missing block must not be positionally rejected before the first block is published.");
+            TxReceipt[] first = await pending[0];
+            ReceiptRequest held = await missing.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first[0].Logs![0].Data, Is.EqualTo(new byte[] { 1, 100 }));
+                Assert.That(peers.Primary.Requests.First().Hashes, Is.EqualTo(new[] { headers[0].Hash }));
+                Assert.That(held.Hashes, Is.EqualTo(new[] { headers[1].Hash }));
+                Assert.That(weakPeerReport.Task.IsCompleted, Is.False);
+                Assert.That(pending[1].IsCompleted, Is.False);
+                Assert.That(pending[2].IsCompleted, Is.False);
+                Assert.That(peers.Fallback.Requests, Is.Empty);
+                Assert.That(peers.Server.FindHeader(headers[0].Hash!), Is.Null);
+            }
+            Assert.That(await peers.Transport.GetReceiptsAsync(headers[0], token, 1), Has.Length.EqualTo(1));
+        }
+        finally
+        {
+            await peers.DisposeAsync();
+            await ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    private readonly record struct ReceiptRequest(ReceiptPeer Peer, long Id, Hash256[] Hashes, long Offset)
+    {
+        internal Hash256 Hash => Hashes[0];
+    }
 
     private sealed class ReceiptPeers : IAsyncDisposable
     {
         private static readonly FieldInfo SoftLimit = typeof(SyncPeerProtocolHandlerBase)
             .GetField("SoftOutgoingMessageSizeLimit", BindingFlags.Static | BindingFlags.NonPublic)!;
         private readonly ulong _softLimit = (ulong)SoftLimit.GetValue(null)!;
-        private readonly ExecutionPeers _execution = new(0);
+        private readonly ExecutionPeers _execution;
         private bool _disposed;
         internal ExecutionPeerTransport Transport => _execution.Transport;
         internal ISyncServer Server { get; }
@@ -2512,15 +2963,16 @@ public class TransportTests
         internal ReceiptPeer Primary { get; }
         internal ReceiptPeer Fallback { get; }
 
-        internal ReceiptPeers(bool paged)
+        internal ReceiptPeers(bool paged, int version = 70, Nethermind.Logging.ILogManager? logs = null)
         {
+            _execution = new(0, logs: logs);
             IContainer services = Services(Transport);
             Server = services.Resolve<ISyncServer>();
             BlockHeader initial = EmptyHeader();
             initial.Bloom = Bloom.Empty;
             initial.Hash = initial.CalculateHash();
             services.Resolve<IBlockTree>().Insert(initial, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
-            Sessions = [new(this, services, initial, 1001), new(this, services, initial, 1002)];
+            Sessions = [new(this, services, initial, 1001, version), new(this, services, initial, 1002, version)];
             foreach (ReceiptPeer peer in Sessions) Pool.AddPeer(peer.SyncPeer);
             Primary = Sessions.Single(peer => ReferenceEquals(peer.SyncPeer, Pool.InitializedPeers.First().SyncPeer));
             Fallback = Sessions.Single(peer => !ReferenceEquals(peer, Primary));
@@ -2529,22 +2981,22 @@ public class TransportTests
             SoftLimit.SetValue(null, 75UL);
         }
 
-        internal BlockHeader AddBlock(ulong number)
+        internal BlockHeader AddBlock(ulong number, bool distinct = false, int receiptCount = 2)
         {
             BlockHeader header = EmptyHeader();
             header.Number = number;
             header.GasLimit = 1_000_000;
-            header.GasUsed = 42_000;
-            TxReceipt[] receipts = Enumerable.Range(1, 2).Select(index => new TxReceipt
+            header.GasUsed = (ulong)receiptCount * 21_000;
+            TxReceipt[] receipts = Enumerable.Range(1, receiptCount).Select(index => new TxReceipt
             {
                 StatusCode = 1,
                 BlockNumber = number,
                 GasUsedTotal = (ulong)index * 21_000,
-                Logs = [new LogEntry(Address.Zero, [(byte)index], [])],
+                Logs = [new LogEntry(Address.Zero, distinct ? [(byte)index, (byte)number] : [(byte)index], [])],
             }).ToArray();
             foreach (TxReceipt receipt in receipts) receipt.Bloom = new Bloom(receipt.Logs);
             header.Bloom = new Bloom(receipts.SelectMany(receipt => receipt.Logs!).ToArray());
-            header.TxRoot = TxTrie.CalculateRoot(Enumerable.Range(1, 2).Select(index => new Transaction
+            header.TxRoot = TxTrie.CalculateRoot(Enumerable.Range(1, receiptCount).Select(index => new Transaction
             {
                 Nonce = (ulong)index, To = Address.Zero, GasLimit = 30_000, GasPrice = 1,
             }).ToArray());
@@ -2556,10 +3008,22 @@ public class TransportTests
 
         internal void Reply(ReceiptRequest request, TxReceipt[]? receipts = null)
         {
-            receipts ??= Blocks[request.Hash].Receipts;
-            bool partial = request.Peer.Paged && request.Offset == 0;
-            TxReceipt[] page = partial ? [receipts[0]] : receipts.Skip(checked((int)request.Offset)).ToArray();
-            request.Peer.Reply(request, page, partial);
+            if (receipts is not null)
+            {
+                bool partial = request.Peer.Paged && request.Offset == 0;
+                request.Peer.Reply(request, partial ? [receipts[0]] : receipts.Skip(checked((int)request.Offset)).ToArray(), partial);
+                return;
+            }
+            if (request.Peer.Paged && request.Offset == 0)
+            {
+                request.Peer.Reply(request, [Blocks[request.Hash].Receipts[0]], true);
+                return;
+            }
+            TxReceipt[][] blocks = request.Hashes
+                .Select((hash, index) => index == 0
+                    ? Blocks[hash].Receipts.Skip(checked((int)request.Offset)).ToArray()
+                    : Blocks[hash].Receipts).ToArray();
+            request.Peer.Reply(request, blocks, false);
         }
 
         public async ValueTask DisposeAsync()
@@ -2599,26 +3063,35 @@ public class TransportTests
         internal ConcurrentQueue<Exception> WireErrors { get; } = new();
         internal Action<ReceiptRequest>? Respond;
         internal bool Paged;
+        private readonly int _version;
         internal int BodyRequests => Volatile.Read(ref _bodyRequests);
         internal bool BuffersReleased => _buffers.All(buffer => buffer.ReferenceCount == 0);
 
-        internal ReceiptPeer(ReceiptPeers owner, IContainer services, BlockHeader initial, int identity)
+        internal ReceiptPeer(ReceiptPeers owner, IContainer services, BlockHeader initial, int identity, int version)
         {
             _serializer = services.Resolve<IMessageSerializationService>();
             using PrivateKey key = new(((UInt256)identity).ToBigEndian());
             _session.Node.Returns(new Node(key.PublicKey, "127.0.0.1", 30303));
-            _handler = CreateProtocolHandler(services, _session, "eth", 70);
+            _version = version;
+            _handler = CreateProtocolHandler(services, _session, "eth", version);
             _session.When(session => session.DeliverMessage(Arg.Any<P2PMessage>())).Do(call =>
             {
                 using P2PMessage message = call.Arg<P2PMessage>();
                 switch (message)
                 {
                     case GetReceiptsMessage70 receipts:
-                        ReceiptRequest request = new(this, receipts.RequestId, receipts.Hashes[0], receipts.FirstBlockReceiptIndex);
+                        ReceiptRequest request = new(this, receipts.RequestId, receipts.Hashes.AsSpan().ToArray(), receipts.FirstBlockReceiptIndex);
                         _pending.TryAdd(request.Id, request);
                         Requests.Enqueue(request);
                         owner.Requests.Writer.TryWrite(request);
                         Respond?.Invoke(request);
+                        break;
+                    case Eth66Messages.GetReceiptsMessage wrappedReceipts:
+                        ReceiptRequest wrapped = new(this, wrappedReceipts.RequestId, wrappedReceipts.EthMessage.Hashes.AsSpan().ToArray(), 0);
+                        _pending.TryAdd(wrapped.Id, wrapped);
+                        Requests.Enqueue(wrapped);
+                        owner.Requests.Writer.TryWrite(wrapped);
+                        Respond?.Invoke(wrapped);
                         break;
                     case Eth66Messages.GetBlockHeadersMessage headers:
                         BlockHeader header = headers.EthMessage.StartBlockHash is { } hash && owner.Blocks.TryGetValue(hash, out (BlockHeader Header, TxReceipt[] Receipts) block)
@@ -2633,13 +3106,26 @@ public class TransportTests
                 }
             });
             _handler.Init();
-            using StatusMessage69 status = new()
+            if (version >= 69)
             {
-                ProtocolVersion = 70, NetworkId = owner.Server.NetworkId, GenesisHash = owner.Server.Genesis.Hash!,
-                LatestBlock = initial.Number, LatestBlockHash = initial.Hash!,
-                ForkId = services.Resolve<IForkInfo>().GetForkId(initial.Number, initial.Timestamp),
-            };
-            Deliver(status);
+                using StatusMessage69 status = new()
+                {
+                    ProtocolVersion = (byte)version, NetworkId = owner.Server.NetworkId, GenesisHash = owner.Server.Genesis.Hash!,
+                    LatestBlock = initial.Number, LatestBlockHash = initial.Hash!,
+                    ForkId = services.Resolve<IForkInfo>().GetForkId(initial.Number, initial.Timestamp),
+                };
+                Deliver(status);
+            }
+            else
+            {
+                using Eth62Messages.StatusMessage status = new()
+                {
+                    ProtocolVersion = (byte)version, NetworkId = owner.Server.NetworkId,
+                    GenesisHash = owner.Server.Genesis.Hash!, BestHash = initial.Hash!, TotalDifficulty = 1,
+                    ForkId = services.Resolve<IForkInfo>().GetForkId(initial.Number, initial.Timestamp),
+                };
+                Deliver(status);
+            }
             SyncPeer.IsInitialized = true;
         }
 
@@ -2649,18 +3135,40 @@ public class TransportTests
             SendReply(request, receipts, partial);
         }
 
-        private void SendReply(ReceiptRequest request, TxReceipt[] receipts, bool partial)
+        internal void Reply(ReceiptRequest request, TxReceipt[][] receipts, bool partial)
         {
-            ArrayPoolList<TxReceipt[]> blocks = new(1);
-            if (receipts.Length != 0) blocks.Add(receipts);
-            using ReceiptsMessage70 reply = new(request.Id, blocks, partial);
-            Deliver(reply);
+            if (!_pending.TryRemove(request.Id, out _)) throw new InvalidOperationException("ETH fixture request is no longer pending.");
+            SendReply(request, receipts, partial);
+        }
+
+        private void SendReply(ReceiptRequest request, TxReceipt[] receipts, bool partial) =>
+            SendReply(request, receipts.Length == 0 ? Array.Empty<TxReceipt[]>() : [receipts], partial);
+
+        private void SendReply(ReceiptRequest request, TxReceipt[][] receipts, bool partial)
+        {
+            ArrayPoolList<TxReceipt[]> blocks = new(receipts.Length);
+            blocks.AddRange(receipts);
+            if (_version >= 70)
+            {
+                using ReceiptsMessage70 reply = new(request.Id, blocks, partial);
+                Deliver(reply);
+            }
+            else if (_version >= 69)
+            {
+                using ReceiptsMessage69 reply = new(request.Id, new ReceiptsInnerMessage69(blocks));
+                Deliver(reply);
+            }
+            else
+            {
+                using Eth66Messages.ReceiptsMessage reply = new(request.Id, new Eth63Messages.ReceiptsMessage(blocks));
+                Deliver(reply);
+            }
         }
 
         internal void CompletePending()
         {
             foreach (KeyValuePair<long, ReceiptRequest> pending in _pending)
-                if (_pending.TryRemove(pending.Key, out ReceiptRequest request)) SendReply(request, [], false);
+                if (_pending.TryRemove(pending.Key, out ReceiptRequest request)) SendReply(request, Array.Empty<TxReceipt>(), false);
         }
 
         private void Deliver(P2PMessage message)
@@ -2668,7 +3176,10 @@ public class TransportTests
             IByteBuffer buffer = message switch
             {
                 StatusMessage69 value => _serializer.ZeroSerialize(value),
+                Eth62Messages.StatusMessage value => _serializer.ZeroSerialize(value),
                 ReceiptsMessage70 value => _serializer.ZeroSerialize(value),
+                ReceiptsMessage69 value => _serializer.ZeroSerialize(value),
+                Eth66Messages.ReceiptsMessage value => _serializer.ZeroSerialize(value),
                 Eth66Messages.BlockHeadersMessage value => _serializer.ZeroSerialize(value),
                 Eth66Messages.BlockBodiesMessage value => _serializer.ZeroSerialize(value),
                 _ => throw new ArgumentException("Unexpected ETH test message.", nameof(message)),

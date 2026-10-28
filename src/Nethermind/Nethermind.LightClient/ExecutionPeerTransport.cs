@@ -889,51 +889,158 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             throw new InvalidDataException("Execution peer returned a block body inconsistent with the verified header.");
     }
 
-    public async Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null)
+    public Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null) =>
+        GetReceiptTasks([header], cancellationToken, transactionCount)[0];
+
+    public Task<TxReceipt[]>[] GetReceiptsAsync(BlockHeader[] headers, CancellationToken cancellationToken) =>
+        GetReceiptTasks(headers, cancellationToken, null);
+
+    private Task<TxReceipt[]>[] GetReceiptTasks(BlockHeader[] headers, CancellationToken cancellationToken, int? transactionCount)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (transactionCount == 0 || header.ReceiptsRoot == Keccak.EmptyTreeHash)
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(headers.Length, VerifiedPayloadCache<TxReceipt[]>.MaxDownloads);
+        BlockHeader[] requestHeaders = new BlockHeader[headers.Length];
+        int?[] maximums = new int?[headers.Length];
+        Task<TxReceipt[]>[] result = new Task<TxReceipt[]>[headers.Length];
+        using ArrayPoolList<Hash256> hashes = new(headers.Length);
+        using ArrayPoolList<int> indices = new(headers.Length);
+        for (int i = 0; i < headers.Length; i++)
         {
-            VerifyReceipts(header, [], SpecProvider);
-            if (transactionCount is > 0) throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
-            return Array.Empty<TxReceipt>();
-        }
-        if ((transactionCount ?? GetReceiptCountLimit(header, SpecProvider.GetSpec(header))) is not { } maximum)
-        {
-            header = header.Clone();
-            maximum = (await GetBlockAsync(header, cancellationToken)).Transactions.Length;
-            transactionCount = maximum;
-        }
-        TxReceipt[] cached = await _receipts.GetAsync(header.Hash!, async stopping =>
-        {
-            BlockHeader requestHeader = header.Clone();
-            int registered = 0;
-            try
+            BlockHeader header = requestHeaders[i] = headers[i].Clone();
+            if (transactionCount == 0 || header.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
-                return await RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+                VerifyReceipts(header, [], SpecProvider);
+                if (transactionCount is > 0) throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
+                result[i] = Task.FromResult(Array.Empty<TxReceipt>());
+            }
+            else
+            {
+                maximums[i] = transactionCount ?? GetReceiptCountLimit(header, SpecProvider.GetSpec(header));
+                hashes.Add(header.Hash!);
+                indices.Add(i);
+            }
+        }
+        if (hashes.Count == 0) return result;
+        Task<TxReceipt[]>[] pending = _receipts.GetManyAsync(hashes.AsSpan().ToArray(), FetchAsync, cancellationToken);
+        for (int i = 0; i < pending.Length; i++)
+            result[indices[i]] = CopyAsync(maximums[indices[i]], pending[i]);
+        return result;
+
+        Task<TxReceipt[]>[] FetchAsync(Hash256[] ownedHashes, CancellationToken stopping)
+        {
+            TaskCompletionSource<TxReceipt[]>[] completed = new TaskCompletionSource<TxReceipt[]>[ownedHashes.Length - 1];
+            Task<TxReceipt[]>[] tasks = new Task<TxReceipt[]>[ownedHashes.Length];
+            for (int i = 0; i < completed.Length; i++)
+            {
+                completed[i] = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                tasks[i] = completed[i].Task;
+            }
+            tasks[^1] = LastAsync();
+            return tasks;
+
+            async Task<TxReceipt[]> LastAsync()
+            {
+                try
                 {
-                    if (Interlocked.Exchange(ref registered, 1) == 0) _syncServer.AddReceiptHeader(requestHeader);
-                    ReadOnlyMemory<int> counts = transactionCount is { } count ? new[] { count } : ReadOnlyMemory<int>.Empty;
-                    ReadOnlyMemory<int>? limits = transactionCount is null ? new ReadOnlyMemory<int>(new[] { maximum }) : null;
-                    using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([requestHeader.Hash!], counts, token, limits);
-                    if (batches.Count != 1 || batches[0] is not { } receipts || receipts.Length > maximum ||
-                        transactionCount is { } exact && receipts.Length != exact)
-                        throw new InvalidDataException("Execution peer did not supply the complete receipt list.");
-                    VerifyReceipts(requestHeader, receipts, SpecProvider);
-                    TxReceipt[] result = new TxReceipt[receipts.Length];
-                    for (int i = 0; i < result.Length; i++) result[i] = new TxReceipt(receipts[i]);
-                    return result;
-                }, stopping);
+                    BlockHeader[] ownedHeaders = new BlockHeader[ownedHashes.Length];
+                    int[] counts = new int[ownedHashes.Length];
+                    int[] limits = new int[ownedHashes.Length];
+                    for (int i = 0; i < ownedHashes.Length; i++)
+                    {
+                        int sourceIndex = 0;
+                        while (requestHeaders[sourceIndex].Hash != ownedHashes[i]) sourceIndex++;
+                        BlockHeader header = ownedHeaders[i] = requestHeaders[sourceIndex];
+                        int? maximum = maximums[sourceIndex];
+                        int? exact = transactionCount;
+                        maximum ??= exact = (await GetBlockAsync(header, stopping)).Transactions.Length;
+                        limits[i] = maximum.Value;
+                        counts[i] = exact ?? -1;
+                    }
+                    int offset = 0;
+                    while (true)
+                    {
+                        TxReceipt[][] prefix = await ReadPrefixAsync(offset);
+                        for (int i = 0; i < prefix.Length; i++)
+                        {
+                            int index = offset + i;
+                            if (index == tasks.Length - 1) return prefix[i];
+                            completed[index].TrySetResult(prefix[i]);
+                        }
+                        offset += prefix.Length;
+                    }
+
+                    async Task<TxReceipt[][]> ReadPrefixAsync(int start)
+                    {
+                        Lock registration = new();
+                        bool registered = false;
+                        try
+                        {
+                            return await RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
+                            {
+                                lock (registration)
+                                {
+                                    if (!registered)
+                                    {
+                                        for (int i = start; i < ownedHeaders.Length; i++) _syncServer.AddReceiptHeader(ownedHeaders[i]);
+                                        registered = true;
+                                    }
+                                }
+                                int requestedLength = peer.ProtocolVersion < 70 ? 1 : ownedHashes.Length - start;
+                                using ArrayPoolList<Hash256> remaining = new(requestedLength);
+                                bool exactCounts = false;
+                                bool unknownCounts = false;
+                                for (int i = start; i < start + requestedLength; i++)
+                                {
+                                    remaining.Add(ownedHashes[i]);
+                                    exactCounts |= counts[i] >= 0;
+                                    unknownCounts |= counts[i] < 0;
+                                }
+                                ReadOnlyMemory<int> expected = exactCounts ? counts.AsMemory(start, requestedLength) : ReadOnlyMemory<int>.Empty;
+                                ReadOnlyMemory<int>? ceilings = unknownCounts ? limits.AsMemory(start, requestedLength) : null;
+                                using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts(remaining, expected, token, ceilings);
+                                if (batches.Count == 0 || batches.Count > remaining.Count)
+                                    throw new InvalidDataException("Execution peer did not supply the complete receipt list.");
+                                TxReceipt[][] receipts = new TxReceipt[batches.Count][];
+                                for (int i = 0; i < batches.Count; i++)
+                                {
+                                    int index = start + i;
+                                    if (batches[i] is not { } batch || batch.Length > limits[index] ||
+                                        counts[index] >= 0 && batch.Length != counts[index])
+                                        throw new InvalidDataException("Execution peer did not supply the complete receipt list.");
+                                    VerifyReceipts(ownedHeaders[index], batch, SpecProvider);
+                                    receipts[i] = CopyReceipts(batch);
+                                }
+                                return receipts;
+                            }, stopping);
+                        }
+                        finally
+                        {
+                            if (registered)
+                                for (int i = start; i < ownedHeaders.Length; i++) _syncServer.RemoveReceiptHeader(ownedHeaders[i]);
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    foreach (TaskCompletionSource<TxReceipt[]> completion in completed) completion.TrySetException(exception);
+                    throw;
+                }
             }
-            finally
-            {
-                if (registered != 0) _syncServer.RemoveReceiptHeader(requestHeader);
-            }
-        }, cancellationToken);
-        if (cached.Length > maximum || transactionCount is { } expected && cached.Length != expected)
-            throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
-        TxReceipt[] copy = new TxReceipt[cached.Length];
-        for (int i = 0; i < copy.Length; i++) copy[i] = new TxReceipt(cached[i]);
+        }
+
+        async Task<TxReceipt[]> CopyAsync(int? maximum, Task<TxReceipt[]> pendingReceipts)
+        {
+            TxReceipt[] cached = await pendingReceipts;
+            if (maximum is { } limit && cached.Length > limit || transactionCount is { } count && cached.Length != count)
+                throw new InvalidDataException("Verified receipt count does not match the block transaction count.");
+            return CopyReceipts(cached);
+        }
+    }
+
+    private static TxReceipt[] CopyReceipts(TxReceipt[] receipts)
+    {
+        TxReceipt[] copy = new TxReceipt[receipts.Length];
+        for (int i = 0; i < copy.Length; i++) copy[i] = new TxReceipt(receipts[i]);
         return copy;
     }
 
