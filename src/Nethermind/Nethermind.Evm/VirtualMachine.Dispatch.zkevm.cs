@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using InlineIL;
 using Nethermind.Core;
 
@@ -127,11 +128,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
-        // Safety: the paired table remains pinned for the complete tail-call chain. Every bytecode read lands in the
-        // code or in the padding that follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
-        fixed (nint* entries = handlers)
+        // Safety: PairHandlers allocates the table pinned. Every bytecode read lands in the code or in the padding that
+        // follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
         {
-            nint* table = entries + FollowerHandlersLength;
+            nint* table = (nint*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(handlers)) + FollowerHandlersLength;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Vm = this, Memory = ref VmState.Memory };
 

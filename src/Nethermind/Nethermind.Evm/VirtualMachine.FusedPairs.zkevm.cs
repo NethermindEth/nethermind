@@ -77,7 +77,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </remarks>
     internal static nint[] PairHandlers(ReadOnlySpan<nint> handlers)
     {
-        nint[] paired = GC.AllocateUninitializedArray<nint>(FollowerHandlersLength + PairedHandlersLength);
+        // Pinned, so a frame entering dispatch addresses it without pinning it again.
+        nint[] paired = GC.AllocateUninitializedArray<nint>(FollowerHandlersLength + PairedHandlersLength, pinned: true);
         paired.AsSpan(0, FollowerHandlersLength).Fill(handlers[(int)Instruction.PUSH1]);
         for (int block = FollowerHandlersLength; block < paired.Length; block += byte.MaxValue + 1)
             handlers.CopyTo(paired.AsSpan(block));
