@@ -58,11 +58,13 @@ public sealed class GuestWorldState : IWorldState
     private IWorldStateScopeProvider.IScope? _scope;
     private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
 
-    private readonly OptimizedDictionary<AddressAsKey, int> _accountIndex = new(1_024);
+    // Open-addressed tables over the entries, probed linearly: a bucket holds an entry's index + 1, or 0 when empty.
+    // A probe compares the hash the entry keeps before its key, which a map probe on an equal hash cannot skip.
+    private int[] _accountBuckets = new int[2_048];
     private AccountEntry[] _accounts = new AccountEntry[1_024];
     private int _accountCount;
 
-    private readonly OptimizedDictionary<StorageCell, int> _slotIndex = new(8_192);
+    private int[] _slotBuckets = new int[16_384];
     private SlotEntry[] _slots = new SlotEntry[8_192];
     private int _slotCount;
     private int _lastSlot;
@@ -219,22 +221,51 @@ public sealed class GuestWorldState : IWorldState
 
     private int FindAccount(Address address)
     {
-        ref int index = ref _accountIndex.GetValueRefOrAddDefault(address, out bool exists);
-        if (!exists) index = AddAccount(address);
-        int account = index;
+        int hash = new AddressAsKey(address).GetHashCode();
+        int[] buckets = _accountBuckets;
+        int mask = buckets.Length - 1;
+        int bucket = hash & mask;
+        int account;
+        while ((account = buckets[bucket] - 1) >= 0)
+        {
+            ref AccountEntry entry = ref _accounts[account];
+            if (entry.Hash == hash && (ReferenceEquals(entry.Address, address) || entry.Address.Equals(address))) goto Found;
+            bucket = (bucket + 1) & mask;
+        }
+
+        account = AddAccount(address, hash);
+        if (_accountCount * 2 > buckets.Length) Rehash(ref _accountBuckets, _accounts, _accountCount);
+        else buckets[bucket] = account + 1;
+
+    Found:
         _lastAddress = address;
         _lastAccount = account;
         return account;
     }
 
+    private static void Rehash(ref int[] buckets, AccountEntry[] entries, int count)
+    {
+        int[] grown = new int[buckets.Length * 2];
+        int mask = grown.Length - 1;
+        for (int i = 0; i < count; i++)
+        {
+            int bucket = entries[i].Hash & mask;
+            while (grown[bucket] != 0) bucket = (bucket + 1) & mask;
+            grown[bucket] = i + 1;
+        }
+
+        buckets = grown;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private int AddAccount(Address address)
+    private int AddAccount(Address address, int hash)
     {
         Account? account = Scope.Get(address);
         int index = _accountCount;
         if (index == _accounts.Length) Array.Resize(ref _accounts, index * 2);
         ref AccountEntry entry = ref _accounts[index];
         entry.Address = address;
+        entry.Hash = hash;
         entry.Current = account;
         entry.Committed = account;
         entry.Flushed = account;
@@ -564,17 +595,69 @@ public sealed class GuestWorldState : IWorldState
     private int SlotOf(in StorageCell cell)
     {
         // A storage write reads the slot and its original first, so one cell is often looked up three times in a row.
+        // The zkVM guest keeps a cell's hash in the cell, so taking it costs a load there.
+        long hash = cell.GetHashCode64();
         int last = _lastSlot;
-        if ((uint)last < (uint)_slotCount && _slots[last].Cell.Equals(in cell)) return last;
+        if ((uint)last < (uint)_slotCount && IsCell(ref _slots[last], in cell, hash)) return last;
 
-        ref int index = ref _slotIndex.GetValueRefOrAddDefault(cell, out bool exists);
-        if (!exists) index = AddSlot(in cell);
+        int[] buckets = _slotBuckets;
+        int mask = buckets.Length - 1;
+        int bucket = (int)hash & mask;
+        int index;
+        while ((index = buckets[bucket] - 1) >= 0)
+        {
+            if (IsCell(ref _slots[index], in cell, hash)) goto Found;
+            bucket = (bucket + 1) & mask;
+        }
+
+        index = AddSlot(in cell, hash);
+        if (_slotCount * 2 > buckets.Length) Rehash(ref _slotBuckets, _slots, _slotCount);
+        else buckets[bucket] = index + 1;
+
+    Found:
         _lastSlot = index;
         return index;
     }
 
+    /// <remarks>
+    /// Compares the index as words, where the general compare tests alignment per word on a 32-bit guest. The address
+    /// is mostly the same instance.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsCell(ref SlotEntry slot, in StorageCell cell, long hash) =>
+        slot.Hash == hash
+        && slot.Cell.Index.Equals(in cell.Index)
+        && (ReferenceEquals(slot.Cell.Address, cell.Address) || slot.Cell.Address.Equals(cell.Address));
+
+    private static void Rehash(ref int[] buckets, SlotEntry[] entries, int count)
+    {
+        int[] grown = new int[buckets.Length * 2];
+        int mask = grown.Length - 1;
+        for (int i = 0; i < count; i++)
+        {
+            int bucket = (int)entries[i].Hash & mask;
+            while (grown[bucket] != 0) bucket = (bucket + 1) & mask;
+            grown[bucket] = i + 1;
+        }
+
+        buckets = grown;
+    }
+
+    private bool TryFindSlot(in StorageCell cell, out int index)
+    {
+        long hash = cell.GetHashCode64();
+        int[] buckets = _slotBuckets;
+        int mask = buckets.Length - 1;
+        for (int bucket = (int)hash & mask; (index = buckets[bucket] - 1) >= 0; bucket = (bucket + 1) & mask)
+        {
+            if (IsCell(ref _slots[index], in cell, hash)) return true;
+        }
+
+        return false;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private int AddSlot(in StorageCell cell)
+    private int AddSlot(in StorageCell cell, long hash)
     {
         int account = AccountOf(cell.Address);
         ref AccountEntry owner = ref _accounts[account];
@@ -582,6 +665,7 @@ public sealed class GuestWorldState : IWorldState
         if (index == _slots.Length) Array.Resize(ref _slots, index * 2);
         ref SlotEntry slot = ref _slots[index];
         slot.Cell = cell;
+        slot.Hash = hash;
         slot.Account = account;
         slot.NextInAccount = owner.FirstSlot;
         owner.FirstSlot = index;
@@ -612,23 +696,24 @@ public sealed class GuestWorldState : IWorldState
     }
 
     /// <summary>Reads the current value of the slot at <paramref name="index"/>.</summary>
+    /// <remarks>By reference, so a caller copies the value once; read it before the slot table can grow.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private UInt256 ReadSlot(int index)
+    private ref readonly UInt256 ReadSlot(int index)
     {
         ref SlotEntry slot = ref _slots[index];
         int clearEpoch = _accounts[slot.Account].ClearEpoch;
-        if (slot.Epoch == clearEpoch) return slot.Current;
-        return ReadStaleSlot(ref slot, clearEpoch);
+        if (slot.Epoch == clearEpoch) return ref slot.Current;
+        return ref ReadStaleSlot(ref slot, clearEpoch);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private UInt256 ReadStaleSlot(ref SlotEntry slot, int clearEpoch)
+    private ref readonly UInt256 ReadStaleSlot(ref SlotEntry slot, int clearEpoch)
     {
         // Older than its account's clear: cleared since. Newer: made under a clear that was reverted.
-        if (slot.Epoch < clearEpoch || clearEpoch != 0) return UInt256.Zero;
+        if (slot.Epoch < clearEpoch || clearEpoch != 0) return ref _zero;
 
         LoadSlot(ref slot, ref _accounts[slot.Account]);
-        return slot.Current;
+        return ref slot.Current;
     }
 
     public void Get(in StorageCell storageCell, out UInt256 value)
@@ -643,7 +728,8 @@ public sealed class GuestWorldState : IWorldState
         int index = SlotOf(in storageCell);
         ref SlotEntry slot = ref _slots[index];
         slot.RoundTick = ++_accessTick;
-        value = slot.TxStamp == _txId ? slot.TxOriginal : ReadSlot(index);
+        if (slot.TxStamp == _txId) value = slot.TxOriginal;
+        else value = ReadSlot(index);
     }
 
     public void Set(in StorageCell storageCell, in UInt256 newValue)
@@ -760,7 +846,7 @@ public sealed class GuestWorldState : IWorldState
         }
 
         // A clear stamps every slot it finds; one it did not find was not loaded before it.
-        if (_slotIndex.TryGetValue(storageCell, out int index) && _slots[index].BeforeClearStamp == _txId)
+        if (TryFindSlot(in storageCell, out int index) && _slots[index].BeforeClearStamp == _txId)
         {
             value = _slots[index].BeforeClear;
             return true;
@@ -1135,10 +1221,10 @@ public sealed class GuestWorldState : IWorldState
 
         if (resetBlockChanges)
         {
-            _accountIndex.Clear();
+            Array.Clear(_accountBuckets);
             Array.Clear(_accounts, 0, _accountCount);
             _accountCount = 0;
-            _slotIndex.Clear();
+            Array.Clear(_slotBuckets);
             Array.Clear(_slots, 0, _slotCount);
             _slotCount = 0;
             _lastSlot = 0;
@@ -1188,6 +1274,7 @@ public sealed class GuestWorldState : IWorldState
     private struct AccountEntry
     {
         public Address Address;
+        public int Hash;
         // Current is journaled; Committed is the value at the last commit, Flushed the one last written to the trie.
         public Account? Current;
         public Account? Committed;
@@ -1214,6 +1301,7 @@ public sealed class GuestWorldState : IWorldState
     private struct SlotEntry
     {
         public StorageCell Cell;
+        public long Hash;
         public int Account;
         public int NextInAccount;
         // Current is journaled with TxOriginal, TxStamp and Epoch; Original is the value last written to the trie.
