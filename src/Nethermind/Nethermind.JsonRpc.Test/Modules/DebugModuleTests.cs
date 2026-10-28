@@ -236,6 +236,30 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void Debug_traceBlockByHash_missing_body_preserves_temporary_status(
+        [Values] bool temporary, [Values] bool historyPruned)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        _blockFinder.LowestServedBlock.Returns(historyPruned ? 2UL : 0UL);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByHash(header.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(historyPruned
+                ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound));
+            Assert.That(response.Result.Error, Is.EqualTo(historyPruned
+                ? ErrorMessages.PrunedHistoryUnavailable : $"block {header.Hash} not found"));
+            Assert.That(response.IsTemporary, Is.EqualTo(temporary && !historyPruned));
+            _blockchainBridge.DidNotReceiveWithAnyArgs().HasStateForBlock(default!);
+            _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(BlockParameter)!, default, default!, default, default);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceBlock_missing_history_classifies_pruned_and_unknown_selectors(
         [Values] bool byHash, [Values] bool streamMode, [Values] bool knownHeader,
         [Values] bool historyPruned, [Values] bool parentStateAvailable)

@@ -642,7 +642,7 @@ public class DebugRpcModule(
 
         if (!blockFinder.HasBlock(header.Number, blockHash) && blockFinder.FindBlock(blockHash, header.Number) is null)
         {
-            return MissingTraceBlock($"block {blockHash} not found", header.Number);
+            return MissingTraceBlock($"block {blockHash} not found", header.Number, debugBridge.HaveNotSyncedHeadersYet());
         }
 
         if (header.Number == 0)
