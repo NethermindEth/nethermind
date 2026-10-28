@@ -1,0 +1,98 @@
+name: CI change guard
+
+# pull_request_target runs this file from the base branch, so a PR cannot weaken the check that reviews it.
+# Never check out or execute PR code here: the token has write access to the PR.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+# A skipped run would satisfy a required check, so every event runs the full evaluation instead of filtering with `if:`.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+
+jobs:
+  guard:
+    name: CI change guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Require CI owner sign-off for CI definition changes
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const approvalLabel = 'ci-change-reviewed';
+            const guardedPrefixes = ['.github/workflows/', '.github/actions/', '.github/CODEOWNERS', 'scripts/', '.agents/'];
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const issue_number = pr.number;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: issue_number, per_page: 100 });
+            const guarded = files
+              .flatMap(f => [f.filename, f.previous_filename].filter(Boolean))
+              .filter(name => guardedPrefixes.some(prefix => name.startsWith(prefix)));
+
+            if (guarded.length === 0) {
+              core.info('No CI definition changes');
+              return;
+            }
+
+            core.info(`CI definition changes:\n${[...new Set(guarded)].join('\n')}`);
+
+            const hasLabel = pr.labels.some(l => l.name === approvalLabel);
+
+            // Any new commit invalidates an earlier sign-off.
+            if (context.payload.action === 'synchronize') {
+              if (hasLabel) {
+                try {
+                  await github.rest.issues.removeLabel({ owner, repo, issue_number, name: approvalLabel });
+                } catch (e) {
+                  if (e.status !== 404) throw e;
+                }
+              }
+              core.setFailed(`New commits changed CI definitions; a CI owner must (re)apply '${approvalLabel}'.`);
+              return;
+            }
+
+            if (!hasLabel) {
+              core.setFailed(`This PR changes CI definitions; a CI owner other than the PR's authors must apply '${approvalLabel}'.`);
+              return;
+            }
+
+            const { data: codeowners } = await github.rest.repos.getContent({
+              owner, repo, path: '.github/CODEOWNERS', ref: pr.base.sha,
+            });
+            const ciOwners = new Set(
+              Buffer.from(codeowners.content, 'base64').toString('utf8')
+                .split('\n')
+                .map(line => line.trim().split(/\s+/))
+                .filter(([pattern]) => pattern === '/.github' || pattern === '/.github/')
+                .flatMap(([, ...owners]) => owners)
+                .filter(o => o.startsWith('@') && !o.includes('/'))
+                .map(o => o.slice(1).toLowerCase())
+            );
+
+            const events = await github.paginate(github.rest.issues.listEvents, { owner, repo, issue_number, per_page: 100 });
+            const labeler = events
+              .filter(e => e.event === 'labeled' && e.label?.name === approvalLabel)
+              .at(-1)?.actor?.login?.toLowerCase();
+
+            const commits = await github.paginate(github.rest.pulls.listCommits, { owner, repo, pull_number: issue_number, per_page: 100 });
+            const contributors = new Set(
+              [pr.user.login, ...commits.flatMap(c => [c.author?.login, c.committer?.login])]
+                .filter(login => login && login !== 'web-flow')
+                .map(login => login.toLowerCase())
+            );
+
+            if (!labeler || !ciOwners.has(labeler)) {
+              core.setFailed(`'${approvalLabel}' was applied by ${labeler ?? 'an unknown actor'}, who is not a /.github code owner (${[...ciOwners].join(', ')}).`);
+              return;
+            }
+
+            if (contributors.has(labeler)) {
+              core.setFailed(`'${approvalLabel}' was applied by ${labeler}, who authored or committed to this PR.`);
+              return;
+            }
+
+            core.info(`CI definition changes signed off by ${labeler}`);

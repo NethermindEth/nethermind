@@ -1,7 +1,7 @@
-/.github @rubo
-/scripts @rubo
+/.github @rubo @cbermudez97 @stdevMac @kamilchodola
+/scripts @rubo @cbermudez97 @stdevMac @kamilchodola
 
-/Dockerfile* @rubo
+/Dockerfile* @rubo @cbermudez97 @stdevMac @kamilchodola
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
 
