@@ -27,6 +27,7 @@ public class HistoryReaderTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryReader _reader = null!;
+    private HistoryAvailability _availability = null!;
 
     [SetUp]
     public void SetUp()
@@ -35,6 +36,7 @@ public class HistoryReaderTests
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         FlatDbConfig config = new();
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        _availability = availability;
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
 
@@ -49,6 +51,7 @@ public class HistoryReaderTests
     [Test]
     public void Account_read_at_a_block_is_answered_once_and_other_blocks_read_their_own_rows()
     {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
         Assert.That(_reader.TryGetAccount(3, Address, out _), Is.False);
         Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct first), Is.True);
@@ -65,9 +68,28 @@ public class HistoryReaderTests
         }
     }
 
+    // An answer is final only once the block is covered, and only until a restart removes the records behind it.
+    [Test]
+    public void Answers_are_cached_only_for_covered_blocks_and_dropped_when_the_records_restart()
+    {
+        Assert.That(_reader.TryGetAccount(10, Address, out _), Is.False);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct uncovered) && uncovered.Nonce == 5, Is.True, "an uncovered answer is not kept");
+
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+        Assert.That(_reader.TryGetAccount(10, Address, out _), Is.True);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 8, new Account(8, 800));
+        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct covered) && covered.Nonce == 5, Is.True, "a covered answer is kept");
+
+        _availability.ForgetObservedRecords();
+
+        Assert.That(_reader.TryGetAccount(10, Address, out AccountStruct restarted) && restarted.Nonce == 8, Is.True, "a restart drops kept answers");
+    }
+
     [Test]
     public void Cached_reads_return_the_same_account_and_do_not_allocate()
     {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
         Account? first = _reader.GetAccount(10, Address, null);
@@ -92,6 +114,7 @@ public class HistoryReaderTests
     [Test]
     public void Storage_read_at_a_block_is_answered_once_and_other_slots_read_their_own_rows()
     {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0x11]);
         Assert.That(_reader.TryGetStorage(10, Address, Slot, out UInt256 first), Is.True);
 
