@@ -16,51 +16,35 @@ public class OptimizedCollectionsTrimTests
     private const int SmallRound = 3;
 
     [Test]
-    public void Dictionary_shrinks_after_a_run_of_sparse_clears()
+    public void Map_shrinks_after_a_run_of_sparse_clears([Values] bool useSet)
     {
         OptimizedDictionary<int, int> map = [];
-        Fill(map, LargeRound);
-        map.ClearAndTrim();
-        int grown = map.Capacity;
+        OptimizedHashSet<int> set = [];
+        Action<int> fill = useSet ? count => Fill(set, count) : count => Fill(map, count);
+        Action clear = useSet ? set.ClearAndTrim : map.ClearAndTrim;
+        Func<int> capacity = useSet ? () => set.Capacity : () => map.Capacity;
+        Func<int> count = useSet ? () => set.Count : () => map.Count;
+
+        fill(LargeRound);
+        clear();
+        int grown = capacity();
 
         for (int round = 1; round < SparseClearTrimmer.SparseClearsBeforeTrim; round++)
         {
-            Fill(map, SmallRound);
-            map.ClearAndTrim();
+            fill(SmallRound);
+            clear();
         }
 
-        Assert.That(map.Capacity, Is.EqualTo(grown), "one round short of the run keeps the capacity");
+        Assert.That(capacity(), Is.EqualTo(grown), "one round short of the run keeps the capacity");
 
-        Fill(map, SmallRound);
-        map.ClearAndTrim();
+        fill(SmallRound);
+        clear();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(grown, Is.GreaterThan(LargeRound));
-            Assert.That(map.Capacity, Is.LessThan(SparseClearTrimmer.MinCapacity * 2));
-            Assert.That(map.Count, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void Hash_set_shrinks_after_a_run_of_sparse_clears()
-    {
-        OptimizedHashSet<int> set = [];
-        Fill(set, LargeRound);
-        set.ClearAndTrim();
-        int grown = set.Capacity;
-
-        for (int round = 0; round < SparseClearTrimmer.SparseClearsBeforeTrim; round++)
-        {
-            Fill(set, SmallRound);
-            set.ClearAndTrim();
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(grown, Is.GreaterThan(LargeRound));
-            Assert.That(set.Capacity, Is.LessThan(SparseClearTrimmer.MinCapacity * 2));
-            Assert.That(set.Count, Is.Zero);
+            Assert.That(capacity(), Is.LessThan(SparseClearTrimmer.MinCapacity * 2));
+            Assert.That(count(), Is.Zero);
         }
     }
 

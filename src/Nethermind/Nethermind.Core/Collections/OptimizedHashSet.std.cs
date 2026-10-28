@@ -28,16 +28,8 @@ public sealed class OptimizedHashSet<T> : HashSet<T> where T : notnull, IEquatab
     {
         int count = Count;
         Clear();
-        int capacity = Capacity;
-        if (capacity > CollectionExtensions.DefaultTrimAboveCapacity)
-        {
-            TrimExcess(CollectionExtensions.DefaultTrimToCapacity);
-            _trimmer.Reset();
-            return;
-        }
-
-        int sparseTrimTo = _trimmer.OnClear(count, capacity);
-        if (sparseTrimTo != 0) TrimExcess(sparseTrimTo);
+        int trimTo = _trimmer.OnClear(count, Capacity);
+        if (trimTo != 0) TrimExcess(trimTo);
     }
 
     /// <inheritdoc cref="OptimizedDictionary{TKey,TValue}.ClearAndTrim(int, int)"/>

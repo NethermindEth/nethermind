@@ -44,16 +44,8 @@ public sealed class OptimizedDictionary<TKey, TValue> : Dictionary<TKey, TValue>
     {
         int count = Count;
         Clear();
-        int capacity = Capacity;
-        if (capacity > CollectionExtensions.DefaultTrimAboveCapacity)
-        {
-            TrimExcess(CollectionExtensions.DefaultTrimToCapacity);
-            _trimmer.Reset();
-            return;
-        }
-
-        int sparseTrimTo = _trimmer.OnClear(count, capacity);
-        if (sparseTrimTo != 0) TrimExcess(sparseTrimTo);
+        int trimTo = _trimmer.OnClear(count, Capacity);
+        if (trimTo != 0) TrimExcess(trimTo);
     }
 
     /// <summary>Clears the map and shrinks its storage to <paramref name="trimToCapacity"/> once it exceeds <paramref name="trimAboveCapacity"/>.</summary>

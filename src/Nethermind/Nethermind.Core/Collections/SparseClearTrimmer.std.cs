@@ -31,17 +31,23 @@ internal struct SparseClearTrimmer
     private int _sparseClears;
     private int _peakCount;
 
-    /// <summary>Records a clear of a map that held <paramref name="count"/> entries in <paramref name="capacity"/>.</summary>
+    /// <summary>Records a clear of a map that held <paramref name="count"/> entries in <paramref name="capacity"/>,
+    /// with the default trim of <see cref="CollectionExtensions.DefaultTrimAboveCapacity"/> applied first.</summary>
     /// <returns>The capacity to shrink the now empty map to, or zero to keep it.</returns>
     public int OnClear(int count, int capacity)
     {
+        if (capacity > CollectionExtensions.DefaultTrimAboveCapacity)
+        {
+            Reset();
+            return CollectionExtensions.DefaultTrimToCapacity;
+        }
+
         // An empty map's clear zeroes nothing, so it neither shows the map is used nor that it is not.
         if (count == 0) return 0;
 
         if (capacity <= MinCapacity || count > capacity >> SparseShift)
         {
-            _sparseClears = 0;
-            _peakCount = 0;
+            Reset();
             return 0;
         }
 
@@ -49,13 +55,11 @@ internal struct SparseClearTrimmer
         if (++_sparseClears < SparseClearsBeforeTrim) return 0;
 
         int trimTo = Math.Max(_peakCount * 2, MinCapacity);
-        _sparseClears = 0;
-        _peakCount = 0;
+        Reset();
         return trimTo;
     }
 
-    /// <summary>Starts a new run after the map was shrunk for another reason.</summary>
-    public void Reset()
+    private void Reset()
     {
         _sparseClears = 0;
         _peakCount = 0;
