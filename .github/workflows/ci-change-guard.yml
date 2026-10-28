@@ -4,7 +4,7 @@ name: CI change guard
 # Never check out or execute PR code here: the token has write access to the PR.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 # A skipped run would satisfy a required check, so every event runs the full evaluation instead of filtering with `if:`.
 concurrency:
@@ -18,17 +18,23 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Require CI owner sign-off for CI definition changes
+      - name: Require CI owner approval for CI definition changes
         uses: actions/github-script@v8
         with:
           script: |
-            const approvalLabel = 'ci-change-reviewed';
+            const retriggerLabel = 'ci-change-reviewed';
             const guardedPrefixes = ['.github/workflows/', '.github/actions/', '.github/CODEOWNERS', 'scripts/', '.agents/'];
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             const issue_number = pr.number;
 
             const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: issue_number, per_page: 100 });
+            // The files API stops at 3000 entries; an incomplete list cannot prove the PR leaves CI definitions alone.
+            if (files.length < pr.changed_files) {
+              core.setFailed(`Only ${files.length} of ${pr.changed_files} changed files could be listed; split the PR.`);
+              return;
+            }
+
             const guarded = files
               .flatMap(f => [f.filename, f.previous_filename].filter(Boolean))
               .filter(name => guardedPrefixes.some(prefix => name.startsWith(prefix)));
@@ -40,24 +46,13 @@ jobs:
 
             core.info(`CI definition changes:\n${[...new Set(guarded)].join('\n')}`);
 
-            const hasLabel = pr.labels.some(l => l.name === approvalLabel);
-
-            // Any new commit invalidates an earlier sign-off.
-            if (context.payload.action === 'synchronize') {
-              if (hasLabel) {
-                try {
-                  await github.rest.issues.removeLabel({ owner, repo, issue_number, name: approvalLabel });
-                } catch (e) {
-                  if (e.status !== 404) throw e;
-                }
+            // The label only re-runs this check after an approval, so clear it for the next one.
+            if (context.payload.action === 'synchronize' && pr.labels.some(l => l.name === retriggerLabel)) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name: retriggerLabel });
+              } catch (e) {
+                if (e.status !== 404) throw e;
               }
-              core.setFailed(`New commits changed CI definitions; a CI owner must (re)apply '${approvalLabel}'.`);
-              return;
-            }
-
-            if (!hasLabel) {
-              core.setFailed(`This PR changes CI definitions; a CI owner other than the PR's authors must apply '${approvalLabel}'.`);
-              return;
             }
 
             const { data: codeowners } = await github.rest.repos.getContent({
@@ -73,26 +68,45 @@ jobs:
                 .map(o => o.slice(1).toLowerCase())
             );
 
-            const events = await github.paginate(github.rest.issues.listEvents, { owner, repo, issue_number, per_page: 100 });
-            const labeler = events
-              .filter(e => e.event === 'labeled' && e.label?.name === approvalLabel)
-              .at(-1)?.actor?.login?.toLowerCase();
-
             const commits = await github.paginate(github.rest.pulls.listCommits, { owner, repo, pull_number: issue_number, per_page: 100 });
+            // The commits API stops at 250 entries; unlisted committers could otherwise approve their own changes.
+            if (commits.length < pr.commits) {
+              core.setFailed(`Only ${commits.length} of ${pr.commits} commits could be listed; squash or split the PR.`);
+              return;
+            }
             const contributors = new Set(
               [pr.user.login, ...commits.flatMap(c => [c.author?.login, c.committer?.login])]
                 .filter(login => login && login !== 'web-flow')
                 .map(login => login.toLowerCase())
             );
 
-            if (!labeler || !ciOwners.has(labeler)) {
-              core.setFailed(`'${approvalLabel}' was applied by ${labeler ?? 'an unknown actor'}, who is not a /.github code owner (${[...ciOwners].join(', ')}).`);
+            const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, { owner, repo, issue_number, per_page: 100 });
+            const lastBaseChange = Math.max(0, ...timeline
+              .filter(e => e.event === 'base_ref_changed')
+              .map(e => Date.parse(e.created_at)));
+
+            // A review's commit_id pins the approval to the exact head it covered, so new pushes cannot inherit it.
+            const reviews = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: issue_number, per_page: 100 });
+            const latestReviewByUser = new Map();
+            for (const review of reviews) {
+              if (!['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state) || !review.user) continue;
+              latestReviewByUser.set(review.user.login.toLowerCase(), review);
+            }
+            const approvers = [...latestReviewByUser]
+              .filter(([login, review]) =>
+                review.state === 'APPROVED' &&
+                review.commit_id === pr.head.sha &&
+                Date.parse(review.submitted_at) > lastBaseChange &&
+                ciOwners.has(login) &&
+                !contributors.has(login))
+              .map(([login]) => login);
+
+            if (approvers.length === 0) {
+              core.setFailed(
+                `This PR changes CI definitions and needs an approving review of ${pr.head.sha.slice(0, 7)} from a /.github code owner ` +
+                `who did not author or commit to it (${[...ciOwners].join(', ')}). ` +
+                `After approving, re-run this check or apply the '${retriggerLabel}' label.`);
               return;
             }
 
-            if (contributors.has(labeler)) {
-              core.setFailed(`'${approvalLabel}' was applied by ${labeler}, who authored or committed to this PR.`);
-              return;
-            }
-
-            core.info(`CI definition changes signed off by ${labeler}`);
+            core.info(`CI definition changes approved by ${approvers.join(', ')}`);
