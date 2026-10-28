@@ -36,9 +36,16 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
 
     private NativeHistoryState ReadParent(BlockHeader parent)
     {
-        if (!state.TryGetAccount(parent, EezConstants.L1HistoryAddress, out AccountStruct account) || account.Nonce != 1 ||
+        if (!state.TryGetAccount(parent, EezConstants.L1HistoryAddress, out AccountStruct account) ||
+            (_rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? account.Nonce < 2 : account.Nonce != 1) ||
             account.CodeHash != NativeHistoryBlockExecutor.GetRuntimeHash(_rules.NativeFormat))
             throw NativeL1Header.Invalid("parent history account differs from the native profile");
+        if (_rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+        {
+            ulong storedNumber = Scalar(parent, 1);
+            state.GetStorage(parent, EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(storedNumber), out UInt256 storedHash);
+            return NativeProxyHistory.ResolveState(storedNumber, storedHash.ToValueHash(), _schedule);
+        }
         ulong first = Scalar(parent, 1), endpoint = Scalar(parent, 2), cutoff = Scalar(parent, 3);
         if (first != _rules.Schedule!.L1Reference.Number || Scalar(parent, 4) != _history.Interval ||
             Scalar(parent, 5) != _history.Delay || Scalar(parent, 6) != NativeHistoryCall.MaxHashes)
@@ -103,6 +110,13 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                     for (int index = 0; index < ordinary.Length; index++) ordinary[index] = run.Transactions[index].ToArray();
                     ulong number = parent.Number + (ulong)next + 1;
                     ulong at = owner._schedule.Timestamp(number) ?? throw NativeL1Header.Invalid("native block timestamp overflow");
+                    if (owner._rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+                    {
+                        _ = ReadImport(ordinary);
+                        blocks[next++] = new DerivedBlock(run.Beneficiary, run.ExtraData.ToArray(), ordinary)
+                        { NativeOriginFromParent = true };
+                        continue;
+                    }
                     NativeHistoryExecution execution = Transition(ordinary, at, current, headers);
                     current = current with { Endpoint = execution.OriginNumber, EndpointHash = execution.OriginHash };
                     blocks[next++] = new DerivedBlock(run.Beneficiary, run.ExtraData.ToArray(), ordinary)
@@ -129,7 +143,7 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                 throw NativeL1Header.Invalid("native batch is outside its eligible Sync range");
         }
 
-        private NativeHistoryExecution Transition(byte[][] ordinary, ulong timestamp, NativeHistoryState current, NativeL1HeaderChain headers)
+        private NativeHistoryEnvelope? ReadImport(byte[][] ordinary)
         {
             NativeHistoryEnvelope? import = null;
             for (int index = 0; index < ordinary.Length; index++)
@@ -140,9 +154,16 @@ internal sealed class NativeBatchDerivation(EezSettlementContext context, EezCha
                     throw NativeL1Header.Invalid("cross-chain system transaction in ordinary DA");
                 if (raw[0] != NativeHistoryEnvelope.Type) continue;
                 if (index != 0) throw NativeL1Header.Invalid("history transaction is not transaction zero");
-                import = NativeHistoryEnvelope.Decode(raw);
+                import = owner._rules.NativeFormat == NativeSystemTxFormat.ContractV6
+                    ? NativeHistoryEnvelope.DecodeBlocks(raw) : NativeHistoryEnvelope.Decode(raw);
                 if (import.ChainId != owner._context.ChainId) throw NativeL1Header.Invalid("history envelope targets another chain");
             }
+            return import;
+        }
+
+        private NativeHistoryExecution Transition(byte[][] ordinary, ulong timestamp, NativeHistoryState current, NativeL1HeaderChain headers)
+        {
+            NativeHistoryEnvelope? import = ReadImport(ordinary);
             if (import is not null && current.Endpoint > ulong.MaxValue - (ulong)import.Hashes.Length)
                 throw NativeL1Header.Invalid("history endpoint overflow");
             ulong? selected = import is null ? null : current.Endpoint + (ulong)import.Hashes.Length;

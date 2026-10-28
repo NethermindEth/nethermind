@@ -9,12 +9,21 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Eez.Execution;
 
-internal sealed class EezNativeHistoryTxDecoder() : BaseTxDecoder((TxType)NativeHistoryEnvelope.Type)
+internal sealed class EezNativeHistoryTxDecoder : BaseTxDecoder
 {
+    private readonly bool _explicitBlocks;
+
+    internal EezNativeHistoryTxDecoder(NativeSystemTxFormat format = NativeSystemTxFormat.ContractV4)
+        : base((TxType)NativeHistoryEnvelope.Type)
+    {
+        if (format is not (NativeSystemTxFormat.ContractV3 or NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6))
+            throw new ArgumentOutOfRangeException(nameof(format));
+        _explicitBlocks = format == NativeSystemTxFormat.ContractV6;
+    }
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.Decode(transactionSequence);
+        NativeHistoryEnvelope envelope = _explicitBlocks ? NativeHistoryEnvelope.DecodeBlocks(transactionSequence) : NativeHistoryEnvelope.Decode(transactionSequence);
         transaction = new NativeHistoryTransaction(envelope);
         decoderContext.Position = checked(txSequenceStart + transactionSequence.Length);
         decoderContext.Check(decoderContext.Position);
@@ -37,8 +46,8 @@ internal sealed class EezNativeHistoryTxDecoder() : BaseTxDecoder((TxType)Native
         return GetTypedTransactionLength(Rlp.LengthOfSequence(envelope.PayloadLength), rlpBehaviors);
     }
 
-    private static NativeHistoryEnvelope GetEnvelope(Transaction transaction, bool forSigning) =>
-        !forSigning && transaction is NativeHistoryTransaction history && history.HasWireFields
+    private NativeHistoryEnvelope GetEnvelope(Transaction transaction, bool forSigning) =>
+        !forSigning && transaction is NativeHistoryTransaction history && history.HasWireFields && history.Envelope.HasExplicitBlocks == _explicitBlocks
             ? history.Envelope
             : throw new RlpException("A dedicated history envelope is required and cannot be signed.");
 }

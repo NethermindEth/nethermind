@@ -14,6 +14,7 @@ public sealed record DerivedBlock(Address Beneficiary, byte[] ExtraData, byte[][
     /// <summary>The seed L1 settlements put in effect for the block; zero on a rollup without one.</summary>
     public Hash256 PrevRandao { get; init; } = Keccak.Zero;
     internal int NativeEffectsStart { get; init; } = -1;
+    internal bool NativeOriginFromParent { get; init; }
 }
 
 /// <summary>

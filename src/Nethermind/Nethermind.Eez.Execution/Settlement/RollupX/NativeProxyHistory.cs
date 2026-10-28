@@ -9,6 +9,18 @@ namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
 internal static class NativeProxyHistory
 {
+    internal static NativeHistoryState ResolveState(ulong storedNumber, ValueHash256 storedHash, RollupXSchedule schedule)
+    {
+        if (storedNumber == 0)
+        {
+            if (storedHash != default) throw NativeL1Header.Invalid("block zero cannot be stored in L1 history");
+            return new NativeHistoryState(0, schedule.L1Reference.Number, schedule.L1Reference.Hash.ValueHash256, schedule.GenesisTimestamp, false);
+        }
+        if (storedNumber < schedule.L1Reference.Number || storedHash == default)
+            throw NativeL1Header.Invalid("invalid L1 history endpoint");
+        return new NativeHistoryState(0, storedNumber, storedHash, schedule.GenesisTimestamp);
+    }
+
     internal static readonly Address ImplementationAddress = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee007a");
     internal static readonly Address AdminAddress = new("0x58ad165846a897f4aba3ec8f07a4a7db434324bf");
     internal static readonly ValueHash256 RuntimeHash = new("0x3725e8abaa83c431d55a24c39d4327791423019e9c8a2702cc68e6201105baf7");

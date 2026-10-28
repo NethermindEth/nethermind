@@ -20,7 +20,8 @@ internal sealed class NativeNodeHistoryExecutor(
     ISpecProvider specs,
     EezChainRules rules,
     NativeCanonicalHistory history,
-    NativeL1HeaderChain? captured = null) : IBlockProcessor.IBlockTransactionsExecutor
+    NativeL1HeaderChain? captured = null,
+    NativeDerivedSuffix? derived = null) : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly NativeHistorySchedule _schedule = new(rules.Schedule!.GenesisTimestamp, rules.Schedule.BlockIntervalSeconds,
         rules.Schedule.SyncIntervalBlocks, rules.NativeHistoryOffset);
@@ -34,7 +35,7 @@ internal sealed class NativeNodeHistoryExecutor(
             return inner.ProcessTransactions(block, options, tracer, token);
         }
         NativeHistoryBlockExecutor execution = new(inner, state, specs, rules, _schedule, rules.Schedule!.L1Reference.Number,
-            null, captured ?? history.Read());
+            null, captured ?? history.Read()) { DeriveOrigin = derived?.DeriveOrigin == true };
         return execution.ProcessTransactions(block, options, tracer, token);
     }
 

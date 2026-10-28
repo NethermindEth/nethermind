@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Extensions;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Serialization.Rlp;
@@ -16,10 +19,10 @@ public partial class EezSystemTxDecoderTests
     private static readonly string[] ChangedHistoryFields = ["type", "chain", "source", "sender", "target", "value", "nonce", "gas", "data", "fee"];
 
     [Test]
-    public void HistoryTransaction_DecodesAndReencodesTheExactOwnedEnvelope([Values] bool wrapped)
+    public void HistoryTransaction_DecodesAndReencodesTheExactOwnedEnvelope([Values] bool wrapped, [Values] bool explicitBlocks)
     {
-        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.Create(1, [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256]);
-        EezNativeHistoryTxDecoder decoder = new();
+        NativeHistoryEnvelope envelope = HistoryEnvelope(explicitBlocks);
+        EezNativeHistoryTxDecoder decoder = new(explicitBlocks ? NativeSystemTxFormat.ContractV6 : NativeSystemTxFormat.ContractV4);
         Transaction? decoded = null;
         byte[] wire = envelope.Encode();
         RlpReader reader = new(wire);
@@ -42,9 +45,9 @@ public partial class EezSystemTxDecoderTests
     }
 
     [Test]
-    public void HistoryTransaction_ExecutionViewPreservesOriginalFieldsAndHash()
+    public void HistoryTransaction_ExecutionViewPreservesOriginalFieldsAndHash([Values] bool explicitBlocks)
     {
-        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.Create(1, [TestItem.KeccakA.ValueHash256]);
+        NativeHistoryEnvelope envelope = HistoryEnvelope(explicitBlocks);
         NativeHistoryTransaction wire = new(envelope) { Hash = TestItem.KeccakC };
         NativeHistoryTransaction execution = wire.ForExecution(120);
         using (Assert.EnterMultipleScope())
@@ -52,7 +55,7 @@ public partial class EezSystemTxDecoderTests
             Assert.That(wire.Data.IsEmpty, Is.True);
             Assert.That(wire.HasWireFields, Is.True);
             Assert.That(execution.Hash, Is.EqualTo(wire.Hash));
-            Assert.That(execution.Data.ToArray(), Is.EqualTo(NativeHistoryCall.Encode(120, envelope.Hashes)));
+            Assert.That(execution.Data.ToArray(), Is.EqualTo(explicitBlocks ? NativeHistoryCall.EncodeBlocks(envelope) : NativeHistoryCall.Encode(120, envelope.Hashes)));
             Assert.That(execution.IsExecutionView, Is.True);
             Assert.That(() => new EezNativeHistoryTxDecoder().GetLength(execution, RlpBehaviors.None), Throws.TypeOf<RlpException>(),
                 "derived execution calldata must never replace the captured wire envelope");
@@ -61,9 +64,9 @@ public partial class EezSystemTxDecoderTests
 
     [Test]
     public void HistoryTransaction_ChangedImplicitFieldsCannotBeEncoded(
-        [ValueSource(nameof(ChangedHistoryFields))] string field)
+        [ValueSource(nameof(ChangedHistoryFields))] string field, [Values] bool explicitBlocks)
     {
-        NativeHistoryTransaction transaction = new(NativeHistoryEnvelope.Create(1, [TestItem.KeccakA.ValueHash256]));
+        NativeHistoryTransaction transaction = new(HistoryEnvelope(explicitBlocks));
         switch (field)
         {
             case "type": transaction.Type = EezConstants.NativeSystemTxType; break;
@@ -77,6 +80,47 @@ public partial class EezSystemTxDecoderTests
             case "data": transaction.Data = new byte[] { 1 }; break;
             case "fee": transaction.GasPrice = 1; break;
         }
-        Assert.That(() => new EezNativeHistoryTxDecoder().GetLength(transaction, RlpBehaviors.None), Throws.TypeOf<RlpException>());
+        EezNativeHistoryTxDecoder decoder = new(explicitBlocks ? NativeSystemTxFormat.ContractV6 : NativeSystemTxFormat.ContractV4);
+        Assert.That(() => decoder.GetLength(transaction, RlpBehaviors.None), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void HistoryTransaction_WrongProfile_RejectsBothWireAndModel([Values] bool explicitBlocks)
+    {
+        NativeHistoryEnvelope envelope = HistoryEnvelope(explicitBlocks);
+        EezNativeHistoryTxDecoder decoder = new(explicitBlocks ? NativeSystemTxFormat.ContractV4 : NativeSystemTxFormat.ContractV6);
+        NativeHistoryTransaction transaction = new(envelope);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => decoder.GetLength(transaction, RlpBehaviors.None), Throws.TypeOf<RlpException>());
+            Assert.That(() => DecodeHistory(decoder, envelope.Encode()), Throws.TypeOf<RlpException>());
+        }
+    }
+
+    [Test]
+    public void HistoryTransaction_ExplicitBlocks_CalldataMatchesUnchangedUpstreamOracle()
+    {
+        JsonElement vectors = StatelessFixtures.ReadJson("rollupx/native-profile-v6", "vectors.json").GetProperty("vectors");
+        JsonElement wire = vectors.EnumerateArray().First(static v => v.GetProperty("id").GetString() == "native-history-advance");
+        JsonElement call = vectors.EnumerateArray().First(static v => v.GetProperty("id").GetString() == "history-advance-calldata");
+        NativeHistoryEnvelope envelope = NativeHistoryEnvelope.DecodeBlocks(Bytes.FromHexString(wire.GetProperty("expectedBytes").GetString()!));
+        byte[] actual = NativeHistoryCall.EncodeBlocks(envelope);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(Bytes.FromHexString(call.GetProperty("expectedBytes").GetString()!)));
+            Assert.That(ValueKeccak.Compute(actual), Is.EqualTo(new ValueHash256(call.GetProperty("expectedKeccak256").GetString()!)));
+        }
+    }
+
+    private static NativeHistoryEnvelope HistoryEnvelope(bool explicitBlocks) => explicitBlocks
+        ? NativeHistoryEnvelope.CreateBlocks(1, [new(99, TestItem.KeccakA.ValueHash256), new(107, TestItem.KeccakB.ValueHash256)])
+        : NativeHistoryEnvelope.Create(1, [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256]);
+
+    private static Transaction DecodeHistory(EezNativeHistoryTxDecoder decoder, byte[] wire)
+    {
+        Transaction? transaction = null;
+        RlpReader reader = new(wire) { Position = 1 };
+        decoder.Decode(ref transaction, 0, wire, ref reader);
+        return transaction!;
     }
 }

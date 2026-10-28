@@ -297,7 +297,7 @@ public sealed class BatchReconciler(
     /// <summary>Whether <paramref name="local"/> is the block derivation builds, so a sequencer block with any other header is replaced.</summary>
     private bool Matches(Block local, BlockHeader parent, DerivedBlock derived)
     {
-        if (derived.NativeEffectsStart >= 0 || local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData) || local.MixHash != derived.PrevRandao
+        if (derived.NativeOriginFromParent || derived.NativeEffectsStart >= 0 || local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData) || local.MixHash != derived.PrevRandao
             || local.Transactions.Length != derived.Transactions.Length
             || headerRules.Mismatch(local, parent) is not null)
         {

@@ -60,13 +60,21 @@ public sealed class EezTransactionProcessor(
         if (rules.UsesNativeContract)
             next = CurrentGroup(header).After(tx, out _);
         Transaction original = tx;
+        NativeHistoryResultTracer? historyResult = null;
         if (tx is NativeHistoryTransaction history)
         {
             if (!rules.UsesNativeContract || !tx.HasSystemTransactionFields(rules) || history.IsExecutionView)
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("Invalid dedicated history transaction fields");
             tx = history.ForExecution(_historySchedule!.SourceCutoff(header.Timestamp));
+            if (rules.NativeFormat == NativeSystemTxFormat.ContractV6 && !opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                historyResult = new NativeHistoryResultTracer();
+                tracer = new CompositeTxTracer(tracer, historyResult);
+            }
         }
         TransactionResult result = base.Execute(tx, tracer, opts);
+        if (result && historyResult is { Valid: false })
+            throw new InvalidBlockException(header, "Native history import must succeed without output or logs.");
         if (!ReferenceEquals(original, tx) && !opts.HasFlag(ExecutionOptions.Warmup))
         {
             original.SpentGas = tx.SpentGas;

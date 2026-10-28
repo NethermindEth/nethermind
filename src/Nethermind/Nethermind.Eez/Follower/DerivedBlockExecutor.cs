@@ -52,9 +52,20 @@ public sealed class DerivedBlockExecutor(ILifetimeScope rootLifetime, IWorldStat
 
         public Block Execute(BlockHeader parent, DerivedBlock derived)
         {
-            if (_native is not null) _native.FirstTransaction = derived.NativeEffectsStart;
+            if (_native is not null)
+            {
+                _native.FirstTransaction = derived.NativeEffectsStart;
+                _native.DeriveOrigin = derived.NativeOriginFromParent;
+            }
             try { return builder.Build(parent, derived, _processor, _worldState).Block; }
-            finally { if (_native is not null) _native.FirstTransaction = -1; }
+            finally
+            {
+                if (_native is not null)
+                {
+                    _native.FirstTransaction = -1;
+                    _native.DeriveOrigin = false;
+                }
+            }
         }
 
         public void Dispose() => scope.Dispose();

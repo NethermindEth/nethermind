@@ -31,6 +31,8 @@ internal sealed class NativeHistoryBlockExecutor(
     NativeHistorySource? source,
     NativeL1HeaderChain evidence) : IBlockProcessor.IBlockTransactionsExecutor
 {
+    internal bool DeriveOrigin { get; init; }
+
     private readonly NativeHistorySource? _source = rules.UsesNativeContract
         ? null
         : source ?? throw new ArgumentNullException(nameof(source));
@@ -70,6 +72,8 @@ internal sealed class NativeHistoryBlockExecutor(
                 import.SourceHash!.ValueHash256 != _source!.Compute(block.ParentHash.ValueHash256, block.Number, block.Timestamp, import.Data.Span)))
                 throw new InvalidBlockException(block, "Native history transaction differs from the recorded transition.");
         }
+        if (DeriveOrigin && rules.NativeFormat == NativeSystemTxFormat.ContractV6 && processingOptions.HasFlag(ProcessingOptions.ProducingBlock))
+            block.Header.MixHash = new Hash256(execution.PrevRandao);
         if (block.Header.MixHash?.ValueHash256 != execution.PrevRandao)
             throw new InvalidBlockException(block, "L2 PREVRANDAO differs from the selected L1 origin.");
         BlockExecutionContext context = BlockExecutionContext.WithPrevRandao(block.Header, specProvider.GetSpec(block.Header), execution.PrevRandao);
@@ -77,6 +81,7 @@ internal sealed class NativeHistoryBlockExecutor(
         TxReceipt[] receipts = inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
         if (import is not null && (receipts.Length == 0 || receipts[0].StatusCode != StatusCode.Success || receipts[0].Logs is { Length: > 0 }))
             throw new InvalidBlockException(block, "Mandatory native history import failed or emitted logs.");
+        if (rules.NativeFormat == NativeSystemTxFormat.ContractV6) return receipts;
         NativeHistoryState after = ReadState();
         ulong nextCutoff = rules.UsesNativeContract || import is null ? prior.ScheduleCutoff : execution.Cutoff + schedule.Interval;
         if (after != new NativeHistoryState(prior.FirstNumber, execution.OriginNumber, execution.OriginHash, nextCutoff))
@@ -106,7 +111,11 @@ internal sealed class NativeHistoryBlockExecutor(
         foreach (Transaction tx in block.Transactions) group = group.After(tx, out _);
         group.EnsureComplete();
         NativeHistoryTransaction? history = import as NativeHistoryTransaction;
-        if (import is not null && history is null) throw new InvalidBlockException(block, "Invalid dedicated history transaction.");
+        if (import is not null && (history is null ||
+            history.Envelope.HasExplicitBlocks != (rules.NativeFormat == NativeSystemTxFormat.ContractV6)))
+            throw new InvalidBlockException(block, "Invalid dedicated history transaction.");
+        if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+            return schedule.VerifyBlocks(block.Timestamp, in prior, evidence, history?.Envelope);
         ulong? selected = null;
         if (history is not null)
         {
@@ -127,9 +136,16 @@ internal sealed class NativeHistoryBlockExecutor(
 
     private NativeHistoryState ReadState()
     {
-        if (state.GetNonce(EezConstants.L1HistoryAddress) != 1 || state.GetCodeHash(EezConstants.L1HistoryAddress) != GetRuntimeHash(rules.NativeFormat) ||
+        UInt256 nonce = state.GetNonce(EezConstants.L1HistoryAddress);
+        if ((rules.NativeFormat == NativeSystemTxFormat.ContractV6 ? nonce < 2 : nonce != 1) || state.GetCodeHash(EezConstants.L1HistoryAddress) != GetRuntimeHash(rules.NativeFormat) ||
             ValueKeccak.Compute(state.GetCode(EezConstants.L1HistoryAddress).Span) != GetRuntimeHash(rules.NativeFormat))
             throw NativeL1Header.Invalid("incorrect history runtime or nonce");
+        if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+        {
+            ulong storedNumber = Scalar(1);
+            state.Get(new StorageCell(EezConstants.L1HistoryAddress, HashSlot(storedNumber)), out UInt256 storedHash);
+            return NativeProxyHistory.ResolveState(storedNumber, storedHash.ToValueHash(), rules.Schedule!);
+        }
         ulong first = Scalar(1);
         ulong endpoint = Scalar(2);
         ulong next = Scalar(3);

@@ -202,17 +202,7 @@ public partial class EezL2SystemCallsTests
 
     private static void WithHistory(Action<ILifetimeScope, IWorldState, BlockHeader, NativeL1HeaderChain> action, bool contractV3 = false)
     {
-        NativeL1HeaderChain chain = new();
-        Hash256 parent = TestItem.KeccakC;
-        for (int index = 0; index < 3; index++)
-        {
-            Hash256 randao = index switch { 0 => TestItem.KeccakA, 1 => TestItem.KeccakB, _ => TestItem.KeccakC };
-            BlockHeader l1 = Build.A.BlockHeader.WithNumber(99 + index).WithTimestamp(108UL + (ulong)index * 6)
-                .WithParentHash(parent).WithMixHash(randao).TestObject;
-            byte[] raw = Rlp.Encode(l1).Bytes;
-            chain.Append([raw], new NativeL1HeaderRules(null, null, null, null, null));
-            parent = new Hash256(chain.Endpoint.Hash);
-        }
+        NativeL1HeaderChain chain = ApplicationHistoryChain();
         EezChainRules rules = contractV3 ? ContractV3HistoryRules(chain) : NativeRules();
         WithProcessor(rules, (scope, state, _, header) =>
         {
@@ -231,4 +221,20 @@ public partial class EezL2SystemCallsTests
             action(scope, state, header, chain);
         });
     }
+    private static NativeL1HeaderChain ApplicationHistoryChain()
+    {
+        NativeL1HeaderChain chain = new();
+        Hash256 parent = TestItem.KeccakC;
+        for (int index = 0; index < 3; index++)
+        {
+            Hash256 randao = index switch { 0 => TestItem.KeccakA, 1 => TestItem.KeccakB, _ => TestItem.KeccakC };
+            BlockHeader l1 = Build.A.BlockHeader.WithNumber(99 + index).WithTimestamp(108UL + (ulong)index * 6)
+                .WithParentHash(parent).WithMixHash(randao).TestObject;
+            byte[] raw = Rlp.Encode(l1).Bytes;
+            chain.Append([raw], new NativeL1HeaderRules(null, null, null, null, null));
+            parent = new Hash256(chain.Endpoint.Hash);
+        }
+        return chain;
+    }
+
 }

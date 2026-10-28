@@ -11,6 +11,7 @@ internal static class NativeHistoryCall
 {
     internal const int MaxHashes = 64;
     private const int HeadLength = 100;
+    private static readonly byte[] BlocksSelector = Keccak.Compute("importL1Blocks((uint64,bytes32)[])").Bytes[..4].ToArray();
     private static readonly byte[] Selector = Keccak.Compute("importHistory(uint64,bytes32[])").Bytes[..4].ToArray();
 
     /// <returns>The packed hash words in the supplied calldata, without copying.</returns>
@@ -42,6 +43,22 @@ internal static class NativeHistoryCall
         byte[] encoded = Create(cutoff, count);
         AbiWriter writer = new(encoded.AsSpan(HeadLength));
         for (int offset = 1; offset <= count; offset++) writer.Write(chain.At(after + (ulong)offset).Hash);
+        return encoded;
+    }
+
+    internal static byte[] EncodeBlocks(NativeHistoryEnvelope envelope)
+    {
+        ReadOnlySpan<NativeHistoryBlock> blocks = envelope.Blocks;
+        byte[] encoded = new byte[4 + 2 * AbiWord.Size + 2 * AbiWord.Size * blocks.Length];
+        BlocksSelector.CopyTo(encoded, 0);
+        AbiWriter writer = new(encoded.AsSpan(4));
+        writer.WriteOffset(AbiWord.Size);
+        writer.Write((ulong)blocks.Length);
+        foreach (NativeHistoryBlock block in blocks)
+        {
+            writer.Write(block.Number);
+            writer.Write(block.Hash);
+        }
         return encoded;
     }
 

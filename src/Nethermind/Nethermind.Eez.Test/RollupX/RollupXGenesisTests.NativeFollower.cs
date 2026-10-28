@@ -51,15 +51,18 @@ public partial class RollupXGenesisTests
 
     [Test]
     [NonParallelizable]
-    public async Task NativeFollower_RecordedHistoryChoice_DerivesAndExecutesThroughProductionScopes([Values] bool import)
+    public async Task NativeFollower_RecordedHistoryChoice_DerivesAndExecutesThroughProductionScopes([Values] bool import,
+        [Values] bool proxyHistory)
     {
         using NativeHistoryTestSource source = CreateHistorySource();
-        EezChainRules rules = FollowerRules(source);
+        NativeSystemTxFormat format = proxyHistory ? NativeSystemTxFormat.ContractV6 : NativeSystemTxFormat.ContractV4;
+        EezChainRules rules = FollowerRules(source, format);
         using IContainer container = NativeFollowerContainer(source, rules);
         BlockHeader parent = NativeFollowerParent(container, source, rules);
-        ReadOnlyMemory<byte>[] ordinary = import
-            ? [NativeHistoryEnvelope.Create(1, [source.Headers[1].Hash!.ValueHash256]).Encode()]
-            : [];
+        NativeHistoryEnvelope envelope = format == NativeSystemTxFormat.ContractV6
+            ? NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)])
+            : NativeHistoryEnvelope.Create(1, [source.Headers[1].Hash!.ValueHash256]);
+        ReadOnlyMemory<byte>[] ordinary = import ? [envelope.Encode()] : [];
         byte[] operations = OperationsPayload.Encode([
             new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, ordinary),
             new OperationsRun(5, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
@@ -71,21 +74,80 @@ public partial class RollupXGenesisTests
         {
             Assert.That(derived.Length, Is.EqualTo(6));
             foreach (DerivedBlock block in derived)
-                Assert.That(block.PrevRandao, Is.EqualTo(source.Headers[import ? 1UL : 0UL].MixHash),
-                    "the follower must retain the recorded optional import instead of recomputing producer choice");
+                if (proxyHistory)
+                    Assert.That(block.NativeOriginFromParent, Is.True, "upgradeable history is read from each actual parent during execution");
+                else
+                    Assert.That(block.PrevRandao, Is.EqualTo(source.Headers[import ? 1UL : 0UL].MixHash),
+                        "the follower must retain the recorded optional import instead of recomputing producer choice");
             Assert.That(container.Resolve<IDerivedBlockExecutor>(), Is.TypeOf<NativeDerivedBlockExecutor>());
         }
-        using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
-        Block executed = session.Execute(parent, derived[0]);
-        using (Assert.EnterMultipleScope())
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(format));
+        try
         {
-            Assert.That(executed.MixHash, Is.EqualTo(derived[0].PrevRandao));
-            Assert.That(executed.Transactions.Length, Is.EqualTo(import ? 1 : 0));
-            Assert.That(executed.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(executed.Transactions)));
-            if (import)
-                Assert.That(TxDecoder.Instance.Encode(executed.Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes,
-                    Is.EqualTo(ordinary[0].ToArray()), "execution must preserve the original dedicated history wire envelope");
+            using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
+            Block executed = session.Execute(parent, derived[0]);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(executed.MixHash, Is.EqualTo(source.Headers[import ? 1UL : 0UL].MixHash));
+                Assert.That(executed.Transactions.Length, Is.EqualTo(import ? 1 : 0));
+                Assert.That(executed.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(executed.Transactions)));
+                if (import)
+                    Assert.That(TxDecoder.Instance.Encode(executed.Transactions[0], RlpBehaviors.SkipTypedWrapping).Bytes,
+                        Is.EqualTo(ordinary[0].ToArray()), "execution must preserve the original dedicated history wire envelope");
+            }
         }
+        finally { TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder()); }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task NativeFollower_UpgradedHistoryDoesNotStoreImport_NextBlockReadsActualParent()
+    {
+        using NativeHistoryTestSource source = CreateHistorySource();
+        EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV6);
+        using IContainer container = NativeFollowerContainer(source, rules);
+        BlockHeader parent = NativeFollowerParent(container, source, rules, noOpImplementation: true);
+        Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000).WithValue(0)
+            .WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[] history = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]).Encode();
+        byte[] appBytes = TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] operations = OperationsPayload.Encode([
+            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { history }),
+            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { appBytes }),
+            new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
+        DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
+        DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
+            new DerivationInputs(0, parent.MixHash!, parent, source.Anchor(2) with { ParentHash = source.Headers[2].ParentHash }, false)
+            { ExecutionParent = parent }, CancellationToken.None);
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(NativeSystemTxFormat.ContractV6));
+        try
+        {
+            using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
+            Block first = session.Execute(parent, derived[0]);
+            Assert.That(first.MixHash, Is.EqualTo(source.Headers[1].MixHash), "the recorded import selects this block's origin even when storage stays empty");
+            PersistFollowerBlock(container, parent, first);
+            container.Resolve<IStateReader>().GetStorage(first.Header, EezConstants.L1HistoryAddress, (UInt256)1, out UInt256 endpoint);
+            Assert.That(endpoint, Is.Zero, "precondition: the upgraded implementation did not publish the requested endpoint");
+            Block second = session.Execute(first.Header, derived[1]);
+            UInt256 observed = PersistFollowerBlock(container, first.Header, second);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(second.MixHash, Is.EqualTo(source.Headers[0].MixHash), "the next block inherits the real empty store's bootstrap origin");
+                Assert.That(observed.ToValueHash(), Is.EqualTo(source.Headers[0].MixHash!.ValueHash256), "application execution uses the actual inherited origin");
+            }
+        }
+        finally { TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder()); }
+    }
+
+    private static UInt256 PersistFollowerBlock(IContainer container, BlockHeader parent, Block block)
+    {
+        IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
+        using IDisposable scope = main.WorldState.BeginScope(parent);
+        Block processed = main.BlockProcessor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Osaka.Instance).Block;
+        Assert.That(processed.Hash, Is.EqualTo(block.Hash), "the real node replay must agree with derivation");
+        main.WorldState.CommitTree(block.Number);
+        main.WorldState.Get(new StorageCell(TestItem.AddressB, UInt256.Zero), out UInt256 observed);
+        return observed;
     }
 
     [Test]
@@ -204,12 +266,12 @@ public partial class RollupXGenesisTests
         Assert.That(source.Methods, Is.Empty, "genesis must load without network I/O or circular follower startup");
     }
 
-    private static EezChainRules FollowerRules(NativeHistoryTestSource source)
+    private static EezChainRules FollowerRules(NativeHistoryTestSource source, NativeSystemTxFormat format = NativeSystemTxFormat.ContractV4)
     {
         BlockHeaderForRpc genesis = source.Headers[0];
         RollupXSchedule schedule = new(2, 6, new RollupXL1Reference(1337, 0, genesis.Hash!, (ulong)genesis.Timestamp, genesis.MixHash!),
             (ulong)genesis.Timestamp + 12);
-        return EezChainRules.NativeRollupX(schedule, Address.FromNumber(123), NativeSystemTxFormat.ContractV4);
+        return EezChainRules.NativeRollupX(schedule, Address.FromNumber(123), format);
     }
 
     private static IContainer NativeFollowerContainer(NativeHistoryTestSource source, EezChainRules rules)
@@ -235,20 +297,33 @@ public partial class RollupXGenesisTests
         return builder.Build();
     }
 
-    private static BlockHeader NativeFollowerParent(IContainer container, NativeHistoryTestSource source, EezChainRules rules)
+    private static BlockHeader NativeFollowerParent(IContainer container, NativeHistoryTestSource source, EezChainRules rules, bool noOpImplementation = false)
     {
         IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
         Hash256 root;
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
-            state.CreateAccount(EezConstants.L1HistoryAddress, 0, 1);
-            state.InsertCode(EezConstants.L1HistoryAddress, File.ReadAllBytes(StatelessFixtures.PathOf("rollupx/native-offline-v4", "history-runtime.bin")), Osaka.Instance);
-            NativeHistorySchedule schedule = new(rules.Schedule!.GenesisTimestamp, 2, 6, 0);
-            ulong[] slots = [0, 0, schedule.FirstCutoff, schedule.Interval, schedule.Delay, 64];
-            for (int index = 0; index < slots.Length; index++)
-                state.Set(new StorageCell(EezConstants.L1HistoryAddress, (UInt256)(index + 1)), slots[index]);
-            state.Set(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(0)), source.Headers[0].Hash!.ValueHash256.ToUInt256());
+            if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+            {
+                NativeHistoryFixtures.InstallProxy(state);
+                if (noOpImplementation)
+                {
+                    state.InsertCode(NativeProxyHistory.ImplementationAddress, new byte[] { (byte)Instruction.STOP }, Osaka.Instance);
+                    state.CreateAccount(TestItem.AddressB, 0, 1);
+                    state.InsertCode(TestItem.AddressB, new byte[] { (byte)Instruction.PREVRANDAO, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE, (byte)Instruction.STOP }, Osaka.Instance);
+                }
+            }
+            else
+            {
+                state.CreateAccount(EezConstants.L1HistoryAddress, 0, 1);
+                state.InsertCode(EezConstants.L1HistoryAddress, File.ReadAllBytes(StatelessFixtures.PathOf("rollupx/native-offline-v4", "history-runtime.bin")), Osaka.Instance);
+                NativeHistorySchedule schedule = new(rules.Schedule!.GenesisTimestamp, 2, 6, 0);
+                ulong[] slots = [0, 0, schedule.FirstCutoff, schedule.Interval, schedule.Delay, 64];
+                for (int index = 0; index < slots.Length; index++)
+                    state.Set(new StorageCell(EezConstants.L1HistoryAddress, (UInt256)(index + 1)), slots[index]);
+                state.Set(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(0)), source.Headers[0].Hash!.ValueHash256.ToUInt256());
+            }
             state.Commit(Osaka.Instance, isGenesis: true);
             state.CommitTree(0);
             root = state.StateRoot;

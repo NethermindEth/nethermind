@@ -93,6 +93,33 @@ internal sealed class NativeHistorySchedule
         return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, default);
     }
 
+    internal NativeHistoryExecution VerifyBlocks(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, NativeHistoryEnvelope? envelope)
+    {
+        if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)
+            throw NativeL1Header.Invalid("history requires an aligned post-genesis timestamp");
+        ulong cutoff = SourceCutoff(timestamp);
+        if (chain.At(state.Endpoint).Hash != state.EndpointHash)
+            throw NativeL1Header.Invalid("parent history state mismatch");
+        if (timestamp - cutoff != Delay && envelope is not null)
+            throw NativeL1Header.Invalid("off-schedule history transaction");
+        NativeL1Header source = chain.At(state.Endpoint);
+        if (envelope is not null)
+        {
+            ulong previous = state.Imported ? state.Endpoint : 0;
+            foreach (NativeHistoryBlock block in envelope.Blocks)
+            {
+                if (block.Number <= previous || block.Number < state.Endpoint)
+                    throw NativeL1Header.Invalid("history block numbers do not increase");
+                source = chain.At(block.Number);
+                if (source.Hash != block.Hash)
+                    throw NativeL1Header.Invalid("history transaction differs from authenticated headers");
+                previous = block.Number;
+            }
+        }
+        if (source.Timestamp > cutoff) throw NativeL1Header.Invalid("origin is newer than delayed cutoff");
+        return new NativeHistoryExecution(cutoff, source.Number, source.Hash, source.PrevRandao, default, state.Imported || envelope is not null);
+    }
+
     private NativeHistoryExecution ResolveOrigin(ulong timestamp, in NativeHistoryState state, NativeL1HeaderChain chain, ulong? selected)
     {
         if (timestamp <= FirstCutoff || (timestamp - FirstCutoff) % BlockInterval != 0)
@@ -117,8 +144,8 @@ internal sealed class NativeHistorySchedule
 }
 
 /// <summary>History values read from the authenticated parent state, rather than an RPC assertion.</summary>
-internal readonly record struct NativeHistoryState(ulong FirstNumber, ulong Endpoint, ValueHash256 EndpointHash, ulong ScheduleCutoff);
+internal readonly record struct NativeHistoryState(ulong FirstNumber, ulong Endpoint, ValueHash256 EndpointHash, ulong ScheduleCutoff, bool Imported = true);
 
 /// <summary>Recorded origin and pre-execution import; final anchor authorization remains required.</summary>
 internal readonly record struct NativeHistoryExecution(ulong Cutoff, ulong OriginNumber, ValueHash256 OriginHash,
-    ValueHash256 PrevRandao, ReadOnlyMemory<byte> Import);
+    ValueHash256 PrevRandao, ReadOnlyMemory<byte> Import, bool Imported = false);

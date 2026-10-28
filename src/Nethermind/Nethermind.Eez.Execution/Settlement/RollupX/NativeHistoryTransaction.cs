@@ -29,7 +29,7 @@ internal sealed class NativeHistoryTransaction : Transaction
     internal NativeHistoryTransaction ForExecution(ulong cutoff) => new(Envelope)
     {
         Hash = Hash,
-        Data = NativeHistoryCall.Encode(cutoff, Envelope.Hashes),
+        Data = Envelope.HasExplicitBlocks ? NativeHistoryCall.EncodeBlocks(Envelope) : NativeHistoryCall.Encode(cutoff, Envelope.Hashes),
         IsExecutionView = true
     };
 }

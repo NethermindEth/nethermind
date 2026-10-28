@@ -19,6 +19,7 @@ namespace Nethermind.Eez.Follower.RollupX;
 internal sealed class NativeDerivedSuffix
 {
     internal int FirstTransaction { get; set; } = -1;
+    internal bool DeriveOrigin { get; set; }
 }
 
 internal sealed class NativeDerivedTransactionsExecutor(
