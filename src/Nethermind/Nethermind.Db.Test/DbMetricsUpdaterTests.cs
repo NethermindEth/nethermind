@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -76,13 +77,22 @@ namespace Nethermind.Db.Test
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/SampleStats.txt");
-            new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, false, new(logger)).ProcessStatisticsString(testDump);
+            DbMetricsUpdater<DbOptions> updater = new("Test", null, null, null, null, false, new(logger));
+            updater.ProcessStatisticsString(testDump);
 
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes")], Is.EqualTo(1));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes.useful")], Is.EqualTo(2));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.hits")], Is.EqualTo(3));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.count")], Is.EqualTo(4));
-            Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.sum")], Is.EqualTo(5));
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            updater.ProcessStatisticsString(testDump);
+            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes")], Is.EqualTo(1));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.bytes.useful")], Is.EqualTo(2));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.prefetch.hits")], Is.EqualTo(3));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.count")], Is.EqualTo(4));
+                Assert.That(Metrics.DbStats[("TestDb", "rocksdb.db.get.micros.sum")], Is.EqualTo(5));
+                Assert.That(allocatedBytes, Is.Zero);
+            }
         }
 
         [Test]
