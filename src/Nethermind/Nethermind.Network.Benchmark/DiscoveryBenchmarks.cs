@@ -5,9 +5,9 @@ using System;
 using System.Net;
 using Autofac;
 using BenchmarkDotNet.Attributes;
-using DotNetty.Buffers;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -15,7 +15,6 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 
@@ -119,27 +118,13 @@ public class DiscoveryBenchmarks
     {
         _serialize = () =>
         {
-            IByteBuffer buffer = service.ZeroSerialize(message, NethermindBuffers.DiscoveryAllocator);
-            int length = buffer.ReadableBytes;
-            buffer.Release();
-            return length;
+            using ArrayPoolSpan<byte> packet = service.Serialize(message);
+            return packet.Length;
         };
-        _deserialize = packet =>
-        {
-            IByteBuffer buffer = Unpooled.WrappedBuffer(packet);
-            try
-            {
-                return service.Deserialize<T>(buffer);
-            }
-            finally
-            {
-                buffer.Release();
-            }
-        };
+        _deserialize = packet => service.Deserialize<T>(packet);
 
-        IByteBuffer packet = service.ZeroSerialize(message);
-        _packet = packet.ReadAllBytesAsArray();
-        packet.Release();
+        using ArrayPoolSpan<byte> packet = service.Serialize(message);
+        _packet = ((ReadOnlySpan<byte>)packet).ToArray();
     }
 
     private sealed class FixedEcdsa(Signature signature, PrivateKey key) : IEcdsa
@@ -153,6 +138,6 @@ public class DiscoveryBenchmarks
 
     private sealed class FixedNodeIdResolver(PublicKey nodeId) : INodeIdResolver
     {
-        public PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, Span<byte> typeAndData) => nodeId;
+        public PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, ReadOnlySpan<byte> typeAndData) => nodeId;
     }
 }

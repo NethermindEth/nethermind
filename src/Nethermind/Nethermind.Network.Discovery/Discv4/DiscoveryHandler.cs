@@ -7,7 +7,6 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
-using DotNetty.Buffers;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -75,11 +74,11 @@ public class DiscoveryHandler(
     public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
         IDatagramSocket socket = Socket;
-        IByteBuffer msgBuffer;
+        ArrayPoolSpan<byte> packet;
         try
         {
             if (_logger.IsTrace) TraceSending(discoveryMsg);
-            msgBuffer = Serialize(discoveryMsg, NethermindBuffers.DiscoveryAllocator);
+            packet = Serialize(discoveryMsg);
         }
         catch (Exception e)
         {
@@ -87,7 +86,7 @@ public class DiscoveryHandler(
             return;
         }
 
-        int size = msgBuffer.ReadableBytes;
+        int size = packet.Length;
         if (size > MaxPacketSize)
         {
             if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all clients. Msg: ${discoveryMsg}");
@@ -104,7 +103,7 @@ public class DiscoveryHandler(
 
         try
         {
-            await socket.SendToAsync(msgBuffer.ReadAllBytesAsMemory(), discoveryMsg.FarAddress!);
+            await socket.SendToAsync(packet.AsMemory(), discoveryMsg.FarAddress!);
         }
         catch (Exception e)
         {
@@ -112,7 +111,7 @@ public class DiscoveryHandler(
         }
         finally
         {
-            msgBuffer.Release();
+            packet.Dispose();
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
@@ -208,7 +207,7 @@ public class DiscoveryHandler(
     protected virtual MsgType? FromMsgTypeByte(byte b) =>
         FastEnum.IsDefined((MsgType)b) ? (MsgType)b : null;
 
-    private DiscoveryMsg Deserialize(MsgType type, IByteBuffer msg) => type switch
+    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg) => type switch
     {
         MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
         MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
@@ -219,14 +218,14 @@ public class DiscoveryHandler(
         _ => throw new Exception($"Unsupported messageType: {type}")
     };
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator) => msg.MsgType switch
+    private ArrayPoolSpan<byte> Serialize(DiscoveryMsg msg) => msg.MsgType switch
     {
-        MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
-        MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
-        MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
-        MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
-        MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
-        MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
+        MsgType.Ping => _msgSerializationService.Serialize((PingMsg)msg),
+        MsgType.Pong => _msgSerializationService.Serialize((PongMsg)msg),
+        MsgType.FindNode => _msgSerializationService.Serialize((FindNodeMsg)msg),
+        MsgType.Neighbors => _msgSerializationService.Serialize((NeighborsMsg)msg),
+        MsgType.EnrRequest => _msgSerializationService.Serialize((EnrRequestMsg)msg),
+        MsgType.EnrResponse => _msgSerializationService.Serialize((EnrResponseMsg)msg),
         _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
     };
 
@@ -393,11 +392,9 @@ public class DiscoveryHandler(
             return false;
         }
 
-        IByteBuffer msgBuffer = Unpooled.WrappedBuffer(segment.Array, segment.Offset, segment.Count);
-
         try
         {
-            msg = Deserialize(packet.Type, msgBuffer);
+            msg = Deserialize(packet.Type, segment);
             msg.FarAddress = packet.Address;
             return true;
         }
@@ -405,10 +402,6 @@ public class DiscoveryHandler(
         {
             if (_logger.IsTrace) TraceDeserializationFailure(packet, e);
             return false;
-        }
-        finally
-        {
-            msgBuffer.Release();
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
