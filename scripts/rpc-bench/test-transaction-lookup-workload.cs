@@ -192,23 +192,44 @@ tests.Case("strict summary requires complete successful HTTP requests and both c
             else if (selected.Length == 1 && key.StartsWith("http_reqs{", StringComparison.Ordinal)) sampled["metrics"]![key]!["values"]!["count"] = 10;
         }
         TransactionLookupWorkload.CheckSummary(sampled, preset);
-        void Samples(int count, bool invalid = false)
+        void Samples(int count, string defect = "")
         {
             using var file = File.Create(Path.Combine(tests.DirectoryPath, "samples.gz"));
             using var gzip = new System.IO.Compression.GZipStream(file, System.IO.Compression.CompressionMode.Compress);
             using var writer = new StreamWriter(gzip);
             for (var index = 0; index < count; index++)
-                writer.WriteLine(new JsonObject { ["type"] = "Point", ["metric"] = "http_req_duration", ["data"] = new JsonObject { ["time"] = invalid ? "bad" : "2026-10-28T16:00:00Z", ["value"] = .5, ["tags"] = new JsonObject { ["rpc_method"] = selected[index % selected.Length], ["request_id"] = index.ToString() } } }.ToJsonString());
+            {
+                var data = new JsonObject { ["time"] = "2026-10-28T16:00:00Z", ["value"] = .5,
+                    ["tags"] = new JsonObject { ["rpc_method"] = selected[index % selected.Length] },
+                    ["metadata"] = new JsonObject { ["request_id"] = index.ToString() } };
+                if (defect == "time") data["time"] = "bad";
+                if (defect == "method") data["tags"]!["rpc_method"] = "eth_unknown";
+                if (defect == "latency") data["value"] = -1;
+                if (defect == "duplicate") data["metadata"]!["request_id"] = "0";
+                if (defect == "empty") data["metadata"]!["request_id"] = "";
+                if (defect is "missing-metadata" or "tag-only") data.Remove("metadata");
+                if (defect == "missing-id") data["metadata"]!.AsObject().Remove("request_id");
+                if (defect is "tag-only" or "both") data["tags"]!["request_id"] = index.ToString();
+                if (defect == "null-tag") data["tags"]!["request_id"] = null;
+                writer.WriteLine(new JsonObject { ["type"] = "Point", ["metric"] = "http_req_duration", ["data"] = data }.ToJsonString());
+            }
         }
-        Samples(10);
-        TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset);
+        tests.Case("accept complete metadata latency samples " + preset, () =>
+        {
+            Samples(10);
+            TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset);
+        });
         foreach (var count in new[] { 0, 9, 11 })
         {
             Samples(count);
             Reject(() => TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset));
         }
-        Samples(10, invalid: true);
-        Reject(() => TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset));
+        foreach (var defect in new[] { "time", "method", "latency", "duplicate", "empty", "missing-metadata", "missing-id", "tag-only", "both", "null-tag" })
+            tests.Case("reject invalid latency sample " + preset + "/" + defect, () =>
+            {
+                Samples(10, defect);
+                Reject(() => TransactionLookupWorkload.CheckSamples(Path.Combine(tests.DirectoryPath, "samples.gz"), sampled, preset));
+            });
     }
     var legacy = Summary(10, 20, 0, 0);
     foreach (var metric in legacy["metrics"]!.AsObject().Select(pair => pair.Key).ToArray())
@@ -267,10 +288,19 @@ tests.Case("pinned k6 check patched exactly once and unknown upstream fails clos
     RpcScriptTests.Assert(patched.Contains(TransactionLookupWorkload.StrictCheck, StringComparison.Ordinal) && TransactionLookupWorkload.Patch(patched) == patched, "patch not idempotent");
     Reject(() => TransactionLookupWorkload.Patch("unknown upstream"));
     Reject(() => TransactionLookupWorkload.Patch(original + original));
-    var tags = original + "\nconst tags = {\"rpc_method\": reqMethod,};";
-    var identified = TransactionLookupWorkload.Patch(tags, requestIdentity: true);
-    RpcScriptTests.Assert(identified.Contains("\"request_id\": requestData[0],", StringComparison.Ordinal) && TransactionLookupWorkload.Patch(identified, requestIdentity: true) == identified, "request identity patch not idempotent");
-    Reject(() => TransactionLookupWorkload.Patch(original, requestIdentity: true));
+    const string import = "import exec from 'k6/execution';";
+    const string anchor = "const payload = requestData[3];";
+    const string metadata = "exec.vu.metrics.metadata.request_id = requestData[0];";
+    var source = import + "\n" + original + "\nconst tags = {\"req_name\": reqName, \"rpc_method\": reqMethod,};";
+    var identified = TransactionLookupWorkload.Patch(source, requestIdentity: true);
+    RpcScriptTests.Assert(identified == TransactionLookupWorkload.Patch(source).Replace(anchor, anchor + "\n    " + metadata, StringComparison.Ordinal) &&
+        TransactionLookupWorkload.Patch(identified, requestIdentity: true) == identified, "request metadata patch changed tags or is not idempotent");
+    foreach (var invalid in new[] { original, source.Replace(import, "", StringComparison.Ordinal), source + import,
+        source.Replace(anchor, "const payload = changed;", StringComparison.Ordinal), source + anchor,
+        source + "\nconst tags = {\"request_id\": requestData[0],};", source + "\nconst tags = {request_id: requestData[0]};",
+        identified + "\nconst tags = {\"request_id\": requestData[0],};", identified + "\n" + metadata,
+        source + "\n" + metadata })
+        Reject(() => TransactionLookupWorkload.Patch(invalid, requestIdentity: true));
     var javascript = tests.Write("check.js", """
         const assert = require('node:assert/strict');
         function valid(data, reqMethod, hash) {
