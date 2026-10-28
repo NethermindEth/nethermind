@@ -56,7 +56,7 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         foreach (IReadOnlyList<FrameDependency> dependencies in candidates)
         {
             if (proofStore.SmallestProving(dependencies) is not { } held || !tried.Add(held.ProofHash)) continue;
-            long size = 2 * sizeof(uint) + held.Proof.Length + (long)held.InnerDeps.Count * Eip8288Constants.DependencyTripleLength;
+            long size = Eip8288Constants.IlProofBytes(held.Proof.Length, held.InnerDeps.Count);
             List<FrameDependency> proofDeps = Eip8288Dependencies.Canonicalize(held.InnerDeps);
             if (size > Eip8288Constants.MaxIlProofBytes || held.Proof.IsEmpty || proofDeps.Count != held.InnerDeps.Count
                 || !Eip8288Dependencies.AreSchemesEnabled(proofDeps))

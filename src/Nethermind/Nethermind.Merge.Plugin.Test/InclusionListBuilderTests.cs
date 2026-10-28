@@ -432,7 +432,7 @@ public class InclusionListBuilderTests
         }
     }
 
-    // EIPs#12475: a dependency-bearing pool transaction joins the list, after the dependency-free draw, only when a held verified
+    // EIPs#12475: a dependency-bearing pool transaction joins the list, after the dependency-free entries, only when a held verified
     // proof covers it; the list then attaches that proof whole. Without one the list and its empty proof are as before.
     [TestCase("covering-proof", true)]
     [TestCase("no-held-proof", false)]
@@ -468,30 +468,32 @@ public class InclusionListBuilderTests
         }
     }
 
-    // MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST bounds the dependency-free and dependency-bearing entries together: a covered entry
-    // fills the remaining budget exactly, but one byte too many leaves it, and so the proof, out.
-    [TestCase(0, true)]
-    [TestCase(1, false)]
-    public void Dependency_bearing_tx_fits_the_remaining_byte_budget(int overBudget, bool listed)
+    // EIPs#12475 (a95c12ff): inclusion-list creators reserve a share of the transaction bytes for dependency-bearing transactions.
+    // With a covering held proof the dependency-free draw leaves the covered entries their bytes, so a filler one byte too large
+    // gives way to them; without one it takes the whole MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST, which bounds both together.
+    [TestCase(0, true, true)]
+    [TestCase(1, true, false)]
+    [TestCase(1, false, true)]
+    public void Dependency_bearing_txs_have_a_reserved_share_of_the_byte_budget(int overBudget, bool held, bool fillerListed)
     {
         Transaction dependencyBearing = DependencyBearingTx("sized");
         int dependencyBearingBytes;
         using (ArrayPoolList<byte> encoded = Consensus.Decoders.InclusionListDecoder.EncodePooled(dependencyBearing)) dependencyBearingBytes = encoded.Count;
+        Assert.That(dependencyBearingBytes, Is.LessThan(InclusionListBuilder.ReservedDependencyBearingBytes));
         Transaction filler = TxEncodedAs(Eip7805Constants.MaxBytesPerInclusionList - dependencyBearingBytes + overBudget, TestItem.PrivateKeyB);
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        store.AddCachedRecursive(Eip8288Dependencies.ForTransaction(dependencyBearing, FrameTxSigHash.ComputeValue), [1]);
+        if (held) store.AddCachedRecursive(Eip8288Dependencies.ForTransaction(dependencyBearing, FrameTxSigHash.ComputeValue), [1]);
 
         (InclusionListBytes il, RecursiveStarkV1 proof) = BuildProofBuilder(PoolWithPending([filler], [dependencyBearing]),
             new InclusionListProofService(new HeldProofVerifier(true), store)).GetInclusionListWithProof();
         using InclusionListBytes owned = il;
 
+        Hash256?[] expected = [.. new[] { fillerListed ? filler.Hash : null, held ? dependencyBearing.Hash : null }.Where(static h => h is not null)];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(il.Sum(static bytes => bytes.Count), Is.EqualTo(listed
-                ? Eip7805Constants.MaxBytesPerInclusionList
-                : Eip7805Constants.MaxBytesPerInclusionList - dependencyBearingBytes + overBudget));
-            Assert.That(il, Has.Count.EqualTo(listed ? 2 : 1));
-            Assert.That(proof.StarkProof, listed ? Is.Not.Empty : Is.Empty);
+            Assert.That(il.Select(bytes => Decode(bytes).Hash), Is.EqualTo(expected));
+            Assert.That(il.Sum(static bytes => bytes.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+            Assert.That(proof.StarkProof, held ? Is.Not.Empty : Is.Empty);
         }
     }
 

@@ -22,8 +22,9 @@ public sealed class RecursiveStarkV1
     /// <summary>The proof's dependencies, each a 96-byte dependency encoding, exactly as signed.</summary>
     public byte[][]? ProofDeps { get; set; }
 
-    /// <summary>The serialized size of the SSZ <c>InclusionListProof</c> container: two offsets and both fields.</summary>
-    internal long SszLength => 2 * sizeof(uint) + (StarkProof?.Length ?? 0) + (long)(ProofDeps?.Length ?? 0) * Eip8288Constants.DependencyTripleLength;
+    /// <summary>The bytes the proof counts against <c>MAX_IL_PROOF_BYTES</c>: the serialized SSZ <c>InclusionListProof</c>
+    /// container, two offsets and both fields, plus the four-byte offset it adds to the signed <c>InclusionList</c>.</summary>
+    internal long SszLength => Eip8288Constants.IlProofBytes(StarkProof?.Length ?? 0, ProofDeps?.Length ?? 0);
 }
 
 /// <summary>
@@ -43,9 +44,11 @@ public sealed class InclusionListV1
     /// <summary>The list's proof; an empty one obligates only its dependency-free transactions.</summary>
     public RecursiveStarkV1? RecursiveStark { get; set; }
 
-    /// <summary>Checks the per-list Engine API bounds: at most <c>IL_COMMITTEE_SIZE</c> lists, each within
+    /// <summary>Checks the per-list Engine API bounds: at most <c>IL_COMMITTEE_SIZE</c> lists, each with transactions within
     /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>, with a proof whose <c>proofDeps</c> entries are 96 bytes and whose SSZ
-    /// container fits <c>MAX_IL_PROOF_BYTES</c>.</summary>
+    /// container, with its added <c>InclusionList</c> offset, fits <c>MAX_IL_PROOF_BYTES</c>.</summary>
+    /// <remarks>Proof bytes never count against the transaction-byte limit: from EIP-8288's activation a list carrying a proof
+    /// may exceed EIP-7805's list size limit by at most <c>MAX_IL_PROOF_BYTES</c>.</remarks>
     /// <remarks>An undecodable entry or an invalid proof is left to per-list processing: the entry contributes nothing and the
     /// proof obligates nothing (EIPs#12475), so one committee member cannot fail the request.</remarks>
     /// <returns>The violated bound, or <c>null</c>.</returns>

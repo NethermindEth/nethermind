@@ -283,14 +283,15 @@ public class InclusionListProofsTests
         }
     }
 
-    // EIPs#12475: the serialized InclusionListProof container, two offsets and both fields, must fit MAX_IL_PROOF_BYTES.
+    // EIPs#12475 (a95c12ff): the serialized InclusionListProof container, two offsets and both fields, plus its added four-byte
+    // InclusionList offset, must fit MAX_IL_PROOF_BYTES.
     [TestCase(0, true)]
     [TestCase(1, false)]
     public void Held_proof_choice_respects_max_il_proof_bytes(int overLimit, bool chosen)
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Dependency("sized");
-        int proofBytes = Eip8288Constants.MaxIlProofBytes - 2 * sizeof(uint) - Eip8288Constants.DependencyTripleLength + overLimit;
+        int proofBytes = Eip8288Constants.MaxIlProofBytes - 3 * sizeof(uint) - Eip8288Constants.DependencyTripleLength + overLimit;
         store.AddCachedRecursive([dependency], new byte[proofBytes]);
 
         HeldInclusionListProof? proof = new InclusionListProofService(new FakeLeanProofVerifier(true), store)

@@ -30,6 +30,8 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     internal const int DependencyBearingSenderSample = 64;
     // Dependency-bearing entries of a drawn sender judged before it is passed over.
     internal const int MaxDependencyBearingScannedPerSender = 4;
+    // Transaction bytes the dependency-free draw leaves for dependency-bearing entries a held proof covers.
+    internal const int ReservedDependencyBearingBytes = Eip7805Constants.MaxBytesPerInclusionList / 4;
 
     /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
     /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
@@ -40,63 +42,93 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         return EncodeTransactionsUpToLimit(in sample);
     }
 
-    /// <summary>Draws an EIP-8288 inclusion list: the dependency-free list <see cref="GetInclusionList"/> draws, then
-    /// dependency-bearing transactions a held verified proof covers, in the bytes it leaves.</summary>
-    /// <remarks>The list attaches that proof, so it obligates each dependency-bearing entry it carries (EIPs#12475). Without a
-    /// covering proof, or with no room left, the list is the dependency-free one with an empty proof. Proving is left to the
-    /// background aggregation cycle: none runs here, as it would not fit <c>engine_getInclusionListV2</c>'s timeout.</remarks>
+    /// <summary>Draws an EIP-8288 inclusion list: dependency-free transactions as <see cref="GetInclusionList"/> draws them, then
+    /// dependency-bearing transactions a held verified proof covers.</summary>
+    /// <remarks>The list attaches that proof, so it obligates each dependency-bearing entry it carries (EIPs#12475). EIP-8288 asks
+    /// list creators to reserve a share of the transaction bytes for dependency-bearing transactions: when a held proof covers
+    /// any, the dependency-free draw leaves them up to <see cref="ReservedDependencyBearingBytes"/>, and they may also take
+    /// whatever else it leaves. Without a covering proof the dependency-free draw takes the whole cap and the proof is empty.
+    /// Proving is left to the background aggregation cycle: none runs here, as it would not fit
+    /// <c>engine_getInclusionListV2</c>'s timeout.</remarks>
     /// <param name="parent">Header the list's target block builds on; the head when null.</param>
     /// <returns>The encoded transactions, which the caller owns and disposes, and the list's proof.</returns>
     public (InclusionListBytes Transactions, RecursiveStarkV1 Proof) GetInclusionListWithProof(BlockHeader? parent = null)
     {
-        InclusionListBytes transactions = GetInclusionList(parent);
+        (HeldInclusionListProof Proof, List<ArrayPoolList<byte>?> Encoded)? covered = CoveredDependencyBearing(parent ?? blockTree.Head?.Header);
+        InclusionListBytes? transactions = null;
         try
         {
+            int reserved = 0;
+            if (covered is { } held)
+            {
+                foreach (ArrayPoolList<byte>? tx in held.Encoded) reserved += tx!.Count;
+                reserved = Math.Min(reserved, ReservedDependencyBearingBytes);
+            }
+            using (ArrayPoolListRef<Transaction> sample = SampleAppendableTxs(parent))
+                transactions = EncodeTransactionsUpToLimit(in sample, Eip7805Constants.MaxBytesPerInclusionList - reserved);
+            if (covered is null) return (transactions, RecursiveStarkV1.Empty);
             int size = 0;
             foreach (ArrayPoolList<byte> tx in transactions) size += tx.Count;
-            return (transactions, AppendDependencyBearing(transactions, size, parent ?? blockTree.Head?.Header));
+            bool appended = false;
+            List<ArrayPoolList<byte>?> encoded = covered.Value.Encoded;
+            for (int i = 0; i < encoded.Count && size + MinTransactionSizeBytes <= Eip7805Constants.MaxBytesPerInclusionList; i++)
+            {
+                ArrayPoolList<byte> tx = encoded[i]!;
+                if (size + tx.Count > Eip7805Constants.MaxBytesPerInclusionList) continue;
+                size += tx.Count;
+                transactions.Add(tx);
+                // The list owns it now.
+                encoded[i] = null;
+                appended = true;
+            }
+            HeldInclusionListProof proof = covered.Value.Proof;
+            return (transactions, appended ? new RecursiveStarkV1 { StarkProof = proof.StarkProof, ProofDeps = proof.ProofDeps } : RecursiveStarkV1.Empty);
         }
         catch
         {
-            transactions.Dispose();
+            transactions?.Dispose();
             throw;
+        }
+        finally
+        {
+            if (covered is { } held)
+                foreach (ArrayPoolList<byte>? tx in held.Encoded) tx?.Dispose();
         }
     }
 
-    /// <summary>Appends the dependency-bearing pool transactions the chosen held proof covers, within the byte cap.</summary>
-    /// <returns>The chosen proof, or the empty proof when no entry was appended.</returns>
-    private RecursiveStarkV1 AppendDependencyBearing(InclusionListBytes transactions, int size, BlockHeader? parent)
+    /// <summary>The held proof a list would attach and the encodings of the dependency-bearing pool transactions it covers, in
+    /// candidate order; null when EIP-8288 is inactive at the target fork or no held proof covers a candidate.</summary>
+    /// <returns>Encodings the caller owns and disposes.</returns>
+    private (HeldInclusionListProof Proof, List<ArrayPoolList<byte>?> Encoded)? CoveredDependencyBearing(BlockHeader? parent)
     {
-        if (proofs is null || parent is null || size + MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
-            return RecursiveStarkV1.Empty;
+        if (proofs is null || parent is null) return null;
         // The list constrains the next slot's block: its fork fixes static validity and the AGGREGATED_VK, predicted as
         // for mempool wrappers, so a held wrapper proof verifies under the same verifier.
         IReleaseSpec targetSpec = WrapperTargetFork.Predict(specProvider, parent,
             blockTree.FindParentHeader(parent, BlockTreeLookupOptions.TotalDifficultyNotNeeded));
-        if (!targetSpec.IsEip8288Enabled) return RecursiveStarkV1.Empty;
+        if (!targetSpec.IsEip8288Enabled) return null;
 
         List<(Transaction Tx, List<FrameDependency> Dependencies)> candidates = DependencyBearingCandidates(targetSpec, NextBlockBaseFee(parent));
-        if (candidates.Count == 0) return RecursiveStarkV1.Empty;
+        if (candidates.Count == 0) return null;
         List<IReadOnlyList<FrameDependency>> dependencies = new(candidates.Count);
         foreach ((_, List<FrameDependency> deps) in candidates) dependencies.Add(deps);
-        if (proofs.ChooseHeldProof(dependencies, targetSpec) is not { } proof) return RecursiveStarkV1.Empty;
+        if (proofs.ChooseHeldProof(dependencies, targetSpec) is not { } proof) return null;
 
-        bool appended = false;
+        List<ArrayPoolList<byte>?> encoded = [];
+        int size = 0;
         foreach ((Transaction tx, List<FrameDependency> deps) in candidates)
         {
             if (!proof.Covers(deps)) continue;
             ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
-            if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
+            if (txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList - size)
             {
                 txBytes.Dispose();
                 continue;
             }
             size += txBytes.Count;
-            transactions.Add(txBytes);
-            appended = true;
-            if (size + MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList) break;
+            encoded.Add(txBytes);
         }
-        return appended ? new RecursiveStarkV1 { StarkProof = proof.StarkProof, ProofDeps = proof.ProofDeps } : RecursiveStarkV1.Empty;
+        return encoded.Count == 0 ? null : (proof, encoded);
     }
 
     /// <summary>Up to <see cref="DependencyBearingSenderSample"/> pending dependency-bearing transactions the next block could
@@ -301,7 +333,8 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         return parent is null ? UInt256.Zero : BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent.Number + 1, parent.Timestamp));
     }
 
-    private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
+    private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs,
+        int limit = Eip7805Constants.MaxBytesPerInclusionList)
     {
         InclusionListBytes result = new(txs.Count);
         try
@@ -316,7 +349,7 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
                 ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
-                if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
+                if (size + txBytes.Count > limit)
                 {
                     txBytes.Dispose();
                     (droppedSenders ??= []).Add(tx.SenderAddress!);
@@ -327,7 +360,7 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
                 result.Add(txBytes);
 
                 // No possible tx can fit in the remaining space.
-                if (size + MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
+                if (size + MinTransactionSizeBytes > limit)
                 {
                     break;
                 }

@@ -163,9 +163,11 @@ public partial class EngineModuleTests
         if (expected == "VALID") Assert.That(response, Does.Contain("\"inclusionListSatisfied\":true"));
     }
 
-    // EIPs#12475: the serialized InclusionListProof container, two 4-byte offsets and both fields, fits MAX_IL_PROOF_BYTES;
-    // one byte more is refused, independently of MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST.
+    // EIPs#12475 (a95c12ff): the serialized InclusionListProof container, two 4-byte offsets and both fields, plus its added
+    // four-byte InclusionList offset, fits MAX_IL_PROOF_BYTES; one byte more is refused. The proof never counts against
+    // MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST: a list may exceed EIP-7805's size limit by at most MAX_IL_PROOF_BYTES.
     [TestCase("proof-at-limit", true)]
+    [TestCase("full-list-with-proof-at-limit", true)]
     [TestCase("proof-with-dependency-at-limit", true)]
     [TestCase("proof-over-limit", false)]
     [TestCase("proof-with-dependency-over-limit", false)]
@@ -181,13 +183,18 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent),
             BuildPerListPayloadAttributes([]));
         GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!;
-        const int Offsets = 2 * sizeof(uint);
+        const int Offsets = Eip8288Constants.IlProofOverheadBytes;
         byte[][] dependency = [new byte[Eip8288Constants.DependencyTripleLength]];
         InclusionListV1[] lists = scenario switch
         {
             "proof-at-limit" => [ProofOfSize(Eip8288Constants.MaxIlProofBytes - Offsets, [])],
             "proof-with-dependency-at-limit" => [ProofOfSize(Eip8288Constants.MaxIlProofBytes - Offsets - Eip8288Constants.DependencyTripleLength, dependency)],
             "proof-over-limit" => [ProofOfSize(Eip8288Constants.MaxIlProofBytes - Offsets + 1, [])],
+            "full-list-with-proof-at-limit" => [new()
+            {
+                Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList]],
+                RecursiveStark = ProofOfSize(Eip8288Constants.MaxIlProofBytes - Offsets, []).RecursiveStark
+            }],
             "proof-with-dependency-over-limit" => [ProofOfSize(Eip8288Constants.MaxIlProofBytes - Offsets - Eip8288Constants.DependencyTripleLength + 1, dependency)],
             "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]], RecursiveStark = RecursiveStarkV1.Empty }],
             "missing-proof" => [new() { Transactions = [] }],
