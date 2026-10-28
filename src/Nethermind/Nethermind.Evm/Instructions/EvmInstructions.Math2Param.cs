@@ -414,7 +414,7 @@ public static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas))
         {
-            if (TTracingInst.IsActive) vm.TraceOperationGasCost(ExpGasCost.GasCost);
+            if (TTracingInst.IsActive) TraceExpBaseOutOfGas<TGasPolicy, Eip160>(ref stack, vm);
             return EvmExceptionType.OutOfGas;
         }
 
@@ -435,8 +435,7 @@ public static partial class EvmInstructions
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
         if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize))
         {
-            if (TTracingInst.IsActive)
-                vm.TraceOperationGasCost(ExpGasCost.GasCost + (Eip160.IsActive ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * expSize);
+            if (TTracingInst.IsActive) vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
             return EvmExceptionType.OutOfGas;
         }
 
@@ -457,6 +456,31 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    private static ulong ExpCost<Eip160>(ulong expSize) where Eip160 : struct, IFlag =>
+        ExpGasCost.GasCost + (Eip160.IsActive ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * expSize;
+
+    /// <summary>
+    /// Reports the full cost of an EXP that cannot pay its base cost, including the exponent-byte cost.
+    /// </summary>
+    /// <remarks>
+    /// Geth charges both parts as one dynamic cost, so its struct log never shows the base cost alone.
+    /// Reading the exponent pops the base, which is harmless because the operation fails anyway.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceExpBaseOutOfGas<TGasPolicy, Eip160>(ref EvmStack stack, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where Eip160 : struct, IFlag
+    {
+        ulong expSize = 0;
+        if (stack.EnsureDepth(2))
+        {
+            ref UInt256 exponent = ref As<byte, UInt256>(ref stack.Pop1Peek32BytesUnchecked());
+            expSize = (ulong)(32 - (exponent.CountLeadingZeros() >> 3));
+        }
+
+        vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
