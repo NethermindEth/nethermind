@@ -105,6 +105,24 @@ internal class MasternodeVotingContractTests
     }
 
     [Test]
+    public void Transaction_processor_reads_match_constant_calls()
+    {
+        (MasternodeVotingContract masterVoting, IReadOnlyTxProcessingEnvFactory envFactory, BlockHeader genesis) = DeployVotingContract();
+        Address[] expected = masterVoting.GetCandidates(genesis);
+        using IReadOnlyTxProcessorSource source = envFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(genesis);
+        Address[] candidates = masterVoting.GetCandidates(scope.TransactionProcessor, genesis);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(candidates, Is.EqualTo(expected));
+            foreach (Address candidate in candidates)
+            {
+                Assert.That(masterVoting.GetCandidateStake(scope.TransactionProcessor, genesis, candidate), Is.EqualTo(10_000_000.Ether));
+            }
+        }
+    }
+
+    [Test]
     public void GetCandidateOwner_preserves_leading_zero_bytes()
     {
         (MasternodeVotingContract contract, IReadOnlyTxProcessingEnvFactory factory, BlockHeader genesis) = DeployVotingContract();

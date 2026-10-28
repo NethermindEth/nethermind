@@ -196,7 +196,12 @@ namespace Nethermind.AuRa.Test.Reward
         private bool CheckTransaction(Transaction t, ICollection<Address> addresses) =>
             t.SenderAddress == Address.SystemUser
             && (t.To == _auraParameters.BlockRewardContractAddress || addresses.Contains(t.To))
-            && t.Data.Span.StartsWith(RewardSignature.MethodId);
+            && t.Data.Span.SequenceEqual(AbiCodec.Encode(RewardSignature, ExpectedRewardArgs()));
+
+        // reward(benefactors, kind): the author has kind 0 and an uncle 100 + its distance.
+        private (Address[], ushort[]) ExpectedRewardArgs() => (
+            [_block.Beneficiary, .. _block.Uncles.Select(static u => u.Beneficiary)],
+            [0, .. _block.Uncles.Select(u => (ushort)(100 + _block.Number - u.Number))]);
 
         private static byte[] EncodeRewards(params BlockReward[] rewards) =>
             AbiCodec.Encode(RewardReturns, (rewards.Select(static r => r.Address).ToArray(), rewards.Select(static r => r.Value).ToArray()));
