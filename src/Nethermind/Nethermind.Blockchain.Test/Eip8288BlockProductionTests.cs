@@ -818,6 +818,7 @@ public class Eip8288BlockProductionTests
             transaction.Frames![1] = new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)wide.Length * Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize(wide));
             transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+            // A higher priority fee puts it first in the body, so the bounded run starts with it.
             transaction.GasPrice = 2.GWei;
         });
         Assert.That(chain.TxPool.SubmitTx(oversized, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
