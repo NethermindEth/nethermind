@@ -94,8 +94,11 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.SelfDestructedStorageAddresses[new HashedKey<Address>(address)] = true),
             MakeSnapshot()));
 
-        Assert.That(bundle.DetermineSelfDestructSnapshotIdx(address), Is.EqualTo(1));
-        Assert.That(bundle.DetermineSelfDestructSnapshotIdx(TestItem.AddressB), Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.DetermineSelfDestructSnapshotIdx(address), Is.EqualTo(1));
+            Assert.That(bundle.DetermineSelfDestructSnapshotIdx(TestItem.AddressB), Is.EqualTo(-1));
+        }
     }
 
     [Test]
@@ -167,8 +170,11 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = node)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found), Is.True);
-        Assert.That(found, Is.SameAs(node));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found), Is.True);
+            Assert.That(found, Is.SameAs(node));
+        }
     }
 
     [Test]
@@ -176,8 +182,11 @@ public class ReadOnlySnapshotBundleTests
     {
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()));
 
-        Assert.That(bundle.TryFindStateNodes(TreePath.FromHexString("ab"), Keccak.Zero, out TrieNode? node), Is.False);
-        Assert.That(node, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.TryFindStateNodes(TreePath.FromHexString("ab"), Keccak.Zero, out TrieNode? node), Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
@@ -191,8 +200,11 @@ public class ReadOnlySnapshotBundleTests
             MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = node)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found), Is.True);
-        Assert.That(found, Is.SameAs(node));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found), Is.True);
+            Assert.That(found, Is.SameAs(node));
+        }
     }
 
     [Test]

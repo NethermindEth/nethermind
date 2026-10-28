@@ -71,9 +71,12 @@ public class OverlayTrieStoreTests
             overlaidTree.RootHash = newRoot;
             Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[0].BytesToArray()));
         };
-        Assert.That(act, Throws.TypeOf<MissingTrieNodeException>()); // The root is now missing.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.TypeOf<MissingTrieNodeException>()); // The root is now missing.
 
-        // After all this, the original should not change.
-        Assert.That(dbProvider.StateDb.GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
+            // After all this, the original should not change.
+            Assert.That(dbProvider.StateDb.GetAllKeys().Count(), Is.EqualTo(originalKeyCount));
+        }
     }
 }

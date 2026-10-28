@@ -27,11 +27,14 @@ public class BlockTransactionsFlatHashesTests
     {
         JsonSerializerOptions options = WithUpperCaseHashes();
         string hashObjects = Serialize(HashObjects, options);
-        Assert.That(hashObjects, Is.Not.EqualTo(Serialize(HashObjects, EthereumJsonSerializer.JsonOptions)),
-            "precondition: the replacement converter is the one in use");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hashObjects, Is.Not.EqualTo(Serialize(HashObjects, EthereumJsonSerializer.JsonOptions)),
+                "precondition: the replacement converter is the one in use");
 
-        Assert.That(Serialize(BlockTransactions.FromHashes(FlatHashes), options), Is.EqualTo(hashObjects),
-            "flat hashes must follow the configured converter");
+            Assert.That(Serialize(BlockTransactions.FromHashes(FlatHashes), options), Is.EqualTo(hashObjects),
+                "flat hashes must follow the configured converter");
+        }
     }
 
     [Test]

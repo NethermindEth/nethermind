@@ -244,12 +244,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>The running frame's memory, reached through references rounded down to the word boundaries they are already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
         /// <remarks>
-        /// As <see cref="AlignedStack"/>: the state is a byref parameter and its memory a byref loaded from it, so the JIT tests each one's
+        /// As <see cref="AlignedSlot"/>: the state is a byref parameter and its memory a byref loaded from it, so the JIT tests each one's
         /// alignment again in every block that reads a field through it. One <c>andi</c> each proves them; both are naturally word-aligned.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ref EvmPooledMemory AlignedMemory(ref DispatchState state)
+        private static unsafe ref EvmPooledMemory AlignedMemory(ref DispatchState state)
         {
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref state) & (nuint)(sizeof(nint) - 1)) == 0);
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref state.Memory) & (nuint)(sizeof(nint) - 1)) == 0);
             if (!StrictAlignmentFlag.IsActive) return ref state.Memory;
             ref DispatchState aligned = ref Unsafe.As<byte, DispatchState>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
                 Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<DispatchState, byte>(ref state)) & ~(nint)(sizeof(nint) - 1)));

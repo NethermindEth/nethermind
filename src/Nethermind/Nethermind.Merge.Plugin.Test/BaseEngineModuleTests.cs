@@ -111,8 +111,11 @@ public abstract partial class BaseEngineModuleTests
                 Hash256 newHead = getPayloadResult.BlockHash;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-                Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-                Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                    Assert.That(setHeadResponse.Data.PayloadId, Is.EqualTo(null));
+                }
             }
 
             blocks.Add(getPayloadResult);

@@ -88,12 +88,16 @@ public class FlatWorldStateScopeProviderTests
 
         foreach (IWorldStateScopeProvider provider in providers)
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(provider.HasStateForTargetBlock(target), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
             scope!.Dispose();
         }
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(manager.GlobalWorldState.HasStateForTargetBlock(sameParentDifferentTimestamp), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(manager.GlobalWorldState.TryBeginScopeAtTarget(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
         secondScope!.Dispose();
 
@@ -142,7 +146,9 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
             .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(readerDisposed, Is.False);
 
         scope!.Dispose();
@@ -164,7 +170,9 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
             .Returns(_ => throw CreateStateUnavailableException());
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out _), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(local.ToString(), Is.EqualTo("Leases: 1"));
         overridable.Dispose();
     }
@@ -441,8 +449,11 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify written items shadow everything else
         Account? resultAccount = scope.Get(testAddress);
-        Assert.That(resultAccount!.Balance, Is.EqualTo(testAccount.Balance));
-        Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultAccount!.Balance, Is.EqualTo(testAccount.Balance));
+            Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        }
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
         storageTree.Get(slotIndex, out UInt256 slotRead248);
@@ -617,8 +628,11 @@ public class FlatWorldStateScopeProviderTests
         // Verify in snapshot
         Assert.That(ctx.LastCommittedSnapshot, Is.Not.Null);
         ctx.LastCommittedSnapshot!.TryGetAccount(testAddress, out Account? committedAccount);
-        Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
-        Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
+            Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
+        }
 
         ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out UInt256? committedSlot);
         Assert.That(committedSlot!.Value.ToMinimalBigEndian(), Is.EqualTo(slotValue));
@@ -1144,8 +1158,11 @@ public class FlatWorldStateScopeProviderTests
         (HashSet<string> nodesAtCommit, Hash256[] rootsAtCommit) = CommitStorageSlots(deferStorageTrieCommit: true, contractCount, clearInSecondBatch);
 
         Assert.That(nodesAtCommit, Is.Not.Empty);
-        Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
-        Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
+            Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+        }
     }
 
     [Test]
@@ -1472,8 +1489,11 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(2);
 
         // Verify scope Sees both
-        Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
-        Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(addr1), Is.EqualTo(acc1));
+            Assert.That(scope.Get(addr2), Is.EqualTo(acc2));
+        }
     }
 
     #endregion
@@ -1700,8 +1720,11 @@ public class FlatWorldStateScopeProviderTests
             disposeCompleted = true;
         });
 
-        Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
-        Assert.That(disposeCompleted, Is.False, "Dispose should still be blocking");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
+            Assert.That(disposeCompleted, Is.False, "Dispose should still be blocking");
+        }
 
         // Simulate the warmup completing — Dispose should now unblock.
         scope.DecrementOutstandingWarmups();
@@ -1892,8 +1915,11 @@ public class FlatWorldStateScopeProviderTests
         Task disposeTask = Task.Run(() => scope.Dispose());
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
-        Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.DisposedDuringActiveRead, Is.False, "Reader must not be disposed while a read is in flight");
+            Assert.That(reader.IsDisposed, Is.False, "In-flight warmup lease should keep the reader alive past scope dispose");
+        }
 
         reader.ResumeReads.Set();
 
@@ -1912,13 +1938,19 @@ public class FlatWorldStateScopeProviderTests
 
         storageTree.HintSet((UInt256)1);
 
-        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
-        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+            Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        }
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
         storageTree.HintSet((UInt256)1);
-        Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
-        Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
+            Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
+        }
 
         // An accepted push must have incremented the outstanding-warmup counter (and a dropped one must not):
         // after balancing accepted pushes, Dispose should not enter the wait loop.
@@ -2035,8 +2067,11 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
 
-        Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+        }
     }
 
     [Test]

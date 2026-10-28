@@ -55,8 +55,11 @@ public class FilePasswordProviderTests
         FilePasswordProvider passwordProvider = new(address => Path.Combine(TestDir, test.FileName));
 
         SecureString password = passwordProvider.GetPassword(Address.Zero);
-        Assert.That(password.IsReadOnly(), Is.True);
-        Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(password.IsReadOnly(), Is.True);
+            Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
+        }
     }
 
     [Test]
@@ -87,8 +90,11 @@ public class FilePasswordProviderTests
             .OrReadFromFile(Path.Combine(TestDir, _files[0].Name));
 
         SecureString password = passwordProvider.GetPassword(Address.Zero);
-        Assert.That(password.IsReadOnly(), Is.True);
-        Assert.That(password.Unsecure(), Is.EqualTo(_files[0].Content.Trim()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(password.IsReadOnly(), Is.True);
+            Assert.That(password.Unsecure(), Is.EqualTo(_files[0].Content.Trim()));
+        }
     }
 
     public static IEnumerable<FilePasswordProviderTest> PasswordProviderTestCases

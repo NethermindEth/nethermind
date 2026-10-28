@@ -373,7 +373,9 @@ public class BlobTxStorageTests
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
                 : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before reading the result; .Result has no timeout.
             Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "read completed while the save held the lock");
+#pragma warning restore NUnit2045
             Assert.That(read.Result, Is.True);
         }
         finally
@@ -519,8 +521,8 @@ public class BlobTxStorageTests
             SenderAddress = TestItem.AddressA,
             GasLimit = 1_000_000,
             GasPrice = 1,
+            MaxFee = 100_000_000,
             DecodedMaxFeePerGas = 100,
-            MaxFeePerBlobGas = 1,
             Frames =
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
@@ -665,10 +667,13 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
-        Assert.That(found, Is.EqualTo(2));
-        Assert.That(results[0], Is.Not.Null);
-        Assert.That(results[1], Is.Not.Null);
-        Assert.That(results[2], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(2));
+            Assert.That(results[0], Is.Not.Null);
+            Assert.That(results[1], Is.Not.Null);
+            Assert.That(results[2], Is.Null);
+        }
     }
 
     [Test]
@@ -702,8 +707,11 @@ public class BlobTxStorageTests
     {
         BlobTxStorage blobTxStorage = new();
 
-        Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
-        Assert.That(tx, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
+            Assert.That(tx, Is.Null);
+        }
     }
 
     [Test]
@@ -959,9 +967,12 @@ public class BlobTxStorageTests
         Transaction[] results = new Transaction[2];
         int found = blobTxStorage.TryGetMany(keys, 2, results);
 
-        Assert.That(found, Is.EqualTo(0));
-        Assert.That(results[0], Is.Null);
-        Assert.That(results[1], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(0));
+            Assert.That(results[0], Is.Null);
+            Assert.That(results[1], Is.Null);
+        }
     }
 
     /// <remarks>

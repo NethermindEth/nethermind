@@ -310,6 +310,11 @@ internal static unsafe class GuestWord
         words[3] = ZkEvmBitOperations.Swap(Unsafe.Add(ref end, -4), m8, m16);
     }
 
+    /// <summary><see cref="ZkEvmBitOperations.Swap"/> of one of a word's three upper limbs, which skips the swap when the limb is zero.</summary>
+    /// <remarks>Most words in memory are small, so their upper limbs are mostly zero; one branch costs less than the swap's thirteen instructions.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong SwapUpperLimb(ulong limb, ulong m8, ulong m16) => limb == 0 ? 0 : ZkEvmBitOperations.Swap(limb, m8, m16);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void LoadHalfAlignedBigEndian(ref ulong slot, uint* halves)
     {
@@ -329,11 +334,6 @@ internal static unsafe class GuestWord
         SplitHalves(halves, 4, ReverseUpperLimbHalves(Unsafe.Add(ref end, -3), m8, m16));
         SplitHalves(halves, 6, ReverseHalves(Unsafe.Add(ref end, -4), m8, m16));
     }
-
-    /// <summary><see cref="ZkEvmBitOperations.Swap"/> of one of a word's three upper limbs, which skips the swap when the limb is zero.</summary>
-    /// <remarks>Most words in memory are small, so their upper limbs are mostly zero; one branch costs less than the swap's thirteen instructions.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong SwapUpperLimb(ulong limb, ulong m8, ulong m16) => limb == 0 ? 0 : ZkEvmBitOperations.Swap(limb, m8, m16);
 
     /// <summary><see cref="ReverseHalves"/> of one of a word's three upper limbs, which skips the reversal when the limb is zero.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
