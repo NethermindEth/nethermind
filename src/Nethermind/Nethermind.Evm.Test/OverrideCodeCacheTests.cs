@@ -25,8 +25,11 @@ public class OverrideCodeCacheTests
         {
             OverrideCodeCache.Resolve(first, out ValueHash256 firstHash, out CodeInfo firstInfo);
             OverrideCodeCache.Resolve(second, out ValueHash256 secondHash, out CodeInfo secondInfo);
-            Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(first)));
-            Assert.That(secondHash, Is.EqualTo(firstHash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstHash, Is.EqualTo(ValueKeccak.Compute(first)));
+                Assert.That(secondHash, Is.EqualTo(firstHash));
+            }
             reused = ReferenceEquals(secondInfo, firstInfo);
         }
 
@@ -40,8 +43,11 @@ public class OverrideCodeCacheTests
         {
             byte[] code = [0x60, (byte)i, 0x60, (byte)(i >> 8), 0x01];
             OverrideCodeCache.Resolve(code, out ValueHash256 hash, out CodeInfo info);
-            Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(code)), $"code {i}");
-            Assert.That(info.CodeSpan.SequenceEqual(code), Is.True, $"code {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(code)), $"code {i}");
+                Assert.That(info.CodeSpan.SequenceEqual(code), Is.True, $"code {i}");
+            }
         }
     }
 
@@ -51,8 +57,11 @@ public class OverrideCodeCacheTests
         byte[] code = [0x60, 0x2a, 0x60, 0x00, 0x52, 0x5b, .. Guid.NewGuid().ToByteArray()];
         OverrideCodeCache.Resolve(code, out _, out CodeInfo info);
 
-        Assert.That(MemoryMarshal.TryGetArray(info.Code, out ArraySegment<byte> segment), Is.True);
-        Assert.That(segment.Array, Is.SameAs(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(MemoryMarshal.TryGetArray(info.Code, out ArraySegment<byte> segment), Is.True);
+            Assert.That(segment.Array, Is.SameAs(code));
+        }
     }
 
     [Test]
@@ -74,7 +83,10 @@ public class OverrideCodeCacheTests
     public void Empty_code_has_the_empty_hash()
     {
         OverrideCodeCache.Resolve([], out ValueHash256 hash, out CodeInfo info);
-        Assert.That(hash, Is.EqualTo(ValueKeccak.OfAnEmptyString));
-        Assert.That(info.IsEmpty, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hash, Is.EqualTo(ValueKeccak.OfAnEmptyString));
+            Assert.That(info.IsEmpty, Is.True);
+        }
     }
 }

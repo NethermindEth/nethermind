@@ -124,18 +124,24 @@ public partial class BlockDownloaderTests
             0,
             CancellationToken.None))!;
 
-        Assert.That(bodyRequest.BodiesRequests.Count, Is.EqualTo(1));
-        Assert.That(bodyRequest.BlockAccessListsRequests.Count, Is.EqualTo(0));
-        Assert.That(bodyRequest.ReceiptsRequests.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bodyRequest.BodiesRequests.Count, Is.EqualTo(1));
+            Assert.That(bodyRequest.BlockAccessListsRequests.Count, Is.EqualTo(0));
+            Assert.That(bodyRequest.ReceiptsRequests.Count, Is.EqualTo(0));
+        }
 
         using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Insert,
             0,
             CancellationToken.None))!;
 
-        Assert.That(blockAccessListRequest.BodiesRequests.Count, Is.EqualTo(0));
-        Assert.That(blockAccessListRequest.BlockAccessListsRequests.Count, Is.EqualTo(1));
-        Assert.That(blockAccessListRequest.ReceiptsRequests.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockAccessListRequest.BodiesRequests.Count, Is.EqualTo(0));
+            Assert.That(blockAccessListRequest.BlockAccessListsRequests.Count, Is.EqualTo(1));
+            Assert.That(blockAccessListRequest.ReceiptsRequests.Count, Is.EqualTo(0));
+        }
 
         BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Insert,
@@ -180,8 +186,11 @@ public partial class BlockDownloaderTests
             0,
             CancellationToken.None))!;
 
-        Assert.That(bodyRequest.BodiesRequests.Count, Is.EqualTo(1));
-        Assert.That(bodyRequest.BlockAccessListsRequests.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bodyRequest.BodiesRequests.Count, Is.EqualTo(1));
+            Assert.That(bodyRequest.BlockAccessListsRequests.Count, Is.EqualTo(0));
+        }
 
         BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Process,
@@ -214,9 +223,12 @@ public partial class BlockDownloaderTests
             0,
             CancellationToken.None);
 
-        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
-        Assert.That(noRequest, Is.Null);
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(noRequest, Is.Null);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(1));
+        }
     }
 
     [Test]

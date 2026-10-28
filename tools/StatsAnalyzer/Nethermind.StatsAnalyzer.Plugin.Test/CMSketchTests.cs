@@ -43,26 +43,35 @@ public class CmSketchTests
     public void test_error_single_bucket()
     {
         CmSketch sketch = _oneBucketOneHashFunction;
-        Assert.That(sketch.ErrorPerItem, Is.EqualTo(0d));
-        // error = 2 / buckets;
-        Assert.That(sketch.Error, Is.EqualTo(2d));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sketch.ErrorPerItem, Is.EqualTo(0d));
+            // error = 2 / buckets;
+            Assert.That(sketch.Error, Is.EqualTo(2d));
+        }
 
         sketch.Update(Ulong0);
         sketch.Update(Ulong1);
 
         // we have made two updates error per item should be 4
-        Assert.That(sketch.ErrorPerItem, Is.EqualTo(4d));
-        // querying an unseen item should give the total number of updates done;
-        Assert.That(sketch.Query(Ulong2), Is.EqualTo(2UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sketch.ErrorPerItem, Is.EqualTo(4d));
+            // querying an unseen item should give the total number of updates done;
+            Assert.That(sketch.Query(Ulong2), Is.EqualTo(2UL));
+        }
     }
 
     [Test]
     public void test_error_two_buckets()
     {
         CmSketch sketch = _twoBucketsSixHashFunctions;
-        Assert.That(sketch.ErrorPerItem, Is.EqualTo(0d));
-        // error = 2 / buckets;
-        Assert.That(sketch.Error, Is.EqualTo(1d));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sketch.ErrorPerItem, Is.EqualTo(0d));
+            // error = 2 / buckets;
+            Assert.That(sketch.Error, Is.EqualTo(1d));
+        }
 
         sketch.Update(Ulong0);
 
@@ -71,14 +80,17 @@ public class CmSketchTests
         sketch.Update(Ulong1);
 
         // we have made four updates error per item should be 4
-        Assert.That(sketch.ErrorPerItem, Is.EqualTo(4d));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sketch.ErrorPerItem, Is.EqualTo(4d));
 
-        Assert.That(sketch.Query(Ulong0), Is.InRange(1UL, 1UL + 4UL));
+            Assert.That(sketch.Query(Ulong0), Is.InRange(1UL, 1UL + 4UL));
 
-        Assert.That(sketch.Query(Ulong1), Is.InRange(3UL, 3UL + 4UL));
+            Assert.That(sketch.Query(Ulong1), Is.InRange(3UL, 3UL + 4UL));
 
-        // unseen item error
-        Assert.That(sketch.Query(Ulong2), Is.LessThanOrEqualTo(4UL));
+            // unseen item error
+            Assert.That(sketch.Query(Ulong2), Is.LessThanOrEqualTo(4UL));
+        }
     }
 
     [Test]
@@ -91,16 +103,19 @@ public class CmSketchTests
         make_n_updates(Ulong2, 59, sketch);
 
         // we have made 100 (1 + 40 + 59) updates, expected max error per item should be 100 * 0.01
-        Assert.That(sketch.ErrorPerItem, Is.LessThanOrEqualTo(1d));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sketch.ErrorPerItem, Is.LessThanOrEqualTo(1d));
 
-        Assert.That(sketch.Query(Ulong0), Is.InRange(1UL, 2UL));
+            Assert.That(sketch.Query(Ulong0), Is.InRange(1UL, 2UL));
 
-        Assert.That(sketch.Query(Ulong1), Is.InRange(40UL, 41UL));
+            Assert.That(sketch.Query(Ulong1), Is.InRange(40UL, 41UL));
 
-        Assert.That(sketch.Query(Ulong2), Is.InRange(59UL, 60UL));
+            Assert.That(sketch.Query(Ulong2), Is.InRange(59UL, 60UL));
 
-        // unseen item error
-        Assert.That(sketch.Query(Ulong3), Is.LessThanOrEqualTo(1UL));
+            // unseen item error
+            Assert.That(sketch.Query(Ulong3), Is.LessThanOrEqualTo(1UL));
+        }
     }
 
 
