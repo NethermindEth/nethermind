@@ -84,9 +84,9 @@ internal sealed class StreamingRuntime : IDisposable
             }
             finally { foreach (X509Certificate2? pin in pins) pin?.Dispose(); }
             NativeStreamingProfile? nativeProfile = null;
-            if (chainRules?.NativeFormat == NativeSystemTxFormat.ContractV4)
+            if (chainRules?.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6)
             {
-                NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(StreamingOptions.ReadFile(options.ChainConfigPath, 8 * 1024 * 1024), NativeSystemTxFormat.ContractV4);
+                NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(StreamingOptions.ReadFile(options.ChainConfigPath, 8 * 1024 * 1024), chainRules.NativeFormat);
                 NativeL1Rules l1Rules = NativeL1Rules.LoadEthereum(StreamingOptions.ReadFile(settings.L1ChainConfigPath!, 8 * 1024 * 1024));
                 nativeProfile = new NativeStreamingProfile(genesis, l1Rules);
                 if (genesis.Specs.ChainId != specs.ChainId || l1Rules.Specs.ChainId != settings.L1ChainId ||
@@ -111,7 +111,7 @@ internal sealed class StreamingRuntime : IDisposable
                     NativeOfflineProfile.Inputs network = nativeProfile.Offline;
                     RollupXValidationIdentity.Inputs input = new(pipeline.Context.RollupId, specs.ChainId,
                         rules.SystemAddress, rules.Eezl2Address, new Hash256(nativeProfile.Genesis.SourceDigest),
-                        new Hash256(NativeOfflineProfile.Compute(in network, nativeProfile.L1.RuleTimes)), settings.Registry!, settings.Manager!, 4);
+                        new Hash256(NativeOfflineProfile.Compute(in network, nativeProfile.L1.RuleTimes)), settings.Registry!, settings.Manager!, network.ValidationVersion);
                     ByteString validationIdentity = ByteString.CopyFrom(RollupXValidationIdentity.Compute(in input).Bytes);
                     native = new NativeProver(validationIdentity);
                 }

@@ -17,6 +17,7 @@ using Nethermind.Evm;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Eez.Attester;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
@@ -39,15 +40,23 @@ namespace Nethermind.Eez.Test.RollupX;
 public partial class RollupXGenesisTests
 {
     [Test]
-    public void FromGenesis_CurrentNativeProfile_SelectsCompleteV4Rules()
+    public void FromGenesis_CurrentNativeProfile_SelectsCompleteV6Rules()
     {
-        EezChainRules rules = EezChainRules.FromGenesisFile(StatelessFixtures.PathOf("rollupx/native-offline-v4", "l2-genesis.json"));
+        EezChainRules rules = EezChainRules.FromGenesisFile(StatelessFixtures.PathOf("rollupx/native-offline-v6", "l2-genesis.json"));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rules.NativeFormat, Is.EqualTo(NativeSystemTxFormat.ContractV4));
+            Assert.That(rules.NativeFormat, Is.EqualTo(NativeSystemTxFormat.ContractV6));
             Assert.That(rules.UsesNativeContract, Is.True);
             Assert.That(rules.FeeCollector, Is.Not.Null);
         }
+    }
+
+    [Test]
+    public void FromGenesis_PreviousNativeProfile_RequiresAnExplicitHistoricalLoader()
+    {
+        string path = StatelessFixtures.PathOf("rollupx/native-offline-v4", "l2-genesis.json");
+        Assert.That(() => EezChainRules.FromGenesisFile(path), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => ChainConfigLoader.LoadProfile(path), Throws.TypeOf<InvalidDataException>());
     }
 
     [Test]

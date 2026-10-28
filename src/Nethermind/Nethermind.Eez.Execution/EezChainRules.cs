@@ -69,7 +69,7 @@ public sealed class EezChainRules
         if (genesis.TryGetProperty("config", out JsonElement nativeConfig) &&
             nativeConfig.TryGetProperty("rollupX", out JsonElement nativeSection) && nativeSection.ValueKind == JsonValueKind.Object &&
             (nativeSection.TryGetProperty("historyUpdateOffset", out _) || nativeSection.TryGetProperty("feeCollector", out _)))
-            return NativeGenesisSnapshot.Load(JsonSerializer.SerializeToUtf8Bytes(genesis), NativeSystemTxFormat.ContractV4).Rules;
+            return NativeGenesisSnapshot.Load(JsonSerializer.SerializeToUtf8Bytes(genesis), NativeSystemTxFormat.ContractV6).Rules;
         RollupXSchedule? schedule = RollupXGenesis.Read(genesis);
         if (!genesis.TryGetProperty("config", out JsonElement config) || !config.TryGetProperty("feeCollector", out JsonElement collector))
         {

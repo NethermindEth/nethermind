@@ -41,7 +41,7 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         if (Rules.UsesNativeContract)
         {
             api.RegisterTxType<EezNativeContractTransactionForRpc>(EezTxType.CreateDecoder(Rules), EezTxType.CreateValidator(api.SpecProvider!.ChainId, Rules));
-            api.RegisterTxType<EezNativeHistoryTransactionForRpc>(new EezNativeHistoryTxDecoder(), EezTxType.CreateValidator(api.SpecProvider.ChainId, Rules));
+            api.RegisterTxType<EezNativeHistoryTransactionForRpc>(new EezNativeHistoryTxDecoder(Rules.NativeFormat), EezTxType.CreateValidator(api.SpecProvider.ChainId, Rules));
         }
         else if (Rules.UsesNativeSystemTransactions)
             api.RegisterTxType<EezNativeSystemTransactionForRpc>(EezTxType.CreateDecoder(Rules), EezTxType.CreateValidator(api.SpecProvider!.ChainId, Rules));

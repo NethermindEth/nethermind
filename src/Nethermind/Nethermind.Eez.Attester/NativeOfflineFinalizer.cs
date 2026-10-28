@@ -35,9 +35,9 @@ internal sealed class NativeOfflineFinalizer
     internal NativeOfflineFinalizer(NativeStreamingProfile profile, EezSettlementContext context,
         Address registry, Address manager, EezAttestationSigner signer, ILogManager logs)
     {
-        if (profile.Genesis.Rules.NativeFormat != NativeSystemTxFormat.ContractV4 ||
+        if (profile.Genesis.Rules.NativeFormat is not (NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6) ||
             profile.Genesis.Specs.ChainId != context.ChainId || registry == Address.Zero || manager == Address.Zero)
-            throw new ArgumentException("Offline finalization requires a matching native V4 deployment.");
+            throw new ArgumentException("Offline finalization requires a matching native offline deployment.");
         _profile = profile;
         _context = context;
         _registry = registry;

@@ -34,6 +34,7 @@ namespace Nethermind.Eez.Test;
 [NonParallelizable]
 [TestFixture(3)]
 [TestFixture(4)]
+[TestFixture(6)]
 public sealed class NativeStreamingSessionTests(int version)
 {
     private string Capture => $"rollupx/native-offline-v{version}";
@@ -50,8 +51,9 @@ public sealed class NativeStreamingSessionTests(int version)
         _profile = new NativeStreamingProfile(genesis, l1);
         _executor = new StreamingBlockExecutor(_profile, LimboLogs.Instance);
         byte[] request = File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "request.v2.protobuf"));
-        Assert.That(ValueKeccak.Compute(request), Is.EqualTo(new ValueHash256(version == 4
-            ? "0x4fe2bd2df0167990164d7004a44e141768ecd70595db718dade3e18c054ff715"
+        Assert.That(ValueKeccak.Compute(request), Is.EqualTo(new ValueHash256(version == 6
+            ? "0xb2e42e07bef03c231f66973cd43afad57f3c5720d6ce7eb9e391a0e391dd3278"
+            : version == 4 ? "0x4fe2bd2df0167990164d7004a44e141768ecd70595db718dade3e18c054ff715"
             : "0xaefdb086b271c4be7f8c09155236994a2f71cd797e9d7232373f415fdae93459")));
         using MemoryStream stream = new(request, writable: false);
         while (stream.Position < stream.Length)
@@ -65,7 +67,11 @@ public sealed class NativeStreamingSessionTests(int version)
     }
 
     [OneTimeTearDown]
-    public void RestoreRecordedDecoder() => TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+    public void RestoreRecordedDecoder()
+    {
+        TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder());
+    }
 
     [Test]
     public async Task InitializeExecution_FreshDecoder_RegistersTheCapturedNativeHistoryEnvelope()
@@ -135,7 +141,7 @@ public sealed class NativeStreamingSessionTests(int version)
         request.SessionId = previous.SessionId;
         request.Epoch = previous.Epoch;
         StreamingDispatch dispatched = connection.Dispatch(request);
-        Assert.That(dispatched.Operation, Is.Not.Null, "the configured V4 route must reach the real finalizer");
+        Assert.That(dispatched.Operation, Is.Not.Null, "the configured native route must reach the real finalizer");
         SessionOperation operation = dispatched.Operation!;
         try
         {
@@ -385,15 +391,17 @@ public sealed class NativeStreamingSessionTests(int version)
     }
 
     [Test]
-    public void Field5Quota_Rejects48AndAcceptsThe49ItemCapturedWitness([Values(48L, 49L)] long maxItems)
+    public void Field5Quota_RejectsOneBelowTheCapturedWitness([Values] bool completeQuota)
     {
+        long items = version == 6 ? 38 : 49;
+        long maxItems = completeQuota ? items : items - 1;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Items(_blocks[0]), Is.EqualTo(49));
+            Assert.That(Items(_blocks[0]), Is.EqualTo(items));
             Assert.That(_blocks[0].Witness.L1HeadersRlp, Has.Count.EqualTo(1));
         }
         StreamingSession session = Session(new StreamingSessionLimits(64, 4 * 1024 * 1024, maxItems));
-        if (maxItems == 48) AssertCode(() => Admit(session, _blocks[0]), StatusCode.ResourceExhausted);
+        if (!completeQuota) AssertCode(() => Admit(session, _blocks[0]), StatusCode.ResourceExhausted);
         else Assert.That(Append(session, _blocks[0]).Validated.Hash, Is.EqualTo(_blocks[0].Hash));
     }
 
@@ -480,8 +488,9 @@ public sealed class NativeStreamingSessionTests(int version)
         Assert.That(Append(session, _blocks[0]).Validated.Hash, Is.EqualTo(_blocks[0].Hash));
         NativeL1Rules l1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(StatelessFixtures.PathOf(Capture, "l1-genesis.json")));
         Assert.That(l1.Profile(_profile.Genesis).HistoryCodeHash,
-            Is.EqualTo(new ValueHash256(version == 4
-                ? "0xbe389fdaa7ed5833a65c0ceffacb8e04e727127f8faf6e240611272d566b6676"
+            Is.EqualTo(new ValueHash256(version == 6
+                ? "0x3725e8abaa83c431d55a24c39d4327791423019e9c8a2702cc68e6201105baf7"
+                : version == 4 ? "0xbe389fdaa7ed5833a65c0ceffacb8e04e727127f8faf6e240611272d566b6676"
                 : "0xef41c0d934734d41e8eed6c11a19015ea84cd5cce35e52f5fdd5e5fe30d8dac9")), "the profile commits to the unchanged current upstream runtime");
     }
 

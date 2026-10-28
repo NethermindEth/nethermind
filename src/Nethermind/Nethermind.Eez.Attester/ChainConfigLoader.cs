@@ -28,7 +28,7 @@ internal static class ChainConfigLoader
         if (document["config"]?["rollupX"] is JsonObject rollup &&
             (rollup.ContainsKey("feeCollector") || rollup.ContainsKey("historyUpdateOffset")))
         {
-            NativeGenesisSnapshot native = NativeGenesisSnapshot.Load(File.ReadAllBytes(path), NativeSystemTxFormat.ContractV4);
+            NativeGenesisSnapshot native = NativeGenesisSnapshot.Load(File.ReadAllBytes(path), NativeSystemTxFormat.ContractV6);
             return (native.Specs, native.Rules);
         }
         EezChainRules rules = EezChainRules.FromGenesis(JsonSerializer.SerializeToElement(document));

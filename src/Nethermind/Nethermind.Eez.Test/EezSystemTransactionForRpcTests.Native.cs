@@ -89,6 +89,29 @@ public partial class EezSystemTransactionForRpcTests
     }
 
     [Test]
+    public void Serialize_ExplicitHistory_PreservesSparseNumbersAndHashes()
+    {
+        NativeHistoryTransaction transaction = new(NativeHistoryEnvelope.CreateBlocks(901,
+            [new(1, TestItem.KeccakA.ValueHash256), new(32, TestItem.KeccakB.ValueHash256)]));
+        EezNativeHistoryTransactionForRpc rpc = new(transaction, new TransactionForRpcContext(901));
+        using JsonDocument json = JsonDocument.Parse(new EthereumJsonSerializer().Serialize<TransactionForRpc>(rpc));
+        JsonElement root = json.RootElement;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.GetProperty("type").GetString(), Is.EqualTo("0x46"));
+            Assert.That(root.GetProperty("version").GetString(), Is.EqualTo("0x1"));
+            Assert.That(root.GetProperty("blocks")[0].GetProperty("number").GetString(), Is.EqualTo("0x1"));
+            Assert.That(root.GetProperty("blocks")[0].GetProperty("blockHash").GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
+            Assert.That(root.GetProperty("blocks")[1].GetProperty("number").GetString(), Is.EqualTo("0x20"));
+            Assert.That(root.GetProperty("blocks")[1].GetProperty("blockHash").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+            Assert.That(root.TryGetProperty("hashes", out _), Is.False);
+            Assert.That(root.TryGetProperty("sourceHash", out _), Is.False);
+            Assert.That(root.GetProperty("input").GetString(), Is.EqualTo("0x"));
+            Assert.That(rpc.ToTransaction().IsError, Is.True);
+        }
+    }
+
+    [Test]
     public void ToTransaction_NativeRpcType_RefusesSubmissionAndSimulation([Values] bool validateUserInput)
     {
         EezNativeSystemTransactionForRpc rpc = new()

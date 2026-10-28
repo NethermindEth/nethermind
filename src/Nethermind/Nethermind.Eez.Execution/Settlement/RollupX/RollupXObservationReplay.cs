@@ -51,9 +51,10 @@ internal sealed class RollupXObservationReplay
         Hash256[] pins = new Hash256[claims.Count];
         for (int i = 0; i < pins.Length; i++) pins[i] = claims[i].Pin;
         int[] positions = plan.ObservationPositions(pins, validated.Checkpoints, validated.Hash, block.Transactions.Length);
-        Scheduler scheduler = new(_specs, _rules, _logs, claims, positions, validated.Checkpoints, cancellationToken);
+        NativeCheckpointProjection? projection = _rules.FinalizesProtocolBalances ? new(_rules.ProtocolBalanceAccounts, _logs) : null;
+        Scheduler scheduler = new(_specs, _rules, _logs, claims, positions, validated.Checkpoints, projection, cancellationToken);
         _executor.AssignSenders(block);
-        StatelessBlockProcessingEnv environment = _executor.CreateEnvironment(input.Witness, scheduler, scheduler, scheduler.Wrap);
+        StatelessBlockProcessingEnv environment = _executor.CreateEnvironment(input.Witness, scheduler, scheduler, scheduler.Wrap, projection);
         StatelessBlockProcessingResult result = environment.Process(block);
         cancellationToken.ThrowIfCancellationRequested();
         if (!result.IsValid || result.ProcessedBlock!.Hash != validated.Hash
@@ -64,6 +65,7 @@ internal sealed class RollupXObservationReplay
 
     private sealed class Scheduler(ISpecProvider specs, EezChainRules rules, ILogManager logs,
         IReadOnlyList<RollupXObservationClaim> claims, int[] positions, EezTransactionCheckpoint[] checkpoints,
+        NativeCheckpointProjection? projection,
         CancellationToken cancellationToken)
         : ITransactionProcessorFactory, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
     {
@@ -98,8 +100,10 @@ internal sealed class RollupXObservationReplay
             if (_next == positions.Length || positions[_next] != position) return;
             _state.Commit(specs.GetSpec(header), commitRoots: true);
             _state.RecalculateStateRoot();
+            Hash256 rawRoot = _state.StateRoot;
             Hash256 expectedRoot = PrefixRoot(position);
-            if (_state.StateRoot != expectedRoot) throw new EezSettlementException("Observation state differs from its validated transaction prefix.");
+            Hash256 checkpointRoot = projection?.Project(_state, specs.GetSpec(header)) ?? rawRoot;
+            if (checkpointRoot != expectedRoot) throw new EezSettlementException("Observation state differs from its validated transaction prefix.");
             while (_next < positions.Length && positions[_next] == position)
             {
                 RollupXObservationClaim claim = claims[_next];
@@ -107,7 +111,7 @@ internal sealed class RollupXObservationReplay
                 _next++;
             }
             _state.RecalculateStateRoot();
-            if (_state.StateRoot != expectedRoot) throw new EezSettlementException("Observation replay changed its transaction prefix state.");
+            if (_state.StateRoot != rawRoot) throw new EezSettlementException("Observation replay changed its transaction prefix state.");
         }
 
         private Hash256 PrefixRoot(int position)

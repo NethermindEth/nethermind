@@ -92,17 +92,17 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         EezSettlementContext context = new(identity.RootElement.GetProperty("rollup_id").GetUInt64(), specs.ChainId,
             new Address(identity.RootElement.GetProperty("proof_system").GetString()!),
             new ValueHash256(identity.RootElement.GetProperty("vkey").GetString()!), rules.Schedule!.BlockIntervalSeconds);
-        bool offline = rules.NativeFormat == NativeSystemTxFormat.ContractV4;
+        bool offline = rules.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6;
         if (offline)
         {
             if (reorgBeforeSigning || registryRoot is not null) throw new ArgumentException("canonical RPC controls require the historical profile");
             _nativeDecoder = true;
             await Program.InitializeExecution(rules, TxDecoder.Instance);
-            NativeGenesisSnapshot nativeGenesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), NativeSystemTxFormat.ContractV4);
+            NativeGenesisSnapshot nativeGenesis = NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), rules.NativeFormat);
             NativeL1Rules nativeL1 = NativeL1Rules.LoadEthereum(File.ReadAllBytes(Path.Combine(_directory.Path, "l1.json")));
             NativeOfflineProfile.Inputs network = nativeL1.Profile(nativeGenesis);
             byte[] preimage = Rlp.Encode(
-                Rlp.Encode("eez.validation-identity"u8), Rlp.Encode(4UL), Rlp.Encode(context.RollupId), Rlp.Encode(specs.ChainId),
+                Rlp.Encode("eez.validation-identity"u8), Rlp.Encode(network.ValidationVersion), Rlp.Encode(context.RollupId), Rlp.Encode(specs.ChainId),
                 Rlp.Encode(new Address(identity.RootElement.GetProperty("l2_system_address").GetString()!).Bytes),
                 Rlp.Encode(EezConstants.RollupXEezl2Address.Bytes), Rlp.Encode(nativeGenesis.SourceDigest.Bytes),
                 Rlp.Encode(NativeOfflineProfile.Compute(in network, nativeL1.RuleTimes).Bytes),
@@ -141,7 +141,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             registry = offline ? identity.RootElement.GetProperty("registry_address").GetString() : TestItem.AddressA.ToString(),
             manager = offline ? identity.RootElement.GetProperty("rollup_manager_address").GetString() : TestItem.AddressB.ToString(),
             l1ChainConfigPath = "l1.json",
-            l2GenesisHash = offline ? NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), NativeSystemTxFormat.ContractV4).GenesisHash.ToString() : authority!.Genesis.ToString(),
+            l2GenesisHash = offline ? NativeGenesisSnapshot.Load(File.ReadAllBytes(chainPath), rules.NativeFormat).GenesisHash.ToString() : authority!.Genesis.ToString(),
             serverCertificate = "server.pfx",
             serverPasswordFile = "password",
             composerCertificates = new[] { "composer.cer" },
@@ -208,7 +208,11 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         finally
         {
             _runtime?.Dispose();
-            if (_nativeDecoder) TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+            if (_nativeDecoder)
+            {
+                TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder());
+                TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder());
+            }
             if (_rpc is not null) await _rpc.DisposeAsync();
             _certificate.Dispose();
             _client.Dispose();

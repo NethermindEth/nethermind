@@ -136,7 +136,7 @@ public static class Program
     internal static async Task InitializeExecution(EezChainRules rules, TxDecoder<Transaction> decoder)
     {
         decoder.RegisterDecoder(EezTxType.CreateDecoder(rules));
-        if (rules.UsesNativeContract) decoder.RegisterDecoder(new EezNativeHistoryTxDecoder());
+        if (rules.UsesNativeContract) decoder.RegisterDecoder(new EezNativeHistoryTxDecoder(rules.NativeFormat));
         if (rules.IsRollupX) await KzgPolynomialCommitments.InitializeAsync();
     }
 

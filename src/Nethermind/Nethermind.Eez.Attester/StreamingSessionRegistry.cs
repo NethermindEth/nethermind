@@ -25,7 +25,7 @@ internal sealed class StreamingSessionRegistry : IDisposable
     private long _reservedBytes;
     private bool _disposed;
     internal StreamingProtocolRules Rules { get; }
-    internal bool SupportsOfflineSettlement => _nativeProfile?.Genesis.Rules.NativeFormat == NativeSystemTxFormat.ContractV4;
+    internal bool SupportsOfflineSettlement => _nativeProfile?.Genesis.Rules.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6;
 
     internal StreamingSessionRegistry(StreamingRegistryLimits limits, StreamingSessionLimits sessionLimits, TimeProvider time,
         StreamingSettlementProfile profile = StreamingSettlementProfile.Rollup0Calldata, NativeStreamingProfile? nativeProfile = null)
