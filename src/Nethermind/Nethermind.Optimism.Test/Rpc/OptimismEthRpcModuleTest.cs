@@ -291,7 +291,7 @@ public class OptimismEthRpcModuleTest
         Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
         Transaction sent = TxDecoder.Instance.DecodeCompleteNotNull(forwarded, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
         BlockHeader head = rpcBlockchain.BlockTree.Head!.Header;
-        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
+        UInt256 nextBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(sent.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");

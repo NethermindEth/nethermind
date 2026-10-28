@@ -9,7 +9,10 @@ using Nethermind.TxPool;
 namespace Nethermind.Consensus.Transactions
 {
     /// <summary>Filtering transactions that have lower MaxFeePerGas than BaseFee</summary>
-    public class BaseFeeTxFilter : ITxFilter
+    /// <param name="slots">
+    /// Places the next block for the EIP-8198 base fee, in the slot after the parent's; without it a 12 s slot is assumed.
+    /// </param>
+    public class BaseFeeTxFilter(SlotSchedule? slots = null) : ITxFilter
     {
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {
@@ -20,7 +23,7 @@ namespace Nethermind.Consensus.Transactions
                 return AcceptTxResult.Accepted;
             }
 
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, spec);
+            UInt256 baseFee = BaseFeeCalculator.CalculateForNextSlot(parentHeader, slots, spec);
             bool allowed = tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted

@@ -278,7 +278,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         // Base fee could have been overridden.
         if (validate)
         {
-            result.BaseFeePerGas = spec.BaseFeeCalculator.Calculate(parent, spec);
+            result.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, block.BlockOverrides?.Time ?? result.Timestamp, result.SlotNumber, spec);
         }
         else
         {

@@ -96,8 +96,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .AddSingleton<IChainHeadSpecProvider, ChainHeadSpecProvider>()
             .AddSingleton<IBlockBuildingTracker, BlockBuildingTracker>()
-            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader, IBlockBuildingTracker>(
-                (specProvider, blockTree, stateReader, blockBuildingTracker) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader, blockBuildingTracker))
+            .AddSingleton<IChainHeadInfoProvider, IChainHeadSpecProvider, IBlockTree, IStateReader, IBlockBuildingTracker, IBlocksConfig>(
+                (specProvider, blockTree, stateReader, blockBuildingTracker, blocksConfig) => new ChainHeadInfoProvider(specProvider, blockTree, stateReader, blockBuildingTracker, blocksConfig))
             .Add<IDisposableStack, AutofacDisposableStack>() // Not a singleton so that dispose is registered to correct lifetime
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()

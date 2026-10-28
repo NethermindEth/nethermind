@@ -161,12 +161,19 @@ public partial class EthRpcModule(
             return ResultWrapper<UInt256?>.Success(null);
         }
 
-        return ResultWrapper<UInt256?>.Success(BaseFeeCalculator.Calculate(head, specFor1559));
+        return ResultWrapper<UInt256?>.Success(GetNextBlockBaseFee(head, specFor1559));
     }
+
+    private ulong GetNextSlotTimestamp(BlockHeader head) =>
+        (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(head.Timestamp);
 
     /// <summary>The spec of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
     private IReleaseSpec GetNextBlockSpec(BlockHeader head) =>
-        _specProvider.GetSpec(head.Number + 1, (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(head.Timestamp));
+        _specProvider.GetSpec(head.Number + 1, GetNextSlotTimestamp(head));
+
+    /// <summary>The base fee of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
+    private UInt256 GetNextBlockBaseFee(BlockHeader head, IEip1559Spec spec) =>
+        BaseFeeCalculator.CalculateForNextSlot(head, GetNextSlotTimestamp(head), spec);
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
@@ -597,7 +604,7 @@ public partial class EthRpcModule(
             MaxPriorityFeePerGas = rpcTx is EIP1559TransactionForRpc { GasPrice: null, MaxPriorityFeePerGas: null }
                 ? _gasPriceOracle.GetMaxPriorityGasFeeEstimate()
                 : default,
-            BaseFee = BaseFeeCalculator.Calculate(head, GetNextBlockSpec(head)),
+            BaseFee = GetNextBlockBaseFee(head, GetNextBlockSpec(head)),
             BlobBaseFee = blobBaseFee,
             Spec = spec,
         };

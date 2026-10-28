@@ -619,7 +619,7 @@ public class XdcTestBlockchain : TestBlockchain
 
             if (headReleaseSpec.IsEip1559Enabled && headReleaseSpec.Eip1559TransitionBlock <= head.Number)
             {
-                UInt256 nextFee = headReleaseSpec.BaseFeeCalculator.Calculate(head.Header, headReleaseSpec);
+                UInt256 nextFee = BaseFeeCalculator.CalculateForReferenceSlot(head.Header, headReleaseSpec);
                 txBuilder = txBuilder
                     .WithType(TxType.EIP1559)
                     .WithMaxFeePerGasIfSupports1559(nextFee * 2);

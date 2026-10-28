@@ -214,7 +214,7 @@ public class TestingRpcModule(
         header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
         header.IsPostMerge = true;
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, header, spec);
 
         if (spec.IsEip4844Enabled)
         {

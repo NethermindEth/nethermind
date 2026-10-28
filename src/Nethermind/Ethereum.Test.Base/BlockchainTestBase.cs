@@ -719,6 +719,7 @@ public abstract class BlockchainTestBase
         ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
         ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "DepositsInvalid: Invalid deposit event layout:"),
         ("BlockException.INVALID_BASEFEE_PER_GAS", "InvalidBaseFeePerGas: Does not match calculated"),
+        ("BlockException.INVALID_SLOT_NUMBER", "SlotNumberNotAfterParent:"),
         ("BlockException.INVALID_BLOCK_TIMESTAMP_OLDER_THAN_PARENT", "InvalidTimestamp: Timestamp in header cannot be lower than ancestor"),
         ("BlockException.INVALID_BLOCK_NUMBER", "InvalidBlockNumber: Block number does not match the parent"),
         ("BlockException.EXTRA_DATA_TOO_BIG", "InvalidExtraData: Extra data in header is not valid"),

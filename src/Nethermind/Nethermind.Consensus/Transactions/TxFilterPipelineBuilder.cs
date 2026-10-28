@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
@@ -11,9 +12,10 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly TxFilterPipeline _filterPipeline = new(logManager);
 
-        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager, IBlocksConfig blocksConfig) => new TxFilterPipelineBuilder(logManager)
-                .WithMinGasPriceFilter(blocksConfig)
-                .WithBaseFeeFilter()
+        /// <param name="slots">Places the next block for the EIP-8198 base fee; see <see cref="BaseFeeTxFilter"/>.</param>
+        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager, IBlocksConfig blocksConfig, SlotSchedule? slots = null) => new TxFilterPipelineBuilder(logManager)
+                .WithMinGasPriceFilter(blocksConfig, slots)
+                .WithBaseFeeFilter(slots)
                 .WithHeadTxFilter()
                 .Build;
 
@@ -23,15 +25,15 @@ namespace Nethermind.Consensus.Transactions
             return this;
         }
 
-        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig)
+        public TxFilterPipelineBuilder WithMinGasPriceFilter(IBlocksConfig blocksConfig, SlotSchedule? slots = null)
         {
-            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig) { IncludeRejectionMessage = false });
+            _filterPipeline.AddTxFilter(new MinGasPriceTxFilter(blocksConfig, slots) { IncludeRejectionMessage = false });
             return this;
         }
 
-        public TxFilterPipelineBuilder WithBaseFeeFilter()
+        public TxFilterPipelineBuilder WithBaseFeeFilter(SlotSchedule? slots = null)
         {
-            _filterPipeline.AddTxFilter(new BaseFeeTxFilter());
+            _filterPipeline.AddTxFilter(new BaseFeeTxFilter(slots));
             return this;
         }
 

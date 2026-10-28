@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -33,12 +34,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ulong _secondsPerSlot;
+        private SlotSchedule? _slots;
 
-        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null)
+        public FeeHistoryOracle(IBlockTree blockTree, IReceiptStorage receiptStorage, ISpecProvider specProvider, ulong? maxDistanceFromHead = null, IBlocksConfig? blocksConfig = null)
         {
             _blockTree = blockTree;
             _receiptStorage = receiptStorage;
             _specProvider = specProvider;
+            _secondsPerSlot = blocksConfig?.SecondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
             _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 4;
             blockTree.BlockAddedToMain += OnBlockAddedToMain;
         }
@@ -140,7 +144,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
-                    BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpec(b.Number + 1, b.Timestamp)),
+                    BaseFeeCalculator.CalculateForNextSlot(
+                        b.Header,
+                        (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(b.Timestamp),
+                        _specProvider.GetSpec(b.Number + 1, b.Timestamp)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     nextFeePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
@@ -248,7 +255,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         /// the child exists, otherwise the estimate.
         /// </summary>
         /// <remarks>
-        /// The estimate picks the next block's spec from the block's own timestamp, so at a timestamp fork it is one block off.
+        /// The estimate picks the next block's spec from the block's own timestamp, so at a timestamp fork it is one block off,
+        /// and under EIP-8198 assumes the next block lands in the next slot.
         /// </remarks>
         private UInt256 GetNextBaseFee(in BlockFeeHistorySearchInfo info)
         {

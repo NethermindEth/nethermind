@@ -54,6 +54,13 @@ public class EngineRpcErrorTests
         Assert.That(() => JsonToEthereumTest.ParseErrorCode(_serializer.Deserialize<TestEngineNewPayloadsJson>("""{"errorCode": "not-a-code"}""")),
             Throws.TypeOf<FormatException>());
 
+    [TestCase("SlotNumberNotAfterParent: Slot number 1 must be greater than the parent's 1.", true)]
+    [TestCase("SlotNumberNotAfterParent: Slot number 0 must be greater than the parent's 1.", true)]
+    [TestCase("InvalidTimestamp: Timestamp in header cannot be lower than ancestor", false)]
+    public void Slot_number_validation_maps_to_its_fixture_error(string validationError, bool expected) =>
+        Assert.That(BlockchainTestBase.MapValidationErrorsToEestExceptions(validationError),
+            expected ? Does.Contain("BlockException.INVALID_SLOT_NUMBER") : Does.Not.Contain("BlockException.INVALID_SLOT_NUMBER"));
+
     [TestCase("020000000000000021", "TransactionException.INVALID_CHAINID")]
     [TestCase("020000000000000022", "TransactionException.INVALID_CHAINID")]
     [TestCase("020000000000000024", "TransactionException.INVALID_SIGNATURE_VRS")]

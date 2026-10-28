@@ -6,9 +6,10 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -23,7 +24,7 @@ internal class XdcTxPoolTxSourceFactory(
     public virtual ITxSource Create()
     {
         ITxFilterPipeline txSourceFilterPipeline = new XdcTxFilterPipeline(
-            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig));
+            TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig, specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot)));
         return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder), logManager, txSourceFilterPipeline, blocksConfig, specChangeTxValidator);
     }
 }

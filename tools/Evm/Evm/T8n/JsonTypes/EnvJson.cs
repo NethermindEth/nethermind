@@ -28,6 +28,8 @@ public class EnvJson(Address currentCoinbase, ulong currentGasLimit, ulong curre
     public ulong? ParentExcessBlobGas { get; set; }
     public ulong? CurrentExcessBlobGas { get; set; }
     public ulong? ParentBlobGasUsed { get; set; }
+    public ulong? SlotNumber { get; set; }
+    public ulong? ParentSlotNumber { get; set; }
 
     public Dictionary<string, Hash256>? BlockHashes { get; set; }
     public Ommer[] Ommers { get; set; } = [];

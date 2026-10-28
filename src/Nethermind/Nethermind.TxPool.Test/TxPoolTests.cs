@@ -5389,7 +5389,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxWidthEnabled = true }, KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
-            UInt256 nextBaseFee = BaseFeeCalculator.Calculate(_blockTree.Head.Header, KeyedNonceSpecProvider().GenesisSpec);
+            UInt256 nextBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(_blockTree.Head.Header, KeyedNonceSpecProvider().GenesisSpec);
 
             Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1], feePerGas: 2.GWei);
             Transaction belowNextBaseFee = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2], feePerGas: nextBaseFee - 1);

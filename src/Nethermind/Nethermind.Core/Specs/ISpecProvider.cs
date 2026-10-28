@@ -58,8 +58,8 @@ namespace Nethermind.Core.Specs
         /// (<c>SLOT_DURATION_MS_EIP8198</c>); <c>null</c> keeps the configured <c>Blocks.SecondsPerSlot</c>.
         /// </summary>
         /// <remarks>
-        /// Chain-level timing: the execution layer only uses it to place slots, never to validate blocks, so the EIP-8198 base fee
-        /// fraction stays 5/48 whatever it is. See <see cref="DerivedSpecValues.SlotDurationMs"/>.
+        /// Chain-level timing: the execution layer only uses it to place slots, never to validate blocks; the EIP-8198 base fee
+        /// rule reads the slot duration from block spacing. See <see cref="DerivedSpecValues.SlotDurationMs"/>.
         /// </remarks>
         ulong? Eip8198SlotDurationMs { get; }
 

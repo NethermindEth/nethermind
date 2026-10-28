@@ -12,12 +12,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>EIP-8198 lowers the maximum per-block base fee change from 1/8 to 5/48.</summary>
+/// <summary>
+/// EIP-8198 derives the maximum per-block base fee change from the spacing of a block and its parent:
+/// <c>seconds_elapsed / (8 × 12 × slots_elapsed)</c>, capped at the EIP-1559 maximum change.
+/// </summary>
 [TestFixture]
 public class Eip8198BaseFeeTests
 {
     private const ulong BlockGasLimit = 30_000_000;
     private const ulong GasTarget = BlockGasLimit / 2;
+    private const ulong ParentTimestamp = 1_000_000;
+    private const ulong ParentSlot = 1_000;
 
     private static readonly IReleaseSpec Enabled = Bogota.Instance;
     private static readonly IReleaseSpec Disabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = false };
@@ -27,135 +32,209 @@ public class Eip8198BaseFeeTests
     private static readonly ulong[] GasUsedCases =
         [0, GasTarget - 1, GasTarget, GasTarget + 1, BlockGasLimit, 100_000, BlockGasLimit - 100_000];
 
-    // Vectors from execution-specs test_base_fee_per_gas_calculator_bogota.
+    // Vectors from execution-specs#3873 test_base_fee_per_gas_calculator_bogota, ten-second slots with and without missed slots.
     [TestCase(1_000_000_000UL, 30_000_000UL, 1_104_166_666UL, TestName = "Full block")]
     [TestCase(1_000_000_000UL, 0UL, 895_833_334UL, TestName = "Empty block")]
     [TestCase(9UL, 30_000_000UL, 10UL, TestName = "One wei increase floor")]
     [TestCase(9UL, 0UL, 9UL, TestName = "Decrease truncated to zero")]
     [TestCase(20UL, 29_900_000UL, 21UL, TestName = "Near full")]
     [TestCase(20UL, 100_000UL, 19UL, TestName = "Near empty")]
-    public void Matches_execution_specs_vectors(ulong parentBaseFee, ulong parentGasUsed, ulong expected) =>
-        Assert.That(Calculate(Enabled, parentBaseFee, parentGasUsed), Is.EqualTo((UInt256)expected));
-
-    [TestCaseSource(nameof(Matrix))]
-    public void Enabled_follows_five_forty_eighths_rule(ulong parentBaseFee, ulong parentGasUsed) =>
-        Assert.That(Calculate(Enabled, parentBaseFee, parentGasUsed), Is.EqualTo(Reference(parentBaseFee, parentGasUsed, 5, 48)));
-
-    [TestCaseSource(nameof(Matrix))]
-    public void Earlier_forks_keep_one_eighth_rule(ulong parentBaseFee, ulong parentGasUsed)
+    public void Matches_execution_specs_vectors(ulong parentBaseFee, ulong parentGasUsed, ulong expected)
     {
-        UInt256 expected = Reference(parentBaseFee, parentGasUsed, 1, 8);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Calculate(Disabled, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
-            Assert.That(Calculate(Amsterdam.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
-            Assert.That(Calculate(London.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
+            Assert.That(Calculate(Enabled, parentBaseFee, parentGasUsed, 10, 1), Is.EqualTo((UInt256)expected), "10s");
+            Assert.That(Calculate(Enabled, parentBaseFee, parentGasUsed, 20, 2), Is.EqualTo((UInt256)expected), "10s_missed_slot");
+            Assert.That(Calculate(Enabled, parentBaseFee, parentGasUsed, 50, 5), Is.EqualTo((UInt256)expected), "10s_four_missed_slots");
         }
     }
 
-    [Test]
-    public void Bogota_sets_five_forty_eighths_and_earlier_forks_one_eighth()
+    // seconds_elapsed / 96 per slot, which is exact for these slot durations.
+    [TestCase(12UL, 1, 8, TestName = "12s slots give 1/8")]
+    [TestCase(10UL, 5, 48, TestName = "10s slots give 5/48")]
+    [TestCase(8UL, 1, 12, TestName = "8s slots give 1/12")]
+    [TestCase(6UL, 1, 16, TestName = "6s slots give 1/16")]
+    public void Slot_duration_sets_the_maximum_change(ulong slotSeconds, int numerator, int denominator)
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Enabled.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
-            Assert.That(Enabled.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
-            Assert.That(Amsterdam.Instance.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
-            Assert.That(Amsterdam.Instance.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
-        }
-    }
-
-    [Test]
-    public void Flag_alone_gives_five_forty_eighths_on_an_earlier_fork()
-    {
-        IReleaseSpec flagOnly = new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true };
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(flagOnly.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
-            Assert.That(flagOnly.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
-            Assert.That(Calculate(flagOnly, 1_000_000_000, BlockGasLimit), Is.EqualTo((UInt256)1_104_166_666));
-        }
-    }
-
-    [TestCase(1UL, 50UL)]
-    [TestCase(5UL, 50UL)]
-    [TestCase(1UL, 250UL)]
-    public void Calculator_applies_the_spec_fraction(ulong numerator, ulong denominator)
-    {
-        IEip1559Spec spec = new OverridableEip1559Spec(London.Instance)
-        {
-            BaseFeeMaxChangeNumerator = numerator,
-            BaseFeeMaxChangeDenominator = denominator
-        };
-
-        using (Assert.EnterMultipleScope())
-        {
-            foreach (ulong gasUsed in GasUsedCases)
+            foreach ((ulong baseFee, ulong gasUsed) in Matrix())
             {
-                Assert.That(Calculate(spec, 1_000_000_007, gasUsed), Is.EqualTo(Reference(1_000_000_007, gasUsed, (int)numerator, (int)denominator)));
+                UInt256 expected = Reference(baseFee, gasUsed, numerator, denominator);
+                Assert.That(Calculate(Enabled, baseFee, gasUsed, slotSeconds, 1), Is.EqualTo(expected), $"{baseFee} {gasUsed}");
+                Assert.That(Calculate(Enabled, baseFee, gasUsed, slotSeconds * 3, 3), Is.EqualTo(expected), $"{baseFee} {gasUsed}, two missed slots");
+            }
+        }
+    }
+
+    [TestCase(12UL, 1UL, TestName = "12s")]
+    [TestCase(24UL, 2UL, TestName = "12s_missed_slot")]
+    [TestCase(120UL, 10UL, TestName = "12s_nine_missed_slots")]
+    public void Twelve_second_slots_keep_the_eip1559_rule(ulong secondsElapsed, ulong slotsElapsed)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((ulong baseFee, ulong gasUsed) in Matrix())
+            {
+                Assert.That(Calculate(Enabled, baseFee, gasUsed, secondsElapsed, slotsElapsed),
+                    Is.EqualTo(Calculate(Amsterdam.Instance, baseFee, gasUsed, secondsElapsed, slotsElapsed)), $"{baseFee} {gasUsed}");
             }
         }
     }
 
     [Test]
-    public void Enabled_ignores_configured_denominator()
+    public void Earlier_forks_ignore_block_spacing()
     {
-        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true, BaseFeeMaxChangeDenominator = 50 };
-        Assert.That(Calculate(spec, 1_000_000_000, BlockGasLimit), Is.EqualTo((UInt256)1_104_166_666));
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((ulong baseFee, ulong gasUsed) in Matrix())
+            {
+                UInt256 expected = Reference(baseFee, gasUsed, 1, 8);
+                Assert.That(Calculate(Disabled, baseFee, gasUsed, 10, 1), Is.EqualTo(expected));
+                Assert.That(Calculate(Amsterdam.Instance, baseFee, gasUsed, 10, 1), Is.EqualTo(expected));
+                Assert.That(Calculate(London.Instance, baseFee, gasUsed, 6, 1), Is.EqualTo(expected));
+            }
+        }
     }
 
     [Test]
-    public void Overridable_eip1559_spec_carries_the_fraction()
+    public void Bogota_enables_eip8198_and_keeps_the_denominator()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enabled.IsEip8198Enabled, Is.True);
+            Assert.That(Enabled.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+            Assert.That(Amsterdam.Instance.IsEip8198Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+        }
+    }
+
+    [Test]
+    public void Flag_alone_derives_the_change_on_an_earlier_fork()
+    {
+        IReleaseSpec flagOnly = new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Calculate(flagOnly, 1_000_000_000, BlockGasLimit, 10, 1), Is.EqualTo((UInt256)1_104_166_666));
+            Assert.That(Calculate(flagOnly, 1_000_000_000, BlockGasLimit, 12, 1), Is.EqualTo((UInt256)1_125_000_000));
+        }
+    }
+
+    [Test]
+    public void Configured_denominator_is_scaled_by_block_spacing()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { BaseFeeMaxChangeDenominator = 50 };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Calculate(spec, 1_200_000_000, BlockGasLimit, 12, 1), Is.EqualTo((UInt256)1_224_000_000));
+            Assert.That(Calculate(spec, 1_200_000_000, BlockGasLimit, 10, 1), Is.EqualTo((UInt256)1_220_000_000));
+            Assert.That(Calculate(spec, 1_200_000_000, BlockGasLimit, 120, 1), Is.EqualTo((UInt256)1_224_000_000));
+        }
+    }
+
+    [Test]
+    public void Overridable_eip1559_spec_carries_the_flag()
     {
         OverridableEip1559Spec spec = new(Enabled);
-        OverridableEip1559Spec overridden = new(Enabled) { BaseFeeMaxChangeNumerator = 1, BaseFeeMaxChangeDenominator = 8 };
+        OverridableEip1559Spec overridden = new(Enabled) { IsEip8198Enabled = false };
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Calculate(spec, 1_000_000_000, 0), Is.EqualTo((UInt256)895_833_334));
-            Assert.That(Calculate(overridden, 1_000_000_000, 0), Is.EqualTo((UInt256)875_000_000));
+            Assert.That(Calculate(spec, 1_000_000_000, 0, 10, 1), Is.EqualTo((UInt256)895_833_334));
+            Assert.That(Calculate(overridden, 1_000_000_000, 0, 10, 1), Is.EqualTo((UInt256)875_000_000));
         }
     }
 
-    [TestCase(10_000UL, 12_000UL, 1UL, 8UL, 5UL, 48UL, TestName = "ScaledToSlot_10s_is_five_forty_eighths")]
-    [TestCase(8_000UL, 12_000UL, 1UL, 8UL, 1UL, 12UL, TestName = "ScaledToSlot_8s_is_one_twelfth")]
-    [TestCase(12_000UL, 12_000UL, 1UL, 8UL, 1UL, 8UL, TestName = "ScaledToSlot_12s_is_one_eighth")]
-    [TestCase(6_000UL, 12_000UL, 1UL, 8UL, 1UL, 16UL, TestName = "ScaledToSlot_6s_is_one_sixteenth")]
-    [TestCase(10_000UL, 12_000UL, 2UL, 8UL, 5UL, 24UL, TestName = "ScaledToSlot_reduces_a_non_unit_base")]
-    [TestCase(5_000UL, 10_000UL, 5UL, 48UL, 5UL, 96UL, TestName = "ScaledToSlot_from_another_reference")]
-    public void ScaledToSlot_keeps_the_per_second_rate_in_lowest_terms(
-        ulong designMs, ulong referenceMs, ulong baseNumerator, ulong baseDenominator, ulong numerator, ulong denominator)
+    // Header validation rejects these, so the calculator keeps the EIP-1559 rule rather than dividing by zero or wrapping.
+    [TestCase(10UL, 0L, TestName = "Same slot as the parent")]
+    [TestCase(10UL, -1L, TestName = "Slot before the parent's")]
+    [TestCase(0UL, 1L, TestName = "Same timestamp as the parent")]
+    public void Invalid_spacing_keeps_the_eip1559_rule(ulong secondsElapsed, long slotsElapsed)
     {
-        (UInt256 actualNumerator, UInt256 actualDenominator) = BaseFeeMaxChange.ScaledToSlot(designMs, referenceMs, baseNumerator, baseDenominator);
+        BlockHeader parent = Parent(1_000_000_000, BlockGasLimit);
+        Assert.That(BaseFeeCalculator.Calculate(parent, ParentTimestamp + secondsElapsed, (ulong)((long)ParentSlot + slotsElapsed), Enabled),
+            Is.EqualTo((UInt256)1_125_000_000));
+    }
+
+    [Test]
+    public void Missing_slot_numbers_keep_the_eip1559_rule()
+    {
+        BlockHeader slotless = Parent(1_000_000_000, BlockGasLimit);
+        slotless.SlotNumber = null;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actualNumerator, Is.EqualTo((UInt256)numerator));
-            Assert.That(actualDenominator, Is.EqualTo((UInt256)denominator));
+            Assert.That(BaseFeeCalculator.Calculate(slotless, ParentTimestamp + 10, ParentSlot + 1, Enabled), Is.EqualTo((UInt256)1_125_000_000), "parent");
+            Assert.That(BaseFeeCalculator.Calculate(Parent(1_000_000_000, BlockGasLimit), ParentTimestamp + 10, null, Enabled), Is.EqualTo((UInt256)1_125_000_000), "child");
         }
     }
 
     [Test]
-    public void ScaledToSlot_of_the_eip8198_design_slot_is_five_forty_eighths() =>
-        Assert.That(BaseFeeMaxChange.ScaledToSlot(Eip8198Constants.DesignSlotDurationMs), Is.EqualTo(((UInt256)5, (UInt256)48)));
+    public void Spacing_at_or_above_12s_per_slot_keeps_the_eip1559_cap(
+        [Values(0UL, BlockGasLimit, GasTarget / 2)] ulong gasUsed,
+        [Values(12UL, 13UL, 96UL, 200UL)] ulong slotSeconds,
+        [Values(1UL, 2UL)] ulong slotsElapsed) =>
+        Assert.That(Calculate(Enabled, 1_000_000_000, gasUsed, slotSeconds * slotsElapsed, slotsElapsed),
+            Is.EqualTo(Reference(1_000_000_000, gasUsed, 1, 8)));
 
-    private static IEnumerable<TestCaseData> Matrix()
+    [Test]
+    public void Multiplication_does_not_overflow_256_bits()
+    {
+        // An empty parent makes target_fee_gas_delta the parent's base fee, and 2^200 × 10 × 2^60 overflows 256 bits.
+        UInt256 baseFee = UInt256.One << 200;
+        const ulong slotsElapsed = 1UL << 60;
+        BlockHeader parent = Parent(0, 0);
+        parent.BaseFeePerGas = baseFee;
+        parent.Timestamp = 0;
+        parent.SlotNumber = 0;
+
+        BigInteger expected = (BigInteger)baseFee - (BigInteger)baseFee * (10 * (BigInteger)slotsElapsed) / (96 * (BigInteger)slotsElapsed);
+        Assert.That(BaseFeeCalculator.Calculate(parent, 10 * slotsElapsed, slotsElapsed, Enabled), Is.EqualTo((UInt256)expected));
+    }
+
+    [Test]
+    public void Slot_jump_does_not_overflow_64_bits()
+    {
+        // 12 × 2^63 slots wraps a ulong; 10 s per slot over them is still 5/48.
+        const ulong slotsElapsed = 1UL << 63;
+        BlockHeader parent = Parent(1_000_000_000, BlockGasLimit);
+        parent.Timestamp = 0;
+        parent.SlotNumber = 0;
+        Assert.That(BaseFeeCalculator.Calculate(parent, ulong.MaxValue, slotsElapsed, Enabled),
+            Is.EqualTo((UInt256)(1_000_000_000 + (BigInteger)1_000_000_000 * ulong.MaxValue / (96 * (BigInteger)slotsElapsed))));
+    }
+
+    [Test]
+    public void Next_slot_prediction_uses_the_slot_after_the_parent()
+    {
+        BlockHeader parent = Parent(1_000_000_000, BlockGasLimit);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BaseFeeCalculator.CalculateForNextSlot(parent, ParentTimestamp + 10, Enabled), Is.EqualTo((UInt256)1_104_166_666));
+            Assert.That(BaseFeeCalculator.CalculateForNextSlot(parent, ParentTimestamp + 12, Enabled), Is.EqualTo((UInt256)1_125_000_000));
+            Assert.That(BaseFeeCalculator.CalculateForReferenceSlot(parent, Enabled), Is.EqualTo((UInt256)1_125_000_000));
+            Assert.That(BaseFeeCalculator.CalculateForNextSlot(parent, ParentTimestamp + 10, Amsterdam.Instance), Is.EqualTo((UInt256)1_125_000_000));
+        }
+    }
+
+    private static IEnumerable<(ulong BaseFee, ulong GasUsed)> Matrix()
     {
         foreach (ulong baseFee in BaseFees)
             foreach (ulong gasUsed in GasUsedCases)
-                yield return new TestCaseData(baseFee, gasUsed).SetName($"BaseFee {baseFee}, gas used {gasUsed}");
+                yield return (baseFee, gasUsed);
     }
 
-    private static UInt256 Calculate(IEip1559Spec spec, ulong parentBaseFee, ulong parentGasUsed)
-    {
-        BlockHeader parent = Build.A.BlockHeader
-            .WithNumber(2001)
-            .WithGasLimit(BlockGasLimit)
-            .WithGasUsed(parentGasUsed)
-            .WithBaseFee(parentBaseFee)
-            .TestObject;
-        return BaseFeeCalculator.Calculate(parent, spec);
-    }
+    private static BlockHeader Parent(ulong parentBaseFee, ulong parentGasUsed) => Build.A.BlockHeader
+        .WithNumber(2001)
+        .WithGasLimit(BlockGasLimit)
+        .WithGasUsed(parentGasUsed)
+        .WithBaseFee(parentBaseFee)
+        .WithTimestamp(ParentTimestamp)
+        .WithSlotNumber(ParentSlot)
+        .TestObject;
 
-    /// <summary>execution-specs <c>calculate_base_fee_per_gas</c> with unbounded integers.</summary>
+    private static UInt256 Calculate(IEip1559Spec spec, ulong parentBaseFee, ulong parentGasUsed, ulong secondsElapsed, ulong slotsElapsed) =>
+        BaseFeeCalculator.Calculate(Parent(parentBaseFee, parentGasUsed), ParentTimestamp + secondsElapsed, ParentSlot + slotsElapsed, spec);
+
+    /// <summary>execution-specs <c>calculate_base_fee_per_gas</c> with unbounded integers and a fixed fraction.</summary>
     private static UInt256 Reference(ulong parentBaseFee, ulong parentGasUsed, int numerator, int denominator)
     {
         BigInteger baseFee = parentBaseFee;

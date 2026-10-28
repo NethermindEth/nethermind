@@ -163,9 +163,9 @@ public class ForkTests
             Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
             Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
             Assert.That(Bogota.Instance.IsEip8198Enabled, Is.True);
-            Assert.That(Bogota.Instance.TargetBlobCount, Is.EqualTo(12));
-            Assert.That(Bogota.Instance.MaxBlobCount, Is.EqualTo(18));
-            Assert.That(Bogota.Instance.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
+            Assert.That(Bogota.Instance.TargetBlobCount, Is.EqualTo(Amsterdam.Instance.TargetBlobCount));
+            Assert.That(Bogota.Instance.MaxBlobCount, Is.EqualTo(Amsterdam.Instance.MaxBlobCount));
+            Assert.That(Bogota.Instance.BlobBaseFeeUpdateFraction, Is.EqualTo(Amsterdam.Instance.BlobBaseFeeUpdateFraction));
             Assert.That(Bogota.Instance.IsEip8141Enabled, Is.False);
             Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
             Assert.That(Amsterdam.Instance.IsEip8198Enabled, Is.False);

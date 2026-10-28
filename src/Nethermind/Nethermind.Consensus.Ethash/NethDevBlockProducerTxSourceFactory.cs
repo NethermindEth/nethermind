@@ -6,6 +6,8 @@ using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -22,10 +24,11 @@ public class NethDevBlockProducerTxSourceFactory(
 {
     public ITxSource Create()
     {
+        SlotSchedule slots = specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot);
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
-            .WithBaseFeeFilter()
+            .WithBaseFeeFilter(slots)
             .WithNullTxFilter()
-            .WithMinGasPriceFilter(blocksConfig)
+            .WithMinGasPriceFilter(blocksConfig, slots)
             .Build;
 
         return new TxPoolTxSource(

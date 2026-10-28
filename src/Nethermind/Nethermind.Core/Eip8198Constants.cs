@@ -7,12 +7,12 @@ namespace Nethermind.Core;
 public static class Eip8198Constants
 {
     /// <summary>
-    /// The slot length EIP-8198's maximum base fee change is designed for, giving 5/48 through
-    /// <see cref="BaseFeeMaxChange.ScaledToSlot"/> in <see cref="Specs.DerivedSpecValues"/>.
+    /// <c>BASE_FEE_REFERENCE_SLOT_SECONDS</c>: the slot duration at which the base fee changes by at most
+    /// <c>1 / BaseFeeMaxChangeDenominator</c> per block.
     /// </summary>
     /// <remarks>
-    /// A fork constant for the consensus base fee rule only. The chain's actual slot length comes from
-    /// <see cref="Specs.ISpecProvider.Eip8198SlotDurationMs"/>.
+    /// The maximum change scales with the slot duration read from the spacing of a block and its parent, so it is 1/8 at
+    /// 12 s slots and 5/48 at 10 s slots. See <see cref="DefaultBaseFeeCalculator"/>.
     /// </remarks>
-    public const ulong DesignSlotDurationMs = 10_000;
+    public const ulong BaseFeeReferenceSlotSeconds = 12;
 }

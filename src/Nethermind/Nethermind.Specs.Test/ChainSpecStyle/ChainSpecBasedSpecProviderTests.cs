@@ -1144,10 +1144,11 @@ public class ChainSpecBasedSpecProviderTests
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, eip8198Timestamp - 1, [])
+        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, eip8198Timestamp - 10, [])
         {
             GasUsed = 30_000_000,
-            BaseFeePerGas = 1_000_000_000
+            BaseFeePerGas = 1_000_000_000,
+            SlotNumber = 6
         };
         IReleaseSpec before = provider.GetSpec(new ForkActivation(11, eip8198Timestamp - 1));
         IReleaseSpec after = provider.GetSpec(new ForkActivation(11, eip8198Timestamp));
@@ -1156,13 +1157,13 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(before.IsEip8198Enabled, Is.False);
             Assert.That(after.IsEip8198Enabled, Is.True);
-            Assert.That(BaseFeeCalculator.Calculate(parent, before), Is.EqualTo((UInt256)1_125_000_000));
-            Assert.That(BaseFeeCalculator.Calculate(parent, after), Is.EqualTo((UInt256)1_104_166_666));
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp, 7, before), Is.EqualTo((UInt256)1_125_000_000));
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp, 7, after), Is.EqualTo((UInt256)1_104_166_666));
         }
     }
 
     [Test]
-    public void Eip8198_fraction_overrides_a_configured_denominator_only_while_active()
+    public void Eip8198_scales_a_configured_denominator_by_block_spacing()
     {
         const ulong eip8198Timestamp = 70;
         ChainSpec chainSpec = new()
@@ -1179,13 +1180,20 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         IReleaseSpec before = provider.GetSpec(new ForkActivation(11, eip8198Timestamp - 1));
         IReleaseSpec after = provider.GetSpec(new ForkActivation(11, eip8198Timestamp));
+        BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, eip8198Timestamp - 10, [])
+        {
+            GasUsed = 30_000_000,
+            BaseFeePerGas = 3_000_000_000,
+            SlotNumber = 6
+        };
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(before.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
             Assert.That(before.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)250));
-            Assert.That(after.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
-            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)250));
+            // 1/250 per 12 s slot: 3e9 / 250 at 12 s spacing, 3e9 × 10 / 3000 at 10 s spacing.
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp + 2, 7, after), Is.EqualTo((UInt256)3_012_000_000));
+            Assert.That(BaseFeeCalculator.Calculate(parent, eip8198Timestamp, 7, after), Is.EqualTo((UInt256)3_010_000_000));
         }
     }
 
