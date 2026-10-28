@@ -42,9 +42,9 @@ public class JsonRpcResponseWriterStreamingIdTests
     [OneTimeTearDown]
     public void DisposeKeeper() => _keeper.Dispose();
 
-    private JsonRpcService.StreamingContext CreateStreamingContext() => new(
+    private JsonRpcService.StreamingContext CreateStreamingContext(string method = "trace_call") => new(
         new JsonRpcService(NullModuleProvider.Instance, NullLogManager.Instance, new JsonRpcConfig(), _keeper),
-        new JsonRpcRequest { Id = new JsonRpcId(42L), Method = "trace_call" }, "trace_call");
+        new JsonRpcRequest { Id = new JsonRpcId(42L), Method = method }, method);
 
     private sealed class StubStreamable : IStreamableResult
     {
@@ -144,13 +144,23 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
     }
 
-    [TestCase(false, 0)]
-    [TestCase(false, 1)]
-    [TestCase(true, 0)]
-    [TestCase(true, 1)]
-    [TestCase(true, 2)]
+    public static IEnumerable<TestCaseData> StreamedDeadlineBatchCases()
+    {
+        foreach (string method in new[] { nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash), "trace_call" })
+        {
+            for (int commitMode = 0; commitMode < 3; commitMode++)
+            {
+                foreach (bool rewindable in new[] { false, true })
+                {
+                    if (rewindable || commitMode != 2) yield return new TestCaseData(rewindable, commitMode, method);
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(StreamedDeadlineBatchCases))]
     [NonParallelizable]
-    public async Task Streamed_deadline_replaces_only_the_failing_batch_item(bool rewindable, int commitMode)
+    public async Task Streamed_deadline_replaces_only_the_failing_batch_item(bool rewindable, int commitMode, string method)
     {
         using RecyclableMemoryStream stream = RecyclableStream.GetStream("deadline-batch");
         CountingWriter transport = rewindable
@@ -168,7 +178,7 @@ public class JsonRpcResponseWriterStreamingIdTests
                 throw new GethTraceDeadlineException();
             }, new CancellationTokenSource(), NullLogger.Instance)
             { PropagateExecutionTimeout = true },
-            Streaming = CreateStreamingContext()
+            Streaming = CreateStreamingContext(method)
         };
         response.ObserveStreamedResult(observer, NullLogger.Instance);
         response.Streaming.ReportCompletion = true;
@@ -197,8 +207,8 @@ public class JsonRpcResponseWriterStreamingIdTests
             Assert.That(previous.GetProperty("id").GetInt32(), Is.EqualTo(41));
             Assert.That(previous.GetProperty("result").GetString(), Is.EqualTo("previous"));
             Assert.That(failed.GetProperty("id").GetInt32(), Is.EqualTo(42));
-            Assert.That(failed.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(failed.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
+            Assert.That(failed.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(method == "trace_call" ? ErrorCodes.InternalError : ErrorCodes.InvalidInput));
+            Assert.That(failed.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo(method == "trace_call" ? "Internal error" : "execution timeout"));
             Assert.That(failed.TryGetProperty("result", out _), Is.False);
             Assert.That(transport.WrittenCount, Is.EqualTo(1234 + stream.Length));
             Assert.That(observer.Succeeded, Is.False);
