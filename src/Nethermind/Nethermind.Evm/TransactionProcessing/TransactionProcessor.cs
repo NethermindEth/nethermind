@@ -1523,7 +1523,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
-                if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.TryConsumeCreateStateGas(ref state.Gas))
+                if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.TryConsumeStateGas(ref state.Gas, TGasPolicy.GetCreateStateCost()))
                 {
                     TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                     substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
@@ -1703,7 +1703,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (refundedTopLevelCreateStateGas > 0)
             {
                 long topLevelCreateStateGasFloor = intrinsicStateGas - refundedTopLevelCreateStateGas;
-                TGasPolicy.RefundStateGas(ref gas, refundedTopLevelCreateStateGas, topLevelCreateStateGasFloor, trackSpillRefund: false);
+                TGasPolicy.RefundStateGas(ref gas, refundedTopLevelCreateStateGas, topLevelCreateStateGasFloor);
             }
 
             RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
@@ -1759,7 +1759,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (refundedTopLevelCreateStateGas > 0)
             {
                 long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard) - refundedTopLevelCreateStateGas;
-                TGasPolicy.RefundStateGas(ref gasAfterCollision, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+                TGasPolicy.RefundStateGas(ref gasAfterCollision, refundedTopLevelCreateStateGas, stateGasFloor);
             }
 
             TGasPolicy.ClearExecutionGas(ref gasAfterCollision);
@@ -1947,7 +1947,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 long topLevelCreateStateGas = tx.IsContractCreation ? TGasPolicy.GetCreateStateCost() : 0;
                 if (topLevelCreateStateGas > 0)
                 {
-                    TGasPolicy.RefundStateGas(ref gasAfterExecution, topLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+                    TGasPolicy.RefundStateGas(ref gasAfterExecution, topLevelCreateStateGas, stateGasFloor);
                 }
             }
 

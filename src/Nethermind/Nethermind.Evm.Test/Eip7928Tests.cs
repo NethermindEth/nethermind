@@ -1271,8 +1271,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     [Test]
     public void Eip7928_failed_create_transaction_converts_constructor_storage_writes_to_reads()
     {
-        UInt256 firstSlot = 0x0213f3;
-        UInt256 secondSlot = 0x0299e5;
+        UInt256 slot = 0x0299e5;
         Address sender = new("0x794e2057f9431e744a4afe921b1b31e59cba098f");
         const ulong senderNonce = 0x16f2;
         Address createdAddress = ContractAddress.From(sender, senderNonce);
@@ -1313,7 +1312,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
             Assert.That(TestState.AccountExists(createdAddress), Is.False);
             Assert.That(actualCreatedChanges.StorageChangeCount, Is.EqualTo(0));
-            Assert.That(actualCreatedChanges.StorageReads, Is.EquivalentTo(new[] { firstSlot, secondSlot }));
+            Assert.That(actualCreatedChanges.StorageReads, Is.EquivalentTo(new[] { slot }));
             Assert.That(actualCreatedChanges.NonceChange, Is.Null);
             Assert.That(actualCreatedChanges.CodeChange, Is.Null);
             Assert.That(actualCreatedChanges.BalanceChange, Is.Null);

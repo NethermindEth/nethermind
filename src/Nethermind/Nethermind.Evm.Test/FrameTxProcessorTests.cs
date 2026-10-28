@@ -416,6 +416,76 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    // PUSH1, PUSH1 and a cold new-slot SSTORE cost 22,106 in Osaka. The frame's state pool pays the state gas
+    // above the 10,000 legacy share, which still comes from the callee's execution gas.
+    [TestCase(22_105L, false)]
+    [TestCase(22_106L, true)]
+    public void Execute_FrameCallee_PaysTheLegacyShareOfANewSlotFromExecutionGas(long calleeGas, bool expectedWrite)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(TestItem.AddressD, Prepare.EvmCode.Call(Observer, calleeGas).Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: TestItem.AddressD));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Process(tx).TransactionExecuted, Is.True);
+            AssertStorage(Observer, 0, expectedWrite ? UInt256.One : UInt256.Zero);
+        }
+    }
+
+    public enum WriterEnd { Stop, Revert, Halt }
+
+    /// <summary>
+    /// EIP-8141 rebates the legacy share of a new slot at frame exit, unless the call frame that paid it halts. So
+    /// a frame that writes a new slot uses the same execution gas as one that changes an existing slot, as in a
+    /// transaction with a reservoir, whatever the writer then does and at which depth it runs.
+    /// </summary>
+    [Test]
+    public void Execute_FrameNewSlot_UsesTheExecutionGasOfAnExistingSlotChange(
+        [Values] bool inChild, [Values] bool clearAgain, [Values] WriterEnd end)
+    {
+        Address newSlotWriter = new("0x8141000000000000000000000000000000000001");
+        Address existingSlotWriter = new("0x8141000000000000000000000000000000000002");
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(newSlotWriter, WriterCode(original: 0));
+        DeployContract(existingSlotWriter, WriterCode(original: 5));
+        _stateProvider.Set(new StorageCell(existingSlotWriter, 0), 5);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        ulong newSlotGas = FrameExecutionGasUsed(nonce: 0, newSlotWriter, "0x8141000000000000000000000000000000000003");
+        ulong existingSlotGas = FrameExecutionGasUsed(nonce: 1, existingSlotWriter, "0x8141000000000000000000000000000000000004");
+
+        Assert.That(newSlotGas, Is.EqualTo(existingSlotGas));
+
+        byte[] WriterCode(byte original)
+        {
+            Prepare code = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE);
+            if (clearAgain) code = code.PushData(original).PushData(0).Op(Instruction.SSTORE);
+            return (end switch
+            {
+                WriterEnd.Stop => code.Op(Instruction.STOP),
+                WriterEnd.Revert => code.PushData(0).PushData(0).Op(Instruction.REVERT),
+                _ => code.Op(Instruction.INVALID),
+            }).Done;
+        }
+
+        ulong FrameExecutionGasUsed(ulong nonce, Address writer, string callerAddress)
+        {
+            Address target = writer;
+            if (inChild)
+            {
+                target = new Address(callerAddress);
+                DeployContract(target, Prepare.EvmCode.Call(writer, 100_000).Op(Instruction.STOP).Done);
+            }
+
+            FrameReceiptTracer tracer = new();
+            Assert.That(Process(FrameTx(nonce, SelfVerifyFrame(), Frame(FrameMode.Sender, target: target)), tracer: tracer).TransactionExecuted, Is.True);
+            return tracer.FrameReceipts![1].ExecutionGasUsed;
+        }
+    }
+
     // The spec reserves max(standard_gas_limit, calldata_floor_gas) rather than invalidating.
     [Test]
     public void Execute_FramesReserveLessGasThanTheCalldataFloor_StillExecutes()
