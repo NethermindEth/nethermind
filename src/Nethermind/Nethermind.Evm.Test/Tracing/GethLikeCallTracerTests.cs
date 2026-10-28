@@ -1690,7 +1690,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     public void Test_CallTrace_NestedBytes_OutliveTheTracer()
     {
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
-        NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
         byte[] input = [1, 2, 3, 4];
 
         tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
@@ -1734,23 +1734,24 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         long bare = long.MaxValue;
         for (int run = 0; run < Runs; run++)
         {
-            NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
-            tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+            using (NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null)))
+            {
+                tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+
+                long tracedBefore = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < FrameCount; i++)
+                {
+                    tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, callerMemory, ExecutionType.CALL);
+                    tracer.ReportActionEnd(40000, callerMemory.AsMemory(0, 32));
+                }
+                traced = Math.Min(traced, GC.GetAllocatedBytesForCurrentThread() - tracedBefore);
+
+                tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
+                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
+                using GethLikeTxTrace trace = tracer.BuildResult();
+            }
 
             long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < FrameCount; i++)
-            {
-                tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, callerMemory, ExecutionType.CALL);
-                tracer.ReportActionEnd(40000, callerMemory.AsMemory(0, 32));
-            }
-            traced = Math.Min(traced, GC.GetAllocatedBytesForCurrentThread() - before);
-
-            tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
-            tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000), [], []);
-            tracer.BuildResult().Dispose();
-            tracer.Dispose();
-
-            before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < FrameCount; i++)
             {
                 bareFrames[i] = new NativeCallTracerCallFrame();
