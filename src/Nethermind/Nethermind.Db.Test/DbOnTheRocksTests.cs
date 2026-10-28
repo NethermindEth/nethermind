@@ -1300,6 +1300,81 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void CompactReclaimingBlobFiles_ReclaimsPartiallyReferencedBlobFiles_ThatAPlainCompactionCannot()
+        {
+            // The sliced-history shape a realistic retention prune leaves behind: scattered survivors across the
+            // whole range, so (nearly) every blob file still holds a live key and none is fully unreferenced. A
+            // plain forced-bottommost compaction runs with blob garbage collection off, so it rewrites the SST
+            // pointers but cannot retire a blob file any survivor still pins - it gives next to nothing back.
+            // CompactReclaimingBlobFiles relocates the survivors into fresh blob files and drops the stale ones,
+            // reclaiming the great majority. This is the control: the earlier contiguous-retention shape let a
+            // plain compaction reclaim most of the disk because its pruned blob files were fully unreferenced,
+            // which hid the whole point of the blob-GC path.
+            DbConfig config = new()
+            {
+                AdditionalRocksDbOptions = "enable_blob_files=true;min_blob_size=256;blob_file_size=262144;blob_compression_type=kNoCompression;disable_auto_compactions=true;"
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+
+            string plainPath = Path.Combine(DbPath, "plain");
+            string blobGcPath = Path.Combine(DbPath, "blobgc");
+            using DbOnTheRocks plain = new(plainPath, GetRocksDbSettings(plainPath, "Blocks"), config, factory, LimboLogs.Instance);
+            using DbOnTheRocks blobGc = new(blobGcPath, GetRocksDbSettings(blobGcPath, "Blocks"), config, factory, LimboLogs.Instance);
+
+            const int heights = 500;
+            const int retainEvery = 50; // 1-in-50 scattered survivors, so every ~64-height blob file keeps a live key
+            byte[] value = new byte[4096];
+            Random.Shared.NextBytes(value);
+            long plainBefore = SeedSlicedRetention(plain, plainPath, heights, retainEvery, value);
+            long blobGcBefore = SeedSlicedRetention(blobGc, blobGcPath, heights, retainEvery, value);
+
+            plain.CompactOpenRange(cf: null, forceBottommost: true);
+            long plainAfter = SstBytes(plainPath) + BlobBytes(plainPath);
+
+            bool compacted = blobGc.CompactReclaimingBlobFiles();
+            long blobGcAfter = SstBytes(blobGcPath) + BlobBytes(blobGcPath);
+
+            double plainReclaimed = 1.0 - (double)plainAfter / plainBefore;
+            double blobGcReclaimed = 1.0 - (double)blobGcAfter / blobGcBefore;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted, Is.True);
+                Assert.That(plainBefore, Is.EqualTo(blobGcBefore), "the two databases must be seeded identically for the comparison to be fair");
+                Assert.That(plainReclaimed, Is.LessThan(0.15),
+                    "a plain forced-bottommost compaction cannot retire a blob file a scattered survivor still pins, so it gives almost nothing back");
+                Assert.That(blobGcReclaimed, Is.GreaterThanOrEqualTo(0.80),
+                    "blob garbage collection relocates the scattered survivors into fresh blob files and retires the stale ones, reclaiming the great majority");
+                for (ulong number = 1; number <= heights; number++)
+                {
+                    bool survivor = number == 1 || number % retainEvery == 0;
+                    Assert.That(GetValue(blobGc, BlockKey(number, 0x00)), survivor ? Is.Not.Null : Is.Null,
+                        $"height {number} must {(survivor ? "survive" : "be pruned")} after the blob-GC compaction");
+                }
+            }
+        }
+
+        // Seeds block-ordered blob-sized values, then prunes everything except a scattered 1-in-retainEvery
+        // survivor (plus height 1) as a sliced-history retention prune does, leaving partially-referenced blob
+        // files. Returns the on-disk size just before compaction, which is the denominator for the reclaim ratio.
+        private static long SeedSlicedRetention(DbOnTheRocks db, string dbPath, int heights, int retainEvery, byte[] value)
+        {
+            for (ulong number = 1; number <= (ulong)heights; number++) db.PutSpan(BlockKey(number, 0x00), value, WriteFlags.None);
+            db.Flush();
+
+            ulong gapStart = 2;
+            for (ulong survivor = (ulong)retainEvery; survivor <= (ulong)heights; survivor += (ulong)retainEvery)
+            {
+                if (survivor > gapStart) db.RemoveRange(BlockKey(gapStart, 0x00), BlockKey(survivor, 0x00));
+                gapStart = survivor + 1;
+            }
+            if ((ulong)heights >= gapStart) db.RemoveRange(BlockKey(gapStart, 0x00), BlockKey((ulong)heights + 1, 0x00));
+            db.Flush();
+
+            return SstBytes(dbPath) + BlobBytes(dbPath);
+        }
+
         private static int SstFileCount(string dbPath) => Directory
             .EnumerateFiles(dbPath, "*.sst", SearchOption.AllDirectories)
             .Count();
