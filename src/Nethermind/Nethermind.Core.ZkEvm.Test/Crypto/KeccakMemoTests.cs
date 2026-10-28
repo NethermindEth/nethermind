@@ -108,8 +108,11 @@ public class KeccakMemoTests
         byte[] input = Pattern(length, seed: 83);
         ValueHash256 digest = Digest(length);
         KeccakCache.Store(input, digest);
-        Assert.That(KeccakCache.TryGet(input, out ValueHash256 actual), Is.True);
-        Assert.That(actual, Is.EqualTo(digest));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeccakCache.TryGet(input, out ValueHash256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(digest));
+        }
     }
 
     public static IEnumerable<TestCaseData> PadAlikePairs()

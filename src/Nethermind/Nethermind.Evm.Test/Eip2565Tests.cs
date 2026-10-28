@@ -74,8 +74,11 @@ namespace Nethermind.Evm.Test
             byte[] expected = Bytes.FromHexString(expectedResult);
 
             Result<byte[]> result = ModExpPrecompile.Instance.Run(input, Osaka.Instance);
-            Assert.That(result.Data, Is.EqualTo(expected));
-            Assert.That(result.Error, isError ? Is.Not.Null : Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data, Is.EqualTo(expected));
+                Assert.That(result.Error, isError ? Is.Not.Null : Is.Null);
+            }
         }
 
         private static (byte[], bool) BigIntegerModExp(byte[] inputData)

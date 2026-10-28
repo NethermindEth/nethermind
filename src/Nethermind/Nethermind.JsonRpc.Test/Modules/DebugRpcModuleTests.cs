@@ -196,12 +196,18 @@ public partial class DebugRpcModuleTests
         Transaction transfer = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + 1).WithGasPrice(1_000_000_000)
             .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await chain.AddBlock(create, transfer);
-        Assert.That(block.Transactions, Has.Length.EqualTo(2));
-        Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.EqualTo(2));
+            Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        }
         Address contract = ContractAddress.From(TestItem.AddressB, nonce);
         TxReceipt receipt = chain.ReceiptStorage.Get(block)[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        }
         byte[] probe = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
             .PushData(1).Op(Instruction.SLOAD).PushData(32).Op(Instruction.MSTORE)
             .Op(Instruction.NUMBER).PushData(64).Op(Instruction.MSTORE)
@@ -536,10 +542,13 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs);
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
-        Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
-        Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
-        Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((bool)result["failed"]!), Is.True, "pre-flight failures surface as failed:true under streaming");
+            Assert.That(((string)result["returnValue"]!), Is.EqualTo("0x"));
+            Assert.That(((string)result["error"]!), Does.StartWith(expectedErrorPrefix), "Geth-compatible wording must be preserved verbatim");
+            Assert.That(((int)result["errorCode"]!), Is.EqualTo(expectedErrorCode), "errorCode mirrors Geth's per-scenario JSON-RPC code");
+        }
     }
 
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
@@ -1822,9 +1831,12 @@ public partial class DebugRpcModuleTests
         );
 
         JToken result = JToken.Parse(response)["result"]!;
-        Assert.That(result["failed"]?.Value<bool>(), Is.True);
-        Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
-        Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.True);
+            Assert.That(result["error"]?.Value<string>(), Does.Contain("intrinsic gas too low"));
+            Assert.That(result["gas"]?.Value<long>(), Is.EqualTo(0));
+        }
     }
 
     private static byte[] ParseReturnValue(string responseJson)
@@ -1885,8 +1897,11 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
-        Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
+        }
     }
 
     private static IEnumerable<TestCaseData> PrestateFieldOptionCases =>
@@ -2099,13 +2114,13 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a revert is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CALL"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That((string?)frame["revertReason"], Is.EqualTo("user error"));
             Assert.That((string?)frame["output"], Is.EqualTo("0x" + RevertPayload));
-        });
+        }
     }
 
     [Test]
@@ -2122,12 +2137,12 @@ public partial class DebugRpcModuleTests
         Assert.That(parsed["error"], Is.Null, "a failed deployment is a traced result, not a JSON-RPC error");
 
         JToken frame = parsed["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)frame["type"], Is.EqualTo("CREATE"));
             Assert.That((string?)frame["error"], Is.EqualTo("execution reverted"));
             Assert.That(frame["to"], Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
-        });
+        }
     }
 
     private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter

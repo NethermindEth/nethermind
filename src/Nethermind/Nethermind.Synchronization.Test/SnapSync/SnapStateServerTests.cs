@@ -342,8 +342,11 @@ public class SnapStateServerTests
         ]);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        Assert.That(result.Count, Is.EqualTo(1));
-        Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash));
+        }
     }
 
     [Test]
@@ -773,32 +776,44 @@ public class SnapStateServerTests
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(1));
-        Assert.That(slots[0].Count, Is.EqualTo(1));
-        Assert.That(proofs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1));
+            Assert.That(proofs, Is.Not.Null);
+        }
 
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 1000000, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(1));
-        Assert.That(slots[0].Count, Is.EqualTo(1000));
-        Assert.That(proofs?.Count, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1000));
+            Assert.That(proofs?.Count, Is.EqualTo(0));
+        }
 
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(1));
-        Assert.That(slots[0].Count, Is.EqualTo(1));
-        Assert.That(proofs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1));
+            Assert.That(proofs, Is.Not.Null);
+        }
         slots.DisposeRecursive();
         proofs?.Dispose();
 
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..2], ValueKeccak.Zero, ValueKeccak.MaxValue, 100000, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(2));
-        Assert.That(slots[0].Count, Is.EqualTo(1000));
-        Assert.That(slots[1].Count, Is.EqualTo(539));
-        Assert.That(proofs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[0].Count, Is.EqualTo(1000));
+            Assert.That(slots[1].Count, Is.EqualTo(539));
+            Assert.That(proofs, Is.Not.Null);
+        }
         slots.DisposeRecursive();
         proofs?.Dispose();
 
@@ -806,8 +821,11 @@ public class SnapStateServerTests
         // incomplete tree will be returned as the hard limit is 2000000
         (slots, proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray, ValueKeccak.Zero, ValueKeccak.MaxValue, 3000000, CancellationToken.None);
         Assert.That(slots.Count, Is.EqualTo(8));
-        Assert.That(slots[^1].Count, Is.LessThan(8000));
-        Assert.That(proofs?.Count, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots[^1].Count, Is.LessThan(8000));
+            Assert.That(proofs?.Count, Is.GreaterThan(0));
+        }
 
         slots.DisposeRecursive();
         proofs?.Dispose();

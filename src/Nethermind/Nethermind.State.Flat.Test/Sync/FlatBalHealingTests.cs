@@ -151,8 +151,11 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        }
     }
 
     // EIP-8298: an adoption records only a hash; its bytecode comes from the change that deposited it, even when
@@ -414,9 +417,12 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
-        Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
+            Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+        }
     }
 
     [Test]
@@ -432,8 +438,11 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+        }
     }
 
     [Test]
