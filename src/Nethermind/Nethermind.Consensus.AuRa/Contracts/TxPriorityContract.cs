@@ -33,10 +33,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         internal static readonly AbiSignature<(Address, byte[], UInt256)> MinGasPriceSetEvent = new AbiSignature("MinGasPriceSet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
         internal static readonly AbiSignature<Address[]> SendersWhitelistSetEvent = new AbiSignature("SendersWhitelistSet").With(AbiType.Array(AbiType.Address));
 
-        private static readonly AbiSignature<(Address, byte[], UInt256)> SetPrioritySignature = new AbiSignature("setPriority").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
-        private static readonly AbiSignature<Address[]> SetSendersWhitelistSignature = new AbiSignature("setSendersWhitelist").With(AbiType.Array(AbiType.Address));
-        private static readonly AbiSignature<(Address, byte[], UInt256)> SetMinGasPriceSignature = new AbiSignature("setMinGasPrice").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
-
         private IConstantContract Constant { get; }
 
         public TxPriorityContract(
@@ -108,14 +104,5 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public IDataContract<Address> SendersWhitelist { get; }
         public IDataContract<Destination> MinGasPrices { get; }
         public IDataContract<Destination> Priorities { get; }
-
-        public Transaction SetPriority(Address target, byte[] fnSignature, UInt256 weight) =>
-            GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(SetPrioritySignature, (target, fnSignature, weight)), ContractAddress);
-
-        public Transaction SetSendersWhitelist(params Address[] addresses) =>
-            GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(SetSendersWhitelistSignature, addresses), ContractAddress);
-
-        public Transaction SetMinGasPrice(Address target, byte[] fnSignature, UInt256 weight) =>
-            GenerateTransaction<GeneratedTransaction>(AbiCodec.Encode(SetMinGasPriceSignature, (target, fnSignature, weight)), ContractAddress);
     }
 }
