@@ -53,7 +53,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
-    /// <remarks>With a non-empty <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>,
+    /// <remarks>With a non-empty <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>, or for a single-use set every key must read 0,
     /// so the set is consumed as a unit. Assumes the caller has already checked well-formedness.</remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
