@@ -16,23 +16,35 @@ public partial class EezSystemTxDecoderTests
 {
     private static IEnumerable<TestCaseData> HistoryVectors()
     {
-        foreach (JsonElement vector in StatelessFixtures.ReadJson("rollupx/native-profile-v3", "vectors.json").GetProperty("vectors").EnumerateArray())
-            if (vector.TryGetProperty("prefix", out JsonElement prefix) && prefix.GetString() == "0x46")
-                yield return new TestCaseData(vector).SetName($"HistoryEnvelope_Upstream_{vector.GetProperty("id").GetString()}");
+        foreach (string profile in new[] { "v3", "v6" })
+            foreach (JsonElement vector in StatelessFixtures.ReadJson($"rollupx/native-profile-{profile}", "vectors.json").GetProperty("vectors").EnumerateArray())
+                if (vector.TryGetProperty("prefix", out JsonElement prefix) && prefix.GetString() == "0x46")
+                    yield return new TestCaseData(vector, profile == "v6").SetName($"HistoryEnvelope_Upstream_{profile}_{vector.GetProperty("id").GetString()}");
     }
 
     [TestCaseSource(nameof(HistoryVectors))]
-    public void Decode_UpstreamVector_RetainsExactFieldsBytesAndRepeatedHash(JsonElement vector)
+    public void Decode_UpstreamVector_RetainsExactFieldsBytesAndRepeatedHash(JsonElement vector, bool explicitBlocks)
     {
         byte[] bytes = Bytes.FromHexString(vector.GetProperty("expectedBytes").GetString()!);
-        NativeHistoryEnvelope decoded = NativeHistoryEnvelope.Decode(bytes);
+        NativeHistoryEnvelope decoded = explicitBlocks ? NativeHistoryEnvelope.DecodeBlocks(bytes) : NativeHistoryEnvelope.Decode(bytes);
         JsonElement hashes = vector.GetProperty("fields")[2];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.ChainId, Is.EqualTo(901));
-            Assert.That(decoded.Hashes.Length, Is.EqualTo(hashes.GetArrayLength()));
-            for (int index = 0; index < hashes.GetArrayLength(); index++)
-                Assert.That(decoded.Hashes[index], Is.EqualTo(new ValueHash256(hashes[index].GetString()!)));
+            Assert.That(decoded.HasExplicitBlocks, Is.EqualTo(explicitBlocks));
+            if (explicitBlocks)
+            {
+                Assert.That(decoded.Blocks.Length, Is.EqualTo(hashes.GetArrayLength()));
+                for (int index = 0; index < hashes.GetArrayLength(); index++)
+                    Assert.That(decoded.Blocks[index], Is.EqualTo(new NativeHistoryBlock(
+                        Convert.ToUInt64(hashes[index][0].GetString()![2..], 16), new ValueHash256(hashes[index][1].GetString()!))));
+            }
+            else
+            {
+                Assert.That(decoded.Hashes.Length, Is.EqualTo(hashes.GetArrayLength()));
+                for (int index = 0; index < hashes.GetArrayLength(); index++)
+                    Assert.That(decoded.Hashes[index], Is.EqualTo(new ValueHash256(hashes[index].GetString()!)));
+            }
             Assert.That(decoded.Encode(), Is.EqualTo(bytes));
             Assert.That(ValueKeccak.Compute(decoded.Encode()), Is.EqualTo(new ValueHash256(vector.GetProperty("expectedKeccak256").GetString()!)));
         }

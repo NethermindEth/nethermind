@@ -14,13 +14,35 @@ internal sealed class NativeHistoryEnvelope
     internal const byte Type = 0x46;
     internal const ulong Version = 1;
     private const int HashRlpLength = Hash256.Size + 1;
+    private const int PairRlpLength = 43;
     private const int MaxPayloadBytes = 2 * 9 + 3 + NativeHistoryCall.MaxHashes * HashRlpLength;
+    private const int MaxPairPayloadBytes = 2 * 9 + 3 + NativeHistoryCall.MaxHashes * PairRlpLength;
     private readonly ValueHash256[] _hashes;
+    private readonly NativeHistoryBlock[]? _blocks;
+    private readonly int _recordsLength;
 
     internal ulong ChainId { get; }
-    internal ReadOnlySpan<ValueHash256> Hashes => _hashes;
+    internal bool HasExplicitBlocks => _blocks is not null;
+    internal ReadOnlySpan<ValueHash256> Hashes => !HasExplicitBlocks ? _hashes : throw Invalid("explicit blocks require their selected profile");
+    internal ReadOnlySpan<NativeHistoryBlock> Blocks => _blocks is not null ? _blocks : throw Invalid("legacy hashes have no explicit numbers");
 
-    private NativeHistoryEnvelope(ulong chainId, ValueHash256[] hashes) => (ChainId, _hashes) = (chainId, hashes);
+    private NativeHistoryEnvelope(ulong chainId, ValueHash256[] hashes, NativeHistoryBlock[]? blocks = null)
+    {
+        ChainId = chainId;
+        _hashes = hashes;
+        _blocks = blocks;
+        if (blocks is null)
+            _recordsLength = hashes.Length * HashRlpLength;
+        else
+            foreach (NativeHistoryBlock block in blocks)
+                _recordsLength += Rlp.LengthOfSequence(Rlp.LengthOf(block.Number) + HashRlpLength);
+    }
+
+    internal static NativeHistoryEnvelope CreateBlocks(ulong chainId, ReadOnlySpan<NativeHistoryBlock> blocks)
+    {
+        ValidateBlocks(blocks);
+        return new NativeHistoryEnvelope(chainId, [], blocks.ToArray());
+    }
 
     internal static NativeHistoryEnvelope Create(ulong chainId, ReadOnlySpan<ValueHash256> hashes)
     {
@@ -28,19 +50,41 @@ internal sealed class NativeHistoryEnvelope
         return new NativeHistoryEnvelope(chainId, hashes.ToArray());
     }
 
-    internal static NativeHistoryEnvelope Decode(ReadOnlySpan<byte> encoded)
+    internal static NativeHistoryEnvelope Decode(ReadOnlySpan<byte> encoded) => Decode(encoded, false);
+
+    internal static NativeHistoryEnvelope DecodeBlocks(ReadOnlySpan<byte> encoded) => Decode(encoded, true);
+
+    private static NativeHistoryEnvelope Decode(ReadOnlySpan<byte> encoded, bool explicitBlocks)
     {
-        if (encoded.Length is < 3 or > MaxPayloadBytes + 4 || encoded[0] != Type) throw Invalid("type or envelope length");
+        int maximum = explicitBlocks ? MaxPairPayloadBytes : MaxPayloadBytes;
+        if (encoded.Length < 3 || encoded.Length > maximum + 4 || encoded[0] != Type) throw Invalid("type or envelope length");
         try
         {
             RlpReader reader = new(encoded[1..]);
             int payload = reader.ReadSequenceLength();
-            if (payload > MaxPayloadBytes || payload != reader.Length - reader.Position) throw Invalid("outer list length");
+            if (payload > maximum || payload != reader.Length - reader.Position) throw Invalid("outer list length");
             if (reader.DecodeULong() != Version) throw Invalid("unsupported version");
             ulong chainId = reader.DecodeULong();
             int length = reader.ReadSequenceLength();
-            if (length == 0 || length > NativeHistoryCall.MaxHashes * HashRlpLength || length % HashRlpLength != 0 ||
-                length != reader.Length - reader.Position) throw Invalid("hash list length");
+            if (length == 0 || length != reader.Length - reader.Position) throw Invalid("record list length");
+            if (explicitBlocks)
+            {
+                if (length > NativeHistoryCall.MaxHashes * PairRlpLength) throw Invalid("block list length");
+                int count = reader.PeekNumberOfItemsRemaining(maxSearch: NativeHistoryCall.MaxHashes + 1);
+                if (count == 0 || count > NativeHistoryCall.MaxHashes) throw Invalid("block count");
+                NativeHistoryBlock[] blocks = new NativeHistoryBlock[count];
+                for (int index = 0; index < count; index++)
+                {
+                    int pairLength = reader.ReadSequenceLength();
+                    int end = checked(reader.Position + pairLength);
+                    blocks[index] = new NativeHistoryBlock(reader.DecodeULong(), reader.DecodeValueKeccakNonNull());
+                    reader.Check(end);
+                }
+                reader.CheckEnd();
+                ValidateBlocks(blocks);
+                return new NativeHistoryEnvelope(chainId, [], blocks);
+            }
+            if (length > NativeHistoryCall.MaxHashes * HashRlpLength || length % HashRlpLength != 0) throw Invalid("hash list length");
             ValueHash256[] hashes = new ValueHash256[length / HashRlpLength];
             for (int index = 0; index < hashes.Length; index++)
             {
@@ -58,15 +102,23 @@ internal sealed class NativeHistoryEnvelope
     }
 
     internal int PayloadLength => Rlp.LengthOf(Version) + Rlp.LengthOf(ChainId)
-        + Rlp.LengthOfSequence(_hashes.Length * HashRlpLength);
+        + Rlp.LengthOfSequence(_recordsLength);
 
     internal void EncodePayload<TWriter>(ref TWriter writer) where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.StartSequence(PayloadLength);
         writer.Encode(Version);
         writer.Encode(ChainId);
-        writer.StartSequence(_hashes.Length * HashRlpLength);
-        foreach (ValueHash256 hash in _hashes) writer.Encode(hash);
+        writer.StartSequence(_recordsLength);
+        if (_blocks is null)
+            foreach (ValueHash256 hash in _hashes) writer.Encode(hash);
+        else
+            foreach (NativeHistoryBlock block in _blocks)
+            {
+                writer.StartSequence(Rlp.LengthOf(block.Number) + HashRlpLength);
+                writer.Encode(block.Number);
+                writer.Encode(block.Hash);
+            }
     }
 
     internal byte[] Encode()
@@ -85,5 +137,18 @@ internal sealed class NativeHistoryEnvelope
             if (hash == default) throw Invalid("zero history hash");
     }
 
+    private static void ValidateBlocks(ReadOnlySpan<NativeHistoryBlock> blocks)
+    {
+        if (blocks.IsEmpty || blocks.Length > NativeHistoryCall.MaxHashes) throw Invalid("block count");
+        ulong previous = 0;
+        foreach (NativeHistoryBlock block in blocks)
+        {
+            if (block.Number <= previous || block.Hash == default) throw Invalid("history block number or hash");
+            previous = block.Number;
+        }
+    }
+
     private static RlpException Invalid(string reason) => new($"Invalid native history envelope: {reason}.");
 }
+
+internal readonly record struct NativeHistoryBlock(ulong Number, ValueHash256 Hash);

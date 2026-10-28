@@ -1,0 +1,6 @@
+{
+  "repository": "eez-association/eez-rollupX",
+  "revision": "b832ad6a4764c9796eb61f86dcd6a29d85f72c77",
+  "source": "crates/eez-control-rpc/conformance/native-profile-v1.json",
+  "sha256": "e6848921a8993ff76a5fc85a61b3c76d2dcfa8f4bfc2f4200bdc2f8211585ad6"
+}
