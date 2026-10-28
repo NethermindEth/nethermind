@@ -4,6 +4,7 @@
 #:property DefineConstants=SCRIPT_TEST
 #:include sequential-driver.cs
 
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
@@ -23,6 +24,14 @@ if (args.SequenceEqual(["orphan"]))
 
 if (args.Length > 0 && args[0] == "execute-scenarios")
 {
+    if (args.Contains("--help"))
+    {
+        Console.Error.WriteLine("No such option: --startup-block");
+        return 2;
+    }
+    var startup = Environment.GetEnvironmentVariable("EXPB_TEST_STARTUP");
+    var startupIndex = System.Array.IndexOf(args, "--startup-block");
+    if (startup is not null && (startupIndex < 0 || startupIndex + 1 >= args.Length || args[startupIndex + 1] != startup)) return 11;
     var mode = Environment.GetEnvironmentVariable("EXPB_TEST_MODE");
     var configPath = args[System.Array.IndexOf(args, "--config-file") + 1];
     var config = JsonNode.Parse(File.ReadAllText(configPath))!;
@@ -58,6 +67,130 @@ var tests = 0;
 var temporary = Directory.CreateTempSubdirectory("sequential driver tests ");
 try
 {
+    foreach (var (source, client, layout, fixture, expected) in new (string, string, string, string, string?)[]
+    {
+        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "flat", "/mnt/sda/nethermind-flat-25490000", "25490000"),
+        ("/data/nethermind/nethermind-flat-26000000", "nethermind", "flat", "/data/nethermind/nethermind-flat-26000000", "26000000"),
+        ("/data/nethermind/nethermind-flat-0", "nethermind", "flat", "/data/nethermind/nethermind-flat-0", "0"),
+        ("/snapshots/custom", "nethermind", "flat", "/mnt/sda/nethermind-flat-25490000", ""),
+        ("/mnt/sda/nethermind-flat-25490000", "custom", "flat", "/mnt/sda/nethermind-flat-25490000", ""),
+        ("/mnt/sda/nethermind-flat-25490000", "nethermind", "halfpath", "/mnt/sda/nethermind-flat-25490000", ""),
+        ("", "nethermind", "flat", "", ""),
+        ("/mnt/sda/nethermind-flat-invalid", "nethermind", "flat", "/mnt/sda/nethermind-flat-invalid", null),
+        ("/mnt/sda/nethermind-flat--1", "nethermind", "flat", "/mnt/sda/nethermind-flat--1", null),
+        ("/mnt/sda/nethermind-flat-01", "nethermind", "flat", "/mnt/sda/nethermind-flat-01", null)
+    }) Check($"checkpoint scope {client}/{layout}/{source}", () =>
+    {
+        var driver = Driver(("CLIENT", client), ("STATE_LAYOUT", layout), ("FLAT_SNAPSHOT_BLOCK_DIR", fixture));
+        var scenario = new JsonObject() { ["snapshot_source"] = source };
+        if (expected is null) Reject(() => driver.StartupFlags(scenario));
+        else Equal(string.Join('|', driver.StartupFlags(scenario)), expected.Length == 0 ? "" : "--startup-block|" + expected);
+    });
+    foreach (var (outcome, known) in new[] { ("", true), ("unsupported", true), ("timeout", true), ("missing", true), ("", false) })
+        await CheckAsync($"checkpoint campaign preflight outcome={outcome} known={known}", async () =>
+        {
+            var root = Path.Combine(temporary.FullName, "checkpoint-" + outcome + known);
+            var driver = Driver(("EXPB_CAMPAIGN_DIR", root), ("RUN_COUNT", "2"), ("EXPB_IMAGES_JSON", Images().ToJsonString()),
+                ("STATE_LAYOUT", "flat"), ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
+            var config = Base();
+            config["scenarios"]!["nethermind"]!["snapshot_source"] = known ? "/mnt/sda/nethermind-flat-25490000" : "/snapshots/custom";
+            var probes = 0;
+            var samples = 0;
+            Task<string> Capture(string command, string[] arguments, CancellationToken token)
+            {
+                probes++;
+                Equal(command, "expb");
+                Equal(string.Join('|', arguments), "execute-scenarios|--startup-block|26000000|--help");
+                Equal(token.CanBeCanceled, true);
+                return outcome switch
+                {
+                    "unsupported" => throw new IOException("No such option: --startup-block"),
+                    "timeout" => throw new OperationCanceledException(token),
+                    "missing" => throw new Win32Exception("expb was not found"),
+                    _ => Task.FromResult("Usage: expb execute-scenarios")
+                };
+            }
+            var result = await driver.Run(CancellationToken.None, _ => Task.FromResult(config), (_, _) => Task.CompletedTask,
+                (_, currentImage, run, _, _) =>
+                {
+                    Equal(probes, known ? 1 : 0);
+                    samples++;
+                    return Task.FromResult(Sample(currentImage["id"]!.ToString(), run, "success", 25));
+                }, probe: (flags, token) => driver.ProbeStartup(flags, token, Capture));
+            Equal(result, outcome.Length == 0 ? 0 : 1);
+            Equal(probes, known ? 1 : 0);
+            Equal(samples, outcome.Length == 0 ? 6 : 0);
+            if (outcome.Length > 0)
+            {
+                var campaign = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "campaign.json")))!;
+                Equal(campaign["status"]!.ToString(), "failed");
+                var error = campaign["failure_reasons"]![0]!.ToString();
+                var expected = outcome switch { "unsupported" => "No such option: --startup-block", "missing" => "expb was not found", _ => "timed out after 30 seconds" };
+                if (!error.Contains("snapshot checkpoint", StringComparison.Ordinal) || !error.Contains(expected, StringComparison.Ordinal)) throw new Exception("checkpoint failure lost context or cause: " + error);
+            }
+        });
+    await CheckAsync("default campaign preflight rejects an unsupported checkpoint before samples", async () =>
+    {
+        var root = Path.Combine(temporary.FullName, "default checkpoint preflight");
+        var driver = Driver(("EXPB_CAMPAIGN_DIR", root), ("EXPB_BIN", Environment.ProcessPath!), ("RUN_COUNT", "1"),
+            ("EXPB_IMAGES_JSON", Images().ToJsonString()), ("STATE_LAYOUT", "flat"),
+            ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
+        var config = Base();
+        config["scenarios"]!["nethermind"]!["snapshot_source"] = "/mnt/sda/nethermind-flat-25490000";
+        var samples = 0;
+        var result = await driver.Run(CancellationToken.None, _ => Task.FromResult(config), (_, _) => Task.CompletedTask,
+            (_, currentImage, run, _, _) =>
+            {
+                samples++;
+                return Task.FromResult(Sample(currentImage["id"]!.ToString(), run, "success", 25));
+            });
+        Equal(result, 1);
+        Equal(samples, 0);
+        var failure = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "campaign.json")))!["failure_reasons"]![0]!.ToString();
+        if (!failure.Contains("snapshot checkpoint", StringComparison.Ordinal) || !failure.Contains("No such option: --startup-block", StringComparison.Ordinal)) throw new Exception("default checkpoint preflight did not retain the failure: " + failure);
+    });
+    await CheckAsync("checkpoint probe configures and enforces the thirty second deadline", async () =>
+    {
+        var clock = new ProbeTimeProvider();
+        var timedOut = false;
+        try
+        {
+            await Driver().ProbeStartup(["--startup-block", "26000000"], CancellationToken.None, (_, _, token) =>
+            {
+                Equal(clock.DueTime, TimeSpan.FromSeconds(30));
+                Equal(clock.Period, Timeout.InfiniteTimeSpan);
+                Equal(token.IsCancellationRequested, false);
+                clock.Expire();
+                Equal(token.IsCancellationRequested, true);
+                return Task.FromCanceled<string>(token);
+            }, clock);
+        }
+        catch (TimeoutException exception)
+        {
+            timedOut = true;
+            if (!exception.Message.Contains("timed out after 30 seconds", StringComparison.Ordinal)) throw;
+        }
+        Equal(timedOut, true);
+        Equal(clock.TimerDisposed, true);
+    });
+    await CheckAsync("checkpoint probe preserves caller cancellation", async () =>
+    {
+        var clock = new ProbeTimeProvider();
+        using var caller = new CancellationTokenSource();
+        var cancelled = false;
+        try
+        {
+            await Driver().ProbeStartup(["--startup-block", "26000000"], caller.Token, (_, _, token) =>
+            {
+                caller.Cancel();
+                Equal(token.IsCancellationRequested, true);
+                return Task.FromCanceled<string>(token);
+            }, clock);
+        }
+        catch (OperationCanceledException) when (caller.IsCancellationRequested) { cancelled = true; }
+        Equal(cancelled, true);
+        Equal(clock.TimerDisposed, true);
+    });
     foreach (var (input, expected) in new[]
     {
         ("", ""), ("--JsonRpc.GasCap=1000", "--JsonRpc.GasCap=1000"),
@@ -297,8 +430,10 @@ try
     {
         var root = Directory.CreateDirectory(Path.Combine(temporary.FullName, "real sample"));
         var driver = Driver(("EXPB_BIN", Environment.ProcessPath!), ("EXPB_DATA_DIR", root.FullName), ("RUNNER_TEMP", root.FullName), ("AMOUNT", "1"),
-            ("EXPB_ENV_PASSTHROUGH", "EXPB_TEST_VALUE=value with spaces"), ("DOTTRACE", "true"), ("PERF", "true"));
+            ("EXPB_ENV_PASSTHROUGH", "EXPB_TEST_VALUE=value with spaces,EXPB_TEST_STARTUP=26000000"), ("DOTTRACE", "true"), ("PERF", "true"),
+            ("STATE_LAYOUT", "flat"), ("FLAT_SNAPSHOT_BLOCK_DIR", "/data/nethermind/nethermind-flat-26000000"));
         var config = Base(); config["export"] = new JsonObject { ["secret"] = "private" };
+        config["scenarios"]!["nethermind"]!["snapshot_source"] = "/mnt/sda/nethermind-flat-25490000";
         var result = await driver.RunSample(config, image, 1, root.FullName, CancellationToken.None, (_, _) => Task.CompletedTask);
         Equal(result["status"]!.ToString(), "success"); Near(result["expected_amount"], 1);
         var artifact = File.ReadAllText(result["config"]!.ToString());
@@ -307,7 +442,7 @@ try
         var log = File.ReadAllText(result["log"]!.ToString());
         if (!log.Contains("retained stderr", StringComparison.Ordinal)) throw new Exception("stderr lost");
         var command = result["command"]!.ToJsonString();
-        foreach (var flag in new[] { "--dottrace", "--dotnet-trace", "--perf" }) if (!command.Contains(flag, StringComparison.Ordinal)) throw new Exception($"Missing {flag}");
+        foreach (var flag in new[] { "--dottrace", "--dotnet-trace", "--perf", "--startup-block", "26000000" }) if (!command.Contains(flag, StringComparison.Ordinal)) throw new Exception($"Missing {flag}");
         Equal(File.Exists(Path.Combine(root.FullName, "image-1-abc-run1", "metadata.json")), true);
     });
     if (OperatingSystem.IsLinux()) await CheckAsync("escaped descendant cannot hold log pipes forever", async () =>
@@ -403,3 +538,27 @@ static JsonObject Sample(string id, int run, string status, double? average, boo
         ["request"] = new JsonObject { ["avg"] = average }, ["outside"] = new JsonObject { ["avg"] = null }, ["mgas_s"] = null },
     ["sse_block_ids"] = new JsonArray(1L)
 };
+
+sealed class ProbeTimeProvider : TimeProvider
+{
+    private TimerCallback? _callback;
+    private object? _state;
+    internal TimeSpan DueTime { get; private set; } = Timeout.InfiniteTimeSpan;
+    internal TimeSpan Period { get; private set; }
+    internal bool TimerDisposed { get; private set; }
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        _callback = callback;
+        _state = state;
+        DueTime = dueTime;
+        Period = period;
+        return new ProbeTimer(this);
+    }
+    internal void Expire() => _callback!(_state);
+    private sealed class ProbeTimer(ProbeTimeProvider clock) : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => !clock.TimerDisposed;
+        public void Dispose() => clock.TimerDisposed = true;
+        public ValueTask DisposeAsync() { Dispose(); return default; }
+    }
+}

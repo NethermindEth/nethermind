@@ -599,8 +599,11 @@ public partial class BlockProcessorTests
         ];
 
         Block block = await chain.AddBlock(transactions);
-        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
-        Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
+            Assert.That(block.Header.BlockAccessListHash, Is.Not.Null, "precondition: an Amsterdam block commits to its access list");
+        }
         return block;
 
         static Transaction Call(PrivateKey sender, ulong nonce, Address to, int value) =>

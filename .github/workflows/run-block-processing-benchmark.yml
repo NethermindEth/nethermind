@@ -93,7 +93,7 @@ jobs:
           path: pr
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: base/global.json
 

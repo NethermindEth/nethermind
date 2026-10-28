@@ -74,10 +74,14 @@ public class ReceiptsIteratorTests
 
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
         Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressA.Bytes));
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(receipt.TxHash.Bytes.Length, Is.EqualTo(0));
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
         Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressB.Bytes));
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(receipt.TxHash.Bytes.Length, Is.EqualTo(0));
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
         iterator.RecoverIfNeeded(ref receipt);
         Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressC.Bytes));
@@ -141,7 +145,9 @@ public class ReceiptsIteratorTests
         Rlp encoded = Rlp.Encode(Rlp.Encode(first), Rlp.OfEmptyList, Rlp.Encode(second));
         LogEntriesIterator iterator = new(encoded.Bytes, new ReceiptStorageDecoder());
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(iterator.TryGetNext(out LogEntryStructRef log), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(log.Address == TestItem.AddressA, Is.True);
         Assert.That(iterator.Index, Is.Zero);
         Assert.That(iterator.TryGetNext(out log), Is.True);
@@ -150,7 +156,9 @@ public class ReceiptsIteratorTests
         Assert.That(iterator.TryGetNext(out _), Is.False);
 
         iterator.Reset();
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(iterator.TrySkipNext(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(iterator.Index, Is.Zero);
         Assert.That(iterator.TrySkipNext(), Is.True);
         Assert.That(iterator.Index, Is.EqualTo(1));
@@ -310,7 +318,9 @@ public class ReceiptsIteratorTests
 
         try
         {
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
             Assert.That(iterator.TryGetNext(out _), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
             Assert.That(source.Reads, Is.Zero, "reading compact receipts must not read the block");
             if (sequence is RecoverySequence.FullOnly or RecoverySequence.FullThenLog)
