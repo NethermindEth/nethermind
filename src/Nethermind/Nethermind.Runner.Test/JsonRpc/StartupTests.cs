@@ -36,6 +36,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
