@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -15,9 +16,10 @@ namespace Nethermind.State.Flat.Collections;
 /// </summary>
 /// <remarks>
 /// A split-block Bloom filter (as in Apache Parquet): each key selects one 256-bit block and sets one bit in each
-/// of its eight 32-bit words, so a query reads a single cache-line-aligned block. About 10 bits per key give a
-/// false-positive rate of roughly 1%. The backing array is pinned so blocks stay 32-byte aligned, and it is kept
-/// across builds; reads are only valid against the latest <see cref="Reset"/> and the adds that followed it.
+/// of its eight 32-bit words, so a query reads a single cache-line-aligned block. 10 bits per key give a
+/// false-positive rate of about 1.3%; rounding the block count up to a power of two usually makes it lower. The
+/// backing array is pinned so blocks stay 32-byte aligned, and it is kept across builds unless it is much larger than
+/// a build needs; reads are only valid against the latest <see cref="Reset"/> and the adds that followed it.
 /// </remarks>
 internal sealed unsafe class SplitBlockFilter
 {
@@ -25,6 +27,8 @@ internal sealed unsafe class SplitBlockFilter
     private const int BitsPerBlock = WordsPerBlock * 32;
     private const int BitsPerKey = 10;
     private const int AlignmentWords = 32 / sizeof(uint);
+    // An array up to this size (64 KiB) is kept for any build; a larger one only while a build needs a quarter of it.
+    private const int RetainedWords = 16 * 1024;
 
     private static readonly Vector256<uint> Salts = Vector256.Create(
         0x47b6137bu, 0x44974d91u, 0x8824ad5bu, 0xa2b7289du, 0x705495c7u, 0x2df1424bu, 0x9efc4947u, 0x5c6bfb31u);
@@ -40,9 +44,10 @@ internal sealed unsafe class SplitBlockFilter
     {
         int blocks = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, (int)(((long)count * BitsPerKey + BitsPerBlock - 1) / BitsPerBlock)));
         int length = blocks * WordsPerBlock;
-        if (_words.Length < length + AlignmentWords)
+        int required = length + AlignmentWords;
+        if (_words.Length < required || _words.Length > Math.Max(4 * required, RetainedWords))
         {
-            _words = GC.AllocateUninitializedArray<uint>(length + AlignmentWords, pinned: true);
+            _words = GC.AllocateUninitializedArray<uint>(required, pinned: true);
             nuint address = (nuint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_words));
             _offset = (int)((32 - (address & 31)) & 31) / sizeof(uint);
         }
@@ -54,7 +59,9 @@ internal sealed unsafe class SplitBlockFilter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(uint hash)
     {
-        ref uint block = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_words), BlockStart(hash, out uint mixed));
+        int start = BlockStart(hash, out uint mixed);
+        Debug.Assert(start + WordsPerBlock <= _words.Length, "Reset must size the filter before Add.");
+        ref uint block = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_words), start);
         if (Avx2.IsSupported)
         {
             (Vector256.LoadUnsafe(ref block) | Bits(mixed)).StoreUnsafe(ref block);

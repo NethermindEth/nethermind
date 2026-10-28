@@ -56,9 +56,9 @@ public class SnapshotTests
     public void CountsAndEstimatesAreSealedByFirstObservation()
     {
         // The repository adds EstimateMemory() to its memory ledger when a snapshot is published and
-        // subtracts a later call on removal: both sides must see the same value even if a straggling
-        // writer (e.g. a trie-warmer job) mutates the content in between, and serving sealed counts
-        // avoids the all-stripe-locks ConcurrentDictionary.Count on live maps.
+        // subtracts a later call on removal: both sides must see the same value even if the content
+        // changes in between, and serving sealed counts avoids the all-stripe-locks
+        // ConcurrentDictionary.Count on live maps.
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
@@ -174,35 +174,54 @@ public class SnapshotTests
         using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         snapshot.BuildFilters();
 
+        SnapshotContentFilters filters = content.Filters!;
+        int[] maybePresent = new int[5];
         using (Assert.EnterMultipleScope())
         {
             for (int i = 0; i < 2 * Count; i++)
             {
                 bool written = i < Count;
-                (Address address, Hash256 hash, TreePath path) = Key(i);
-                Assert.That(snapshot.TryGetAccount(new(address), out _), Is.EqualTo(written));
-                Assert.That(snapshot.TryGetStorage(new((address, (UInt256)i)), out _), Is.EqualTo(written));
-                Assert.That(snapshot.TryGetStateNode(new(path), out _), Is.EqualTo(written));
-                Assert.That(snapshot.TryGetStorageNode(new((hash, path)), out _), Is.EqualTo(written));
+                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
+                HashedKey<Address> account = new(address);
+                HashedKey<(Address, UInt256)> storage = new((address, (UInt256)i));
+                HashedKey<TreePath> stateNode = new(path);
+                HashedKey<(Hash256, TreePath)> storageNode = new((hash, path));
+                HashedKey<(Hash256, TreePath)> otherStorageNode = new((hash, otherPath));
+                Assert.That(snapshot.TryGetAccount(account, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorage(storage, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStateNode(stateNode, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(storageNode, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorageNode(otherStorageNode, out _), Is.EqualTo(written));
+
+                // The dictionaries decide the lookups above, so also check that the filters reject absent keys.
+                if (written) continue;
+                if (filters.Accounts.MightContain((uint)account.GetHashCode())) maybePresent[0]++;
+                if (filters.Storages.MightContain((uint)storage.GetHashCode())) maybePresent[1]++;
+                if (filters.StateNodes.MightContain((uint)stateNode.GetHashCode())) maybePresent[2]++;
+                if (filters.StorageNodes.MightContain((uint)storageNode.GetHashCode())) maybePresent[3]++;
+                if (filters.StorageNodes.MightContain((uint)otherStorageNode.GetHashCode())) maybePresent[4]++;
             }
+
+            Assert.That(maybePresent, Is.All.LessThan(Count / 10));
         }
 
         void Populate(int from, int to)
         {
             for (int i = from; i < to; i++)
             {
-                (Address address, Hash256 hash, TreePath path) = Key(i);
+                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
                 content.Accounts[new(address)] = new((ulong)i, 1);
                 content.Storages[new((address, (UInt256)i))] = (UInt256)i;
                 content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
                 content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
+                content.StorageNodes[(hash, otherPath)] = new TrieNode(NodeType.Leaf, hash);
             }
         }
 
-        static (Address, Hash256, TreePath) Key(int i)
+        static (Address, Hash256, TreePath, TreePath) Key(int i)
         {
             Hash256 hash = Keccak.Compute(i.ToString());
-            return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes));
+            return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes), TreePath.FromPath(hash.Bytes[..16]));
         }
     }
 

@@ -833,7 +833,10 @@ public class ReadOnlySnapshotBundleFilterTests
             {
                 Layer layer = new();
                 ulong salt = ++block;
-                stack.AddInMemory(MakeSnapshot(salt, c => FillRandom(rng, c, layer, salt)), layer);
+                Snapshot snapshot = MakeSnapshot(salt, c => FillRandom(rng, c, layer, salt));
+                // Half of the mutable layers are read through their key filters, as the compactor job leaves them.
+                if ((seed + i) % 2 == 0) snapshot.BuildFilters();
+                stack.AddInMemory(snapshot, layer);
             }
             else
             {
