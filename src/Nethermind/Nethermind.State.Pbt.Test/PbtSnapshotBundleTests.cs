@@ -343,6 +343,30 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    public void Warm_up_reads_only_the_groups_the_buffer_does_not_reach_taking_the_descendant_sizes_of_those_it_does()
+    {
+        PbtStorageNodePath inBuffer = new(Bytes.FromHexString("0x20"), 3);
+        PbtStorageNodePath belowInBuffer = new(Bytes.FromHexString("0x24"), 6);
+        PbtStorageNodePath outsideBuffer = new(Bytes.FromHexString("0x40"), 3);
+        long[] storedDescendantBytes = [0, 0, 0, 0, 0, 0, 0, 4096];
+        Reader reader = new(default, null);
+        using PbtSnapshotBundle bundle = CreateBundle(reader);
+        bundle.SetTree((inBuffer, PbtNodeGroupEncoder.Encode(inBuffer, [new PbtNodeRecord(PbtTestPaths.PathOf(inBuffer, 0), BranchEncoding(1))], storedDescendantBytes)));
+        long[] descendantBytes = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
+
+        bundle.WarmUp(inBuffer, descendantBytes);
+        int inBufferReads = reader.GroupReadCount;
+        bundle.WarmUp(belowInBuffer, []);
+        bundle.WarmUp(outsideBuffer, []);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inBufferReads, Is.Zero, "a group the buffer reaches is not read");
+            Assert.That(descendantBytes, Is.EqualTo(storedDescendantBytes), "its descendant sizes come from the buffer");
+            Assert.That(reader.GroupReadCount, Is.EqualTo(2), "a group behind a link the buffer lacks is read");
+        }
+    }
+
+    [Test]
     public void SnapshotContent_ReplacedTreesStayReadableUntilReset([Values(1, 8)] int groupCount, [Values] bool removed)
     {
         using PbtGroupRecordBuffer buffer = new(0, 256, 1);

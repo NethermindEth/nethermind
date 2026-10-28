@@ -183,7 +183,7 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Copies the group at <paramref name="path"/> from the persisted snapshots or persistence into the warmed groups, for this block's folds.</summary>
     /// <remarks>
-    /// A group already warmed is not read again. The group record buffer is not checked, so a group it holds is read and warmed.
+    /// A group already warmed is not read again, nor is one the group record buffer settles, as <see cref="SettlesInBuffer"/> does.
     /// The transient resource holding the warmed groups is leased for the read, so it cannot be recycled until the read ends.
     /// Does nothing once the bundle is being torn down.
     /// </remarks>
@@ -195,6 +195,7 @@ public sealed class PbtSnapshotBundle(
 
         try
         {
+            if (SettlesInBuffer(path, descendantBytes)) return;
             PbtWarmedGroupBuffer warmed = transientResource.WarmedGroupBuffer;
             if (!warmed.TryGet(path, out PbtGroupRecord record))
                 readOnlyBundle.TryLoadPersistedNodeGroup(path, WarmGroupState.Write, new WarmGroupState(warmed, in path, descendantBytes));
@@ -205,6 +206,33 @@ public sealed class PbtSnapshotBundle(
         {
             transientResource.ReleaseLease();
         }
+    }
+
+    /// <summary>Follows the group record buffer's links from the tree's root group along <paramref name="path"/>, reading the descendant sizes of the group found there.</summary>
+    /// <returns>
+    /// True when the buffer settles the group: it holds the group, or a link passes the group's depth or leaves its path, so the
+    /// tree has no group there. False when a link the walk needs is not in the buffer, so the fold may load the group by its path.
+    /// </returns>
+    private bool SettlesInBuffer(in PbtStorageNodePath path, Span<long> descendantBytes)
+    {
+        Span<byte> target = stackalloc byte[PbtBitPrefix.ByteCount(path.BitDepth)];
+        PbtNodePathOperations.CopyTo(path, target);
+        PbtTraversalPath walked = new(stackalloc byte[target.Length]);
+        ulong pointer = RootGroupPointer;
+        while (pointer != 0 && groupRecordBuffer.TryLocate(pointer, out PbtGroupRecord record))
+        {
+            PbtStorageNodePath recordPath = record.Path;
+            if (recordPath.BitDepth > path.BitDepth) return true;
+            walked.AppendKey(target, recordPath.BitDepth);
+            if (!walked.ToPath<PbtStorageNodePath>().Equals(recordPath)) return true;
+            if (recordPath.BitDepth == path.BitDepth)
+            {
+                if (!descendantBytes.IsEmpty) PbtNodeGroupCodec.ReadDescendantBytes(record.Payload.Span, descendantBytes);
+                return true;
+            }
+            pointer = record.GetLink(TrieUpdater.BoundarySlot(target, recordPath.BitDepth));
+        }
+        return false;
     }
 
     /// <summary>Writes the persisted payload handed to it into the warmed groups as the requested group, then indexes it.</summary>

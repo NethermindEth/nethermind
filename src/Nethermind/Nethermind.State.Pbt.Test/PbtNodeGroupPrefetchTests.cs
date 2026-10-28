@@ -88,9 +88,9 @@ public class PbtNodeGroupPrefetchTests
             for (int depth = 267; depth <= 264 + 3 * levels; depth += 3)
                 expected.Add(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, depth));
         }
-        // The prefetch reads persistence even for a group a snapshot holds; only the fold finds it in the snapshot.
-        if (snapshotBacked && descendantBytes >= 0) reread.Remove(storageGroup);
-        PbtStorageNodePath[] expectedReads = [.. expected, .. reread];
+        // Neither the prefetch nor the fold reads a group the buffer holds.
+        PbtStorageNodePath[] buffered = snapshotBacked && descendantBytes >= 0 ? [storageGroup, deeperSnapshot] : [];
+        PbtStorageNodePath[] expectedReads = [.. expected.Except(buffered), .. reread.Except(buffered)];
         Assert.That(() => reader.Reads, Is.EquivalentTo(expectedReads).After(5000, 10));
         scope.UpdateRootHash();
         PbtStorageNodePath[] singles = reader.Reads;
@@ -128,7 +128,7 @@ public class PbtNodeGroupPrefetchTests
     }
 
     [Test]
-    public void NodeGroupPrefetch_reads_a_snapshot_group_from_persistence_and_logs_the_failed_reads()
+    public void NodeGroupPrefetch_reads_only_groups_no_snapshot_holds_and_logs_the_failed_reads()
     {
         ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
         PbtStorageNodePath[] paths = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone), FirstGroup(TestItem.AddressB, Eip8297KeyDerivation.StorageZone)];
@@ -141,7 +141,7 @@ public class PbtNodeGroupPrefetchTests
             PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         InterfaceLogger logger = ErrorLogger();
         PbtWorldStateScope scope = HintBal(bundle, bal, logger);
-        Assert.That(() => reader.Reads, Is.EquivalentTo(paths).After(5000, 10));
+        Assert.That(() => reader.Reads, Is.EquivalentTo(paths[1..]).After(5000, 10));
         scope.UpdateRootHash();
         Assert.That(LoggedErrors(logger), Does.Contain("prefetch read failed"));
     }
