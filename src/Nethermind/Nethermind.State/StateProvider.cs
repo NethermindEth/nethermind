@@ -46,7 +46,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
-    private Dictionary<AddressAsKey, ChangeTrace>? _commitTrace;
+    private OptimizedDictionary<AddressAsKey, ChangeTrace>? _commitTrace;
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
     private List<AddressAsKey>? _spareRemovedWithStorage;
@@ -675,7 +675,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         if (stateTracer.IsTracingState)
         {
-            Dictionary<AddressAsKey, ChangeTrace> trace = _commitTrace ??= [];
+            OptimizedDictionary<AddressAsKey, ChangeTrace> trace = _commitTrace ??= [];
             trace.ClearAndTrim();
             CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
             // Reporting code changes reads both the code DB and the lookup recycled by the flush worker.
@@ -770,7 +770,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ReadOnlySpan<Change> changes,
         bool removeEmptyAccounts,
         bool isTracing,
-        Dictionary<AddressAsKey, ChangeTrace>? trace)
+        OptimizedDictionary<AddressAsKey, ChangeTrace>? trace)
         where TStateTracing : struct, IFlag
     {
         Debug.Assert(TStateTracing.IsActive == (trace is not null));
@@ -886,7 +886,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Dictionary<AddressAsKey, ChangeTrace> RequireTrace(Dictionary<AddressAsKey, ChangeTrace>? trace) =>
+    private static OptimizedDictionary<AddressAsKey, ChangeTrace> RequireTrace(OptimizedDictionary<AddressAsKey, ChangeTrace>? trace) =>
         trace ?? throw new InvalidOperationException("State tracing is active without a trace accumulator.");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1323,13 +1323,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 internal static class Extensions
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace.Add(address, new ChangeTrace(change));
+    public static void AddToTrace(this OptimizedDictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace.Add(address, new ChangeTrace(change));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
+    public static void UpdateTrace(this OptimizedDictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, IWorldStateTracer stateTracer, OptimizedHashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
+    public static void ReportStateTrace(this OptimizedDictionary<AddressAsKey, ChangeTrace> trace, IWorldStateTracer stateTracer, OptimizedHashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
     {
         foreach (Address nullRead in nullAccountReads)
         {
@@ -1339,7 +1339,7 @@ internal static class Extensions
         ReportChanges(trace, stateTracer, stateProvider);
     }
 
-    private static void ReportChanges(Dictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
+    private static void ReportChanges(OptimizedDictionary<AddressAsKey, ChangeTrace> trace, IStateTracer stateTracer, StateProvider stateProvider)
     {
         foreach (KeyValuePair<AddressAsKey, ChangeTrace> entry in trace)
         {
