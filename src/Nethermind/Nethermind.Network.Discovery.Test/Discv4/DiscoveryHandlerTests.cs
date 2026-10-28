@@ -22,7 +22,6 @@ using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;

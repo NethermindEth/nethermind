@@ -13,7 +13,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4.Messages;
-using Nethermind.Serialization.Rlp;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery.Discv4;
