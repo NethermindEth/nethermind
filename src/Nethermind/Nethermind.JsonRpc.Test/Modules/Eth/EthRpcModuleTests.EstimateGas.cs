@@ -86,6 +86,33 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_rejects_unsupported_overrides_before_frame_validation(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values("beaconRoot", "withdrawals", "both", "null")] string field)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.Frames![1].Mode = byte.MaxValue;
+        object blockOverride = JsonSerializer.Deserialize<object>(field switch
+        {
+            "beaconRoot" => $"{{\"beaconRoot\":\"{Hash256.Zero}\"}}",
+            "withdrawals" => """{"withdrawals": []}""",
+            "both" => $"{{\"beaconRoot\":\"{Hash256.Zero}\",\"withdrawals\":[]}}",
+            _ => """{"beaconRoot":null,"withdrawals":null}"""
+        })!;
+
+        string response = await ctx.Test.TestEthRpc(method, request, "latest", null, blockOverride);
+        string expectedMessage = field switch
+        {
+            "withdrawals" => BlockOverride.WithdrawalsNotSupported,
+            "null" => FrameTxValidation.InvalidMode,
+            _ => BlockOverride.BeaconRootNotSupported
+        };
+
+        AssertCallBlockOverrideError(JToken.Parse(response)["error"], expectedMessage, response);
+    }
+
+    [Test]
     public async Task FrameGas_FillTransaction_FillsBothDimensions([Values] bool explicitExecution)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
