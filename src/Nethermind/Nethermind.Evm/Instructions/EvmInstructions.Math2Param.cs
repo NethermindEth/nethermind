@@ -414,7 +414,7 @@ public static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas))
         {
-            if (TTracingInst.IsActive) TraceExpBaseOutOfGas<TGasPolicy, Eip160>(ref stack, vm);
+            if (TTracingInst.IsActive) TraceExpBaseOutOfGas<TGasPolicy, Eip160>(in stack, vm);
             return EvmExceptionType.OutOfGas;
         }
 
@@ -466,17 +466,16 @@ public static partial class EvmInstructions
     /// </summary>
     /// <remarks>
     /// Geth charges both parts as one dynamic cost, so its struct log never shows the base cost alone.
-    /// Reading the exponent pops the base, which is harmless because the operation fails anyway.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void TraceExpBaseOutOfGas<TGasPolicy, Eip160>(ref EvmStack stack, VirtualMachine<TGasPolicy> vm)
+    private static void TraceExpBaseOutOfGas<TGasPolicy, Eip160>(in EvmStack stack, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where Eip160 : struct, IFlag
     {
         ulong expSize = 0;
         if (stack.EnsureDepth(2))
         {
-            ref UInt256 exponent = ref As<byte, UInt256>(ref stack.Pop1Peek32BytesUnchecked());
+            ref UInt256 exponent = ref As<byte, UInt256>(ref Subtract(ref stack.PeekBytesByRefUnchecked(), EvmStack.WordSize));
             expSize = (ulong)(32 - (exponent.CountLeadingZeros() >> 3));
         }
 
