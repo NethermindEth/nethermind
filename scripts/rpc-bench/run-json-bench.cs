@@ -185,6 +185,9 @@ try
     if (lookup && Get("LOOKUP_PREPARE_ONLY") == "true")
     {
         await TransactionLookupWorkload.QualifyReceiptEncodingAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), Path.Combine(output, "receipt-encoding.json"), cancellation.Token);
+        var historical = await TransactionLookupWorkload.HistoricalProbeManifestAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token);
+        await File.WriteAllTextAsync(Path.Combine(output, "historical-receipt-probe-manifest.json"), historical.ToJsonString(), cancellation.Token);
+        await TransactionLookupWorkload.QualifyReceiptEncodingAsync(historical, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), Path.Combine(output, "historical-receipt-encoding.json"), cancellation.Token);
         return 0;
     }
     await using (var sampler = new ResourceSamplerSession(Get("RESOURCE_SAMPLER_CONTAINER"), Get("RESOURCE_SAMPLER_OUT")))

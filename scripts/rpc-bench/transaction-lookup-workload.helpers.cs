@@ -215,6 +215,30 @@ internal static class TransactionLookupWorkload
         }
     }
 
+    internal static async Task<JsonObject> HistoricalProbeManifestAsync(JsonObject manifest, Func<string, JsonArray, Task<JsonNode?>> rpc, CancellationToken cancellationToken)
+    {
+        var head = Quantity(manifest["headNumber"]);
+        if (head < 32) throw new IOException("Historical receipt survey requires at least 32 blocks");
+        var entries = new JsonArray();
+        var missing = new JsonArray();
+        for (var index = 1; index <= 32; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var number = (long)((Int128)head * index / 32);
+            var response = await rpc("eth_getBlockByNumber", new JsonArray(Hex(number), false));
+            if (response is null) { missing.Add((JsonNode?)JsonValue.Create(Hex(number))); continue; }
+            if (response is not JsonObject block || Quantity(block["number"]) != number || block["hash"] is not JsonValue hashValue
+                || block["transactions"] is not JsonArray transactions) throw new IOException("Invalid historical block metadata");
+            var hash = hashValue.GetValue<string>();
+            if (hash.Length != 66 || !hash.StartsWith("0x", StringComparison.Ordinal)) throw new IOException("Invalid historical block hash");
+            for (var digit = 2; digit < hash.Length; digit++)
+                if (!Uri.IsHexDigit(hash[digit])) throw new IOException("Invalid historical block hash");
+            entries.Add((JsonNode)new JsonObject { ["blockNumber"] = Hex(number), ["blockHash"] = hash, ["blockTransactionCount"] = transactions.Count });
+        }
+        return new JsonObject { ["headNumber"] = manifest["headNumber"]!.DeepClone(), ["headHash"] = manifest["headHash"]!.DeepClone(),
+            ["entries"] = entries, ["missingBlocks"] = missing };
+    }
+
     internal static async Task QualifyReceiptEncodingAsync(JsonObject manifest, Func<string, JsonArray, Task<JsonNode?>> rpc, string reportPath, CancellationToken cancellationToken)
     {
         var records = new JsonArray();
@@ -241,12 +265,14 @@ internal static class TransactionLookupWorkload
                 126 => "compact-hash-prefixed",
                 _ => "noncompact-or-unknown"
             };
-            records.Add((JsonNode)new JsonObject { ["blockHash"] = hash, ["blockNumber"] = entry["blockNumber"]!.DeepClone(), ["keyLayout"] = layout,
+            records.Add((JsonNode)new JsonObject { ["blockHash"] = hash, ["blockNumber"] = entry["blockNumber"]!.DeepClone(),
+                ["blockTransactionCount"] = entry["blockTransactionCount"]?.DeepClone(), ["keyLayout"] = layout,
                 ["encoding"] = encoding, ["byteLength"] = bytes.Length, ["prefixHex"] = Convert.ToHexStringLower(bytes.AsSpan(0, Math.Min(96, bytes.Length))),
                 ["valueSha256"] = Convert.ToHexStringLower(SHA256.HashData(bytes)) });
         }
         await File.WriteAllTextAsync(reportPath, new JsonObject { ["scope"] = "Stored receipt marker inspection; not proof of an executed recovery path",
-            ["headNumber"] = manifest["headNumber"]!.DeepClone(), ["headHash"] = manifest["headHash"]!.DeepClone(), ["records"] = records }.ToJsonString(), cancellationToken);
+            ["headNumber"] = manifest["headNumber"]!.DeepClone(), ["headHash"] = manifest["headHash"]!.DeepClone(),
+            ["missingBlocks"] = manifest["missingBlocks"]?.DeepClone(), ["records"] = records }.ToJsonString(), cancellationToken);
     }
 
     internal static string Hash(string path) => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));

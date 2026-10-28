@@ -97,6 +97,34 @@ foreach (var (primary, legacy, layout, encoding) in new (string?, string?, strin
         RpcScriptTests.Assert(record["keyLayout"]!.GetValue<string>() == layout && record["encoding"]!.GetValue<string>() == encoding, "encoding classification differs");
         RpcScriptTests.Assert(probes[0] == "0x00000000000026d0" + manifest["entries"]![0]!["blockHash"]!.GetValue<string>()[2..] && probes.Count == (layout == "legacy-hash" ? 2 : 1), "raw key or fallback differs");
     });
+foreach (var surveyDefect in new[] { "", "missing", "number", "hash" })
+    tests.Case("bounded historical format survey " + surveyDefect, () =>
+    {
+        async Task<JsonNode?> SurveyRpc(string method, JsonArray parameters)
+        {
+            if (parameters[0]!.GetValue<string>() == "0x1388" && surveyDefect == "missing") return null;
+            var block = await Rpc(method, parameters);
+            if (surveyDefect == "number") block!["number"] = "0x0";
+            if (surveyDefect == "hash") block!["hash"] = "0x" + new string('g', 64);
+            return block;
+        }
+        if (surveyDefect is "number" or "hash")
+        {
+            Reject(() => TransactionLookupWorkload.HistoricalProbeManifestAsync(manifest, SurveyRpc, CancellationToken.None).GetAwaiter().GetResult());
+            return;
+        }
+        var survey = TransactionLookupWorkload.HistoricalProbeManifestAsync(manifest, SurveyRpc, CancellationToken.None).GetAwaiter().GetResult();
+        var entries = survey["entries"]!.AsArray();
+        RpcScriptTests.Assert(entries.Count == (surveyDefect == "missing" ? 31 : 32) && survey["missingBlocks"]!.AsArray().Count == (surveyDefect == "missing" ? 1 : 0), "historical availability differs");
+        RpcScriptTests.Assert(entries[0]!["blockNumber"]!.GetValue<string>() == "0x138" && entries[^1]!["blockNumber"]!.GetValue<string>() == "0x2710", "historical sample bounds differ");
+    });
+tests.Case("historical survey honors cancellation before any RPC", () =>
+{
+    using var canceled = new CancellationTokenSource(); canceled.Cancel();
+    var previousCalls = calls;
+    var survey = TransactionLookupWorkload.HistoricalProbeManifestAsync(manifest, Rpc, canceled.Token);
+    RpcScriptTests.Assert(survey.IsCanceled && calls == previousCalls, "canceled survey made RPC requests");
+});
 var manifestHash = TransactionLookupWorkload.Hash(manifestPath);
 var report = Path.Combine(tests.DirectoryPath, "validation.json");
 void Validate() => TransactionLookupWorkload.ValidateAsync(manifest, Rpc, report, manifestHash).GetAwaiter().GetResult();
