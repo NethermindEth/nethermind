@@ -18,9 +18,11 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
     private static readonly BlockReadCache?[] SpareReads = new BlockReadCache?[13];
     private readonly int _cacheBits = CacheBits(rows);
     private BlockReadCache? _reads = RentReads(CacheBits(rows));
-    private readonly Lock _readsLock = new();
-    private int _activeReads;
-    private bool _disposed;
+    // The leases out on the cache, with Disposed set once the block is disposed. Every worker takes a lease per
+    // transaction, so it is counted without a lock; whoever takes the count to Disposed alone returns the cache.
+    private int _readers;
+
+    private const int Disposed = 1 << 30;
 
     private static int CacheBits(BlockChangesets rows) => Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 2, 2, 12);
 
@@ -29,8 +31,7 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
 
     public IPrefixStateSeedSource CreateWorkerSeeds()
     {
-        using Lock.Scope scope = _readsLock.EnterScope();
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf((Volatile.Read(ref _readers) & Disposed) != 0, this);
         return new WorkerSeeds(rows, earlierBlocks, this);
     }
 
@@ -39,10 +40,7 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
 
     public void Dispose()
     {
-        using Lock.Scope scope = _readsLock.EnterScope();
-        if (_disposed) return;
-        _disposed = true;
-        if (_activeReads == 0) ReturnReads();
+        if (Interlocked.Or(ref _readers, Disposed) == 0) ReturnReads();
     }
 
     private void ReturnReads()
@@ -55,16 +53,19 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
 
     private ReadLease? TryLeaseReads()
     {
-        using Lock.Scope scope = _readsLock.EnterScope();
-        if (_disposed) return null;
-        _activeReads++;
-        return new ReadLease(this, _reads!);
+        int readers = Volatile.Read(ref _readers);
+        while (true)
+        {
+            if ((readers & Disposed) != 0) return null;
+            int seen = Interlocked.CompareExchange(ref _readers, readers + 1, readers);
+            if (seen == readers) return new ReadLease(this, _reads!);
+            readers = seen;
+        }
     }
 
     private void ReleaseReads()
     {
-        using Lock.Scope scope = _readsLock.EnterScope();
-        if (--_activeReads == 0 && _disposed) ReturnReads();
+        if (Interlocked.Decrement(ref _readers) == Disposed) ReturnReads();
     }
 
     private sealed class ReadLease(CoveredBlock owner, BlockReadCache cache) : IDisposable
