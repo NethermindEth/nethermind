@@ -109,9 +109,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (options.EnforceExecutionDeadline)
             {
-                _ownsDeadline = options.DeadlineScope is null;
+                _ownsDeadline = options.DeadlineScope?.Current is null;
                 _external = options.DeadlineScope?.External ?? default;
-                _deadline = _ownsDeadline ? new(clock: options.DeadlineClock) : options.DeadlineScope!.Current;
+                _deadline = _ownsDeadline ? new(_external, options.DeadlineClock) : options.DeadlineScope!.Current;
                 _ctsRegistration = (_deadline?.Token ?? _external).Register(static e => ((Engine)e!).Interrupt(), engine);
                 if (_ownsDeadline) _deadline!.Start(timeout);
             }

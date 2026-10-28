@@ -411,7 +411,8 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Specified_javascript_owned_interrupt_is_typed([Values("result", "step")] string callback)
+    public async Task Specified_javascript_owned_interrupt_is_typed(
+        [Values("result", "step")] string callback, [Values] bool emptyScope)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
@@ -422,7 +423,8 @@ public partial class DebugRpcModuleTests
         string body = "expireTrace();for(let i=0;i<10000;i++){};";
         using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
             "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
-                + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}");
+                + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}",
+            emptyScope ? new GethTraceDeadlineScope() : null);
         Assert.Throws<GethTraceDeadlineException>(() =>
         {
             if (callback == "step") tracer.SetOperationStack(default);
@@ -500,8 +502,8 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Specified_javascript_borrowed_deadline_propagates_actual_external_cancellation(
-        [Values("step", "result")] string callback)
+    public async Task Specified_javascript_scoped_deadline_propagates_actual_external_cancellation(
+        [Values("step", "result")] string callback, [Values] bool hasOwner)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using CancellationTokenSource external = new();
@@ -511,13 +513,14 @@ public partial class DebugRpcModuleTests
         Action cancel = () => external.Cancel();
         using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.cancelTrace=action;}}"))
             installer.InvokeMethod("install", cancel);
-        GethTraceDeadlineScope scope = new() { Current = owner, External = external.Token };
+        GethTraceDeadlineScope scope = new() { Current = hasOwner ? owner : null, External = external.Token };
         string body = "cancelTrace();for(let i=0;i<10000;i++){};";
         using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
             "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
                 + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}", scope);
-        Assert.That(clock.Timers, Is.Empty, "borrowing a deadline must not start a second timer");
-        owner.Start(TimeSpan.FromSeconds(1));
+        Assert.That(clock.Timers, hasOwner ? Is.Empty : Has.Count.EqualTo(1),
+            "borrow a selected owner or start a local watchdog when the scope has no owner");
+        if (hasOwner) owner.Start(TimeSpan.FromSeconds(1));
         OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
         {
             if (callback == "step") tracer.SetOperationStack(default);
@@ -529,7 +532,9 @@ public partial class DebugRpcModuleTests
             Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
             Assert.That(owner.Expired, Is.False, "external cancellation is not owned execution expiry");
             Assert.That(clock.Timers, Has.Count.EqualTo(1));
-            Assert.That(clock.Timers[0].Disposed, Is.False, "the child does not dispose its borrowed owner");
+            Assert.That(clock.Timers[0].Disposed, Is.EqualTo(!hasOwner),
+                "the child releases its local watchdog but does not dispose a borrowed owner");
+            Assert.That(scope.Current, Is.SameAs(hasOwner ? owner : null));
         }
         owner.Dispose();
         Assert.That(clock.Timers[0].Disposed, Is.True);
