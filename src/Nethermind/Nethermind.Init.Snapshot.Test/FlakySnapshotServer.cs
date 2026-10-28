@@ -59,6 +59,8 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public int? DropEveryAttemptAfterBytes { get; set; }
 
+    public Func<CancellationToken, Task>? BeforeResponse { get; set; }
+
     public int RequestCount => _requestCount;
 
     public void SwitchSourceAfterRequests(int requestCount, byte[] newContent, string? newETag)
@@ -118,6 +120,9 @@ internal sealed class FlakySnapshotServer : IDisposable
 
         try
         {
+            if (BeforeResponse is not null)
+                await BeforeResponse(_hangCts.Token);
+
             if (RedirectFirstRequest && Interlocked.Exchange(ref _redirected, 1) == 0)
             {
                 response.StatusCode = 302;
@@ -212,7 +217,9 @@ internal sealed class FlakySnapshotServer : IDisposable
             await response.OutputStream.WriteAsync(content.AsMemory((int)from, (int)length));
             response.Close();
         }
-        catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or OperationCanceledException)
+        catch (Exception e) when (e is HttpListenerException or IOException or ObjectDisposedException or OperationCanceledException
+                                  // Closing the listener sends the headers of in-flight responses before disposing them, so a racing setter throws this
+                                  || (e is InvalidOperationException && _hangCts.IsCancellationRequested))
         {
             response.Abort();
         }
