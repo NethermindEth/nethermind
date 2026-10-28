@@ -695,15 +695,7 @@ namespace Nethermind.Facade
             BlockHeader toBlock,
             CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
 
-        public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
-        {
-            LogFilter? filter;
-            filterLogs = null;
-            if ((filter = filterStore.GetFilter<LogFilter>(filterId)) is not null)
-                filterLogs = logFinder.FindLogs(filter, cancellationToken);
-
-            return filter is not null;
-        }
+        public LogFilter? GetLogFilter(int filterId) => filterStore.GetFilter<LogFilter>(filterId);
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
             HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null)
