@@ -112,7 +112,11 @@ public static class RpcTest
     }
 
     /// <summary>Sends a request whose result is streamed and writes the response into <paramref name="writer"/>.</summary>
-    public static async Task TestStreamedRequest<T>(T module, PipeWriter writer, string method, params object?[]? parameters) where T : class, IRpcModule
+    public static Task TestStreamedRequest<T>(T module, PipeWriter writer, string method, params object?[]? parameters) where T : class, IRpcModule =>
+        TestStreamedRequest(module, writer, CancellationToken.None, null, method, parameters);
+
+    internal static async Task TestStreamedRequest<T>(T module, PipeWriter writer, CancellationToken cancellationToken,
+        IStreamedResultObserver? observer, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         await using IContainer container = CreateContainerForModule<T>(module);
 
@@ -121,8 +125,9 @@ public static class RpcTest
         using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context);
 
         Assert.That(response.TryGetStreamableResult(out _), Is.True, $"precondition: {method} must return a streamed result");
-        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
-        await writer.FlushAsync();
+        if (observer is not null) response.ObserveStreamedResult(observer, Nethermind.Logging.NullLogger.Instance);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
+        await writer.FlushAsync(cancellationToken);
     }
 
     private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule => new ContainerBuilder()

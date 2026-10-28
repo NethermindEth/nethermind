@@ -194,7 +194,7 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Specified_block_streamed_backpressure_preserves_execution_deadline_scope(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
-        [Values("", NativeCallTracer.CallTracer)] string tracer)
+        [Values("", NativeCallTracer.CallTracer)] string tracer, [Values] bool cancelExternal)
     {
         DeadlineExecution clock = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -204,8 +204,10 @@ public partial class DebugRpcModuleTests
         object selector = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 1, resumeWriterThreshold: 1));
         DeadlineBackpressureWriter writer = new(pipe.Writer);
-        Task writing = Task.Run(() => RpcTest.TestStreamedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), writer, method, selector,
-            new { tracer, timeout = "1s", streamMode = true }));
+        using CancellationTokenSource external = new();
+        JsonRpcResponseWriterStreamingIdTests.RecordingObserver observer = new();
+        Task writing = Task.Run(() => RpcTest.TestStreamedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), writer,
+            external.Token, observer, method, selector, new { tracer, timeout = "1s", streamMode = true }));
         Task? reading = null;
         Exception? failure = null;
         async Task CleanUp(Func<Task> action)
@@ -227,36 +229,56 @@ public partial class DebugRpcModuleTests
                     "native emission follows materialization; opcode emission is still executing");
                 Assert.That(writing.IsCompleted, Is.False, "an unread transport must apply backpressure");
             }
-            clock.Advance(block.Transactions[0].Nonce);
-            if (tracer.Length == 0)
+            if (cancelExternal)
             {
-                await Assert.ThrowsAsync<GethTraceDeadlineException>(() => writing.WaitAsync(TimeSpan.FromSeconds(10)));
-                Assert.That(clock.Timers[0].Disposed, Is.True);
+                external.Cancel();
+                await Assert.CatchAsync<OperationCanceledException>(() => writing.WaitAsync(TimeSpan.FromSeconds(10)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(external.IsCancellationRequested, Is.True);
+                    Assert.That(observer.Succeeded, Is.False);
+                    Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                    Assert.That(clock.Timers[0].Disposed, Is.True);
+                }
             }
             else
             {
-                Assert.That(writing.IsCompleted, Is.False, "output waiting must not become an execution timeout");
-                ArrayBufferWriter<byte> received = new();
-                reading = Task.Run(async () =>
+                clock.Advance(block.Transactions[0].Nonce);
+                if (tracer.Length == 0)
                 {
-                    while (true)
+                    await Assert.ThrowsAsync<GethTraceDeadlineException>(() => writing.WaitAsync(TimeSpan.FromSeconds(10)));
+                    using (Assert.EnterMultipleScope())
                     {
-                        ReadResult read = await pipe.Reader.ReadAsync();
-                        foreach (ReadOnlyMemory<byte> segment in read.Buffer) received.Write(segment.Span);
-                        pipe.Reader.AdvanceTo(read.Buffer.End);
-                        if (read.IsCompleted) break;
+                        Assert.That(clock.Timers[0].Disposed, Is.True);
+                        Assert.That(observer.Succeeded, Is.False);
                     }
-                });
-                await writing.WaitAsync(TimeSpan.FromSeconds(10));
-                await writer.CompleteAsync();
-                await reading.WaitAsync(TimeSpan.FromSeconds(10));
-                JToken json = JToken.Parse(Encoding.UTF8.GetString(received.WrittenSpan));
-                using (Assert.EnterMultipleScope())
+                }
+                else
                 {
-                    Assert.That(json["error"], Is.Null);
-                    Assert.That((JArray)json["result"]!, Has.Count.EqualTo(2));
-                    Assert.That(clock.Timers, Has.Count.EqualTo(2));
-                    Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                    Assert.That(writing.IsCompleted, Is.False, "output waiting must not become an execution timeout");
+                    ArrayBufferWriter<byte> received = new();
+                    reading = Task.Run(async () =>
+                    {
+                        while (true)
+                        {
+                            ReadResult read = await pipe.Reader.ReadAsync();
+                            foreach (ReadOnlyMemory<byte> segment in read.Buffer) received.Write(segment.Span);
+                            pipe.Reader.AdvanceTo(read.Buffer.End);
+                            if (read.IsCompleted) break;
+                        }
+                    });
+                    await writing.WaitAsync(TimeSpan.FromSeconds(10));
+                    await writer.CompleteAsync();
+                    await reading.WaitAsync(TimeSpan.FromSeconds(10));
+                    JToken json = JToken.Parse(Encoding.UTF8.GetString(received.WrittenSpan));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(json["error"], Is.Null);
+                        Assert.That((JArray)json["result"]!, Has.Count.EqualTo(2));
+                        Assert.That(clock.Timers, Has.Count.EqualTo(2));
+                        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                        Assert.That(observer.Succeeded, Is.True);
+                    }
                 }
             }
         }
@@ -272,6 +294,8 @@ public partial class DebugRpcModuleTests
             {
                 try { await writing.WaitAsync(TimeSpan.FromSeconds(10)); }
                 catch (GethTraceDeadlineException exception) { TestContext.Out.WriteLine($"Observed owned stream expiry during cleanup: {exception.Message}"); }
+                catch (OperationCanceledException exception) when (external.IsCancellationRequested)
+                { TestContext.Out.WriteLine($"Observed external stream cancellation during cleanup: {exception.Message}"); }
             });
             await CleanUp(() => writer.CompleteAsync().AsTask());
             if (reading is not null) await CleanUp(() => reading.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -534,6 +558,102 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task JavaScript_immediate_deadline_does_not_reclassify_setup_failure(
+        [Values] bool interrupt, [Values(0, -1)] int timeout)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new();
+        bool reached = false;
+        int timersDuringSetup = -1;
+        InvalidOperationException hostFailure = new("host failure");
+        Action fail = () =>
+        {
+            reached = true;
+            timersDuringSetup = clock.Timers.Count;
+            if (interrupt) engine.Interrupt();
+            else throw hostFailure;
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failForTest=action;}}"))
+            installer.InvokeMethod("install", fail);
+        Exception failure = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+                "{fault:function(){},setup:function(){failForTest();},result:function(){return {};}}", timeoutSeconds: timeout);
+        })!;
+        Exception origin = failure;
+        while (origin.InnerException is { } inner) origin = inner;
+        engine.Dispose();
+        clock.Advance(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reached, Is.True);
+            Assert.That(timersDuringSetup, Is.Zero);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+            Assert.That(failure, Is.Not.TypeOf<GethTraceDeadlineException>());
+            Assert.That(failure.Message, Does.Not.Contain("execution timeout"));
+            if (interrupt) Assert.That(failure, Is.TypeOf<ScriptInterruptedException>());
+            else Assert.That(origin, Is.SameAs(hostFailure));
+            Assert.That(clock.Timers, Is.Empty);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_nonpositive_deadline_starts_after_successful_setup_and_requires_watcher_delivery(
+        [Values(0, -1)] int timeout, [Values] bool deliver)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        DeadlineExecution clock = new();
+        bool setupReached = false;
+        bool resultReached = false;
+        int timersDuringSetup = -1;
+        Action setup = () =>
+        {
+            setupReached = true;
+            timersDuringSetup = clock.Timers.Count;
+        };
+        Action resultCallback = () => resultReached = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(setup,result){globalThis.setupForTest=setup;globalThis.resultForTest=result;}}"))
+            installer.InvokeMethod("install", setup, resultCallback);
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},setup:function(){setupForTest();},result:function(){resultForTest();return 7;}}", timeoutSeconds: timeout);
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setupReached, Is.True);
+            Assert.That(timersDuringSetup, Is.Zero);
+            Assert.That(clock.Timers[0].Disposed, Is.False);
+        }
+        if (deliver) clock.Timers[0].Fire();
+        if (deliver)
+        {
+            Assert.Throws<GethTraceDeadlineException>(() => { using GethLikeTxTrace result = tracer.BuildResult(); });
+        }
+        else
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TraceError, Is.Null);
+                Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+            }
+        }
+        tracer.Dispose();
+        engine.Dispose();
+        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        Assert.DoesNotThrow(clock.Timers[0].Fire);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultReached, Is.EqualTo(!deliver));
+            Assert.That(clock.Timers[0].Disposed, Is.True);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task Specified_javascript_constructor_failure_releases_timer()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -664,7 +784,7 @@ public partial class DebugRpcModuleTests
 
     private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
         Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script,
-        GethTraceDeadlineScope? scope = null, CancellationToken external = default) =>
+        GethTraceDeadlineScope? scope = null, int timeoutSeconds = 1, CancellationToken external = default) =>
         new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(), new GethTraceOptions
         {
             EnforceExecutionDeadline = true,
@@ -672,7 +792,7 @@ public partial class DebugRpcModuleTests
             DeadlineClock = clock,
             DeadlineScope = scope,
             ExecutionCancellationToken = external,
-            Timeout = TimeSpan.FromSeconds(1),
+            Timeout = TimeSpan.FromSeconds(timeoutSeconds),
             Tracer = script
         });
 
