@@ -177,6 +177,95 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Specified_javascript_request_cancellation_interrupts_user_code(
+        [Values("construction", "setup", "step", "result")] string phase)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using CancellationTokenSource external = new();
+        DeadlineExecution clock = new();
+        bool continued = false;
+        Action cancel = () => external.Cancel();
+        Action afterCancellation = () => continued = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(cancel,after){globalThis.cancelTrace=cancel;globalThis.afterCancellation=after;}}"))
+            installer.InvokeMethod("install", cancel, afterCancellation);
+        string body = "cancelTrace();for(let i=0;i<10000;i++){};afterCancellation();";
+        string script = "{fault:function(){},"
+            + (phase == "construction" ? "marker:(function(){" + body + "})()," : "")
+            + "setup:function(){" + (phase == "setup" ? body : "") + "},"
+            + "step:function(){" + (phase == "step" ? body : "") + "},"
+            + "result:function(){" + (phase == "result" ? body : "") + "return {};}}";
+
+        OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock, script, external.Token);
+            if (phase == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+        })!;
+        engine.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
+            Assert.That(external.IsCancellationRequested, Is.True);
+            Assert.That(continued, Is.False, "V8 must interrupt user code, not merely observe cancellation after its callback returns");
+            Assert.That(clock.Timers, Has.Count.EqualTo(phase is "construction" or "setup" ? 0 : 1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Specified_block_binds_request_token_before_selecting_tracer_graph(
+        [Values] bool byHash, [Values] bool filtered, [Values] bool mux)
+    {
+        IGethStyleTracer? rpcTracer = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<IGethStyleTracer>((_, inner) =>
+            {
+                rpcTracer = inner;
+                return inner;
+            }));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        _ = chain.DebugRpcModule;
+        Assert.That(rpcTracer, Is.Not.Null, "resolve the tracer through the production RPC factory's child scope");
+        using CancellationTokenSource external = new();
+        ConcurrentBag<CancellationToken> observed = [];
+        string registered = $"request-token-{Guid.NewGuid():N}";
+        GethLikeNativeTracerFactory.RegisterTracer(registered, (childOptions, _, transaction, _) =>
+        {
+            observed.Add(childOptions.ExecutionCancellationToken);
+            return new NativeNoopTracer(transaction, childOptions);
+        });
+        GethTraceOptions options = new()
+        {
+            EnforceExecutionDeadline = true,
+            Tracer = mux ? "muxTracer" : registered,
+            TracerConfig = mux ? JsonSerializer.SerializeToElement(new Dictionary<string, object> { [registered] = new { } }) : null,
+            TxHash = filtered ? block.Transactions[^1].Hash : null
+        };
+        BlockParameter selector = byHash ? new(block.Hash!) : new(block.Number);
+
+        IReadOnlyCollection<GethLikeTxTrace> traces = rpcTracer!.TraceBlock(selector, options, external.Token);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traces, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
+                Assert.That(observed, Is.Not.Empty);
+                Assert.That(observed, Is.All.EqualTo(external.Token));
+                Assert.That(external.IsCancellationRequested, Is.False);
+            }
+        }
+        finally
+        {
+            traces.TryDispose();
+        }
+    }
+
+    [Test]
     public async Task Specified_javascript_constructor_failure_releases_timer()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -209,7 +298,11 @@ public partial class DebugRpcModuleTests
             "fatal" => () => throw CreateException(true, true, null),
             "cancellation" => () => throw new OperationCanceledException(),
             "interrupt" => engine.Interrupt,
-            "input-interrupt" => () => { engine.AbortInput("deadline input marker"); engine.Interrupt(); },
+            "input-interrupt" => () =>
+            {
+                engine.AbortInput("deadline input marker");
+                engine.Interrupt();
+            },
             _ => () => { }
         };
         using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failDeadlineTrace=action;}}"))
@@ -240,11 +333,15 @@ public partial class DebugRpcModuleTests
     }
 
     private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
-        Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script) =>
+        Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script, CancellationToken external = default) =>
         new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(), new GethTraceOptions
         {
-            EnforceExecutionDeadline = true, CaptureJavaScriptErrors = true,
-            DeadlineClock = clock, Timeout = TimeSpan.FromSeconds(1), Tracer = script
+            EnforceExecutionDeadline = true,
+            CaptureJavaScriptErrors = true,
+            DeadlineClock = clock,
+            ExecutionCancellationToken = external,
+            Timeout = TimeSpan.FromSeconds(1),
+            Tracer = script
         });
 
     [TestCase("callTracer", "onlyTopCall")]
