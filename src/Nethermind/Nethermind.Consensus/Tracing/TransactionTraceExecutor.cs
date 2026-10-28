@@ -63,7 +63,10 @@ public sealed class TransactionTraceExecutor(
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
         TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);
-        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
+        if (boundary is null)
+            return inner.ProcessTransactions(block, options, tracer, token);
+
+        if (balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
         {
             // A bounded replay leaves its senders to this executor even when the whole block runs.
             senderRecovery.RecoverData(block, 0, block.Transactions.Length);
