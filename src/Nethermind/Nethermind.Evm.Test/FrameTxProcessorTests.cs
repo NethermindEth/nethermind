@@ -2497,13 +2497,16 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL)]
-    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState))]
+    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL, false)]
+    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL, true)]
+    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), false)]
+    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), true)]
     public void Execute_PaymentApprovalChargesSenderCreationToTheApprovingFrame(
         ulong stateGasLimit,
         byte expectedStatus,
         ulong expectedStorage,
-        ulong expectedStateGasUsed)
+        ulong expectedStateGasUsed,
+        bool emptyNonceKeys)
     {
         Address sponsorA = TestItem.AddressD;
         Address sponsorB = TestItem.AddressF;
@@ -2518,6 +2521,7 @@ public partial class FrameTxProcessorTests
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit, UInt256.Zero, default),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        if (emptyNonceKeys) tx.NonceKeys = [];
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
@@ -2534,7 +2538,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_PaymentApprovalChargesCreationOfASenderEmptiedByAnEarlierFrame()
+    public void Execute_PaymentApprovalChargesCreationOfASenderEmptiedByAnEarlierFrame([Values] bool emptyNonceKeys)
     {
         Address sponsor = TestItem.AddressD;
         _stateProvider.CreateAccount(Sender, 1);
@@ -2547,6 +2551,7 @@ public partial class FrameTxProcessorTests
             new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
             Frame(FrameMode.Sender, target: Recipient, value: 1),
             new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsor, executionGasLimit: 200_000, (ulong)GasCostOf.NewAccountState, UInt256.Zero, default));
+        if (emptyNonceKeys) tx.NonceKeys = [];
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
         SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
 
