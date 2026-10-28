@@ -776,7 +776,7 @@ public partial class DebugRpcModuleTests
             {
                 "debug_traceBlockByNumber" => $"block #{blockNumber} not found",
                 "debug_traceBlockByHash" => $"block {selector} not found",
-                _ => $"Cannot find header for block hash: {selector}"
+                _ => throw new ArgumentOutOfRangeException(nameof(method), method, null)
             };
             using (Assert.EnterMultipleScope())
             {
