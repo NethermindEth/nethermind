@@ -451,7 +451,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
                 if (batch.Length == 0)
                 {
-                    if (isForward && (ulong)start < MinTargetBlockNumber && !_forwardBelowBarrierWarned)
+                    if (isForward && (ulong)start < MinTargetBlockNumber && (ulong)start <= MaxTargetBlockNumber && !_forwardBelowBarrierWarned)
                     {
                         _forwardBelowBarrierWarned = true;
                         if (_logger.IsWarn) _logger.Warn(
