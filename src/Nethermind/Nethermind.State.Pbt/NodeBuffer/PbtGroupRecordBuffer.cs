@@ -92,7 +92,7 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     {
         _generationBytes = generationBytes;
         _compressedMaxMemory = compressedMaxMemory;
-        _active = StartGeneration(1, new Generation(generationBytes));
+        _active = StartGeneration(1, Generation.Allocate(generationBytes));
         UpdateMetrics();
     }
 
@@ -219,7 +219,11 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
     }
 
     /// <inheritdoc/>
-    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => WriteBatch.Start(this, alignedTotalLength);
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
+    {
+        Metrics.PbtGroupRecordBufferWriteBatchBytes.Observe(alignedTotalLength);
+        return WriteBatch.Start(this, alignedTotalLength);
+    }
 
     /// <summary>Adds the path key hashes of the records reachable from <paramref name="rootPointer"/> at or past <paramref name="lowerBound"/> to the blooms of their generations.</summary>
     /// <remarks>The caller must hold a pin on the generations of those records.</remarks>
@@ -285,9 +289,10 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
             EvictCompressed(id >= MaxGenerations ? id + 1 - MaxGenerations : 0);
             if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyPinned();
 
-            Volatile.Write(ref _active, StartGeneration(id, TakeStandby(length) ?? new Generation(Math.Max(_generationBytes, length))));
-            PrepareStandby();
+            Volatile.Write(ref _active, StartGeneration(id, TakeStandby(length) ?? Generation.Allocate(Math.Max(_generationBytes, length))));
             DropOldGenerations();
+            // A dropped generation awaiting compaction becomes the standby once compacted, so only allocate one without.
+            if (_oldestAllocated == _oldestLive) PrepareStandby(null);
         }
     }
 
@@ -317,22 +322,35 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
         return standby;
     }
 
+    /// <summary>Prepares the standby in the background from <paramref name="recycled"/>, or from a new allocation when null, unless one is held or being prepared.</summary>
     /// <remarks>Only buffers that rotate get a standby, so a buffer that never fills its first generation commits no second one.</remarks>
-    private void PrepareStandby()
+    /// <param name="recycled">The storage of a retired generation of the base size, which no pin covers.</param>
+    /// <returns>Whether the standby is prepared from <paramref name="recycled"/> or a new allocation.</returns>
+    private bool PrepareStandby(Generation? recycled)
     {
-        if (_standby is not null || _preparingStandby || _disposed) return;
+        if (_standby is not null || _preparingStandby || _disposed) return false;
 
         _preparingStandby = true;
-        ThreadPool.UnsafeQueueUserWorkItem(static buffer => buffer.AllocateStandby(), this, preferLocal: false);
+        ThreadPool.UnsafeQueueUserWorkItem(static state => state.Buffer.FillStandby(state.Recycled), (Buffer: this, Recycled: recycled), preferLocal: false);
+        return true;
     }
 
-    private void AllocateStandby()
+    private void FillStandby(Generation? recycled)
     {
-        Generation? generation = null;
+        Generation? generation = recycled;
         try
         {
-            generation = new Generation(_generationBytes);
-            generation.Data!.Prefault();
+            if (generation is null)
+            {
+                generation = Generation.Allocate(_generationBytes);
+                generation.Data!.Prefault();
+            }
+            else
+            {
+                // Clearing makes every page resident, as the prefault of a new allocation does.
+                generation.Data!.GetSpan().Clear();
+                generation.Bloom!.Clear();
+            }
         }
         catch
         {
@@ -432,9 +450,14 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
                         }
 
                         _inPlaceBytes -= generation.Data!.Length;
-                        Retire(generation.Data);
+                        if (generation.Data.Length != _generationBytes || !PrepareStandby(new Generation(generation.Data, generation.Bloom!)))
+                        {
+                            Retire(generation.Data);
+                            Retire(generation.Bloom);
+                            // A storage the standby cannot take still leaves a standby to prepare.
+                            PrepareStandby(null);
+                        }
                         Volatile.Write(ref generation.Data, null);
-                        Retire(generation.Bloom);
                         Volatile.Write(ref generation.Bloom, null);
                         Volatile.Write(ref generation.Dropping, false);
                         _oldestAllocated++;
@@ -661,26 +684,26 @@ public sealed class PbtGroupRecordBuffer : IPbtGroupRecordBuffer
         }
     }
 
-    private sealed class Generation
+    /// <remarks>The id is set when the generation becomes active.</remarks>
+    private sealed class Generation(PbtNativeGroupBuffer data, BloomFilter bloom)
     {
-        /// <remarks>The id is set when the generation becomes active.</remarks>
-        public Generation(int length)
+        public static Generation Allocate(int length)
         {
-            Data = PbtNativeGroupBuffer.Allocate(length);
+            PbtNativeGroupBuffer data = PbtNativeGroupBuffer.Allocate(length);
             try
             {
-                Bloom = new BloomFilter(Math.Max(1, length / BloomBytesPerKey), 14);
+                return new Generation(data, new BloomFilter(Math.Max(1, length / BloomBytesPerKey), 14));
             }
             catch
             {
-                ((IDisposable)Data).Dispose();
+                ((IDisposable)data).Dispose();
                 throw;
             }
         }
 
         public ulong Id;
-        public BloomFilter? Bloom;
-        public PbtNativeGroupBuffer? Data;
+        public BloomFilter? Bloom = bloom;
+        public PbtNativeGroupBuffer? Data = data;
         public PbtCompressedGeneration? Compressed;
         public long Used;
         public int PinCount;

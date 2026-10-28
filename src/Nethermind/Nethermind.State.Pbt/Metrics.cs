@@ -212,6 +212,11 @@ public static class Metrics
     [Description("Number of compacted pbt group record buffer generations")]
     public static long PbtGroupRecordBufferCompressedGenerations { get; set; }
 
+    [DetailedMetric]
+    [Description("Size of each pbt group record buffer write batch reservation (bytes)")]
+    [ExponentialPowerHistogramMetric(Start = 64, Factor = 2, Count = 24)]
+    public static IMetricObserver PbtGroupRecordBufferWriteBatchBytes { get; set; } = new NoopMetricObserver();
+
     /// <remarks>Layers widen as they compact, so this diverges from the layer count as compaction runs.</remarks>
     [DetailedMetric]
     [Description("Block-number span covered by the layers of a newly assembled pbt read-only snapshot bundle")]

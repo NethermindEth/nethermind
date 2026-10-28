@@ -86,7 +86,7 @@ public class PbtGroupRecordBufferTests
         ulong pointer = AppendAt(buffer, PathOf(1), payload);
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record) && record.Payload.Span.SequenceEqual(payload), Is.True);
         while (GenerationOf(Append(buffer, Payload(0, 8))) < GenerationOf(pointer) + LiveGenerations) { }
-        Assert.That(() => IsFreed(record), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the dropped generation is compacted");
+        Assert.That(() => IsReleased(record, payload), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the dropped generation is compacted");
         Assert.That(Resolves(buffer, (pointer, payload)), Is.True, "and keeps its record");
     }
 
@@ -193,7 +193,7 @@ public class PbtGroupRecordBufferTests
         if (compressed)
         {
             AdvanceTo(LiveGenerations + 1);
-            Assert.That(() => IsFreed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+            Assert.That(() => IsReleased(original, payload), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         }
 
         IDisposable first = buffer.PinAll();
@@ -206,16 +206,16 @@ public class PbtGroupRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
-            Assert.That(IsFreed(laterRecord), Is.False, "a pinned generation is not compacted");
-            Assert.That(IsFreed(original), Is.EqualTo(compressed));
+            Assert.That(IsReleased(laterRecord, Payload(2, 1000)), Is.False, "a pinned generation is not compacted");
+            Assert.That(IsReleased(original, payload), Is.EqualTo(compressed));
         }
 
         second.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => IsFreed(laterRecord), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released generations are compacted");
+            Assert.That(() => IsReleased(laterRecord, Payload(2, 1000)), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released generations are compacted");
             Assert.That(() => IsLocatable(buffer, pointer), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "and evicted over the budget");
-            Assert.That(() => IsFreed(record), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the released native owner is freed");
+            Assert.That(() => IsReleased(record, payload), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the released native owner is freed or recycled");
         }
 
         void AdvanceTo(ulong generation)
@@ -244,7 +244,7 @@ public class PbtGroupRecordBufferTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => IsFreed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the in-place storage is freed");
+            Assert.That(() => IsReleased(original, Payload(1, 8)), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the in-place storage is freed or recycled");
             Assert.That(() => IsLocatable(buffer, pointer), Is.EqualTo(compressed).After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the compacted record resolves within the budget");
         }
 
@@ -261,7 +261,7 @@ public class PbtGroupRecordBufferTests
         ulong pointer = Append(buffer, previous);
         Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord original), Is.True);
         AdvanceTo(LiveGenerations + 1);
-        Assert.That(() => IsFreed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        Assert.That(() => IsReleased(original, previous), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         AdvanceTo(4096);
         ulong replacement = Append(buffer, current);
         using (Assert.EnterMultipleScope())
@@ -452,9 +452,14 @@ public class PbtGroupRecordBufferTests
         (ulong Pointer, byte[] Payload) kept = AppendRecord(PathOf(-1), Payload(-2, 8));
         (ulong Pointer, byte[] Payload) rewritten = AppendRecord(PathOf(-2), Payload(-3, 8));
         buffer.SetRoot(Root(-1), kept.Pointer);
-        AppendUniqueUntil(scenarioGeneration + 1);
-        (ulong Pointer, byte[] Payload) rewrite = AppendRecord(PathOf(-2), Payload(-4, 8));
-        buffer.AddToBlooms(rewrite.Pointer, rewrite.Pointer);
+        (ulong Pointer, byte[] Payload) rewrite;
+        // Held until the rewrite is in the bloom, so the scenario generation is not compacted before it.
+        using (buffer.PinHead())
+        {
+            AppendUniqueUntil(scenarioGeneration + 1);
+            rewrite = AppendRecord(PathOf(-2), Payload(-4, 8));
+            buffer.AddToBlooms(rewrite.Pointer, rewrite.Pointer);
+        }
         AppendUniqueUntil(scenarioGeneration + LiveGenerations);
 
         bool keeps = compressedBudget > 0;
@@ -565,6 +570,20 @@ public class PbtGroupRecordBufferTests
         }
         catch (ObjectDisposedException)
         {
+            return true;
+        }
+    }
+
+    /// <summary>Whether the native storage <paramref name="record"/> borrows no longer holds <paramref name="payload"/>: released, or recycled into the standby.</summary>
+    public static bool IsReleased(PbtGroupRecord record, byte[] payload)
+    {
+        try
+        {
+            return !record.Payload.Span.SequenceEqual(payload);
+        }
+        catch (Exception)
+        {
+            // A released owner throws, and a recycled one may hold a header of any length.
             return true;
         }
     }
