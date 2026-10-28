@@ -218,6 +218,10 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }
 
+    /// <summary>Activation timestamp of EIP-8304 index tables, in Unix seconds. <c>null</c> leaves EIP-8304 unscheduled.</summary>
+    public ulong? Eip8304TransitionTimestamp { get; set; }
+    public Address? Eip8304ContractAddress { get; set; }
+
     public ulong? Eip7805TransitionTimestamp { get; set; }
 
     public ulong? Eip8298TransitionTimestamp { get; set; }

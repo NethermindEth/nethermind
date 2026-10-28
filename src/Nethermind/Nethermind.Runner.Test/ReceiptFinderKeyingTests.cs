@@ -44,6 +44,7 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Shutter.ShutterApi",
         "Nethermind.Shutter.ShutterBlockHandler",
         "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
+        "Nethermind.Consensus.IndexTables.IndexTableHandlerFactory",
     ];
 
     /// <summary>
@@ -53,6 +54,7 @@ public class ReceiptFinderKeyingTests
     private static readonly HashSet<string> NotContainerResolved =
     [
         "Nethermind.Consensus.Receipts.RegeneratingReceiptFinder",
+        "Nethermind.Consensus.IndexTables.IndexTableHandler",
         // Hand-built by StartRpc with NethermindApi.ReceiptFinder; its web-host registration feeds only DataFeed
         // (monitoring), which must stay stored-only.
         "Nethermind.Runner.Ethereum.JsonRpcRunner",

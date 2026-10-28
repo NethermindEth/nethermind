@@ -659,6 +659,7 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto": "[2.3.0-preview, )",
           "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
           "Nethermind.TxPool": "[2.3.0-preview, )"
         }
       },
