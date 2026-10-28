@@ -74,18 +74,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed class RandomContract : Blockchain.Contracts.Contract, IRandomContract
     {
-        private static readonly ContractFunction<(UInt256, Address), bool> SentRevealFunction =
+        internal static readonly ContractFunction<(UInt256, Address), bool> SentRevealFunction =
             new AbiSignature("sentReveal").With(AbiType.UInt256, AbiType.Address).Returns(AbiType.Bool);
-        private static readonly ContractFunction<(UInt256, Address), bool> IsCommittedFunction =
+        internal static readonly ContractFunction<(UInt256, Address), bool> IsCommittedFunction =
             new AbiSignature("isCommitted").With(AbiType.UInt256, AbiType.Address).Returns(AbiType.Bool);
-        private static readonly ContractFunction<ValueTuple, UInt256> CurrentCollectRoundFunction =
+        internal static readonly ContractFunction<ValueTuple, UInt256> CurrentCollectRoundFunction =
             new AbiSignature("currentCollectRound").With().Returns(AbiType.UInt256);
-        private static readonly ContractFunction<ValueTuple, bool> IsCommitPhaseFunction =
+        internal static readonly ContractFunction<ValueTuple, bool> IsCommitPhaseFunction =
             new AbiSignature("isCommitPhase").With().Returns(AbiType.Bool);
-        private static readonly ContractFunction<(UInt256, Address), (ValueHash256, byte[])> GetCommitAndCipherFunction =
+        internal static readonly ContractFunction<(UInt256, Address), (ValueHash256, byte[])> GetCommitAndCipherFunction =
             new AbiSignature("getCommitAndCipher").With(AbiType.UInt256, AbiType.Address).Returns(AbiType.Bytes32, AbiType.Bytes);
-        private static readonly AbiSignature<(ValueHash256, byte[])> CommitHashSignature = new AbiSignature("commitHash").With(AbiType.Bytes32, AbiType.Bytes);
-        private static readonly AbiSignature<UInt256> RevealNumberSignature = new AbiSignature("revealNumber").With(AbiType.UInt256);
+        internal static readonly AbiSignature<(ValueHash256, byte[])> CommitHashSignature = new AbiSignature("commitHash").With(AbiType.Bytes32, AbiType.Bytes);
+        internal static readonly AbiSignature<UInt256> RevealNumberSignature = new AbiSignature("revealNumber").With(AbiType.UInt256);
 
         private readonly ISigner _signer;
         private IConstantContract Constant { get; }

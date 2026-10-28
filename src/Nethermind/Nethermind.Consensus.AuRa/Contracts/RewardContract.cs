@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed class RewardContract(ITransactionProcessor transactionProcessor, Address contractAddress, ulong transitionBlock) : CallableContract(transactionProcessor, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IRewardContract
     {
-        private static readonly ContractFunction<(Address[], ushort[]), (Address[], UInt256[])> RewardFunction =
+        internal static readonly ContractFunction<(Address[], ushort[]), (Address[], UInt256[])> RewardFunction =
             new AbiSignature("reward").With(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt16)).Returns(AbiType.Array(AbiType.Address), AbiType.Array(AbiType.UInt256));
 
         public ulong Activation { get; } = transitionBlock;

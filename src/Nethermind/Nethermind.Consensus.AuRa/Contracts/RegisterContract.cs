@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public class RegisterContract : Contract, IRegisterContract
     {
         private static readonly Address MissingAddress = Address.Zero;
-        private static readonly ContractFunction<(ValueHash256, string), Address> GetAddressFunction =
+        internal static readonly ContractFunction<(ValueHash256, string), Address> GetAddressFunction =
             new AbiSignature("getAddress").With(AbiType.Bytes32, AbiType.String).Returns(AbiType.Address);
 
         /// <summary>

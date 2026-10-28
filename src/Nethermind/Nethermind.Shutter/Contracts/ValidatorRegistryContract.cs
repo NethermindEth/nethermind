@@ -27,8 +27,8 @@ public class ValidatorRegistryContract(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ValidatorRegistryContract>();
 
-    private static readonly ContractFunction<ValueTuple, UInt256> GetNumUpdatesFunction = new AbiSignature("getNumUpdates").With().Returns(AbiType.UInt256);
-    private static readonly ContractFunction<UInt256, Update> GetUpdateFunction = new AbiSignature("getUpdate").With(AbiType.UInt256).Returns(AbiType.Tuple(AbiType.Bytes, AbiType.Bytes));
+    internal static readonly ContractFunction<ValueTuple, UInt256> GetNumUpdatesFunction = new AbiSignature("getNumUpdates").With().Returns(AbiType.UInt256);
+    internal static readonly ContractFunction<UInt256, Update> GetUpdateFunction = new AbiSignature("getUpdate").With(AbiType.UInt256).Returns(AbiType.Tuple(AbiType.Bytes, AbiType.Bytes));
 
     public UInt256 GetNumUpdates(BlockHeader header) => Call(header, GetNumUpdatesFunction, Address.Zero, default);
 

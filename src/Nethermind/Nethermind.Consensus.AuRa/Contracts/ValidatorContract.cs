@@ -79,9 +79,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, FinalizeChangeFunction, Address.SystemUser, UnlimitedGas, default, out _);
 
-        private static readonly ContractFunction<ValueTuple, ValueTuple> FinalizeChangeFunction = new AbiSignature("finalizeChange").With().Returns();
+        internal static readonly ContractFunction<ValueTuple, ValueTuple> FinalizeChangeFunction = new AbiSignature("finalizeChange").With().Returns();
 
-        private static readonly ContractFunction<ValueTuple, Address[]> GetValidatorsFunction = new AbiSignature("getValidators").With().Returns(AbiType.Array(AbiType.Address));
+        internal static readonly ContractFunction<ValueTuple, Address[]> GetValidatorsFunction = new AbiSignature("getValidators").With().Returns(AbiType.Array(AbiType.Address));
 
         /// <summary>
         /// Get current validator set (last enacted or initial if no changes ever made)

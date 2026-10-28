@@ -11,9 +11,9 @@ namespace Nethermind.Shutter.Contracts;
 
 public class KeyperSetContract(ITransactionProcessor transactionProcessor, Address contractAddress) : CallableContract(transactionProcessor, contractAddress), IKeyperSetContract
 {
-    private static readonly ContractFunction<ValueTuple, bool> IsFinalizedFunction = new AbiSignature("isFinalized").With().Returns(AbiType.Bool);
-    private static readonly ContractFunction<ValueTuple, ulong> GetThresholdFunction = new AbiSignature("getThreshold").With().Returns(AbiType.UInt64);
-    private static readonly ContractFunction<ValueTuple, Address[]> GetMembersFunction = new AbiSignature("getMembers").With().Returns(AbiType.Array(AbiType.Address));
+    internal static readonly ContractFunction<ValueTuple, bool> IsFinalizedFunction = new AbiSignature("isFinalized").With().Returns(AbiType.Bool);
+    internal static readonly ContractFunction<ValueTuple, ulong> GetThresholdFunction = new AbiSignature("getThreshold").With().Returns(AbiType.UInt64);
+    internal static readonly ContractFunction<ValueTuple, Address[]> GetMembersFunction = new AbiSignature("getMembers").With().Returns(AbiType.Array(AbiType.Address));
 
     public bool IsFinalized(BlockHeader blockHeader) => Call(blockHeader, IsFinalizedFunction, Address.Zero, default);
 

@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         Address contractAddress,
         IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : TransactionPermissionContract(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
     {
-        private static readonly ContractFunction<Address, uint> AllowedTxTypesFunction =
+        internal static readonly ContractFunction<Address, uint> AllowedTxTypesFunction =
             new AbiSignature("allowedTxTypes").With(AbiType.Address).Returns(AbiType.UInt32);
 
         protected override (ITransactionPermissionContract.TxPermissions, bool) CallAllowedTxTypes(BlockHeader parentHeader, Transaction tx, out bool toIsContract) =>

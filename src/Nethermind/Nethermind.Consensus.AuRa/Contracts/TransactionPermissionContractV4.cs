@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly ISpecProvider _specProvider = specProvider;
         private static readonly UInt256 Four = 4;
-        private static readonly ContractFunction<(Address, Address, UInt256, UInt256, UInt256, UInt256, byte[]), (uint, bool)> AllowedTxTypesFunction =
+        internal static readonly ContractFunction<(Address, Address, UInt256, UInt256, UInt256, UInt256, byte[]), (uint, bool)> AllowedTxTypesFunction =
             new AbiSignature("allowedTxTypes")
                 .With(AbiType.Address, AbiType.Address, AbiType.UInt256, AbiType.UInt256, AbiType.UInt256, AbiType.UInt256, AbiType.Bytes)
                 .Returns(AbiType.UInt32, AbiType.Bool);

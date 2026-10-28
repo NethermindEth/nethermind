@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public abstract class TransactionPermissionContract : Contract, ITransactionPermissionContract
     {
-        private static readonly ContractFunction<ValueTuple, UInt256> ContractVersionFunction = new AbiSignature("contractVersion").With().Returns(AbiType.UInt256);
+        internal static readonly ContractFunction<ValueTuple, UInt256> ContractVersionFunction = new AbiSignature("contractVersion").With().Returns(AbiType.UInt256);
 
         public virtual UInt256 ContractVersion(BlockHeader blockHeader) => Constant.Call(blockHeader, ContractVersionFunction, Address.Zero, default);
 

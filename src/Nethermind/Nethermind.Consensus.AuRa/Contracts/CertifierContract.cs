@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public class CertifierContract : RegisterBasedContract, ICertifierContract
     {
-        private static readonly ContractFunction<Address, bool> CertifiedFunction = new AbiSignature("certified").With(AbiType.Address).Returns(AbiType.Bool);
+        internal static readonly ContractFunction<Address, bool> CertifiedFunction = new AbiSignature("certified").With(AbiType.Address).Returns(AbiType.Bool);
         internal const string ServiceTransactionContractRegistryName = "service_transaction_checker";
 
         private IConstantContract Constant { get; }

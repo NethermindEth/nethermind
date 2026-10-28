@@ -10,7 +10,7 @@ namespace Nethermind.Shutter.Contracts;
 
 public class KeyBroadcastContract(ITransactionProcessor transactionProcessor, Address contractAddress) : CallableContract(transactionProcessor, contractAddress), IKeyBroadcastContract
 {
-    private static readonly ContractFunction<ulong, byte[]> GetEonKeyFunction = new AbiSignature("getEonKey").With(AbiType.UInt64).Returns(AbiType.Bytes);
+    internal static readonly ContractFunction<ulong, byte[]> GetEonKeyFunction = new AbiSignature("getEonKey").With(AbiType.UInt64).Returns(AbiType.Bytes);
 
     public byte[] GetEonKey(BlockHeader blockHeader, in ulong eon) => Call(blockHeader, GetEonKeyFunction, Address.Zero, eon);
 }

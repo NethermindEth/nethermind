@@ -22,9 +22,9 @@ internal class MasternodeVotingContract(
     Address contractAddress,
     IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory) : Contract(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IMasternodeVotingContract
 {
-    private static readonly ContractFunction<Address, UInt256> GetCandidateCapFunction = new AbiSignature("getCandidateCap").With(AbiType.Address).Returns(AbiType.UInt256);
-    private static readonly ContractFunction<Address, Address> GetCandidateOwnerFunction = new AbiSignature("getCandidateOwner").With(AbiType.Address).Returns(AbiType.Address);
-    private static readonly ContractFunction<ValueTuple, Address[]> GetCandidatesFunction = new AbiSignature("getCandidates").With().Returns(AbiType.Array(AbiType.Address));
+    internal static readonly ContractFunction<Address, UInt256> GetCandidateCapFunction = new AbiSignature("getCandidateCap").With(AbiType.Address).Returns(AbiType.UInt256);
+    internal static readonly ContractFunction<Address, Address> GetCandidateOwnerFunction = new AbiSignature("getCandidateOwner").With(AbiType.Address).Returns(AbiType.Address);
+    internal static readonly ContractFunction<ValueTuple, Address[]> GetCandidatesFunction = new AbiSignature("getCandidates").With().Returns(AbiType.Array(AbiType.Address));
 
     private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
 

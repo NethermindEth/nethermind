@@ -22,7 +22,7 @@ public class WithdrawalContract(
 {
     private const ulong GasLimit = SystemTransactionGasLimit;
 
-    private static readonly ContractFunction<(UInt256, ulong[], Address[]), ValueTuple> ExecuteSystemWithdrawalsFunction =
+    internal static readonly ContractFunction<(UInt256, ulong[], Address[]), ValueTuple> ExecuteSystemWithdrawalsFunction =
         new AbiSignature("executeSystemWithdrawals").With(AbiType.UInt256, AbiType.Array(AbiType.UInt64), AbiType.Array(AbiType.Address)).Returns();
 
     public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)

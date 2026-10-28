@@ -43,8 +43,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         Address contractAddress,
         ISigner signer) : Contract(contractAddress ?? throw new ArgumentNullException(nameof(contractAddress))), IReportingValidatorContract
     {
-        private static readonly AbiSignature<(Address, UInt256, byte[])> ReportMaliciousSignature = new AbiSignature("reportMalicious").With(AbiType.Address, AbiType.UInt256, AbiType.Bytes);
-        private static readonly AbiSignature<(Address, UInt256)> ReportBenignSignature = new AbiSignature("reportBenign").With(AbiType.Address, AbiType.UInt256);
+        internal static readonly AbiSignature<(Address, UInt256, byte[])> ReportMaliciousSignature = new AbiSignature("reportMalicious").With(AbiType.Address, AbiType.UInt256, AbiType.Bytes);
+        internal static readonly AbiSignature<(Address, UInt256)> ReportBenignSignature = new AbiSignature("reportBenign").With(AbiType.Address, AbiType.UInt256);
 
         private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         public Address NodeAddress => _signer.Address;

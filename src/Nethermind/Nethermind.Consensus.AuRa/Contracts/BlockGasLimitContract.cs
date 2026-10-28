@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed class BlockGasLimitContract : Contract, IBlockGasLimitContract
     {
-        private static readonly ContractFunction<ValueTuple, UInt256> BlockGasLimitFunction = new AbiSignature("blockGasLimit").With().Returns(AbiType.UInt256);
+        internal static readonly ContractFunction<ValueTuple, UInt256> BlockGasLimitFunction = new AbiSignature("blockGasLimit").With().Returns(AbiType.UInt256);
 
         private IConstantContract Constant { get; }
         public ulong Activation { get; }

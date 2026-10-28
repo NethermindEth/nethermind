@@ -22,16 +22,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public partial class TxPriorityContract : Contract
     {
         private static readonly Abi<DestinationTuple[]> DestinationsAbi = AbiType.Array(AbiType.Tuple(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256));
-        private static readonly AbiSignature<Address[]> AddressesData = new AbiSignature().With(AbiType.Array(AbiType.Address));
-        private static readonly AbiSignature<UInt256> DestinationData = new AbiSignature().With(AbiType.UInt256);
+        internal static readonly AbiSignature<Address[]> AddressesData = new AbiSignature().With(AbiType.Array(AbiType.Address));
+        internal static readonly AbiSignature<UInt256> DestinationData = new AbiSignature().With(AbiType.UInt256);
 
-        private static readonly ContractFunction<ValueTuple, Address[]> GetSendersWhitelistFunction = new AbiSignature("getSendersWhitelist").With().Returns(AbiType.Array(AbiType.Address));
-        private static readonly ContractFunction<ValueTuple, DestinationTuple[]> GetMinGasPricesFunction = new AbiSignature("getMinGasPrices").With().Returns(DestinationsAbi);
-        private static readonly ContractFunction<ValueTuple, DestinationTuple[]> GetPrioritiesFunction = new AbiSignature("getPriorities").With().Returns(DestinationsAbi);
+        internal static readonly ContractFunction<ValueTuple, Address[]> GetSendersWhitelistFunction = new AbiSignature("getSendersWhitelist").With().Returns(AbiType.Array(AbiType.Address));
+        internal static readonly ContractFunction<ValueTuple, DestinationTuple[]> GetMinGasPricesFunction = new AbiSignature("getMinGasPrices").With().Returns(DestinationsAbi);
+        internal static readonly ContractFunction<ValueTuple, DestinationTuple[]> GetPrioritiesFunction = new AbiSignature("getPriorities").With().Returns(DestinationsAbi);
 
-        private static readonly AbiSignature<(Address, byte[], UInt256)> PrioritySetEvent = new AbiSignature("PrioritySet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
-        private static readonly AbiSignature<(Address, byte[], UInt256)> MinGasPriceSetEvent = new AbiSignature("MinGasPriceSet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
-        private static readonly AbiSignature<Address[]> SendersWhitelistSetEvent = new AbiSignature("SendersWhitelistSet").With(AbiType.Array(AbiType.Address));
+        internal static readonly AbiSignature<(Address, byte[], UInt256)> PrioritySetEvent = new AbiSignature("PrioritySet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+        internal static readonly AbiSignature<(Address, byte[], UInt256)> MinGasPriceSetEvent = new AbiSignature("MinGasPriceSet").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
+        internal static readonly AbiSignature<Address[]> SendersWhitelistSetEvent = new AbiSignature("SendersWhitelistSet").With(AbiType.Array(AbiType.Address));
 
         private static readonly AbiSignature<(Address, byte[], UInt256)> SetPrioritySignature = new AbiSignature("setPriority").With(AbiType.Address, AbiType.BytesM(4), AbiType.UInt256);
         private static readonly AbiSignature<Address[]> SetSendersWhitelistSignature = new AbiSignature("setSendersWhitelist").With(AbiType.Array(AbiType.Address));
