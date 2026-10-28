@@ -167,7 +167,7 @@ public partial class RollupXGenesisTests
             if (number == 3)
                 fixture.Headers[3] = RpcHeader(L1HeaderBytes(3, (ulong)fixture.Headers[3].Timestamp, default, 21), 21);
         };
-        await Assert.ThrowsAsync<EezSettlementException>(async () => await fixture.History.Prepare(0, fixture.Anchor(4), CancellationToken.None));
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(async () => await fixture.History.Prepare(0, fixture.Anchor(4), CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => fixture.History.Read(), Throws.TypeOf<L1SourceIncompleteException>(), "contradictory ancestry retires the ready branch");
@@ -224,6 +224,19 @@ public partial class RollupXGenesisTests
                 : new UnknownLengthContent(NativeL1Rpc.MaxResponseBytes + 1)
         };
         await Assert.ThrowsAsync<HttpRequestException>(async () => await fixture.History.Prepare(0, fixture.Anchor(3), CancellationToken.None));
+        Assert.That(() => fixture.History.Read(), Throws.TypeOf<L1SourceIncompleteException>());
+    }
+
+    [Test]
+    public async Task NativeL1Rpc_MalformedResponse_RemainsRetryable([Values("json", "identity", "hash")] string malformed)
+    {
+        using NativeHistoryTestSource fixture = CreateHistorySource();
+        if (malformed == "hash") fixture.Headers[1].Hash = Keccak.Zero;
+        else fixture.Response = () => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(malformed == "json" ? "{" : "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}")
+        };
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(async () => await fixture.History.Prepare(1, fixture.Anchor(3), CancellationToken.None));
         Assert.That(() => fixture.History.Read(), Throws.TypeOf<L1SourceIncompleteException>());
     }
 

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Rpc;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -53,6 +54,37 @@ public partial class EezSystemTransactionForRpcTests
                 Assert.That(root.GetProperty(field).GetString(), Is.EqualTo("0x0"), field);
             foreach (string field in new[] { "accessList", "blobVersionedHashes", "authorizationList" })
                 Assert.That(root.GetProperty(field).GetArrayLength(), Is.Zero, field);
+        }
+    }
+
+    [Test]
+    public void Serialize_ContractNativeRpc_MatchesDedicatedEnvelopeFields([Values] bool history)
+    {
+        Transaction tx = history ? new NativeHistoryTransaction(NativeHistoryEnvelope.Create(901, [TestItem.KeccakA.ValueHash256])) : new Transaction
+        {
+            Type = EezConstants.NativeSystemTxType,
+            ChainId = 901,
+            SenderAddress = Address.SystemUser,
+            To = EezConstants.RollupXEezl2Address,
+            SourceHash = TestItem.KeccakB,
+            GasLimit = 123456,
+            Hash = TestItem.KeccakC
+        };
+        EezSystemTransactionForRpc rpc = history ? new EezNativeHistoryTransactionForRpc(tx, new TransactionForRpcContext(901))
+            : new EezNativeContractTransactionForRpc(tx, new TransactionForRpcContext(901));
+        using JsonDocument json = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(rpc));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.RootElement.GetProperty("type").GetString(), Is.EqualTo(history ? "0x46" : "0x45"));
+            Assert.That(json.RootElement.TryGetProperty("version", out JsonElement version), Is.EqualTo(history));
+            if (history)
+            {
+                Assert.That(version.GetString(), Is.EqualTo("0x1"));
+                Assert.That(json.RootElement.GetProperty("hashes")[0].GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
+                Assert.That(json.RootElement.TryGetProperty("sourceHash", out _), Is.False);
+            }
+            else Assert.That(json.RootElement.GetProperty("sourceHash").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+            Assert.That(rpc.ToTransaction().IsError, Is.True);
         }
     }
 

@@ -171,7 +171,7 @@ public class EezFollowerTests
     {
         _scanner.Scan(Arg.Any<L1SettlingBlock>(), Arg.Any<EezL1Block>(), Arg.Any<CancellationToken>())
             .Returns(call => new[] { Batch(call.ArgAt<L1SettlingBlock>(0)), Batch(call.ArgAt<L1SettlingBlock>(0)) });
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>())
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>())
             .Returns(call => Settled(call, 1), call => Busy(call), call => Settled(call, 1), call => Settled(call, 2));
         await _follower.Boot(CancellationToken.None);
 
@@ -186,7 +186,7 @@ public class EezFollowerTests
     [Test]
     public async Task Poll_DivergenceOnABlockL1Reorganized_IsRetried()
     {
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>()).Returns(_ =>
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>()).Returns(_ =>
         {
             GrowL1(to: 5, fork: "b", from: SettlingL1Block);
             return Task.FromException<SettledHead>(new EezFollowerException("diverges"));
@@ -197,9 +197,43 @@ public class EezFollowerTests
     }
 
     [Test]
+    public async Task Poll_KnownL1Reorg_InvalidatesHistoryBeforeUnsafeWork([Values] bool duringDerivation)
+    {
+        IEezL1History history = Substitute.For<IEezL1History>();
+        _follower = Follower(_engine, history);
+        await _follower.Boot(CancellationToken.None);
+        history.ClearReceivedCalls();
+        if (duringDerivation)
+            _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    GrowL1(to: 5, fork: "b", from: SettlingL1Block);
+                    return Task.FromException<SettledHead>(new EezFollowerException("diverges"));
+                });
+        else
+            _scanner.FindSettlingBlocks(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            {
+                L1SettlingBlock before = Settling(SettlingL1Block);
+                GrowL1(to: 5, fork: "b", from: SettlingL1Block);
+                return new[] { before };
+            });
+        _unsafeHead.Advance(Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            history.Received(1).Invalidate();
+            return Task.CompletedTask;
+        });
+        FollowerProgress result = await _follower.Poll(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(FollowerProgress.Retry));
+            Assert.That(history.ReceivedCalls().Count(), Is.EqualTo(1), "a known reorg retires history before the poll continues");
+        }
+    }
+
+    [Test]
     public async Task Poll_DivergenceOnACanonicalBlock_Throws()
     {
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>())
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<SettledHead>(new EezFollowerException("diverges")));
         await _follower.Boot(CancellationToken.None);
 
@@ -382,10 +416,10 @@ public class EezFollowerTests
         await Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
     }
 
-    private EezFollower Follower(IEezL2Engine engine)
+    private EezFollower Follower(IEezL2Engine engine, IEezL1History? history = null)
     {
         ResumePointFinder resumePoints = new(_l1, _chain, Registry, RollupId, _config.RegistryDeployBlock, _config.L1LogScanBlocks);
-        return new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, engine, _config, LimboLogs.Instance);
+        return new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, engine, _config, LimboLogs.Instance, history);
     }
 
     private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null, ITimestamper? clock = null) =>
@@ -404,7 +438,7 @@ public class EezFollowerTests
     }
 
     private void SettleTo(ulong l2Block) =>
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>()).Returns(call => Settled(call, l2Block));
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>()).Returns(call => Settled(call, l2Block));
 
     private void GrowL1(ulong to, string fork, ulong from = 0)
     {

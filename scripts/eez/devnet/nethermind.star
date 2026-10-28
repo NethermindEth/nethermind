@@ -42,7 +42,7 @@ def add_follower(plan, image, service_name, l1_rpc, l1_chain_id, deployment, l1_
         config=ServiceConfig(
             image=image,
             ports={"rpc": PortSpec(number=8545, transport_protocol="TCP", application_protocol="http", wait="5m")},
-            files={"/out": deployment},
+            files={"/out": deployment, "/genesis": "el_cl_genesis_data"},
             env_vars=environment,
         ),
     )

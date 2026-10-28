@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -22,7 +23,7 @@ public interface IBatchReconciler
     /// <param name="cursor">Where the previous settled batch ended.</param>
     /// <returns>Where L1's commitment now stands: the new cursor.</returns>
     /// <exception cref="EezFollowerException">The local chain cannot be brought in line with what L1 settled.</exception>
-    Task<SettledHead> Reconcile(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads);
+    Task<SettledHead> Reconcile(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads, CancellationToken token = default);
 }
 
 /// <summary>The L2 block a settlement ended at and the prevRandao it puts in effect for the blocks after it.</summary>
@@ -47,9 +48,9 @@ public sealed class BatchReconciler(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BatchReconciler>();
 
-    public async Task<SettledHead> Reconcile(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads)
+    public async Task<SettledHead> Reconcile(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads, CancellationToken token = default)
     {
-        BlockHeader endpoint = await Settle(scanned, settling, cursor, heads);
+        BlockHeader endpoint = await Settle(scanned, settling, cursor, heads, token);
         try
         {
             return new SettledHead(endpoint, headerRules.Seed(endpoint, settling, cursor.Seed));
@@ -60,7 +61,7 @@ public sealed class BatchReconciler(
         }
     }
 
-    private async Task<BlockHeader> Settle(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads)
+    private async Task<BlockHeader> Settle(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads, CancellationToken token)
     {
         L1Settlement settlement = scanned.Settlement;
         DecodedBatch batch = Decode(scanned.Batch);
@@ -80,7 +81,9 @@ public sealed class BatchReconciler(
         ulong from = resumed ? anchor.Number : anchor.Number + 1;
         BlockHeader parent = Canonical(from - 1);
         ulong candidateParent = resumed ? CandidateParentOfResumed(from, blockCount) : anchor.Number;
-        DerivedBlock[] derived = Derive(batch, settlement, parent, new DerivationInputs(0, SeedAt(from, cursor), Canonical(candidateParent), settling, resumed));
+        DerivedBlock[] derived = await Derive(batch, settlement, parent,
+            new DerivationInputs(0, SeedAt(from, cursor), Canonical(candidateParent), settling, resumed)
+            { ExecutionParent = parent, AnchorSelector = scanned.Batch.AnchorSelector }, token);
 
         Dictionary<ulong, Hash256> replayed = [];
         using (IDerivedBlockSession session = executor.BeginSession())
@@ -147,12 +150,12 @@ public sealed class BatchReconciler(
     private ulong CandidateParentOfResumed(ulong syncBlock, ulong blockCount) =>
         syncBlock >= blockCount ? syncBlock - blockCount : throw Diverged(syncBlock, $"a resumed batch of {blockCount} blocks would start before genesis");
 
-    private DerivedBlock[] Derive(DecodedBatch batch, L1Settlement settlement, BlockHeader parent, DerivationInputs inputs)
+    private async ValueTask<DerivedBlock[]> Derive(DecodedBatch batch, L1Settlement settlement, BlockHeader parent, DerivationInputs inputs, CancellationToken token)
     {
         ulong systemNonce = stateReader.TryGetAccount(parent, EezConstants.SystemAddress, out AccountStruct account) ? (ulong)account.Nonce : 0;
         try
         {
-            return batch.Derive(settlement.Effects, inputs with { SystemNonce = systemNonce });
+            return await batch.DeriveAsync(settlement.Effects, inputs with { SystemNonce = systemNonce }, token);
         }
         catch (EezSettlementException e)
         {
@@ -197,7 +200,10 @@ public sealed class BatchReconciler(
     private async Task Resume(IDerivedBlockSession session, ulong height, BlockHeader parent, DerivedBlock content, L1Settlement settlement,
         FollowerHeads heads, Dictionary<ulong, Hash256> replayed)
     {
-        Block existing = blockTree.FindBlock(height, BlockTreeLookupOptions.RequireCanonical) is { } block && block.ParentHash == parent.Hash
+        Block? accepted = content.NativeEffectsStart >= 0
+            ? blockTree.FindBlock(new Hash256(settlement.EntryState.Bytes), BlockTreeLookupOptions.None)
+            : blockTree.FindBlock(height, BlockTreeLookupOptions.RequireCanonical);
+        Block existing = accepted is { } block && block.Number == height && block.ParentHash == parent.Hash
             ? block
             : throw Diverged(height, "the Sync block a resumed batch appends to is missing or reorganized");
         if (existing.Hash! == settlement.FinalState)
@@ -206,15 +212,17 @@ public sealed class BatchReconciler(
         }
 
         await RetreatSafeBelow(height, parent, heads);
+        if (content.NativeEffectsStart >= 0)
+            content = content with { PrevRandao = existing.MixHash ?? throw Diverged(height, "the accepted Sync prefix has no PREVRANDAO") };
         byte[][] local = Encode(existing);
-        int kept = local.Length >= content.Transactions.Length && EndsWith(local, content.Transactions)
+        int kept = content.NativeEffectsStart < 0 && local.Length >= content.Transactions.Length && EndsWith(local, content.Transactions)
             ? local.Length - content.Transactions.Length
             : local.Length;
         byte[][] transactions = new byte[kept + content.Transactions.Length][];
         Array.Copy(local, transactions, kept);
         content.Transactions.CopyTo(transactions, kept);
         if (_logger.IsInfo) _logger.Info($"Rewriting Sync block {height} with the {content.Transactions.Length} transactions a resumed batch settled.");
-        await Commit(session, parent, content with { Transactions = transactions }, heads, replayed);
+        await Commit(session, parent, content with { Transactions = transactions, NativeEffectsStart = content.NativeEffectsStart < 0 ? -1 : kept + content.NativeEffectsStart }, heads, replayed);
     }
 
     /// <summary>
@@ -289,7 +297,7 @@ public sealed class BatchReconciler(
     /// <summary>Whether <paramref name="local"/> is the block derivation builds, so a sequencer block with any other header is replaced.</summary>
     private bool Matches(Block local, BlockHeader parent, DerivedBlock derived)
     {
-        if (local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData) || local.MixHash != derived.PrevRandao
+        if (derived.NativeEffectsStart >= 0 || local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData) || local.MixHash != derived.PrevRandao
             || local.Transactions.Length != derived.Transactions.Length
             || headerRules.Mismatch(local, parent) is not null)
         {

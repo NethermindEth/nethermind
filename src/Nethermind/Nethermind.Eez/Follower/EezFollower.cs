@@ -43,7 +43,8 @@ public sealed class EezFollower(
     IBlockTree blockTree,
     IEezL2Engine engine,
     IEezConfig config,
-    ILogManager logManager)
+    ILogManager logManager,
+    IEezL1History? l1History = null)
 {
     /// <summary>
     /// How many settling L1 blocks are kept while L1 finalizes none of them, as on a chain without a finalized tag; an
@@ -185,10 +186,11 @@ public sealed class EezFollower(
         EezL1Block header = await Block(block.Number, token);
         if (header.Hash != block.Hash)
         {
+            l1History?.Invalidate();
             throw new L1SourceIncompleteException(block.Number, $"L1 reorganized block {block.Number} during the scan.");
         }
 
-        L1Anchor anchor = header.ToAnchor();
+        L1Anchor anchor = rules.UsesNativeContract ? header.ToAnchor() with { ParentHash = header.ParentHash } : header.ToAnchor();
         ScannedBatch[] batches = await scanner.Scan(block, header, token);
         SettledHead cursor = _cursor;
         try
@@ -197,7 +199,7 @@ public sealed class EezFollower(
             {
                 if (!scanned.Settlement.IsEmpty)
                 {
-                    cursor = await reconciler.Reconcile(scanned, anchor, cursor, _heads);
+                    cursor = await reconciler.Reconcile(scanned, anchor, cursor, _heads, token);
                 }
             }
         }
@@ -208,9 +210,15 @@ public sealed class EezFollower(
                 throw;
             }
 
+            l1History?.Invalidate();
             throw new L1SourceIncompleteException(block.Number, $"L1 reorganized block {block.Number} while it was derived: {e.Message}");
         }
 
+        if (rules.UsesNativeContract && !await IsCanonical(block.Number, block.Hash, token))
+        {
+            l1History?.Invalidate();
+            throw new L1SourceIncompleteException(block.Number, "L1 reorganized during native derivation.");
+        }
         BlockHeader endpoint = cursor.Endpoint;
         if (endpoint.Number > _heads.Safe.Number)
         {
@@ -267,6 +275,7 @@ public sealed class EezFollower(
     /// <summary>Continues from the last settlement L1 and the local chain agree on, or from genesis when there is none.</summary>
     private async Task Resume(EezL1Block latest, bool fromGenesis, CancellationToken token)
     {
+        l1History?.Invalidate();
         SettledRecord? record = fromGenesis ? null : await resumePoints.Find(latest.Number, token);
         BlockHeader endpoint = record?.L2End ?? blockTree.Genesis!;
         ulong next = record is null ? config.RegistryDeployBlock : record.L1Number + 1;

@@ -16,6 +16,8 @@ namespace Nethermind.Eez.Follower;
 public sealed record L1Batch(ulong BlockNumber, Hash256 BlockHash, Hash256 TransactionHash, ulong TransactionIndex, bool VerifiesOurRollup,
     ValueHash256? ClaimedCurrentState, ValueHash256[] ClaimedChain, ReadOnlyMemory<byte> DaStream)
 {
+    public ulong AnchorSelector { get; init; } = ulong.MaxValue;
+
     /// <param name="daStream">The stream the batch publishes: its calldata under rollup0, its unpacked blobs under RollupX.</param>
     public static L1Batch Of(PostBatch batch, ReadOnlyMemory<byte> daStream, ulong rollupId, ulong blockNumber, Hash256 blockHash, Hash256 transactionHash,
         ulong transactionIndex)
@@ -34,7 +36,7 @@ public sealed record L1Batch(ulong BlockNumber, Hash256 BlockHash, Hash256 Trans
             }
         }
 
-        return new L1Batch(blockNumber, blockHash, transactionHash, transactionIndex, Lists(batch, rollupId), current, [.. chain], daStream);
+        return new L1Batch(blockNumber, blockHash, transactionHash, transactionIndex, Lists(batch, rollupId), current, [.. chain], daStream) { AnchorSelector = batch.BlockNumber };
     }
 
     private static bool Lists(PostBatch batch, ulong rollupId)

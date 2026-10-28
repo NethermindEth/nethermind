@@ -11,7 +11,7 @@ set +a
 : "${EEZ_ROLLUP_ID:?}"
 set --
 if [ "${EEZ_PROFILE:-rollup0}" = rollupx ]; then
-    set -- --Eez.L1BeaconUrl "${NETHERMIND_L1_BEACON:?}"
+    set -- --Eez.L1BeaconUrl "${NETHERMIND_L1_BEACON:?}" --Eez.L1ChainConfigPath /genesis/genesis.json
 fi
 exec /nethermind/entrypoint.sh \
     --Init.ChainSpecPath /out/l2-genesis.json \

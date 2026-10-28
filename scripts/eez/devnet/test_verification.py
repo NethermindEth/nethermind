@@ -51,6 +51,29 @@ class VerificationTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             verify.check_receipt(reference, candidate, transaction, "block", 0)
 
+    def test_native_profile_counts_cross_chain_sources_and_checks_actual_system_account(self):
+        for tx_type, expected in (("0x45", 1), ("0x46", 0)):
+            with self.subTest(tx_type=tx_type):
+                genesis = {field: "0x0" for field in verify.HEADER}
+                genesis.update(hash="genesis", number="0x0", transactions=[], parentHash="zero")
+                end = dict(genesis, hash="end", number="0x1", parentHash="genesis", transactions=[{"hash": "tx", "type": tx_type}])
+                class Source:
+                    def __init__(self):
+                        self.accounts = []
+                    def call(self, method, *arguments):
+                        if method == "eth_getBlockByHash":
+                            return {"genesis": genesis, "end": end}[arguments[0]]
+                        if method == "eth_getRawTransactionByHash":
+                            return "0x01"
+                        self.accounts.append(arguments[0])
+                        return "0x0"
+                reference, candidate = Source(), Source()
+                with patch.object(verify, "check_receipt"):
+                    result = verify.verify_prefix(reference, candidate, "end", "genesis", 2, "rollupx")
+                self.assertEqual(result["verified_native_transactions"], expected)
+                self.assertEqual(reference.accounts, [verify.NATIVE_SYSTEM, verify.NATIVE_SYSTEM])
+                self.assertEqual(candidate.accounts, reference.accounts)
+
     def test_source_and_candidate_block_bytes_cannot_differ(self):
         genesis = {field: "0x0" for field in verify.HEADER}
         genesis.update({"hash": "genesis", "number": "0x0", "transactions": [], "parentHash": "zero"})

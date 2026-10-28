@@ -11,6 +11,52 @@ namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
 internal sealed partial class NativeTransactions
 {
+    internal byte[][] BuildNative(ProducingSlice applied, NativeLiveSource source, EezChainRules rules)
+    {
+        if (!rules.UsesNativeContract || source.ChainId != _chainId || applied.Skip < 0 || applied.Take < 0 ||
+            applied.Skip > GroupCount || applied.Take > GroupCount - applied.Skip)
+            throw NativeCallTree.Invalid("invalid native reconstruction slice");
+        int outbound = Math.Min(applied.Take, Math.Max(0, _outbound.Count - applied.Skip));
+        byte[][] result = new byte[checked(applied.Take + outbound)][];
+        int position = 0;
+        for (int group = applied.Skip; group < applied.Skip + applied.Take; group++)
+        {
+            if (group < _outbound.Count)
+            {
+                (ExecutionTable table, byte[] user) = _outbound[group];
+                result[position++] = EncodeNative(source, group, NativeValue.Funding(table.Entries), EezCalldata.EncodeLoadExecutionTable(table), rules);
+                result[position++] = user;
+            }
+            else
+            {
+                L2ExecutionEntry[] entries = [_inbound[group - _outbound.Count]];
+                result[position++] = EncodeNative(source, group, NativeValue.Funding(entries),
+                    EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall(entries, [])), rules);
+            }
+        }
+        return result;
+    }
+
+    private byte[] EncodeNative(NativeLiveSource source, int group, in UInt256 value, byte[] data, EezChainRules rules)
+    {
+        Transaction transaction = new()
+        {
+            Type = EezConstants.NativeSystemTxType,
+            ChainId = _chainId,
+            SourceHash = new(source.Entry((ulong)group).Bytes),
+            SenderAddress = rules.SystemAddress,
+            To = rules.Eezl2Address,
+            Value = value,
+            Data = data,
+            GasLimit = EezChainRules.RollupXSystemTxGasCap
+        };
+        EezNativeSystemTxDecoder decoder = new(rules.NativeFormat);
+        byte[] encoded = new byte[decoder.GetLength(transaction, RlpBehaviors.SkipTypedWrapping)];
+        RlpWriter writer = new(encoded);
+        decoder.Encode(transaction, ref writer, RlpBehaviors.SkipTypedWrapping);
+        return encoded;
+    }
+
     /// <summary>Matches a whole-group suffix against the complete original semantic stream.</summary>
     /// <remarks>Execution, the L1 parent, settlement tables and any consumed prefix still require independent authorization.</remarks>
     internal void VerifyNativeSuffix(EezStatelessBlockResult execution, int firstTransaction, ProducingSlice applied,

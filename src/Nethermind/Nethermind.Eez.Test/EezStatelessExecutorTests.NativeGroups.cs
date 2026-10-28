@@ -27,6 +27,27 @@ namespace Nethermind.Eez.Test;
 
 public partial class EezStatelessExecutorTests
 {
+    [TestCase(0, 2, 0, TestName = "BuildNative_WholeCapture_PreservesBothGroups")]
+    [TestCase(1, 1, 2, TestName = "BuildNative_ConsumedOutbound_PreservesInboundOrdinal")]
+    [NonParallelizable]
+    public void BuildNative_CapturedGroups_ReconstructsOriginalFields(int skip, int take, int first)
+    {
+        NativeGroupCase input = LoadNativeGroups();
+        byte[][] encoded = input.Groups.BuildNative(new ProducingSlice(skip, take), input.Source, input.Rules);
+        Assert.That(encoded.Length, Is.EqualTo(input.Execution.Block.Transactions.Length - first));
+        using (new NativeDecoderScope(input.Rules))
+            for (int index = 0; index < encoded.Length; index++)
+            {
+                Transaction actual = TxDecoder.Instance.Decode(encoded[index], RlpBehaviors.SkipTypedWrapping)!;
+                Transaction expected = input.Execution.Block.Transactions[first + index];
+                if (actual.Type == EezConstants.NativeSystemTxType)
+                    actual.GasLimit = expected.GasLimit;
+                Assert.That(TxDecoder.Instance.Encode(actual, RlpBehaviors.SkipTypedWrapping).Bytes,
+                    Is.EqualTo(TxDecoder.Instance.Encode(expected, RlpBehaviors.SkipTypedWrapping).Bytes),
+                    "only position-dependent gas is left for the derived execution scope");
+            }
+    }
+
     [TestCase(0, 2, 0, TestName = "VerifyNativeSuffix_WholeCapture_PreservesBothOriginalGroups")]
     [TestCase(1, 1, 2, TestName = "VerifyNativeSuffix_ConsumedOutbound_PreservesInboundOrdinal")]
     [TestCase(2, 0, 3, TestName = "VerifyNativeSuffix_ConsumedWholeCapture_AcceptsEmptySuffix")]

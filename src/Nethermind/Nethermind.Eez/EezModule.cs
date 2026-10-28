@@ -36,7 +36,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Eez;
 
-public class EezModule(IEezConfig config, EezChainRules rules) : Module
+public partial class EezModule(IEezConfig config, EezChainRules rules) : Module
 {
     private const string L1RpcClientKey = "Eez.L1";
     private const string SequencerRpcClientKey = "Eez.Sequencer";
@@ -72,6 +72,9 @@ public class EezModule(IEezConfig config, EezChainRules rules) : Module
         {
             builder.AddDecorator<IHeaderValidator, RollupXHeaderValidator>();
         }
+
+        if (rules.UsesNativeContract && config.FollowerEnabled)
+            LoadNativeFollower(builder);
 
         if (config.FollowerEnabled)
         {
@@ -135,7 +138,8 @@ public class EezModule(IEezConfig config, EezChainRules rules) : Module
     }
 
     /// <summary>RollupX derives from the blobs a beacon node serves, under its genesis-pinned grid and seeds.</summary>
-    private void LoadRollupXDerivation(ContainerBuilder builder) =>
+    private void LoadRollupXDerivation(ContainerBuilder builder)
+    {
         builder
             .AddSingleton<IDerivedHeaderRules, RollupXHeaderRules>()
             .AddSingleton<IBatchDerivation, RollupXBatchDerivation>()
@@ -143,6 +147,10 @@ public class EezModule(IEezConfig config, EezChainRules rules) : Module
             .AddSingleton<IL1BlobSource>(static ctx => new BeaconBlobSource(ctx.ResolveKeyed<HttpClient>(L1BeaconClientKey)))
             .AddSingleton<IL1BatchScanner, IEezL1Api, IL1BlobSource, ILogManager>((l1, blobs, logManager) =>
                 new RollupXBatchScanner(l1, blobs, new Address(config.RegistryAddress!), config.RollupId, logManager));
+        if (rules.UsesNativeContract)
+            builder.AddSingleton<IBatchDerivation, NativeBatchDerivation>()
+                .AddSingleton<IDerivedBlockExecutor, NativeDerivedBlockExecutor>();
+    }
 
     /// <summary>The beacon URL as a base that relative API paths extend rather than replace.</summary>
     private static Uri BeaconBase(string url) => new(url.EndsWith('/') ? url : url + "/");

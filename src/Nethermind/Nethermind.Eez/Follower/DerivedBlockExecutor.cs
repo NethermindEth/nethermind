@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Follower.RollupX;
 using Nethermind.Evm.State;
 using Nethermind.State;
 
@@ -38,15 +39,23 @@ public sealed class DerivedBlockExecutor(ILifetimeScope rootLifetime, IWorldStat
             .AddScoped(worldState)
             .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>());
-        return new Session(scope, builder);
+        return OpenSession(scope, builder);
     }
+
+    internal static IDerivedBlockSession OpenSession(ILifetimeScope scope, DerivedBlockBuilder builder) => new Session(scope, builder);
 
     private sealed class Session(ILifetimeScope scope, DerivedBlockBuilder builder) : IDerivedBlockSession
     {
         private readonly IBlockProcessor _processor = scope.Resolve<IBlockProcessor>();
         private readonly IWorldState _worldState = scope.Resolve<IWorldState>();
+        private readonly NativeDerivedSuffix? _native = scope.ResolveOptional<NativeDerivedSuffix>();
 
-        public Block Execute(BlockHeader parent, DerivedBlock derived) => builder.Build(parent, derived, _processor, _worldState).Block;
+        public Block Execute(BlockHeader parent, DerivedBlock derived)
+        {
+            if (_native is not null) _native.FirstTransaction = derived.NativeEffectsStart;
+            try { return builder.Build(parent, derived, _processor, _worldState).Block; }
+            finally { if (_native is not null) _native.FirstTransaction = -1; }
+        }
 
         public void Dispose() => scope.Dispose();
     }

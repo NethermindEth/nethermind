@@ -12,7 +12,7 @@ using Nethermind.Int256;
 namespace Nethermind.Eez.Rpc;
 
 /// <summary>Output-only native-v1 transaction fields and fixed Ethereum RPC placeholders.</summary>
-public sealed class EezNativeSystemTransactionForRpc : EezSystemTransactionForRpc, IFromTransaction<EezNativeSystemTransactionForRpc>
+public class EezNativeSystemTransactionForRpc : EezSystemTransactionForRpc, IFromTransaction<EezNativeSystemTransactionForRpc>
 {
     private static readonly AuthorizationListForRpc EmptyAuthorizations = new();
 
@@ -20,7 +20,7 @@ public sealed class EezNativeSystemTransactionForRpc : EezSystemTransactionForRp
     public override TxType? Type => TxType;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public ulong Version => EezConstants.NativeSystemTxVersion;
+    public virtual ulong? Version => EezConstants.NativeSystemTxVersion;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256? SourceHash { get; set; }

@@ -28,4 +28,7 @@ public interface IDerivedHeaderRules
 }
 
 /// <summary>The L1 block a settlement landed in, as far as L2 derivation reads it.</summary>
-public readonly record struct L1Anchor(ulong Number, Hash256 Hash, ulong Timestamp, Hash256 MixHash);
+public readonly record struct L1Anchor(ulong Number, Hash256 Hash, ulong Timestamp, Hash256 MixHash)
+{
+    public Hash256? ParentHash { get; init; }
+}

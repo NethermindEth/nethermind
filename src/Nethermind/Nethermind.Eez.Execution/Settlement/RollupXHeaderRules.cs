@@ -58,7 +58,7 @@ public sealed class RollupXHeaderRules(ISpecProvider specProvider, EezChainRules
     public Hash256 Seed(BlockHeader endpoint, L1Anchor? settling, Hash256? previousSeed = null)
     {
         Hash256 current = endpoint.MixHash ?? throw new EezSettlementException($"Block {endpoint.Number} carries no prevRandao.");
-        if (settling is not { } l1)
+        if (rules.UsesNativeContract || settling is not { } l1)
         {
             return current;
         }

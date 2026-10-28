@@ -10,7 +10,7 @@ using Nethermind.Eez.Execution.Settlement.RollupX;
 
 namespace Nethermind.Eez.Follower.RollupX;
 
-internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules rules)
+internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules rules) : IEezL1History
 {
     private const int ReadConcurrency = 8;
     private readonly Lock _gate = new();
@@ -18,13 +18,15 @@ internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules r
     private long _generation;
     private int _preparing;
 
+    internal Task<NativeL1Header> ReadCanonical(ulong number, CancellationToken token) => source.Read(number, token);
+
     internal NativeL1HeaderChain Read()
     {
         lock (_gate)
             return _ready ?? throw new L1SourceIncompleteException(0, "Canonical native L1 history is not ready.");
     }
 
-    internal void Invalidate()
+    public void Invalidate()
     {
         lock (_gate)
         {
@@ -46,10 +48,10 @@ internal sealed class NativeCanonicalHistory(NativeL1Rpc source, EezChainRules r
         {
             return await PrepareCore(firstNumber, through, token);
         }
-        catch (EezSettlementException)
+        catch (EezSettlementException exception)
         {
             Invalidate();
-            throw;
+            throw new L1SourceIncompleteException(firstNumber, $"L1 returned contradictory canonical history: {exception.Message}");
         }
         finally
         {

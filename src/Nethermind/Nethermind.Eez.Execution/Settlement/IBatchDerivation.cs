@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,6 +26,12 @@ public abstract class DecodedBatch
     /// <param name="applied">The effects L1 applied, over the outbound effects followed by the inbound ones.</param>
     /// <exception cref="EezSettlementException">The DA cannot rebuild the blocks it claims.</exception>
     public abstract DerivedBlock[] Derive(ProducingSlice applied, in DerivationInputs inputs);
+
+    public virtual ValueTask<DerivedBlock[]> DeriveAsync(ProducingSlice applied, DerivationInputs inputs, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return new(Derive(applied, in inputs));
+    }
 }
 
 /// <summary>What a batch's blocks derive from besides its DA.</summary>
@@ -36,4 +44,8 @@ public abstract class DecodedBatch
 /// <param name="Resumed">
 /// A competing batch already committed the Sync block, so only the transactions this batch appends to it are rebuilt.
 /// </param>
-public readonly record struct DerivationInputs(ulong SystemNonce, Hash256 PrevRandao, BlockHeader CandidateParent, L1Anchor Settling, bool Resumed);
+public readonly record struct DerivationInputs(ulong SystemNonce, Hash256 PrevRandao, BlockHeader CandidateParent, L1Anchor Settling, bool Resumed)
+{
+    public BlockHeader? ExecutionParent { get; init; }
+    public ulong AnchorSelector { get; init; } = ulong.MaxValue;
+}

@@ -8,6 +8,7 @@ import urllib.request
 HEADER = ("hash", "parentHash", "sha3Uncles", "miner", "stateRoot", "transactionsRoot", "receiptsRoot", "logsBloom", "difficulty", "number", "gasLimit", "gasUsed", "timestamp", "extraData", "mixHash", "nonce", "baseFeePerGas")
 RECEIPT = ("transactionHash", "transactionIndex", "blockHash", "blockNumber", "from", "to", "cumulativeGasUsed", "gasUsed", "contractAddress", "logsBloom", "status", "type", "effectiveGasPrice", "logs")
 SYSTEM = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0076"
+NATIVE_SYSTEM = "0xfffffffffffffffffffffffffffffffffffffffe"
 
 
 class RpcError(RuntimeError):
@@ -63,7 +64,7 @@ def registry(l1, address, calldata, snapshot):
     return "0x" + value[32:64].hex()
 
 
-def check_receipt(reference, candidate, transaction, block_hash, index):
+def check_receipt(reference, candidate, transaction, block_hash, index, native_types=(0x76,)):
     left = reference.call("eth_getTransactionReceipt", transaction["hash"])
     right = candidate.call("eth_getTransactionReceipt", transaction["hash"])
     if not isinstance(left, dict) or not isinstance(right, dict):
@@ -75,12 +76,14 @@ def check_receipt(reference, candidate, transaction, block_hash, index):
         if field not in left or field not in right:
             raise AssertionError("missing receipt field " + field)
         equal(left[field], right[field], "receipt " + transaction["hash"] + " " + field)
-    if int(transaction["type"], 16) == 0x76:
+    if int(transaction["type"], 16) in native_types:
         if int(left["status"], 16) != 1 or int(left["gasUsed"], 16) <= 0 or int(left["effectiveGasPrice"], 16) != 0:
             raise AssertionError("invalid successful native receipt accounting")
 
 
-def verify_prefix(reference, candidate, commitment, genesis, maximum):
+def verify_prefix(reference, candidate, commitment, genesis, maximum, profile="rollup0"):
+    native_type = 0x45 if profile == "rollupx" else 0x76
+    system = NATIVE_SYSTEM if profile == "rollupx" else SYSTEM
     end = reference.call("eth_getBlockByHash", commitment, True)
     if not isinstance(end, dict) or end["hash"].lower() != commitment.lower():
         raise AssertionError("reference lacks registered endpoint")
@@ -112,20 +115,21 @@ def verify_prefix(reference, candidate, commitment, genesis, maximum):
             if not isinstance(raw, str) or not raw.startswith("0x") or len(raw) <= 2:
                 raise AssertionError("missing encoded transaction")
             equal(raw, candidate.call("eth_getRawTransactionByHash", transaction["hash"]), "transaction encoding")
-            check_receipt(reference, candidate, transaction, current, index)
+            check_receipt(reference, candidate, transaction, current, index, (0x45, 0x46) if profile == "rollupx" else (0x76,))
             receipts += 1
-            native += int(transaction["type"], 16) == 0x76
+            native += int(transaction["type"], 16) == native_type
         blocks += 1
         if number == 0:
             equal(current, genesis, "registered genesis")
         current = left["parentHash"]
     state_context = {"blockHash": commitment, "requireCanonical": True}
     for method in ("eth_getBalance", "eth_getTransactionCount"):
-        equal(reference.call(method, SYSTEM, state_context), candidate.call(method, SYSTEM, state_context), "native account " + method)
+        equal(reference.call(method, system, state_context), candidate.call(method, system, state_context), "native account " + method)
     return {"endpoint": commitment, "height": height, "verified_blocks": blocks, "verified_receipts": receipts, "verified_native_transactions": native}
 
 
 def check_genesis(reference, candidate, args):
+    system = NATIVE_SYSTEM if args.profile == "rollupx" else SYSTEM
     headers = []
     for node in (reference, candidate):
         equal(node.call("eth_chainId"), hex(args.l2_chain_id), "L2 chain identity")
@@ -140,8 +144,8 @@ def check_genesis(reference, candidate, args):
     if args.genesis_evidence is None:
         equal(args.phase, "verify-eezl2-deployment", "genesis state requires initial deployment phase")
         for node in (reference, candidate):
-            equal(node.call("eth_getBalance", SYSTEM, "0x0"), "0x0", "no native genesis funding")
-            equal(node.call("eth_getTransactionCount", SYSTEM, "0x0"), "0x0", "native genesis nonce")
+            equal(node.call("eth_getBalance", system, "0x0"), "0x0", "no native genesis funding")
+            equal(node.call("eth_getTransactionCount", system, "0x0"), "0x0", "native genesis nonce")
     else:
         evidence = json.loads(args.genesis_evidence.read_text())
         equal(evidence.get("result"), "pass", "genesis evidence must be a passed observation")
@@ -184,7 +188,7 @@ def main():
         if endpoint is None or own is None or int(endpoint["number"], 16) < args.minimum_height:
             time.sleep(2)
             continue
-        result = verify_prefix(reference, candidate, commitment, args.genesis, args.max_blocks)
+        result = verify_prefix(reference, candidate, commitment, args.genesis, args.max_blocks, args.profile)
         equal(l1.call("eth_getBlockByNumber", snapshot["number"], False)["hash"], snapshot["hash"], "canonical L1 recheck")
         source_now = reference.call("eth_getBlockByNumber", hex(result["height"]), False)
         if source_now is None or source_now["hash"].lower() != commitment.lower():

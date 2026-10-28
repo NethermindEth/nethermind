@@ -155,7 +155,7 @@ public class ResumePointFinderTests
             .Returns([new ScannedBatch(batch, new L1Settlement(0, 1, endpoint.Hash!, endpoint.Hash!))]);
         IBatchReconciler reconciler = Substitute.For<IBatchReconciler>();
         Hash256? seenSeed = null;
-        reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>()).Returns(call =>
+        reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>(), Arg.Any<CancellationToken>()).Returns(call =>
         {
             SettledHead cursor = call.ArgAt<SettledHead>(2);
             seenSeed = cursor.Seed;

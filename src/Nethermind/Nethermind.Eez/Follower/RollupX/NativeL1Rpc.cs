@@ -6,6 +6,8 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Nethermind.Eez.Execution.Settlement;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -42,14 +44,24 @@ internal sealed class NativeL1Rpc(HttpClient http, IJsonSerializer serializer, N
         response.EnsureSuccessStatusCode();
         await response.Content.LoadIntoBufferAsync(MaxResponseBytes, token);
         using Stream body = await response.Content.ReadAsStreamAsync(token);
-        JsonRpcResponse<BlockHeaderForRpc?>? decoded = serializer.Deserialize<JsonRpcResponse<BlockHeaderForRpc?>>(body);
+        NativeL1Header header = ReadResponse(body, number);
         token.ThrowIfCancellationRequested();
-        if (decoded is null || decoded.Id is not 1L || decoded.JsonRpc != "2.0" || decoded.Error is not null)
-            throw new L1SourceIncompleteException(number, $"L1 refuses canonical header {number}.");
-        BlockHeaderForRpc? header = decoded.Result;
-        return header is null
-            ? throw new L1SourceIncompleteException(number, $"L1 does not serve header {number}.")
-            : Decode(header, number, rules.Headers);
+        return header;
+    }
+
+    private NativeL1Header ReadResponse(Stream body, ulong number)
+    {
+        try
+        {
+            JsonRpcResponse<BlockHeaderForRpc?>? decoded = serializer.Deserialize<JsonRpcResponse<BlockHeaderForRpc?>>(body);
+            if (decoded is null || decoded.Id is not 1L || decoded.JsonRpc != "2.0" || decoded.Error is not null || decoded.Result is null)
+                throw new L1SourceIncompleteException(number, $"L1 refuses canonical header {number}.");
+            return Decode(decoded.Result, number, rules.Headers);
+        }
+        catch (Exception exception) when (exception is JsonException or FormatException or ArgumentException or EezSettlementException)
+        {
+            throw new L1SourceIncompleteException(number, $"L1 returned an invalid canonical header at {number}.");
+        }
     }
 
     internal static NativeL1Header Decode(BlockHeaderForRpc header, ulong number, in NativeL1HeaderRules rules)

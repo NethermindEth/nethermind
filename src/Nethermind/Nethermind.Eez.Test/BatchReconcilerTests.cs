@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Settlement.RollupX;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Eez.Follower;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -216,6 +220,59 @@ public class BatchReconcilerTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Reconcile_NativeResume_RetainsExactAcceptedPrefixAndAppendsUnresolvedSuffix()
+    {
+        TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder(NativeSystemTxFormat.ContractV4));
+        try
+        {
+            NativeHistoryTransaction history = new(NativeHistoryEnvelope.Create(DerivedChain.Context.ChainId, [TestItem.KeccakA.ValueHash256]));
+            NativeHistoryTransaction richerHistory = new(NativeHistoryEnvelope.Create(DerivedChain.Context.ChainId,
+                [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256]));
+            Transaction native = new()
+            {
+                Type = EezConstants.NativeSystemTxType,
+                ChainId = DerivedChain.Context.ChainId,
+                SenderAddress = Address.SystemUser,
+                To = EezConstants.RollupXEezl2Address,
+                SourceHash = TestItem.KeccakC,
+                GasLimit = EezChainRules.RollupXSystemTxGasCap,
+                Data = EezCalldata.EncodeExecuteIncomingCrossChainCall(new IncomingCrossChainCall([], []))
+            };
+            byte[] historyBytes = TxDecoder.Instance.Encode(history, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] richerBytes = TxDecoder.Instance.Encode(richerHistory, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] suffix = TxDecoder.Instance.Encode(native, RlpBehaviors.SkipTypedWrapping).Bytes;
+            Block accepted = NativeResumeExecutor.Build(_genesis, new DerivedBlock(Beneficiary, [], [historyBytes, suffix])
+            { PrevRandao = TestItem.KeccakA });
+            Block canonical = NativeResumeExecutor.Build(_genesis, new DerivedBlock(Beneficiary, [], [richerBytes, suffix])
+            { PrevRandao = TestItem.KeccakB });
+            await _engine.Insert(accepted);
+            await _heads.SetHead(accepted.Header);
+            await _engine.Insert(canonical);
+            await _heads.SetHead(canonical.Header);
+            Assert.That(_chain.Head!.Hash, Is.EqualTo(canonical.Hash), "precondition: canonical height has a different richer history prefix");
+            NativeResumeExecutor executor = new();
+            Block expected = NativeResumeExecutor.Build(_genesis, new DerivedBlock(Beneficiary, [], [historyBytes, suffix, suffix])
+            { PrevRandao = TestItem.KeccakA });
+            BatchReconciler reconciler = new(_chain, Substitute.For<IStateReader>(), executor, _engine,
+                new NativeResumeDerivation(suffix), new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context),
+                DerivedChain.Context, LimboLogs.Instance);
+            ScannedBatch batch = Batch([new DaBlock(Beneficiary, [], [])], expected.Hash!, accepted.Hash!, start: 1);
+            SettledHead result = await reconciler.Reconcile(batch, Settling, new SettledHead(accepted.Header, Keccak.Zero), _heads);
+            Assert.That(executor.Recorded, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Endpoint.Hash, Is.EqualTo(expected.Hash));
+                Assert.That(executor.Recorded!.Transactions, Is.EqualTo(new byte[][] { historyBytes, suffix, suffix }),
+                    "the exact accepted prefix remains and equal native bytes do not suppress a newly applied suffix");
+                Assert.That(executor.Recorded.PrevRandao, Is.EqualTo(TestItem.KeccakA), "the accepted prefix keeps its own history choice");
+                Assert.That(executor.Recorded.NativeEffectsStart, Is.EqualTo(2), "only the appended effect is a gas template");
+            }
+        }
+        finally { TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder()); }
+    }
+
+    [Test]
     public async Task Reconcile_LiveThenSameHeightCatchUp_KeepsTheAcceptedDescendantSeed()
     {
         RollupXSchedule schedule = new(1, 1, new RollupXL1Reference(10200, 1, TestItem.KeccakA, 1000, TestItem.KeccakA), 1000);
@@ -271,6 +328,40 @@ public class BatchReconcilerTests
         L1Batch batch = new(76, Keccak.Compute("L1 block"), Keccak.Compute("batch"), 1, true, entryState, [finalState],
             DaPayloadCodec.Encode(RollupId, published, []));
         return new ScannedBatch(batch, new L1Settlement(start, 1, finalState, entryState));
+    }
+
+    private sealed class NativeResumeDerivation(byte[] suffix) : IBatchDerivation
+    {
+        public DecodedBatch Decode(ReadOnlyMemory<byte> daStream) => new Decoded(suffix);
+
+        private sealed class Decoded(byte[] suffix) : DecodedBatch
+        {
+            public override ulong BlockCount => 1;
+            public override DerivedBlock[] Derive(ProducingSlice applied, in DerivationInputs inputs) =>
+                [new DerivedBlock(Beneficiary, [], [suffix]) { PrevRandao = inputs.PrevRandao, NativeEffectsStart = 0 }];
+        }
+    }
+
+    private sealed class NativeResumeExecutor : IDerivedBlockExecutor, IDerivedBlockSession
+    {
+        internal DerivedBlock? Recorded { get; private set; }
+        public IDerivedBlockSession BeginSession() => this;
+        public Block Execute(BlockHeader parent, DerivedBlock derived)
+        {
+            Recorded = derived;
+            return Build(parent, derived);
+        }
+
+        internal static Block Build(BlockHeader parent, DerivedBlock derived)
+        {
+            Block block = DerivedChain.Child(parent, derived.Beneficiary, derived.ExtraData,
+                derived.Transactions.Select(SyncSettlementFixture.Decode).ToArray());
+            block.Header.MixHash = derived.PrevRandao;
+            block.Header.Hash = Keccak.Compute(Rlp.Encode(block.Header).Bytes);
+            return block;
+        }
+
+        public void Dispose() { }
     }
 
     /// <summary>Builds a derived block deterministically, without executing it.</summary>

@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 
 namespace Nethermind.Eez.Execution;
 
@@ -65,6 +66,10 @@ public sealed class EezChainRules
             throw new InvalidDataException("An EEZ genesis and its config must be JSON objects.");
         }
 
+        if (genesis.TryGetProperty("config", out JsonElement nativeConfig) &&
+            nativeConfig.TryGetProperty("rollupX", out JsonElement nativeSection) && nativeSection.ValueKind == JsonValueKind.Object &&
+            (nativeSection.TryGetProperty("historyUpdateOffset", out _) || nativeSection.TryGetProperty("feeCollector", out _)))
+            return NativeGenesisSnapshot.Load(JsonSerializer.SerializeToUtf8Bytes(genesis), NativeSystemTxFormat.ContractV4).Rules;
         RollupXSchedule? schedule = RollupXGenesis.Read(genesis);
         if (!genesis.TryGetProperty("config", out JsonElement config) || !config.TryGetProperty("feeCollector", out JsonElement collector))
         {

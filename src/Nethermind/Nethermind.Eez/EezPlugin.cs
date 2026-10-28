@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Rpc;
@@ -38,7 +39,12 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
         EnsureRolesSupported(eezConfig, Rules);
         EnsureFollowerConfig(eezConfig);
         EnsureSequencerConfig(eezConfig, api.Config<IKeyStoreConfig>());
-        if (Rules.UsesNativeSystemTransactions)
+        if (Rules.UsesNativeContract)
+        {
+            api.RegisterTxType<EezNativeContractTransactionForRpc>(EezTxType.CreateDecoder(Rules), EezTxType.CreateValidator(api.SpecProvider!.ChainId, Rules));
+            api.RegisterTxType<EezNativeHistoryTransactionForRpc>(new EezNativeHistoryTxDecoder(), EezTxType.CreateValidator(api.SpecProvider.ChainId, Rules));
+        }
+        else if (Rules.UsesNativeSystemTransactions)
             api.RegisterTxType<EezNativeSystemTransactionForRpc>(EezTxType.CreateDecoder(Rules), EezTxType.CreateValidator(api.SpecProvider!.ChainId, Rules));
         else
             api.RegisterTxType<EezSystemTransactionForRpc>(EezTxType.CreateDecoder(), EezTxType.CreateValidator(api.SpecProvider!.ChainId));
@@ -75,6 +81,14 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig in
 
         string? refused = config switch
         {
+            { SequencerRpcUrl: { Length: > 0 } } when rules.UsesNativeContract =>
+                $"{nameof(IEezConfig.SequencerRpcUrl)} is not supported for native RollupX until unsafe history preparation is available",
+            { MaxFollowerBatchBlocks: <= 0 } when rules.UsesNativeContract =>
+                $"{nameof(IEezConfig.MaxFollowerBatchBlocks)} must be positive for a native RollupX follower",
+            { FollowerEnabled: false } when rules.UsesNativeContract =>
+                $"{nameof(IEezConfig.FollowerEnabled)} is required for native RollupX execution",
+            { FollowerEnabled: true, L1ChainConfigPath: null or "" } when rules.UsesNativeContract =>
+                $"{nameof(IEezConfig.L1ChainConfigPath)} is required for a native RollupX follower",
             { SequencerEnabled: true } => $"{nameof(IEezConfig.SequencerEnabled)} is not supported on a RollupX chain yet",
             { FollowerEnabled: true } when !Uri.TryCreate(config.L1BeaconUrl, UriKind.Absolute, out _) =>
                 $"{nameof(IEezConfig.FollowerEnabled)} on a RollupX chain requires a valid {nameof(IEezConfig.L1BeaconUrl)}, its batches being in blobs",
