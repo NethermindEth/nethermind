@@ -96,6 +96,9 @@ public partial class EngineModuleTests
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
 
+        // The payload is stored, and starts aging towards cleanup, only once the background empty block build completes.
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        await payloadPreparation.WaitForStoredBlockAsync(payloadId, static _ => true, chain.CancellationToken);
         await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
         cancellationTimer.Elapsed += Raise.Event();
 
