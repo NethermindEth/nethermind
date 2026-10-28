@@ -48,6 +48,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack;
     private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
+    private NativeCallTracerBuffer _buffer;
 
     private EvmExceptionType? _error;
     private ulong _logIndexStart;
@@ -105,6 +106,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             NativeCallTracerCallFrame firstCallFrame = _callStack[0];
             _callStack.RemoveAt(0);
+            firstCallFrame.TakeBuffer(ref _buffer);
             result.Disposable = firstCallFrame;
 
             result.TxHash = _txHash;
@@ -123,6 +125,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
         _logIndexAtEntry?.Dispose();
+        _buffer.Release();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -147,7 +150,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         };
         // A top-level input is the transaction's own data; a nested one is a view into the caller's pooled memory.
         if (Depth == 0) callFrame.Input = input;
-        else callFrame.CopyInput(input.Span);
+        else callFrame.Input = _buffer.Copy(input.Span);
         _callStack.Add(callFrame);
     }
 
@@ -526,7 +529,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
     }
 
-    private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
+    private void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
     {
         if (error is not null)
         {
@@ -534,7 +537,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
             if (error == EvmExceptionType.Revert && output is { IsEmpty: false } revertOutput)
             {
-                callFrame.CopyOutput(revertOutput.Span);
+                callFrame.Output = _buffer.Copy(revertOutput.Span);
 
                 if (revertOutput.Length >= 4)
                 {
@@ -544,7 +547,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         }
         else
         {
-            callFrame.CopyOutput(output.GetValueOrDefault().Span);
+            callFrame.Output = _buffer.Copy(output.GetValueOrDefault().Span);
         }
     }
 
