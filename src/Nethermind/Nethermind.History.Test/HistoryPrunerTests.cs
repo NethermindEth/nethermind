@@ -567,7 +567,7 @@ public class HistoryPrunerTests
             SnapSync = true,
             PivotNumber = configPivotNumber,
             AncientBodiesBarrier = BeaconGenesisBlockNumber,
-            AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber + 30,
         };
 
         HistoryPruner pruner = CreatePruner(
