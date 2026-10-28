@@ -3,7 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Serialization.FluentRlp.Generator;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp.Instances;
 using NUnit.Framework;
 
@@ -29,6 +34,9 @@ public record RawData(int Tag, byte[] Data);
 
 [RlpSerializable]
 public record Integers(short A, int B, long C, Int128 D);
+
+[RlpSerializable]
+public record UnsignedIntegers(byte A, ushort B, uint C, ulong D, UInt128 E, UInt256 F);
 
 [RlpSerializable]
 public record IntegerTuple((int, long) Values);
@@ -158,5 +166,109 @@ public class RlpDerivedTest
 
         FixedAddress decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadFixedAddress());
         Assert.That(decoded, Is.EqualTo(fixedAddress).UsingPropertiesComparer());
+    }
+
+    [Test]
+    public void RecordWithUnsignedIntegerLimits()
+    {
+        UnsignedIntegers integers = new(byte.MaxValue, ushort.MaxValue, uint.MaxValue, ulong.MaxValue, UInt128.MaxValue, UInt256.MaxValue);
+        byte[] rlp = Rlp.Write(integers, static (ref RlpWriter w, UnsignedIntegers value) => w.Write(value));
+
+        UnsignedIntegers decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadUnsignedIntegers());
+        Assert.That(decoded, Is.EqualTo(integers));
+    }
+
+    [Test]
+    public void RecordWithFixedLengthRejectsOtherLengths()
+    {
+        byte[] shortRlp = Rlp.Write(static (ref RlpWriter w) => w.Write(new byte[FixedAddress.Size - 1]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => Rlp.Read(shortRlp, static (scoped ref RlpReader r) => r.ReadFixedAddress()), Throws.TypeOf<RlpReaderException>());
+            Assert.That(() => Rlp.Write(new FixedAddress(new byte[FixedAddress.Size + 1]), static (ref RlpWriter w, FixedAddress value) => w.Write(value)),
+                Throws.ArgumentException);
+        }
+    }
+
+    [TestCase("public record Account(int Nonce) { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in the body")]
+    [TestCase("public record Account(int Nonce) { public int Balance; }", "RLP0002", TestName = "Field in the body")]
+    [TestCase("public record Account { public int Balance { get; init; } }", "RLP0003", TestName = "No primary constructor")]
+    [TestCase("public record Wrapper<T>(T Value);", "RLP0003", TestName = "Generic record")]
+    [TestCase("public record Outer(int A) { [RlpSerializable] public record Inner(int B); }", "RLP0003", TestName = "Nested record")]
+    [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Pair(int A, int B);", "RLP0001", TestName = "Newtype with two parameters")]
+    [TestCase("[RlpSerializable(length: 20)] public record Number(int A);", "RLP0005", TestName = "Length without a byte array")]
+    [TestCase("public record Triple((int, int, int) A);", "RLP0004", TestName = "Tuple of three")]
+    [TestCase("public record Account(int Nonce) { public int Twice => Nonce * 2; public const int Size = 1; public int Nonce { get; init; } = Nonce; }", null, TestName = "Derived and redeclared members")]
+    [TestCase("public partial record Account(int Nonce); public partial record Account { public int Balance { get; init; } }", "RLP0002", TestName = "Settable property in another part")]
+    [TestCase("public record Account(int Nonce) { public int Nonce { get; init; } = Nonce * 2; }", "RLP0002", TestName = "Redeclared parameter property with another value")]
+    [TestCase("public record Base { public int Balance { get; init; } } [RlpSerializable] public record Account(int Nonce) : Base;", "RLP0003", TestName = "Derived record")]
+    [TestCase("public record Flags(bool A);", "RLP0004", TestName = "Bool parameter")]
+    [TestCase("public enum Kind { A } [RlpSerializable] public record Tagged(Kind A);", "RLP0004", TestName = "Enum parameter")]
+    [TestCase("public record Keys(System.Collections.Generic.Dictionary<byte[], int> A);", "RLP0004", TestName = "Byte array dictionary key")]
+    [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop(Loop Inner);", "RLP0006", TestName = "Recursive Newtype")]
+    [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop((int, Loop) Inner);", "RLP0006", TestName = "Recursive Newtype through a tuple")]
+    [TestCase("internal record Hidden(int A);", null, TestName = "Internal record")]
+    [TestCase("public record Names(int @class, string value, int r, int w, System.Collections.Generic.List<System.Collections.Generic.List<int>> items, int _0);", null, TestName = "Keyword and generated names as parameters")]
+    public void GeneratorDiagnostics(string declaration, string? expectedId)
+    {
+        string source = $"""
+            using Nethermind.Serialization.FluentRlp;
+            namespace Diagnostics;
+            {(declaration.StartsWith('[') ? "" : "[RlpSerializable] ")}{declaration}
+            """;
+
+        GeneratorDriverRunResult result = RunGenerator(source, out Compilation compilation);
+        string[] ids = result.Diagnostics.Select(static d => d.Id).ToArray();
+
+        if (expectedId is null)
+        {
+            Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        }
+        else
+        {
+            Assert.That(ids, Does.Contain(expectedId));
+        }
+    }
+
+    private static GeneratorDriverRunResult RunGenerator(string source, out Compilation output)
+    {
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        CSharpCompilation compilation = CSharpCompilation.Create(
+            "RlpGeneratorDiagnostics",
+            [CSharpSyntaxTree.ParseText(source, parseOptions)],
+            MetadataReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateGenerator()).WithUpdatedParseOptions(parseOptions);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out output, out _);
+        return driver.GetRunResult();
+    }
+
+    private static IIncrementalGenerator CreateGenerator()
+    {
+        DirectoryInfo configurationDirectory = new(AppContext.BaseDirectory);
+        DirectoryInfo artifactsBinDirectory = configurationDirectory.Parent?.Parent
+            ?? throw new InvalidOperationException($"Cannot resolve artifacts/bin from {AppContext.BaseDirectory}");
+        string generatorAssemblyPath = Path.Combine(
+            artifactsBinDirectory.FullName,
+            "Nethermind.Serialization.FluentRlp.Generator",
+            configurationDirectory.Name,
+            "Nethermind.Serialization.FluentRlp.Generator.dll");
+
+        Assembly assembly = Assembly.LoadFrom(generatorAssemblyPath);
+        Type generatorType = assembly.GetType("Nethermind.Serialization.FluentRlp.Generator.RlpSourceGenerator", throwOnError: true)!;
+        return (IIncrementalGenerator)Activator.CreateInstance(generatorType)!;
+    }
+
+    private static MetadataReference[] MetadataReferences()
+    {
+        string trustedPlatformAssemblies = (string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "";
+        return
+        [
+            .. trustedPlatformAssemblies.Split(Path.PathSeparator).Select(static path => MetadataReference.CreateFromFile(path)),
+            MetadataReference.CreateFromFile(typeof(RlpSerializableAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(UInt256).Assembly.Location),
+        ];
     }
 }

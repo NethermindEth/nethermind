@@ -7,42 +7,51 @@ using System.Text;
 
 namespace Nethermind.Serialization.FluentRlp.Instances;
 
+/// <summary>Converts a <see cref="string"/> as a byte string of its UTF-8 bytes.</summary>
 public abstract class StringRlpConverter : IRlpConverter<string>
 {
     private const int MaxStackSize = 256;
-    private static readonly Encoding Encoding = Encoding.UTF8;
 
+    // Throws on invalid UTF-8, so that two different encodings never decode to the same string.
+    private static readonly UTF8Encoding Encoding = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    /// <inheritdoc/>
+    /// <exception cref="RlpReaderException">The item is not a byte string of valid UTF-8.</exception>
     public static string Read(ref RlpReader reader)
     {
-        ReadOnlySpan<byte> obj = reader.ReadBytes();
-        return Encoding.GetString(obj);
-    }
-
-    public static void Write(ref RlpWriter writer, string value)
-    {
-        ReadOnlySpan<char> charSpan = value.AsSpan();
-        int valueByteLength = Encoding.GetMaxByteCount(charSpan.Length);
-
-        byte[]? sharedBuffer = null;
+        ReadOnlySpan<byte> bytes = reader.ReadBytes();
         try
         {
-            Span<byte> buffer = valueByteLength <= MaxStackSize
-                ? stackalloc byte[valueByteLength]
-                : sharedBuffer = ArrayPool<byte>.Shared.Rent(valueByteLength);
-
-            int bytes = Encoding.GetBytes(charSpan, buffer);
-
-            writer.Write(buffer[..bytes]);
+            return Encoding.GetString(bytes);
         }
-        finally
+        catch (DecoderFallbackException)
         {
-            if (sharedBuffer is not null) ArrayPool<byte>.Shared.Return(sharedBuffer);
+            throw new RlpReaderException("RLP string is not valid UTF-8");
         }
+    }
+
+    /// <inheritdoc/>
+    public static void Write(ref RlpWriter writer, string value)
+    {
+        int maxByteCount = Encoding.GetMaxByteCount(value.Length);
+        byte[]? rented = null;
+        Span<byte> buffer = maxByteCount <= MaxStackSize
+            ? stackalloc byte[MaxStackSize]
+            : rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
+
+        int byteCount = Encoding.GetBytes(value, buffer);
+        writer.Write(buffer[..byteCount]);
+
+        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
     }
 }
 
+/// <summary>Extension methods for <see cref="StringRlpConverter"/>.</summary>
 public static class StringRlpConverterExt
 {
+    /// <inheritdoc cref="StringRlpConverter.Read"/>
     public static string ReadString(this ref RlpReader reader) => StringRlpConverter.Read(ref reader);
+
+    /// <inheritdoc cref="StringRlpConverter.Write"/>
     public static void Write(this ref RlpWriter writer, string value) => StringRlpConverter.Write(ref writer, value);
 }

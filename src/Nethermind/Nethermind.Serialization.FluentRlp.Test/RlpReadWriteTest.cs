@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Serialization.FluentRlp.Instances;
 
@@ -88,8 +89,11 @@ public class RlpReadWriteTest
             });
         });
 
-        Assert.That(decoded.Count, Is.EqualTo(100));
-        Assert.That(decoded, Is.All.EqualTo("dog"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Count.EqualTo(100));
+            Assert.That(decoded, Is.All.EqualTo("dog"));
+        }
     }
 
     [Test]
@@ -139,15 +143,17 @@ public class RlpReadWriteTest
             return (dogs, cats);
         });
 
-        Assert.That(dogs.Count, Is.EqualTo(100));
-        Assert.That(dogs, Is.All.EqualTo("dog"));
-
-        Assert.That(cats.Count, Is.EqualTo(50));
-        Assert.That(cats, Is.All.EqualTo("cat"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dogs, Has.Count.EqualTo(100));
+            Assert.That(dogs, Is.All.EqualTo("dog"));
+            Assert.That(cats, Has.Count.EqualTo(50));
+            Assert.That(cats, Is.All.EqualTo("cat"));
+        }
     }
 
-    [TestCase(2)]
-    public void UnknownLengthList([Values(1, 3, 5, 10, 20)] int length)
+    [Test]
+    public void UnknownLengthList([Values(1, 2, 3, 5, 10, 20)] int length)
     {
         byte[] rlp = Rlp.Write(length, static (ref RlpWriter root, int length) =>
         {
@@ -174,7 +180,7 @@ public class RlpReadWriteTest
             });
         });
 
-        Assert.That(decoded.Count, Is.EqualTo(length));
+        Assert.That(decoded, Has.Count.EqualTo(length));
     }
 
     [Test]
@@ -246,12 +252,13 @@ public class RlpReadWriteTest
             {
                 w.Write("dog");
                 w.Write("cat");
-                w.Write(42);
+                // 0x03e8 is not valid UTF-8, so readerA fails on it.
+                w.Write(1000);
             });
         });
 
         (string, string, string) decoded = Rlp.Read(rlp, (scoped ref RlpReader r) => r.Choice(readerA, readerB));
-        Assert.That(decoded, Is.EqualTo(("dog", "cat", "42")));
+        Assert.That(decoded, Is.EqualTo(("dog", "cat", "1000")));
     }
 
     [Test]
@@ -298,35 +305,50 @@ public class RlpReadWriteTest
     }
 
     [Test]
-    public void OptionalDeep()
+    public void OptionalTrailingFields([Values(0, 1, 2)] int optionalCount)
     {
-        (string, string?, int, int?) tuple = ("dog", null, 42, null);
+        (string, int, string?, int?) tuple = ("dog", 42, optionalCount > 0 ? "cat" : null, optionalCount > 1 ? 7 : null);
 
-        byte[] rlp = Rlp.Write(tuple, static (ref RlpWriter w, (string _1, string? _2, int _3, int? _4) tuple) =>
+        byte[] rlp = Rlp.Write(tuple, static (ref RlpWriter w, (string _1, int _2, string? _3, int? _4) tuple) =>
         {
             w.Write(tuple._1);
-            if (tuple._2 is not null)
-            {
-                w.Write(tuple._2);
-            }
-            w.Write(tuple._3);
-            if (tuple._4.HasValue)
-            {
-                w.Write(tuple._4.Value);
-            }
+            w.Write(tuple._2);
+            if (tuple._3 is not null) w.Write(tuple._3);
+            if (tuple._4.HasValue) w.Write(tuple._4.Value);
         });
 
-        (string, string?, int, int?) decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
+        (string, int, string?, int?) decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
             string _1 = r.ReadString();
-            string? _2 = r.Optional(static (scoped ref RlpReader r) => r.ReadString());
-            int _3 = r.ReadInt32();
+            int _2 = r.ReadInt32();
+            string? _3 = r.Optional(static (scoped ref RlpReader r) => r.ReadString());
             int? _4 = r.Optional(static (scoped ref RlpReader r) => r.ReadInt32());
 
             return (_1, _2, _3, _4);
         });
 
         Assert.That(decoded, Is.EqualTo(tuple));
+    }
+
+    // Optional only checks for the end of the input: a present item that does not decode must throw, not read as null.
+    [Test]
+    public void OptionalWithMalformedItem()
+    {
+        byte[] rlp = [0xc0];
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Optional(static (scoped ref RlpReader r) => r.ReadString())),
+            Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void ChoiceDoesNotCatchOtherExceptions()
+    {
+        byte[] rlp = [0x2a];
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Choice(
+                static (scoped ref RlpReader _) => throw new InvalidOperationException(),
+                static (scoped ref RlpReader r) => r.ReadInt32())),
+            Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -492,5 +514,86 @@ public class RlpReadWriteTest
             r.ReadTuple(Int32RlpConverter.Read, Int32RlpConverter.Read));
 
         Assert.That(decoded, Is.EqualTo(tuple));
+    }
+
+    [Test]
+    public void IntegerLimits()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            AssertRoundTrip(byte.MaxValue, static (scoped ref RlpReader r) => r.ReadByte());
+            AssertRoundTrip(short.MaxValue, static (scoped ref RlpReader r) => r.ReadInt16());
+            AssertRoundTrip(ushort.MaxValue, static (scoped ref RlpReader r) => r.ReadUInt16());
+            AssertRoundTrip(int.MaxValue, static (scoped ref RlpReader r) => r.ReadInt32());
+            AssertRoundTrip(uint.MaxValue, static (scoped ref RlpReader r) => r.ReadUInt32());
+            AssertRoundTrip(long.MaxValue, static (scoped ref RlpReader r) => r.ReadInt64());
+            AssertRoundTrip(ulong.MaxValue, static (scoped ref RlpReader r) => r.ReadUInt64());
+            AssertRoundTrip(Int128.MaxValue, static (scoped ref RlpReader r) => r.ReadInt128());
+            AssertRoundTrip(UInt128.MaxValue, static (scoped ref RlpReader r) => r.ReadUInt128());
+            AssertRoundTrip(UInt256.MaxValue, static (scoped ref RlpReader r) => r.ReadUInt256());
+            AssertRoundTrip(UInt256.Zero, static (scoped ref RlpReader r) => r.ReadUInt256());
+            AssertRoundTrip(0UL, static (scoped ref RlpReader r) => r.ReadUInt64());
+        }
+    }
+
+    // One byte more than the type holds, or a value that would be negative in a signed type.
+    [TestCase("88ffffffffffffffff", TestName = "Int64 above MaxValue")]
+    [TestCase("90ffffffffffffffffffffffffffffffff", TestName = "Int128 above MaxValue")]
+    [TestCase("a1010000000000000000000000000000000000000000000000000000000000000000", TestName = "UInt256 of 33 bytes")]
+    public void IntegerAboveLimit(string hex)
+    {
+        byte[] rlp = Convert.FromHexString(hex);
+
+        Assert.That(() => rlp.Length switch
+        {
+            9 => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt64()).ToString(),
+            17 => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadInt128()).ToString(),
+            _ => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadUInt256()).ToString(),
+        }, Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void StringWithInvalidUtf8()
+    {
+        byte[] rlp = [0x82, 0xc3, 0x28];
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadString()), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void DictionaryWithDuplicateKey()
+    {
+        byte[] rlp = Rlp.Write(static (ref RlpWriter w) => w.WriteSequence(static (ref RlpWriter w) =>
+        {
+            w.WriteSequence(static (ref RlpWriter w) => { w.Write(1); w.Write("dog"); });
+            w.WriteSequence(static (ref RlpWriter w) => { w.Write(1); w.Write("cat"); });
+        }));
+
+        Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadDictionary(Int32RlpConverter.Read, StringRlpConverter.Read)),
+            Throws.TypeOf<RlpReaderException>());
+    }
+
+    private static void AssertRoundTrip<T>(T value, RefRlpReaderFunc<T> read)
+    {
+        byte[] rlp = Rlp.Write(value, static (ref RlpWriter w, T value) =>
+        {
+            switch (value)
+            {
+                case UInt256 uint256:
+                    w.Write(uint256);
+                    break;
+                case byte b: w.Write(b); break;
+                case short i16: w.Write(i16); break;
+                case ushort u16: w.Write(u16); break;
+                case int i32: w.Write(i32); break;
+                case uint u32: w.Write(u32); break;
+                case long i64: w.Write(i64); break;
+                case ulong u64: w.Write(u64); break;
+                case Int128 i128: w.Write(i128); break;
+                case UInt128 u128: w.Write(u128); break;
+            }
+        });
+
+        Assert.That(Rlp.Read(rlp, read), Is.EqualTo(value), typeof(T).Name);
     }
 }

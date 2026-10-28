@@ -1,116 +1,183 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 using Nethermind.Int256;
-using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.FluentRlp.Generator;
+using CoreAddress = Nethermind.Core.Address;
 using CurrentRlp = Nethermind.Serialization.Rlp;
+
+[module: SkipLocalsInit]
 
 // The namespace deliberately avoids nesting under `Nethermind.Serialization.Rlp`, which would shadow
 // FluentRlp's `RlpReader`/`RlpWriter` with the identically-named types in that namespace.
 namespace Nethermind.Serialization.FluentRlp.Benchmark;
 
-[RlpSerializable(representation: RlpRepresentation.Newtype, length: Size)]
-public record Address(byte[] Bytes)
+/// <summary>An EIP-2930 storage key, which is encoded as 32 bytes and not as an integer.</summary>
+public readonly record struct StorageKey(UInt256 Value);
+
+public static class AccessListRlpConverters
 {
-    public const int Size = 20;
+    private const int StorageKeyLength = 32;
+
+    public static CoreAddress ReadAddress(this ref RlpReader reader)
+    {
+        ReadOnlySpan<byte> bytes = reader.ReadBytes();
+        if (bytes.Length != CoreAddress.Size) throw new RlpReaderException("RLP address must have 20 bytes");
+        return new CoreAddress(bytes);
+    }
+
+    public static void Write(this ref RlpWriter writer, CoreAddress value) => writer.Write(value.Bytes);
+
+    public static StorageKey ReadStorageKey(this ref RlpReader reader)
+    {
+        ReadOnlySpan<byte> bytes = reader.ReadBytes();
+        if (bytes.Length != StorageKeyLength) throw new RlpReaderException("RLP storage key must have 32 bytes");
+        return new StorageKey(new UInt256(bytes, isBigEndian: true));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Write(this ref RlpWriter writer, StorageKey value)
+    {
+        Span<byte> bytes = stackalloc byte[StorageKeyLength];
+        value.Value.ToBigEndian(bytes);
+        writer.Write(bytes);
+    }
 }
 
 [RlpSerializable]
-public record AccessList(List<(Address, List<UInt256>)> Addresses);
+public record AccessListItem(CoreAddress Address, List<StorageKey> StorageKeys);
 
+[RlpSerializable(RlpRepresentation.Newtype)]
+public record AccessList(List<AccessListItem> Items);
+
+/// <summary>Compares FluentRlp with the current decoder on the same EIP-2930 access list and the same bytes.</summary>
 [MemoryDiagnoser]
+[GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory, BenchmarkLogicalGroupRule.ByParams)]
+[CategoriesColumn]
 public class CurrentFluentBenchmark
 {
-    private readonly Nethermind.Core.Eip2930.AccessList _current;
-    private readonly AccessList _fluent;
+    private Nethermind.Core.Eip2930.AccessList _current = null!;
+    private AccessList _fluent = null!;
+    private byte[] _encoded = null!;
+    private byte[] _buffer = null!;
+    private ArrayBufferWriter<byte> _bufferWriter = null!;
 
-    public CurrentFluentBenchmark()
+    [Params(10, 100, 1_000)]
+    public int AddressCount { get; set; }
+
+    [GlobalSetup]
+    public void GlobalSetup()
     {
-        _current = Benchmark.Current.BuildAccessList(new Random(42));
-        _fluent = Benchmark.Fluent.BuildAccessList(new Random(42));
+        _current = BuildCurrent(new Random(42));
+        _fluent = BuildFluent(new Random(42));
+        _encoded = EncodeCurrent();
+        _buffer = new byte[_encoded.Length];
+        _bufferWriter = new ArrayBufferWriter<byte>(_encoded.Length);
+
+        if (!_encoded.AsSpan().SequenceEqual(EncodeFluent())) throw new InvalidOperationException("Encodings differ");
     }
 
     [Benchmark(Baseline = true)]
-    public Nethermind.Core.Eip2930.AccessList Current()
+    [BenchmarkCategory("Encode")]
+    public byte[] EncodeCurrent()
     {
         CurrentRlp.Eip2930.AccessListDecoder decoder = CurrentRlp.Eip2930.AccessListDecoder.Instance;
-
         int length = decoder.GetLength(_current, CurrentRlp.RlpBehaviors.None);
         byte[] buffer = new byte[length];
         CurrentRlp.RlpWriter writer = new(buffer);
         decoder.Encode(ref writer, _current);
-
-        return decoder.Decode(buffer)!;
+        return buffer;
     }
 
     [Benchmark]
-    public AccessList Fluent()
-    {
-        byte[] encoded = Rlp.Write(_fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
-        return Rlp.Read(encoded, static (scoped ref RlpReader reader) => reader.ReadAccessList());
-    }
-}
+    [BenchmarkCategory("Encode")]
+    public byte[] EncodeFluent()
+        => Rlp.Write(_fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
 
-public static class Current
-{
-    private static Nethermind.Core.Address BuildAddress(Random rnd)
+    [Benchmark(Baseline = true)]
+    [BenchmarkCategory("EncodeToBuffer")]
+    public int EncodeToBufferCurrent()
     {
-        byte[] bytes = new byte[Core.Address.Size];
-        rnd.NextBytes(bytes);
-        return new Nethermind.Core.Address(bytes);
+        CurrentRlp.Eip2930.AccessListDecoder decoder = CurrentRlp.Eip2930.AccessListDecoder.Instance;
+        int length = decoder.GetLength(_current, CurrentRlp.RlpBehaviors.None);
+        CurrentRlp.RlpWriter writer = new(_buffer.AsSpan(0, length));
+        decoder.Encode(ref writer, _current);
+        return length;
     }
 
-    public static Nethermind.Core.Eip2930.AccessList BuildAccessList(Random rnd)
+    [Benchmark]
+    [BenchmarkCategory("EncodeToBuffer")]
+    public int EncodeToBufferFluent()
+    {
+        _bufferWriter.ResetWrittenCount();
+        return Rlp.Write(_bufferWriter, _fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
+    }
+
+    [Benchmark(Baseline = true)]
+    [BenchmarkCategory("Decode")]
+    public Nethermind.Core.Eip2930.AccessList DecodeCurrent()
+        => CurrentRlp.Eip2930.AccessListDecoder.Instance.Decode(_encoded)!;
+
+    [Benchmark]
+    [BenchmarkCategory("Decode")]
+    public AccessList DecodeFluent()
+        => Rlp.Read(_encoded, static (scoped ref RlpReader reader) => reader.ReadAccessList());
+
+    private Nethermind.Core.Eip2930.AccessList BuildCurrent(Random rnd)
     {
         Nethermind.Core.Eip2930.AccessList.Builder builder = new();
-        for (int i = 0; i < 1_000; i++)
+        for (int i = 0; i < AddressCount; i++)
         {
             builder.AddAddress(BuildAddress(rnd));
             int keyCount = rnd.Next(10);
             for (int j = 0; j < keyCount; j++)
             {
-                byte[] bytes = new byte[32];
-                rnd.NextBytes(bytes);
-                builder.AddStorage(new UInt256(bytes));
+                builder.AddStorage(BuildStorageKey(rnd));
             }
         }
 
         return builder.Build();
     }
-}
 
-public static class Fluent
-{
-    private static Address BuildAddress(Random rnd)
+    private AccessList BuildFluent(Random rnd)
     {
-        byte[] bytes = new byte[Address.Size];
-        rnd.NextBytes(bytes);
-        return new Address(bytes);
-    }
-
-    public static AccessList BuildAccessList(Random rnd)
-    {
-        List<(Address, List<UInt256>)> result = new(1_000);
-        for (int i = 0; i < 1_000; i++)
+        List<AccessListItem> items = new(AddressCount);
+        for (int i = 0; i < AddressCount; i++)
         {
-            Address address = BuildAddress(rnd);
-            List<UInt256> keys = [];
+            CoreAddress address = BuildAddress(rnd);
             int keyCount = rnd.Next(10);
+            List<StorageKey> keys = new(keyCount);
             for (int j = 0; j < keyCount; j++)
             {
-                byte[] bytes = new byte[32];
-                rnd.NextBytes(bytes);
-                keys.Add(new UInt256(bytes));
+                keys.Add(new StorageKey(BuildStorageKey(rnd)));
             }
 
-            result.Add((address, keys));
+            items.Add(new AccessListItem(address, keys));
         }
 
-        return new AccessList(result);
+        return new AccessList(items);
+    }
+
+    private static CoreAddress BuildAddress(Random rnd)
+    {
+        byte[] bytes = new byte[CoreAddress.Size];
+        rnd.NextBytes(bytes);
+        return new CoreAddress(bytes);
+    }
+
+    private static UInt256 BuildStorageKey(Random rnd)
+    {
+        byte[] bytes = new byte[32];
+        rnd.NextBytes(bytes);
+        return new UInt256(bytes, isBigEndian: true);
     }
 }
 
 public static class Program
 {
-    public static void Main(string[] args) => BenchmarkRunner.Run(typeof(Program).Assembly, args: args);
+    public static void Main(string[] args) => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 }

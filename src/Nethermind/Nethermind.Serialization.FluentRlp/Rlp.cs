@@ -3,27 +3,49 @@
 
 using System;
 using System.Buffers;
-using System.Diagnostics;
 
 namespace Nethermind.Serialization.FluentRlp;
 
+/// <summary>Entry points to encode and decode a whole RLP item.</summary>
 public static class Rlp
 {
+    /// <summary>Encodes the items written by <paramref name="action"/>.</summary>
+    /// <returns>A new array of the exact encoded length.</returns>
+    /// <remarks><paramref name="action"/> runs once.</remarks>
     public static byte[] Write(RefRlpWriterAction action)
         => Write(action, static (ref RlpWriter w, RefRlpWriterAction action) => action(ref w));
 
+    /// <inheritdoc cref="Write(RefRlpWriterAction)"/>
     public static byte[] Write<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)
         where TContext : allows ref struct
     {
-        RlpWriter lengthWriter = RlpWriter.LengthWriter();
-        action(ref lengthWriter, ctx);
-        FixedArrayBufferWriter<byte> bufferWriter = new(lengthWriter.Length);
-        RlpWriter contentWriter = RlpWriter.ContentWriter(bufferWriter);
-        action(ref contentWriter, ctx);
+        RlpWriter writer = RlpWriter.BufferingWriter();
+        action(ref writer, ctx);
 
-        return bufferWriter.Buffer;
+        byte[] result = new byte[writer.Length];
+        writer.CopyBufferedTo(result);
+        writer.ReturnBuffers();
+        return result;
     }
 
+    /// <summary>Encodes the items written by <paramref name="action"/> to <paramref name="output"/>.</summary>
+    /// <returns>The number of bytes written.</returns>
+    /// <remarks><paramref name="action"/> runs once.</remarks>
+    public static int Write<TContext>(IBufferWriter<byte> output, TContext ctx, RefRlpWriterAction<TContext> action)
+        where TContext : allows ref struct
+    {
+        RlpWriter writer = RlpWriter.BufferingWriter();
+        action(ref writer, ctx);
+
+        int length = writer.Length;
+        writer.CopyBufferedTo(output.GetSpan(length)[..length]);
+        writer.ReturnBuffers();
+        output.Advance(length);
+        return length;
+    }
+
+    /// <summary>Decodes <paramref name="source"/> with <paramref name="func"/>, which must consume all of it.</summary>
+    /// <exception cref="RlpReaderException">The input is malformed or has trailing bytes.</exception>
     public static T Read<T>(ReadOnlySpan<byte> source, RefRlpReaderFunc<T> func)
         where T : allows ref struct
     {
@@ -31,32 +53,5 @@ public static class Rlp
         T result = func(ref reader);
         if (reader.HasNext) throw new RlpReaderException("RLP has trailing bytes");
         return result;
-    }
-}
-
-/// <remarks>
-/// The existing <see cref="ArrayBufferWriter{T}"/> performs various bound checks and supports resizing buffers
-/// which we don't need for our use case.
-/// </remarks>
-/// <param name="capacity">The capacity of the underlying buffer.</param>
-internal class FixedArrayBufferWriter<T>(int capacity) : IBufferWriter<T>
-{
-    private readonly T[] _buffer = new T[capacity];
-    private int _index;
-
-    public T[] Buffer => _buffer;
-
-    public void Advance(int count) => _index += count;
-
-    public Memory<T> GetMemory(int sizeHint = 0)
-    {
-        Debug.Assert(_buffer.Length >= _index);
-        return _buffer.AsMemory(_index);
-    }
-
-    public Span<T> GetSpan(int sizeHint = 0)
-    {
-        Debug.Assert(_buffer.Length >= _index);
-        return _buffer.AsSpan(_index);
     }
 }

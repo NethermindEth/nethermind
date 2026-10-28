@@ -1,348 +1,356 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Text;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using System.Text;
 
 namespace Nethermind.Serialization.FluentRlp.Generator;
 
-public enum RlpRepresentation : byte
-{
-    /// <summary>
-    /// The RLP encoding will be a sequence of RLP objects for each property.
-    /// </summary>
-    Record = 0,
-
-    /// <summary>
-    /// The RLP encoding will be equivalent to the only underlying property.
-    /// </summary>
-    Newtype = 1,
-}
-
-[AttributeUsage(AttributeTargets.Class)]
-public sealed class RlpSerializable(RlpRepresentation representation = RlpRepresentation.Record, int length = -1) : Attribute
-{
-    public RlpRepresentation Representation { get; } = representation;
-    public int Length { get; } = length;
-}
-
 /// <summary>
-/// A source generator that finds all records with [RlpSerializable] attribute and
-/// generates an abstract `IRlpConverter` class with `Read` and `Write` methods.
+/// Generates an <c>IRlpConverter</c> class and extension methods for each record with <c>[RlpSerializable]</c>.
 /// </summary>
 [Generator]
 public sealed class RlpSourceGenerator : IIncrementalGenerator
 {
-    private const string Version = "0.1";
-    private const string GeneratedCodeAttribute = $"""[GeneratedCode("{nameof(RlpSourceGenerator)}", "{Version}")]""";
+    private const string Version = "0.2";
+    private const string GeneratedCodeAttribute = $"""[global::System.CodeDom.Compiler.GeneratedCode("{nameof(RlpSourceGenerator)}", "{Version}")]""";
+    private const string AttributeMetadataName = "Nethermind.Serialization.FluentRlp.RlpSerializableAttribute";
+    private const string Library = "global::Nethermind.Serialization.FluentRlp";
+    private const string Instances = $"{Library}.Instances";
+
+    // Values of Nethermind.Serialization.FluentRlp.RlpRepresentation
+    private const int NewtypeRepresentation = 1;
+
+    private static readonly DiagnosticDescriptor InvalidNewtype = new(
+        "RLP0001", "Invalid RlpRepresentation",
+        "'Newtype' representation is only allowed for records with a single primary constructor parameter",
+        "RLP", DiagnosticSeverity.Error, true);
+
+    private static readonly DiagnosticDescriptor MemberNotSerialized = new(
+        "RLP0002", "Member is not serialized",
+        "'{0}' is not a primary constructor parameter, so its value would be lost; move it to the primary constructor",
+        "RLP", DiagnosticSeverity.Error, true);
+
+    private static readonly DiagnosticDescriptor UnsupportedRecord = new(
+        "RLP0003", "Unsupported record",
+        "Record '{0}' is not supported: {1}",
+        "RLP", DiagnosticSeverity.Error, true);
+
+    private static readonly DiagnosticDescriptor UnsupportedType = new(
+        "RLP0004", "Unsupported type",
+        "Type '{0}' of '{1}' is not supported",
+        "RLP", DiagnosticSeverity.Error, true);
+
+    private static readonly DiagnosticDescriptor InvalidLength = new(
+        "RLP0005", "Invalid length",
+        "A length is only allowed for a 'Newtype' record over a byte array",
+        "RLP", DiagnosticSeverity.Error, true);
+
+    private static readonly DiagnosticDescriptor RecursiveNewtype = new(
+        "RLP0006", "Recursive Newtype",
+        "'Newtype' record '{0}' contains itself without a sequence around it, so reading it would never end",
+        "RLP", DiagnosticSeverity.Error, true);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        IncrementalValuesProvider<RecordDeclarationSyntax> provider = context.SyntaxProvider.CreateSyntaxProvider(
-            predicate: static (s, _) => s is RecordDeclarationSyntax,
-            transform: static (ctx, _) => (RecordDeclarationSyntax)ctx.Node
-        );
+        IncrementalValuesProvider<Output> outputs = context.SyntaxProvider.ForAttributeWithMetadataName(
+            AttributeMetadataName,
+            predicate: static (node, _) => node is RecordDeclarationSyntax,
+            transform: static (ctx, ct) => Generate(ctx, ct));
 
-        IncrementalValueProvider<(Compilation, ImmutableArray<RecordDeclarationSyntax>)> compilation = context.CompilationProvider.Combine(provider.Collect());
-
-        context.RegisterSourceOutput(compilation, Execute);
-    }
-
-    private void Execute(
-        SourceProductionContext context,
-        (Compilation Compilation, ImmutableArray<RecordDeclarationSyntax> RecordsDeclarationSyntaxes) p)
-    {
-        // For each record with the attribute, generate the RlpConverter class
-        foreach (RecordDeclarationSyntax recordDecl in p.RecordsDeclarationSyntaxes)
+        context.RegisterSourceOutput(outputs, static (spc, output) =>
         {
-            // Check if the record has the [RlpSerializable] attribute
-            SemanticModel semanticModel = p.Compilation.GetSemanticModel(recordDecl.SyntaxTree);
-            ISymbol? symbol = semanticModel.GetDeclaredSymbol(recordDecl);
-            if (symbol is null) continue;
-
-            AttributeData? rlpSerializableAttribute = symbol
-                .GetAttributes()
-                .FirstOrDefault(a =>
-                    a.AttributeClass?.Name == nameof(RlpSerializable) ||
-                    a.AttributeClass?.ToDisplayString() == nameof(RlpSerializable));
-
-            // If not, skip the record
-            if (rlpSerializableAttribute is null) continue;
-
-            // Extract the fully qualified record name with its namespace
-            string recordName = symbol.Name;
-            string fullTypeName = symbol.ToDisplayString();
-            // TODO: Deal with missing and nested namespaces
-            string? @namespace = symbol.ContainingNamespace?.ToDisplayString();
-
-            // Extract all `using` directives
-            List<string> usingDirectives = semanticModel.SyntaxTree.GetCompilationUnitRoot()
-                .Usings
-                .Select(u => u.ToString())
-                .ToList();
-
-            // Get the `RlpRepresentation` mode
-            RlpRepresentation representation = (RlpRepresentation)(rlpSerializableAttribute.ConstructorArguments[0].Value ?? 0);
-
-            // Get the constant length if specified
-            int constLength = (int)(rlpSerializableAttribute.ConstructorArguments[1].Value ?? -1);
-
-            // Gather recursively all members that are fields or primary constructor parameters
-            // so we can read them in the same order they are declared.
-            List<(string Name, TypeSyntax TypeName)> parameters = GetRecordParameters(recordDecl);
-
-            // Ensure `Newtype` is only used in single-property records
-            if (representation == RlpRepresentation.Newtype && parameters.Count != 1)
+            foreach (Diagnostic diagnostic in output.Diagnostics)
             {
-                DiagnosticDescriptor descriptor = new(
-                    "RLP0001",
-                    $"Invalid {nameof(RlpRepresentation)}",
-                    $"'{nameof(RlpRepresentation.Newtype)}' representation is only allowed for records with a single property",
-                    "", DiagnosticSeverity.Error, true);
-                context.ReportDiagnostic(Diagnostic.Create(descriptor: descriptor, recordDecl.GetLocation()));
-
-                return;
+                spc.ReportDiagnostic(diagnostic);
             }
 
-            // Build the converter class source
-            string generatedCode = GenerateConverterClass(@namespace, usingDirectives, fullTypeName, recordName, parameters, representation, constLength);
-
-            // Add to the compilation
-            context.AddSource($"{recordName}RlpConverter.g.cs", SourceText.From(generatedCode, Encoding.UTF8));
-        }
+            if (output.Source is not null) spc.AddSource(output.HintName, SourceText.From(output.Source, Encoding.UTF8));
+        });
     }
 
-    /// <summary>
-    /// Gathers the record’s primary constructor parameters and public fields/properties
-    /// in the order they appear in the record declaration.
-    /// </summary>
-    private static List<(string Name, TypeSyntax TypeName)> GetRecordParameters(RecordDeclarationSyntax recordDecl)
+    private sealed class Output(string hintName, string? source, ImmutableArray<Diagnostic> diagnostics)
     {
-        List<(string, TypeSyntax)> parameters = [];
+        public string HintName { get; } = hintName;
+        public string? Source { get; } = source;
+        public ImmutableArray<Diagnostic> Diagnostics { get; } = diagnostics;
+    }
 
-        // Primary constructor parameters
-        if (recordDecl.ParameterList is not null)
+    private static Output Generate(GeneratorAttributeSyntaxContext ctx, CancellationToken ct)
+    {
+        RecordDeclarationSyntax recordDecl = (RecordDeclarationSyntax)ctx.TargetNode;
+        INamedTypeSymbol symbol = (INamedTypeSymbol)ctx.TargetSymbol;
+        string hintName = $"{symbol.ToDisplayString()}.RlpConverter.g.cs";
+        ImmutableArray<Diagnostic>.Builder diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+        Location location = recordDecl.Identifier.GetLocation();
+
+        AttributeData attribute = ctx.Attributes[0];
+        // Roslyn boxes an enum argument as its underlying type, which is byte for RlpRepresentation.
+        int representation = attribute.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is { } r ? System.Convert.ToInt32(r) : 0;
+        int constLength = attribute.ConstructorArguments.Length > 1 && attribute.ConstructorArguments[1].Value is int l ? l : -1;
+
+        if (symbol.IsGenericType) diagnostics.Add(Diagnostic.Create(UnsupportedRecord, location, symbol.Name, "generic records are not supported"));
+        if (symbol.ContainingType is not null) diagnostics.Add(Diagnostic.Create(UnsupportedRecord, location, symbol.Name, "nested records are not supported"));
+        if (symbol.BaseType is { SpecialType: not SpecialType.System_Object })
         {
-            foreach (ParameterSyntax param in recordDecl.ParameterList.Parameters)
-            {
-                string paramName = param.Identifier.Text;
-                TypeSyntax paramType = param.Type!;
+            diagnostics.Add(Diagnostic.Create(UnsupportedRecord, location, symbol.Name, "derived records are not supported"));
+        }
 
-                parameters.Add((paramName, paramType));
+        IMethodSymbol? primaryConstructor = symbol.InstanceConstructors.FirstOrDefault(static c =>
+            c.DeclaringSyntaxReferences.Any(static r => r.GetSyntax() is RecordDeclarationSyntax));
+        if (primaryConstructor is null || primaryConstructor.Parameters.Length == 0)
+        {
+            diagnostics.Add(Diagnostic.Create(UnsupportedRecord, location, symbol.Name, "a primary constructor with at least one parameter is required"));
+        }
+
+        ImmutableArray<IParameterSymbol> parameterSymbols = primaryConstructor?.Parameters ?? ImmutableArray<IParameterSymbol>.Empty;
+        foreach (ISymbol member in symbol.GetMembers())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!member.IsStatic && LosesData(member, parameterSymbols))
+            {
+                diagnostics.Add(Diagnostic.Create(MemberNotSerialized, member.Locations.FirstOrDefault() ?? location, member.Name));
             }
         }
 
-        return parameters;
+        List<(string Name, ITypeSymbol Type)> parameters = [];
+        foreach (IParameterSymbol parameterSymbol in parameterSymbols)
+        {
+            // A keyword such as `class` needs its `@` prefix in member access.
+            string name = SyntaxFacts.GetKeywordKind(parameterSymbol.Name) == SyntaxKind.None ? parameterSymbol.Name : $"@{parameterSymbol.Name}";
+            parameters.Add((name, parameterSymbol.Type));
+        }
+
+        bool isNewtype = representation == NewtypeRepresentation;
+        if (isNewtype && parameters.Count != 1) diagnostics.Add(Diagnostic.Create(InvalidNewtype, location));
+        if (constLength >= 0 && !(isNewtype && parameters.Count == 1 && IsByteArray(parameters[0].Type)))
+        {
+            diagnostics.Add(Diagnostic.Create(InvalidLength, location));
+        }
+
+        if (isNewtype && parameters.Count == 1 && ContainsWithoutSequence(parameters[0].Type, symbol))
+        {
+            diagnostics.Add(Diagnostic.Create(RecursiveNewtype, location, symbol.Name));
+        }
+
+        TypeMapper mapper = new(diagnostics, location);
+        List<string> readCalls = [];
+        List<string> writeCalls = [];
+        foreach ((string name, ITypeSymbol type) in parameters)
+        {
+            readCalls.Add(mapper.Read(type, name));
+            writeCalls.Add(mapper.Write(type, name, $"value.{name}"));
+        }
+
+        if (diagnostics.Count > 0) return new Output(hintName, null, diagnostics.ToImmutable());
+
+        string source = GenerateConverterClass(symbol, recordDecl, readCalls, writeCalls, isNewtype, constLength, parameters.Count > 0 ? parameters[0].Name : "");
+        return new Output(hintName, source, ImmutableArray<Diagnostic>.Empty);
     }
+
+    /// <summary>Whether <paramref name="member"/> holds a value that the primary constructor parameters do not carry.</summary>
+    private static bool LosesData(ISymbol member, ImmutableArray<IParameterSymbol> parameters)
+    {
+        SyntaxNode? syntax = member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+        switch (member, syntax)
+        {
+            case (IFieldSymbol field, VariableDeclaratorSyntax declarator):
+                return !(field.IsReadOnly && declarator.Initializer is not null);
+            case (IPropertySymbol property, PropertyDeclarationSyntax declaration):
+                bool isParameter = parameters.Any(p => p.Name == property.Name);
+                // A redeclared positional property must take the parameter value unchanged.
+                if (isParameter) return declaration.Initializer?.Value is not IdentifierNameSyntax { Identifier.ValueText: var name } || name != property.Name;
+                return property.SetMethod is not null && IsAutoProperty(declaration);
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsAutoProperty(PropertyDeclarationSyntax property)
+        => property.AccessorList is not null && property.AccessorList.Accessors.All(static a => a.Body is null && a.ExpressionBody is null);
+
+    /// <summary>Whether reading <paramref name="type"/> can read <paramref name="record"/> again before it reads a sequence prefix.</summary>
+    private static bool ContainsWithoutSequence(ITypeSymbol type, INamedTypeSymbol record)
+        => SymbolEqualityComparer.Default.Equals(type, record)
+           || type is INamedTypeSymbol { IsTupleType: true } tuple && tuple.TupleElements.Any(e => ContainsWithoutSequence(e.Type, record));
+
+    private static string Indent(IEnumerable<string> lines, int spaces)
+        => string.Join("\n", lines.Select(line => new string(' ', spaces) + line));
+
+    private static bool IsByteArray(ITypeSymbol type)
+        => type is IArrayTypeSymbol { Rank: 1, ElementType.SpecialType: SpecialType.System_Byte };
 
     private static string GenerateConverterClass(
-        string? @namespace,
-        List<string> usingDirectives,
-        string fullTypeName,
-        string recordName,
-        List<(string Name, TypeSyntax TypeName)> parameters,
-        RlpRepresentation representation,
-        int constLength)
+        INamedTypeSymbol symbol,
+        RecordDeclarationSyntax recordDecl,
+        List<string> readCalls,
+        List<string> writeCalls,
+        bool isNewtype,
+        int constLength,
+        string firstParameter)
     {
-        List<string> defaultUsingDirectives =
-        [
-            "using System;",
-            "using System.CodeDom.Compiler;",
-            "using Nethermind.Serialization.FluentRlp;",
-            "using Nethermind.Serialization.FluentRlp.Instances;"
-        ];
-        IEnumerable<string> directives = defaultUsingDirectives.Concat(usingDirectives).Distinct();
-        StringBuilder usingStatements = new();
-        foreach (string usingDirective in directives)
+        string recordName = symbol.Name;
+        string fullTypeName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        string? @namespace = symbol.ContainingNamespace.IsGlobalNamespace ? null : symbol.ContainingNamespace.ToDisplayString();
+
+        // Read{Type}() and Write(value) of other types bind to extension methods, so bring the usings of the record into scope.
+        IEnumerable<string> usingDirectives = new[] { "using Nethermind.Serialization.FluentRlp.Instances;" }
+            .Concat(recordDecl.SyntaxTree.GetCompilationUnitRoot().Usings.Select(static u => u.ToString()))
+            .Concat(recordDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().SelectMany(static n => n.Usings).Select(static u => u.ToString()))
+            .Distinct();
+        string accessibility = symbol.DeclaredAccessibility == Accessibility.Public ? "public" : "internal";
+
+        List<string> writeLines = [];
+        if (constLength >= 0)
         {
-            usingStatements.AppendLine(usingDirective);
+            writeLines.Add($"""if (value.{firstParameter}.Length != {constLength}) throw new global::System.ArgumentException("{recordName} must have {constLength} bytes", nameof(value));""");
         }
+        writeLines.AddRange(writeCalls.Select(static c => $"{c};"));
 
-        StringBuilder writeCalls = new();
-        foreach ((string name, TypeSyntax typeName) in parameters)
+        List<string> readLines = [.. readCalls.Select(static (c, i) => $"var _{i} = {c};")];
+        if (constLength >= 0)
         {
-            string writeCall = MapTypeToWriteCall(name, typeName);
-            writeCalls.AppendLine($"w.{writeCall};");
+            readLines.Add($"""if (_0.Length != {constLength}) throw new {Library}.RlpReaderException("RLP byte string of {recordName} must have {constLength} bytes");""");
         }
+        readLines.Add($"return new {fullTypeName}({string.Join(", ", Enumerable.Range(0, readCalls.Count).Select(static i => $"_{i}"))});");
 
-        StringBuilder readCalls = new();
-        foreach ((string name, TypeSyntax typeName) in parameters)
-        {
-            string readCall = MapTypeToReadCall(typeName);
-            readCalls.AppendLine($"var {name} = r.{readCall};");
-        }
+        string writeBody = isNewtype
+            ? Indent(writeLines, 8)
+            : $$"""
+                        w.WriteSequence(value, static (ref {{Library}}.RlpWriter w, {{fullTypeName}} value) =>
+                        {
+                {{Indent(writeLines, 12)}}
+                        });
+                """;
 
-        StringBuilder constructorCall = new($"{fullTypeName}(");
-        for (int i = 0; i < parameters.Count; i++)
-        {
-            constructorCall.Append(parameters[i].Name);
-            if (i < parameters.Count - 1) constructorCall.Append(", ");
-        }
-        constructorCall.Append(");");
+        string readBody = isNewtype
+            ? Indent(readLines, 8)
+            : $$"""
+                        return r.ReadSequence(static (scoped ref {{Library}}.RlpReader r) =>
+                        {
+                {{Indent(readLines, 12)}}
+                        });
+                """;
 
-        return
-            $$"""
-              // <auto-generated />
-              #nullable enable
-              {{usingStatements}}
-              {{(@namespace is null ? "" : $"namespace {@namespace};")}}
+        return $$"""
+                 // <auto-generated />
+                 #nullable enable
+                 {{string.Join("\n", usingDirectives)}}
 
-              {{GeneratedCodeAttribute}}
-              public abstract class {{recordName}}RlpConverter : IRlpConverter<{{fullTypeName}}>
-              {
-                  public static void Write(ref RlpWriter w, {{fullTypeName}} value)
-                  {
-                    {{(constLength > 0
-                        ? $"if (w.UnsafeCurrentMode == RlpWriter.LengthMode) {{ w.UnsafeLengthWrite({constLength}); return; }}"
-                        : "")}}
+                 {{(@namespace is null ? "" : $"namespace {@namespace};")}}
 
-                    {{(representation == RlpRepresentation.Record
-                        ? $$"""
-                            w.WriteSequence(value, static (ref RlpWriter w, {{fullTypeName}} value) =>
-                            {
-                                {{writeCalls}}
-                            });
-                            """
-                        : writeCalls)}}
-                  }
+                 {{GeneratedCodeAttribute}}
+                 {{accessibility}} abstract class {{recordName}}RlpConverter : {{Library}}.IRlpConverter<{{fullTypeName}}>
+                 {
+                     public static void Write(ref {{Library}}.RlpWriter w, {{fullTypeName}} value)
+                     {
+                 {{writeBody}}
+                     }
 
-                  public static {{fullTypeName}} Read(ref RlpReader r)
-                  {
-                      {{(representation == RlpRepresentation.Record
-                              ? $$"""
-                                  return r.ReadSequence(static (scoped ref RlpReader r) =>
-                                  {
-                                      {{readCalls}}
+                     public static {{fullTypeName}} Read(ref {{Library}}.RlpReader r)
+                     {
+                 {{readBody}}
+                     }
+                 }
 
-                                      return new {{constructorCall}}
-                                  });
-                                  """
-                              : $"""
-                                 {readCalls}
+                 {{GeneratedCodeAttribute}}
+                 {{accessibility}} static class {{recordName}}RlpConverterExt
+                 {
+                     public static {{fullTypeName}} Read{{recordName}}(this ref {{Library}}.RlpReader reader) => {{recordName}}RlpConverter.Read(ref reader);
+                     public static void Write(this ref {{Library}}.RlpWriter writer, {{fullTypeName}} value) => {{recordName}}RlpConverter.Write(ref writer, value);
+                 }
 
-                                 return new {constructorCall}
-                                 """)}}
-                  }
-              }
-
-              {{GeneratedCodeAttribute}}
-              public static class {{recordName}}Ext
-              {
-                  public static {{fullTypeName}} Read{{recordName}}(this ref RlpReader reader) => {{recordName}}RlpConverter.Read(ref reader);
-                  public static void Write(this ref RlpWriter writer, {{fullTypeName}} value) => {{recordName}}RlpConverter.Write(ref writer, value);
-              }
-              """;
+                 """;
     }
 
-    /// <summary>
-    /// Map the type name to the appropriate Read method on the `RlpReader`
-    /// Extend this mapping for more types as needed.
-    /// </summary>
-    private static string MapTypeToReadCall(TypeSyntax syntax)
+    /// <summary>Maps a type to the expressions that read and write it.</summary>
+    private sealed class TypeMapper(ImmutableArray<Diagnostic>.Builder diagnostics, Location location)
     {
-        // Hard-coded cases
-        switch (syntax.ToString())
+        public string Read(ITypeSymbol type, string member)
         {
-            case "byte[]" or "Byte[]" or "System.Byte[]":
-                return "ReadBytes().ToArray()";
-            case "Span<byte>" or "System.Span<byte>" or "ReadOnlySpan<byte>" or "System.ReadOnlySpan<byte>":
-                return "ReadBytes()";
-        }
+            string typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        // Generics
-        if (syntax is GenericNameSyntax or TupleTypeSyntax or ArrayTypeSyntax)
-        {
-            string typeConstructor = syntax switch
-            {
-                GenericNameSyntax generic => generic.Identifier.ToString(),
-                TupleTypeSyntax _ => "Tuple",
-                ArrayTypeSyntax _ => "Array",
-                _ => throw new ArgumentOutOfRangeException(nameof(syntax))
-            };
+            if (IsByteArray(type)) return "r.ReadBytes().ToArray()";
+            if (IsInteger(type)) return $"r.ReadInteger<{typeName}>()";
+            if (type.SpecialType == SpecialType.System_String) return $"{Instances}.StringRlpConverter.Read(ref r)";
 
-            IEnumerable<TypeSyntax> typeParameters = syntax switch
+            switch (type)
             {
-                GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
-                TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
-                ArrayTypeSyntax array => [array.ElementType],
-                _ => throw new ArgumentOutOfRangeException(nameof(syntax))
-            };
-
-            StringBuilder sb = new();
-            sb.AppendLine($"Read{typeConstructor.Capitalize()}(");
-            foreach (TypeSyntax typeParameter in typeParameters)
-            {
-                sb.AppendLine($$"""static (scoped ref RlpReader r) => { return r.{{MapTypeToReadCall(typeParameter)}}; },""");
+                case IArrayTypeSymbol { Rank: 1 } array:
+                    return ReadItems(array.ElementType, member, ".ToArray()");
+                case INamedTypeSymbol { IsTupleType: true } tuple when tuple.TupleElements.Length == 2:
+                    return $"{Instances}.TupleRlpConverter<{Name(tuple.TupleElements[0].Type)}, {Name(tuple.TupleElements[1].Type)}>.Read(ref r, {ReadLambda(tuple.TupleElements[0].Type, member)}, {ReadLambda(tuple.TupleElements[1].Type, member)})";
+                case INamedTypeSymbol named when IsCollection(named, "List", 1):
+                    return ReadItems(named.TypeArguments[0], member, "");
+                case INamedTypeSymbol named when IsCollection(named, "Dictionary", 2) && HasValueEquality(named.TypeArguments[0]):
+                    return $"{Instances}.DictionaryRlpConverter<{Name(named.TypeArguments[0])}, {Name(named.TypeArguments[1])}>.Read(ref r, {ReadLambda(named.TypeArguments[0], member)}, {ReadLambda(named.TypeArguments[1], member)})";
+                case INamedTypeSymbol named when IsConverterConvention(named):
+                    return $"r.Read{named.Name}()";
             }
-            sb.Length -= 2; // Remove the trailing `,\n`
-            sb.Append(")");
 
-            return sb.ToString();
+            diagnostics.Add(Diagnostic.Create(UnsupportedType, location, typeName, member));
+            return "default!";
         }
 
-        // Default
-        return $"Read{MapTypeAlias(syntax.ToString())}()";
-    }
-
-    /// <summary>
-    /// Map the type name to the appropriate Write method on the `RlpWriter`
-    /// Extend this mapping for more types as needed.
-    /// </summary>
-    private static string MapTypeToWriteCall(string? propertyName, TypeSyntax syntax)
-    {
-        // Hard-coded cases
-        switch (syntax.ToString())
+        public string Write(ITypeSymbol type, string member, string value)
         {
-            case "byte[]" or "Byte[]" or "System.Byte[]" or "Span<byte>" or "System.Span<byte>" or "ReadOnlySpan<byte>" or "System.ReadOnlySpan<byte>":
-                return propertyName is null ? "Write(value)" : $"Write(value.{propertyName})";
-        }
+            if (IsByteArray(type) || IsInteger(type)) return $"w.Write({value})";
+            if (type.SpecialType == SpecialType.System_String) return $"{Instances}.StringRlpConverter.Write(ref w, {value})";
 
-        // Generics
-        if (syntax is GenericNameSyntax or TupleTypeSyntax or ArrayTypeSyntax)
-        {
-            IEnumerable<TypeSyntax> typeParameters = syntax switch
+            switch (type)
             {
-                GenericNameSyntax generic => generic.TypeArgumentList.Arguments,
-                TupleTypeSyntax tuple => tuple.Elements.Select(e => e.Type),
-                ArrayTypeSyntax array => [array.ElementType],
-                _ => throw new ArgumentOutOfRangeException(nameof(syntax))
-            };
-
-            StringBuilder sb = new();
-            sb.AppendLine(propertyName is null ? "Write(value," : $"Write(value.{propertyName},");
-            foreach (TypeSyntax typeParameter in typeParameters)
-            {
-                sb.AppendLine($$"""static (ref RlpWriter w, {{typeParameter}} value) => { w.{{MapTypeToWriteCall(null, typeParameter)}}; },""");
+                case IArrayTypeSymbol { Rank: 1 } array:
+                    return WriteItems(type, array.ElementType, member, value);
+                case INamedTypeSymbol { IsTupleType: true } tuple when tuple.TupleElements.Length == 2:
+                    return $"{Instances}.TupleRlpConverter<{Name(tuple.TupleElements[0].Type)}, {Name(tuple.TupleElements[1].Type)}>.Write(ref w, {value}, {WriteLambda(tuple.TupleElements[0].Type, member)}, {WriteLambda(tuple.TupleElements[1].Type, member)})";
+                case INamedTypeSymbol named when IsCollection(named, "List", 1):
+                    return WriteItems(type, named.TypeArguments[0], member, value);
+                case INamedTypeSymbol named when IsCollection(named, "Dictionary", 2) && HasValueEquality(named.TypeArguments[0]):
+                    return $"{Instances}.DictionaryRlpConverter<{Name(named.TypeArguments[0])}, {Name(named.TypeArguments[1])}>.Write(ref w, {value}, {WriteLambda(named.TypeArguments[0], member)}, {WriteLambda(named.TypeArguments[1], member)})";
+                case INamedTypeSymbol named when IsConverterConvention(named):
+                    return $"w.Write({value})";
             }
-            sb.Length -= 2; // Remove the trailing `,\n`
-            sb.Append(")");
 
-            return sb.ToString();
+            // Read already reported the type.
+            return "_ = 0";
         }
 
-        // Default
-        return propertyName is not null ? $"Write(value.{propertyName})" : "Write(value)";
+        // Lists and arrays loop in place, so each item costs no delegate call.
+        private string ReadItems(ITypeSymbol itemType, string member, string conversion)
+            => $"r.ReadSequence(static (scoped ref {Library}.RlpReader r) => {{ global::System.Collections.Generic.List<{Name(itemType)}> items = new(r.CountItems()); while (r.HasNext) {{ items.Add({Read(itemType, member)}); }} return items{conversion}; }})";
+
+        private string WriteItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value)
+            => $"w.WriteSequence({value}, static (ref {Library}.RlpWriter w, {Name(type)} items) => {{ foreach ({Name(itemType)} item in items) {{ {Write(itemType, member, "item")}; }} }})";
+
+        private string ReadLambda(ITypeSymbol type, string member)
+            => $"static (scoped ref {Library}.RlpReader r) => {Read(type, member)}";
+
+        private string WriteLambda(ITypeSymbol type, string member)
+            => $"static (ref {Library}.RlpWriter w, {Name(type)} value) => {Write(type, member, "value")}";
+
+        private static string Name(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        private static bool IsInteger(ITypeSymbol type)
+            => type.SpecialType is SpecialType.System_Byte or SpecialType.System_Int16 or SpecialType.System_Int32 or SpecialType.System_Int64
+                   or SpecialType.System_UInt16 or SpecialType.System_UInt32 or SpecialType.System_UInt64
+               || type is INamedTypeSymbol { Name: "Int128" or "UInt128", ContainingNamespace.Name: "System", ContainingNamespace.ContainingNamespace.IsGlobalNamespace: true };
+
+        // Other types use the Read{Name}() and Write(value) extension methods of a hand-written converter.
+        private static bool IsConverterConvention(INamedTypeSymbol type)
+            => type is { IsTupleType: false, IsGenericType: false, SpecialType: SpecialType.None, TypeKind: TypeKind.Class or TypeKind.Struct };
+
+        // Array and list keys compare by reference, so equal keys would not be found or rejected as duplicates.
+        private static bool HasValueEquality(ITypeSymbol key)
+            => key is not IArrayTypeSymbol && !(key is INamedTypeSymbol named && IsCollection(named, "List", 1));
+
+        private static bool IsCollection(INamedTypeSymbol type, string name, int arity)
+            => type.Name == name && type.Arity == arity && type.ContainingNamespace.ToDisplayString() == "System.Collections.Generic";
     }
-
-    private static string MapTypeAlias(string alias) =>
-        alias switch
-        {
-            "string" => "String",
-            "short" => "Int16",
-            "int" => "Int32",
-            "long" => "Int64",
-            _ => alias
-        };
-}
-
-public static class StringExt
-{
-    public static string Capitalize(this string str) => str[0].ToString().ToUpper() + str.Substring(1);
 }

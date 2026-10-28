@@ -6,8 +6,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.Serialization.FluentRlp.Instances;
 
+/// <summary>Converts a <see cref="Dictionary{TKey, TValue}"/> as a sequence of <c>[key, value]</c> sequences.</summary>
 public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
 {
+    /// <summary>Reads a sequence of <c>[key, value]</c> sequences.</summary>
+    /// <exception cref="RlpReaderException">A key is present more than once.</exception>
     public static Dictionary<TKey, TValue> Read(ref RlpReader reader, RefRlpReaderFunc<TKey> readKey, RefRlpReaderFunc<TValue> readValue)
     {
         (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx = ValueTuple.Create(readKey, readValue);
@@ -16,7 +19,6 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
             Dictionary<TKey, TValue> result = [];
             while (r.HasNext)
             {
-
                 (TKey key, TValue value) = r.ReadSequence(ctx, static (scoped ref RlpReader r, (RefRlpReaderFunc<TKey>, RefRlpReaderFunc<TValue>) ctx) =>
                 {
                     (RefRlpReaderFunc<TKey> readKey, RefRlpReaderFunc<TValue> readValue) = ctx;
@@ -26,13 +28,14 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
                     return (key, value);
                 });
 
-                result.Add(key, value);
+                if (!result.TryAdd(key, value)) throw new RlpReaderException("RLP dictionary has a duplicate key");
             }
 
             return result;
         });
     }
 
+    /// <summary>Writes a sequence of <c>[key, value]</c> sequences.</summary>
     public static void Write(ref RlpWriter writer, Dictionary<TKey, TValue> value, RefRlpWriterAction<TKey> writeKey, RefRlpWriterAction<TValue> writeValue)
     {
         (Dictionary<TKey, TValue>, RefRlpWriterAction<TKey>, RefRlpWriterAction<TValue>) ctx = ValueTuple.Create(value, writeKey, writeValue);
@@ -53,8 +56,10 @@ public abstract class DictionaryRlpConverter<TKey, TValue> where TKey : notnull
     }
 }
 
+/// <summary>Extension methods for <see cref="DictionaryRlpConverter{TKey, TValue}"/>.</summary>
 public static class DictionaryRlpConverterExt
 {
+    /// <inheritdoc cref="DictionaryRlpConverter{TKey, TValue}.Read"/>
     public static Dictionary<TKey, TValue> ReadDictionary<TKey, TValue>(
         this ref RlpReader reader,
         RefRlpReaderFunc<TKey> readKey,
@@ -62,6 +67,7 @@ public static class DictionaryRlpConverterExt
     ) where TKey : notnull
         => DictionaryRlpConverter<TKey, TValue>.Read(ref reader, readKey, readValue);
 
+    /// <inheritdoc cref="DictionaryRlpConverter{TKey, TValue}.Write"/>
     public static void Write<TKey, TValue>(
         this ref RlpWriter writer,
         Dictionary<TKey, TValue> value,

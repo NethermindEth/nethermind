@@ -40,7 +40,7 @@ public class RlpReaderTest
     [Test]
     public void ReadShortInteger()
     {
-        for (int i = 0; i < 0x80; i++)
+        for (int i = 1; i < 0x80; i++)
         {
             int integer = i;
             byte[] source = [(byte)integer];
@@ -48,6 +48,9 @@ public class RlpReaderTest
 
             Assert.That(actual, Is.EqualTo(integer));
         }
+
+        byte[] zero = [0x80];
+        Assert.That(Rlp.Read(zero, static (scoped ref RlpReader r) => r.ReadInt32()), Is.Zero);
     }
 
     [Test]
@@ -152,27 +155,19 @@ public class RlpReaderTest
         RlpReader reader = new(source);
         _ = reader.ReadString();
 
-        Assert.That(reader.HasNext, Is.False);
-        Assert.That(reader.BytesRead, Is.EqualTo(source.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.HasNext, Is.False);
+            Assert.That(reader.BytesRead, Is.EqualTo(source.Length));
+        }
     }
 
     // A sequence whose reader stops short leaves undecoded items behind. Both the short and the long
     // prefix form must reject that, so the cases straddle the 55-byte content boundary.
-    [TestCase(2)]
-    [TestCase(100)]
     [Test]
-    public void ReadSequenceLeavingItemsUnconsumed(int itemCount)
+    public void ReadSequenceLeavingItemsUnconsumed([Values(2, 100)] int itemCount)
     {
-        byte[] rlp = Rlp.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
-        {
-            w.WriteSequence(itemCount, static (ref RlpWriter w, int itemCount) =>
-            {
-                for (int i = 0; i < itemCount; i++)
-                {
-                    w.Write("dog");
-                }
-            });
-        });
+        byte[] rlp = WriteDogs(itemCount);
 
         Assert.That(() => Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
@@ -180,21 +175,10 @@ public class RlpReaderTest
         }), Throws.InstanceOf<RlpReaderException>());
     }
 
-    [TestCase(2)]
-    [TestCase(100)]
     [Test]
-    public void ReadSequenceConsumingEveryItem(int itemCount)
+    public void ReadSequenceConsumingEveryItem([Values(2, 100)] int itemCount)
     {
-        byte[] rlp = Rlp.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
-        {
-            w.WriteSequence(itemCount, static (ref RlpWriter w, int itemCount) =>
-            {
-                for (int i = 0; i < itemCount; i++)
-                {
-                    w.Write("dog");
-                }
-            });
-        });
+        byte[] rlp = WriteDogs(itemCount);
 
         List<string> decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) =>
         {
@@ -210,7 +194,138 @@ public class RlpReaderTest
             });
         });
 
-        Assert.That(decoded, Is.All.EqualTo("dog"));
-        Assert.That(decoded.Count, Is.EqualTo(itemCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.All.EqualTo("dog"));
+            Assert.That(decoded, Has.Count.EqualTo(itemCount));
+        }
     }
+
+    public enum Shape { Integer, Bytes, Sequence }
+
+    // Every case must throw RlpReaderException, never another exception type.
+    [TestCase("", Shape.Bytes, TestName = "Empty input")]
+    [TestCase("8161", Shape.Bytes, TestName = "Single byte below 0x80 with a prefix")]
+    [TestCase("8100", Shape.Integer, TestName = "Zero byte with a prefix")]
+    [TestCase("00", Shape.Integer, TestName = "Integer zero as a raw zero byte")]
+    [TestCase("820001", Shape.Integer, TestName = "Integer with a leading zero byte")]
+    [TestCase("850100000000", Shape.Integer, TestName = "Integer wider than Int32")]
+    [TestCase("8480000000", Shape.Integer, TestName = "Integer above Int32.MaxValue")]
+    [TestCase("b80180", Shape.Bytes, TestName = "Long string prefix for a length below 56")]
+    [TestCase("f800", Shape.Sequence, TestName = "Long list prefix for a length below 56")]
+    [TestCase("bc0100000000", Shape.Bytes, TestName = "Length of length above 4")]
+    [TestCase("bbffffffff", Shape.Bytes, TestName = "Length above Int32.MaxValue")]
+    [TestCase("bb7fffffff", Shape.Bytes, TestName = "Length of Int32.MaxValue past the end")]
+    [TestCase("b8", Shape.Bytes, TestName = "Truncated long length")]
+    [TestCase("83646f", Shape.Bytes, TestName = "Truncated string")]
+    [TestCase("c30102", Shape.Sequence, TestName = "Truncated list")]
+    [TestCase("c283616263", Shape.Sequence, TestName = "Item longer than its parent list")]
+    [TestCase("c0", Shape.Integer, TestName = "List read as an integer")]
+    [TestCase("80", Shape.Sequence, TestName = "String read as a list")]
+    [TestCase("0102", Shape.Integer, TestName = "Trailing bytes after the item")]
+    public void RejectMalformedInput(string hex, Shape shape)
+    {
+        byte[] source = Convert.FromHexString(hex);
+
+        Assert.That(() => Read(source, shape), Throws.TypeOf<RlpReaderException>());
+    }
+
+    private static int Read(byte[] source, Shape shape) => shape switch
+    {
+        Shape.Integer => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadInt32()),
+        Shape.Bytes => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes().Length),
+        _ => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadSequence(ReadAllBytes)),
+    };
+
+    [Test]
+    public void ReadLongLengthWithLeadingZero()
+    {
+        byte[] source = [0xb9, 0x00, 0x38, .. new byte[56]];
+
+        Assert.That(() => Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadBytes().Length), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void ReadDeeplyNestedSequence()
+    {
+        byte[] source = NestedLists(1_000_000);
+
+        Assert.That(() => Rlp.Read(source, ReadDepth), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void CountItemsDoesNotMoveTheReader()
+    {
+        byte[] payload = [0x82, 0x61, 0x62, 0xc0, 0x05];
+        byte[] truncated = [0x05, 0xb8, 0x38];
+
+        RlpReader reader = new(payload);
+        int count = reader.CountItems();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(3));
+            Assert.That(reader.BytesRead, Is.Zero);
+            Assert.That(() => new RlpReader(truncated).CountItems(), Throws.TypeOf<RlpReaderException>());
+        }
+    }
+
+    private static int ReadAllBytes(scoped ref RlpReader r)
+    {
+        int count = 0;
+        while (r.HasNext)
+        {
+            count += r.ReadBytes().Length;
+        }
+
+        return count;
+    }
+
+    private static int ReadDepth(scoped ref RlpReader r)
+        => r.ReadSequence(static (scoped ref RlpReader r) => r.HasNext ? 1 + ReadDepth(ref r) : 0);
+
+    /// <summary>Builds <paramref name="depth"/> lists, each one the only item of the one around it.</summary>
+    private static byte[] NestedLists(int depth)
+    {
+        int[] payloadLengths = new int[depth];
+        for (int i = depth - 2; i >= 0; i--)
+        {
+            payloadLengths[i] = PrefixLength(payloadLengths[i + 1]) + payloadLengths[i + 1];
+        }
+
+        byte[] result = new byte[PrefixLength(payloadLengths[0]) + payloadLengths[0]];
+        int position = 0;
+        foreach (int payloadLength in payloadLengths)
+        {
+            if (payloadLength <= 55)
+            {
+                result[position++] = (byte)(0xc0 + payloadLength);
+                continue;
+            }
+
+            int lengthOfLength = PrefixLength(payloadLength) - 1;
+            result[position++] = (byte)(0xf7 + lengthOfLength);
+            for (int i = lengthOfLength - 1; i >= 0; i--)
+            {
+                result[position++] = (byte)(payloadLength >> (8 * i));
+            }
+        }
+
+        return result;
+    }
+
+    private static int PrefixLength(int payloadLength)
+        => payloadLength <= 55 ? 1 : payloadLength <= 0xff ? 2 : payloadLength <= 0xffff ? 3 : payloadLength <= 0xffffff ? 4 : 5;
+
+    private static byte[] WriteDogs(int itemCount)
+        => Rlp.Write(itemCount, static (ref RlpWriter w, int itemCount) =>
+        {
+            w.WriteSequence(itemCount, static (ref RlpWriter w, int itemCount) =>
+            {
+                for (int i = 0; i < itemCount; i++)
+                {
+                    w.Write("dog");
+                }
+            });
+        });
 }

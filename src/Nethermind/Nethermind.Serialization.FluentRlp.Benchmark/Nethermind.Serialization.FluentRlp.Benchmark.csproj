@@ -5,6 +5,7 @@
         <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>
@@ -12,7 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj" OutputItemType="Analyzer"/>
+      <ProjectReference Include="..\Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
       <ProjectReference Include="..\Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj" />
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
