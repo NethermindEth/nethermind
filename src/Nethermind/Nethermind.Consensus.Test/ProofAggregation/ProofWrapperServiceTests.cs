@@ -878,9 +878,27 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(interrupted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
-            Assert.That(interrupted.Result.Error, Does.Contain("after 1 of 3"));
+            Assert.That(interrupted.Result.Error, Does.Contain("1 of 3 transactions pooled"));
             Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted));
         }
+    }
+
+    // A cancellation after only pool rejections is a plain cancellation: nothing was pooled, so nothing was interrupted.
+    [Test]
+    public async Task Admission_cancelled_after_only_rejections_is_not_an_interruption()
+    {
+        (ProofWrapperService producer, _) = Create(3, 0);
+        byte[] wrapper = producer.BuildWrapper().Data!;
+        ITxPool pool = Substitute.For<ITxPool>();
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        using CancellationTokenSource cancellation = new();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+        {
+            cancellation.Cancel();
+            return AcceptTxResult.Invalid;
+        });
+
+        await Assert.ThatAsync(async () => await service.AcceptDetailedAsync(wrapper, cancellation.Token), Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -968,7 +986,11 @@ public class ProofWrapperServiceTests
             Mode = MempoolWrapper.ModeDirect,
             Proofs = [[1], [1]]
         }).Bytes;
-        Assert.That((await service.AcceptDetailedAsync(encoded, cancellation.Token)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
+        // Interrupted only once a transaction was pooled; after only a rejection the cancellation propagates.
+        if (firstAccepted)
+            Assert.That((await service.AcceptDetailedAsync(encoded, cancellation.Token)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Interrupted));
+        else
+            await Assert.ThatAsync(async () => await service.AcceptDetailedAsync(encoded, cancellation.Token), Throws.InstanceOf<OperationCanceledException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Covers(transactions[0]), Is.EqualTo(firstAccepted));

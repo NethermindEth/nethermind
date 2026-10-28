@@ -16,7 +16,7 @@ public enum ProofWrapperAcceptanceStatus
     PoolRejected,
     Busy,
     LocalFailure,
-    /// <summary>Admission stopped after some of the wrapper's transactions were pooled; they stay pooled, and resubmitting the
+    /// <summary>Admission stopped after at least one of the wrapper's transactions was pooled; those stay pooled, and resubmitting the
     /// wrapper is safe.</summary>
     Interrupted
 }

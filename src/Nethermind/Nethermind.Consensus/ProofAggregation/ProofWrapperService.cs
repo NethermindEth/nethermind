@@ -281,6 +281,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 IReadOnlyList<Transaction> transactions = decoded.Transactions;
                 Hash256[] hashes = new Hash256[transactions.Count];
                 string? firstError = null;
+                int pooled = 0;
                 try
                 {
                     for (int start = 0; start < transactions.Count; start += AdmissionChunk)
@@ -292,7 +293,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             admittedDependencies.Clear();
                             entered = false;
                             ExitAdmission(queue);
-                            if (!(entered = await EnterAdmissionAsync(queue, cancellationToken))) return Interrupted(start, transactions.Count);
+                            if (!(entered = await EnterAdmissionAsync(queue, cancellationToken)))
+                                return pooled == 0 ? AdmissionBusy() : Interrupted(pooled, transactions.Count);
                             Eip8288Verifier? refreshed = RefreshVerifier();
                             if (refreshed != verifier)
                             {
@@ -301,13 +303,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             }
                         }
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
-                            ref firstError, cancellationToken, admittedDependencies, source);
+                            ref firstError, ref pooled, cancellationToken, admittedDependencies, source);
                     }
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && hashes[0] is not null)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
                 {
-                    int reached = Array.FindIndex(hashes, static hash => hash is null);
-                    return Interrupted(reached < 0 ? hashes.Length : reached, transactions.Count);
+                    return Interrupted(pooled, transactions.Count);
                 }
                 finally
                 {
@@ -362,9 +363,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         queue.Turn.Release();
     }
 
-    private static ProofWrapperAcceptance Interrupted(int reached, int count) =>
+    private static ProofWrapperAcceptance Interrupted(int pooled, int count) =>
         new(ProofWrapperAcceptanceStatus.Interrupted, Result<Hash256[]>.Fail(
-            $"Proof admission stopped after {reached} of {count} transactions; resubmitting the wrapper is safe, as pooled ones are skipped."));
+            $"Proof admission stopped with {pooled} of {count} transactions pooled; resubmitting the wrapper is safe, as pooled ones are skipped."));
 
     private static ProofWrapperAcceptance AdmissionBusy() =>
         new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
@@ -408,7 +409,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Submits <paramref name="transactions"/> from <paramref name="start"/> up to <paramref name="end"/>.</summary>
     private void SubmitProofTransactions(IReadOnlyList<Transaction> transactions, int start, int end, Hash256[] hashes, ref string? firstError,
-        CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
+        ref int pooled, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
     {
         for (int i = start; i < end; i++)
         {
@@ -418,6 +419,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             hashes[i] = hash;
             if (txPool.TryGetPendingTransaction(hash.ValueHash256, out _))
             {
+                pooled++;
                 admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
                 continue;
             }
@@ -427,7 +429,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 ? AdmitAwaitingAvailability(transaction, source)
                 : txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
-            else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+            else
+            {
+                pooled++;
+                admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
+            }
         }
     }
 
