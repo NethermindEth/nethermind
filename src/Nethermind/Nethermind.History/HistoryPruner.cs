@@ -198,12 +198,20 @@ public class HistoryPruner : IHistoryPruner
             }
 
             return _historyConfig.Pruning == PruningModes.UseAncientBarriers
-                // Keyed on the tree pivot, like the fast-blocks feeds: a CL-discovered pivot never reaches the sync config.
-                ? ulong.Max(1UL, ulong.Min(_blockTree.SyncPivot.BlockNumber, _syncConfig.AncientBodiesBarrier))
+                ? AncientBodiesBarrier
                 // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
                 : CalculateRollingCutoff(RetentionEpochs + 1);
         }
     }
+
+    /// <summary>The lowest block the bodies download keeps, and so the cutoff of ancient-barrier pruning.</summary>
+    /// <remarks>
+    /// With fast sync it is keyed on the tree pivot, like the bodies feed: a CL-discovered pivot never reaches the sync config.
+    /// Without fast sync no feed runs and it keeps the config value, which is 1 because the config pivot then reads 0, so nothing is pruned.
+    /// </remarks>
+    private ulong AncientBodiesBarrier => !_fastSync
+        ? _syncConfig.AncientBodiesBarrierCalc
+        : ulong.Max(1UL, ulong.Min(_blockTree.SyncPivot.BlockNumber, _syncConfig.AncientBodiesBarrier));
 
     public ulong RetentionEpochs => _historyConfig.RetentionEpochs ?? _minHistoryRetentionEpochs;
 
@@ -488,7 +496,7 @@ public class HistoryPruner : IHistoryPruner
 
         byte[]? pointerBytes = _metadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber) ?? _blocksDb.Get(LegacyLowestInsertedBodyNumberKey);
         ulong? pointer = pointerBytes is null ? null : new RlpReader(pointerBytes).DecodeULong();
-        ulong barrier = ulong.Max(1UL, ulong.Min(pivot, _syncConfig.AncientBodiesBarrier));
+        ulong barrier = AncientBodiesBarrier;
         if (pointer <= barrier)
         {
             return false;

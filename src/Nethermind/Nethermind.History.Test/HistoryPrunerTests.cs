@@ -554,8 +554,11 @@ public class HistoryPrunerTests
         }
     }
 
-    [Test]
-    public void Ancient_barriers_cutoff_follows_the_tree_pivot([Values(0UL, 100UL)] ulong configPivotNumber)
+    [TestCase(0UL, true, BeaconGenesisBlockNumber)]
+    [TestCase(100UL, true, BeaconGenesisBlockNumber)]
+    [TestCase(0UL, false, 1UL)]
+    [TestCase(100UL, false, 1UL)]
+    public void Ancient_barriers_cutoff_follows_the_tree_pivot(ulong configPivotNumber, bool fastSync, ulong expectedCutoff)
     {
         // A pivot supplied by the consensus layer reaches only the block tree, after the pruner is built, and never the config.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -563,8 +566,8 @@ public class HistoryPrunerTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         SyncConfig syncConfig = new()
         {
-            FastSync = true,
-            SnapSync = true,
+            FastSync = fastSync,
+            SnapSync = fastSync,
             PivotNumber = configPivotNumber,
             AncientBodiesBarrier = BeaconGenesisBlockNumber,
             AncientReceiptsBarrier = BeaconGenesisBlockNumber + 30,
@@ -578,7 +581,8 @@ public class HistoryPrunerTests
         blockTree.SyncPivot.Returns((100UL, TestItem.KeccakA));
 
         // The bodies feed stops at max(1, min(tree pivot, bodies barrier)), so blocks below it are the ones to prune.
-        Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(BeaconGenesisBlockNumber));
+        // Without fast sync no feed runs and the config pivot reads 0, so nothing is pruned.
+        Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(expectedCutoff));
     }
 
     [Test]
