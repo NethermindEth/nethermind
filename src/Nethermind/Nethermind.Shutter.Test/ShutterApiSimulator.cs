@@ -7,7 +7,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Network;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -25,7 +24,6 @@ namespace Nethermind.Shutter.Test;
 
 public class ShutterApiSimulator(
     ShutterEventSimulator eventSimulator,
-    IAbiEncoder abiEncoder,
     IBlockTree blockTree,
     IEthereumEcdsa ecdsa,
     ILogFinder logFinder,
@@ -39,7 +37,7 @@ public class ShutterApiSimulator(
     IShareableTxProcessorSource shareableTxProcessorSource,
     ShutterValidatorsInfo validatorsInfo,
     Random rnd
-        ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
+        ) : ShutterApi(blockTree, ecdsa, logFinder, receiptStorage,
         logManager, specProvider, timestamper, shareableTxProcessorSource, fileSystem,
         keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, Substitute.For<IIPResolver>())
 {

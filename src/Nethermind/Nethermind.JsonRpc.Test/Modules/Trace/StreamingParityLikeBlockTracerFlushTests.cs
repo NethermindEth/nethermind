@@ -30,7 +30,9 @@ public class StreamingParityLikeBlockTracerFlushTests
             tracer.WriteTraces([BuildRewardTrace()]);
         }
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(pipe.Reader.TryRead(out ReadResult read), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(read.Buffer.Length, Is.GreaterThanOrEqualTo(StreamingParityLikeBlockTracer.FlushThresholdBytes));
         pipe.Reader.AdvanceTo(read.Buffer.End);
     }
