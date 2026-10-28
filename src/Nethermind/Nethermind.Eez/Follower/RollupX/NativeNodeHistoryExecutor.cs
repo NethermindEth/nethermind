@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement.RollupX;
@@ -26,6 +27,12 @@ internal sealed class NativeNodeHistoryExecutor(
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token = default)
     {
+        token.ThrowIfCancellationRequested();
+        if (block.Number == 0)
+        {
+            if (block.Transactions.Length != 0) throw new InvalidBlockException(block, "Native genesis cannot contain transactions.");
+            return inner.ProcessTransactions(block, options, tracer, token);
+        }
         NativeHistoryBlockExecutor execution = new(inner, state, specs, rules, _schedule, rules.Schedule!.L1Reference.Number,
             null, captured ?? history.Read());
         return execution.ProcessTransactions(block, options, tracer, token);

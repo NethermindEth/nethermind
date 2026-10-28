@@ -10,7 +10,6 @@ using System.Text.Json;
 using Nethermind.Eez.Execution.Settlement;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Facade.Eth;

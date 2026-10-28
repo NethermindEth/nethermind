@@ -72,7 +72,7 @@ public partial class EezSystemTransactionForRpcTests
         };
         EezSystemTransactionForRpc rpc = history ? new EezNativeHistoryTransactionForRpc(tx, new TransactionForRpcContext(901))
             : new EezNativeContractTransactionForRpc(tx, new TransactionForRpcContext(901));
-        using JsonDocument json = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(rpc));
+        using JsonDocument json = JsonDocument.Parse(new EthereumJsonSerializer().Serialize<TransactionForRpc>(rpc));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json.RootElement.GetProperty("type").GetString(), Is.EqualTo(history ? "0x46" : "0x45"));

@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
-using Nethermind.Eez.Execution.Settlement.RollupX;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Rpc;

@@ -10,8 +10,9 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.Processing;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -174,6 +175,35 @@ public partial class RollupXGenesisTests
         finally { TxDecoder.Instance.RegisterDecoder(new EezNativeSystemTxDecoder()); }
     }
 
+    [Test]
+    public void NativeFollower_GenesisBootstrap_RequiresNoReadyL1History([Values] bool hasTransactions)
+    {
+        using NativeHistoryTestSource source = CreateHistorySource();
+        EezChainRules rules = FollowerRules(source);
+        using IContainer container = NativeFollowerContainer(source, rules);
+        IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().CreateResettableWorldState();
+        using ILifetimeScope scope = container.BeginLifetimeScope(b => b.AddScoped(provider));
+        IWorldState state = scope.Resolve<IWorldState>();
+        using IDisposable stateScope = state.BeginScope(IWorldState.PreGenesis);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(0).WithTimestamp(rules.Schedule!.GenesisTimestamp)
+            .WithGasLimit(EezChainRules.RollupXBlockGasLimit).TestObject;
+        Transaction[] transactions = hasTransactions
+            ? [new NativeHistoryTransaction(NativeHistoryEnvelope.Create(1, [source.Headers[1].Hash!.ValueHash256]))]
+            : [];
+        Block genesis = new(header, transactions, []);
+        using BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(genesis);
+        IBlockProcessor.IBlockTransactionsExecutor executor = scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
+        executor.SetBlockExecutionContext(new BlockExecutionContext(header, Osaka.Instance));
+        Assert.That(() => container.Resolve<NativeCanonicalHistory>().Read(), Throws.TypeOf<L1SourceIncompleteException>(),
+            "precondition: the follower cannot prepare L1 history before genesis loading");
+        if (hasTransactions)
+            Assert.That(() => executor.ProcessTransactions(genesis, ProcessingOptions.None, tracer), Throws.TypeOf<InvalidBlockException>());
+        else
+            Assert.That(executor.ProcessTransactions(genesis, ProcessingOptions.None, tracer), Is.Empty);
+        Assert.That(source.Methods, Is.Empty, "genesis must load without network I/O or circular follower startup");
+    }
+
     private static EezChainRules FollowerRules(NativeHistoryTestSource source)
     {
         BlockHeaderForRpc genesis = source.Headers[0];
@@ -207,9 +237,7 @@ public partial class RollupXGenesisTests
 
     private static BlockHeader NativeFollowerParent(IContainer container, NativeHistoryTestSource source, EezChainRules rules)
     {
-        IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().CreateResettableWorldState();
-        using ILifetimeScope scope = container.BeginLifetimeScope(b => b.AddScoped(provider));
-        IWorldState state = scope.Resolve<IWorldState>();
+        IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
         Hash256 root;
         using (state.BeginScope(IWorldState.PreGenesis))
         {
@@ -221,7 +249,7 @@ public partial class RollupXGenesisTests
             for (int index = 0; index < slots.Length; index++)
                 state.Set(new StorageCell(EezConstants.L1HistoryAddress, (UInt256)(index + 1)), slots[index]);
             state.Set(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(0)), source.Headers[0].Hash!.ValueHash256.ToUInt256());
-            state.Commit(Osaka.Instance);
+            state.Commit(Osaka.Instance, isGenesis: true);
             state.CommitTree(0);
             root = state.StateRoot;
         }

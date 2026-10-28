@@ -5,7 +5,6 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Eez.Execution;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Eez.Rpc;
 

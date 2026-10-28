@@ -5,9 +5,8 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution.Settlement.RollupX;
-using Nethermind.Facade.Eth;
 using Nethermind.Int256;
-using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Eth;
 
 namespace Nethermind.Eez.Rpc;
 
