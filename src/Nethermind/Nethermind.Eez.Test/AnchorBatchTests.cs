@@ -41,8 +41,11 @@ public class AnchorBatchTests
 
         PostBatch batch = AnchorBatch.Build(1, Keccak.Compute("settled").ValueHash256, Keccak.Compute("last").ValueHash256, [new DaBlock(Address.Zero, [], [])], proofSystems);
 
-        Assert.That(batch.RollupIdsWithProofSystems.Single().ProofSystemIndexes, Is.EqualTo(new ulong[] { 0, 1 }), "every proof system verifies our rollup");
-        Assert.That(batch.Proofs, Is.Empty, "the attesters sign the batch before any proof is in it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.RollupIdsWithProofSystems.Single().ProofSystemIndexes, Is.EqualTo(new ulong[] { 0, 1 }), "every proof system verifies our rollup");
+            Assert.That(batch.Proofs, Is.Empty, "the attesters sign the batch before any proof is in it");
+        }
     }
 
     private static DaBlock[] Span() =>

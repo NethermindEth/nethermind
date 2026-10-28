@@ -48,11 +48,14 @@ public class PostBatchPosterTests
         SignedPostBatch signed = await Poster().Sign([0xca, 0xfe], CancellationToken.None);
 
         Transaction decoded = TxDecoder.Instance.Decode(signed.Raw, RlpBehaviors.SkipTypedWrapping)!;
-        Assert.That((decoded.Nonce, decoded.To, decoded.GasLimit, decoded.ChainId), Is.EqualTo((42UL, (Address?)Registry, 16_777_216UL, (ulong?)ChainId)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((decoded.Nonce, decoded.To, decoded.GasLimit, decoded.ChainId), Is.EqualTo((42UL, (Address?)Registry, 16_777_216UL, (ulong?)ChainId)),
             "the poster's confirmed nonce, the registry, the whole postBatch gas budget, the L1 chain");
-        Assert.That((decoded.MaxPriorityFeePerGas, decoded.MaxFeePerGas), Is.EqualTo((Tip, 2 * (UInt256)7 + Tip)), "a fee cap of twice the base fee plus the tip");
-        Assert.That(new EthereumEcdsa(ChainId).RecoverAddress(decoded), Is.EqualTo(PosterKey.Address), "signed by the poster");
-        Assert.That(signed.Hash, Is.EqualTo(Keccak.Compute(signed.Raw)), "the hash L1 will report the transaction under");
+            Assert.That((decoded.MaxPriorityFeePerGas, decoded.MaxFeePerGas), Is.EqualTo((Tip, 2 * (UInt256)7 + Tip)), "a fee cap of twice the base fee plus the tip");
+            Assert.That(new EthereumEcdsa(ChainId).RecoverAddress(decoded), Is.EqualTo(PosterKey.Address), "signed by the poster");
+            Assert.That(signed.Hash, Is.EqualTo(Keccak.Compute(signed.Raw)), "the hash L1 will report the transaction under");
+        }
     }
 
     [Test]
@@ -64,9 +67,12 @@ public class PostBatchPosterTests
 
         Transaction second = Decode(await poster.Sign([0x02], CancellationToken.None));
 
-        Assert.That(second.Nonce, Is.EqualTo(first.Nonce), "precondition: the first batch never landed");
-        Assert.That((second.MaxPriorityFeePerGas > first.MaxPriorityFeePerGas * 110 / 100, second.MaxFeePerGas > first.MaxFeePerGas * 110 / 100), Is.EqualTo((true, true)),
-            "a batch still pending in the mempool at that nonce is replaced, not queued behind");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.Nonce, Is.EqualTo(first.Nonce), "precondition: the first batch never landed");
+            Assert.That((second.MaxPriorityFeePerGas > first.MaxPriorityFeePerGas * 110 / 100, second.MaxFeePerGas > first.MaxFeePerGas * 110 / 100), Is.EqualTo((true, true)),
+                "a batch still pending in the mempool at that nonce is replaced, not queued behind");
+        }
     }
 
     [Test]

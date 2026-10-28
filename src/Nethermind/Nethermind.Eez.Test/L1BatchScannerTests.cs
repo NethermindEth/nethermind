@@ -105,9 +105,12 @@ public class L1BatchScannerTests
 
         L1SettlingBlock[] blocks = await Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None);
 
-        Assert.That(blocks, Is.Empty, "a block without our roots settled nothing for us");
-        Assert.That(_l1.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IEezL1Api.GetLogs)), Is.EqualTo(1),
-            "the batches of other rollups are not even listed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks, Is.Empty, "a block without our roots settled nothing for us");
+            Assert.That(_l1.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IEezL1Api.GetLogs)), Is.EqualTo(1),
+                "the batches of other rollups are not even listed");
+        }
     }
 
     [Test]
@@ -160,8 +163,11 @@ public class L1BatchScannerTests
 
         ScannedBatch[] scanned = await ScanOnly(BlockNumber);
 
-        Assert.That(scanned.Select(static s => s.Batch.TransactionHash), Is.EqualTo(new[] { TransactionHash }), "only our batch is derived");
-        Assert.That(scanned[0].Settlement.FinalState, Is.EqualTo(claimed[^1]), "the step the wrapper ran still settles our batch");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scanned.Select(static s => s.Batch.TransactionHash), Is.EqualTo(new[] { TransactionHash }), "only our batch is derived");
+            Assert.That(scanned[0].Settlement.FinalState, Is.EqualTo(claimed[^1]), "the step the wrapper ran still settles our batch");
+        }
     }
 
     [Test]

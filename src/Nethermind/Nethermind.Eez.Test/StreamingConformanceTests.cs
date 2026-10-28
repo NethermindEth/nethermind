@@ -132,14 +132,20 @@ public class StreamingConformanceTests
         string path = Path.Combine(DirectoryPath(prooflessRequests), file);
         Assert.That(new FileInfo(path).Length, Is.InRange(1L, 8L * 1024 * 1024), "vector data must have a bounded size");
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.That(document.RootElement.GetProperty("format").GetString(), Is.EqualTo("eez-prove-v2-transcript-1"), "unknown transcript formats require an explicit adapter");
-        Assert.That(document.RootElement.GetProperty("cases").GetArrayLength(), Is.InRange(1, 256), "an empty vector file is not conformance evidence");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("format").GetString(), Is.EqualTo("eez-prove-v2-transcript-1"), "unknown transcript formats require an explicit adapter");
+            Assert.That(document.RootElement.GetProperty("cases").GetArrayLength(), Is.InRange(1, 256), "an empty vector file is not conformance evidence");
+        }
         HashSet<string> names = [];
         foreach (JsonElement scenario in document.RootElement.GetProperty("cases").EnumerateArray())
         {
             string? name = scenario.GetProperty("name").GetString();
-            Assert.That(string.IsNullOrEmpty(name), Is.False, "every upstream case has an explicit name");
-            Assert.That(names.Add(name!), Is.True, "duplicate case names cannot hide another transcript");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(string.IsNullOrEmpty(name), Is.False, "every upstream case has an explicit name");
+                Assert.That(names.Add(name!), Is.True, "duplicate case names cannot hide another transcript");
+            }
             JsonElement steps = scenario.GetProperty("steps");
             Assert.That(steps.GetArrayLength(), Is.InRange(4, 4096), "every case contains a bounded request and response flow");
             string?[] actions = steps.EnumerateArray().Select(step => step.GetProperty("action").GetString()).ToArray();
@@ -280,10 +286,13 @@ public class StreamingConformanceTests
             }
         }
         if (expected.SessionId.IsEmpty) return;
-        Assert.That(sessions.TryGetValue(expected.SessionId, out ByteString? id), Is.True, context + ": response has a known session");
-        Assert.That(actual.SessionId, Is.EqualTo(id), context + ": response cannot cross sessions");
-        Assert.That(epochs.TryGetValue((expected.SessionId, expected.Epoch), out ulong mapped), Is.True, context + ": response has a known epoch");
-        Assert.That(actual.Epoch, Is.EqualTo(mapped), context + ": response cannot cross epochs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sessions.TryGetValue(expected.SessionId, out ByteString? id), Is.True, context + ": response has a known session");
+            Assert.That(actual.SessionId, Is.EqualTo(id), context + ": response cannot cross sessions");
+            Assert.That(epochs.TryGetValue((expected.SessionId, expected.Epoch), out ulong mapped), Is.True, context + ": response has a known epoch");
+            Assert.That(actual.Epoch, Is.EqualTo(mapped), context + ": response cannot cross epochs");
+        }
         actual.SessionId = expected.SessionId;
         actual.Epoch = expected.Epoch;
     }

@@ -29,8 +29,11 @@ public class EezBlockValidatorTests
 
         bool isValid = _validator.ValidateOrphanedBlock(block, out string? error);
 
-        Assert.That(isValid, Is.False, "EEZ L2 blocks carry no blob transactions");
-        Assert.That(error, Is.EqualTo(EezBlockValidator.BlobTransactionNotAllowed), "the blob rule, not another check, rejects the block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False, "EEZ L2 blocks carry no blob transactions");
+            Assert.That(error, Is.EqualTo(EezBlockValidator.BlobTransactionNotAllowed), "the blob rule, not another check, rejects the block");
+        }
     }
 
     [Test]
@@ -41,8 +44,11 @@ public class EezBlockValidatorTests
 
         bool isValid = _validator.ValidateOrphanedBlock(block, out string? error);
 
-        Assert.That(isValid, Is.False, "blobs are rejected whatever transaction type carries them");
-        Assert.That(error, Is.EqualTo(EezBlockValidator.BlobTransactionNotAllowed), "the blob rule, not another check, rejects the block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False, "blobs are rejected whatever transaction type carries them");
+            Assert.That(error, Is.EqualTo(EezBlockValidator.BlobTransactionNotAllowed), "the blob rule, not another check, rejects the block");
+        }
     }
 
     [Test]
@@ -52,8 +58,11 @@ public class EezBlockValidatorTests
 
         bool isValid = _validator.ValidateOrphanedBlock(block, out string? error);
 
-        Assert.That(isValid, Is.False, "beacon withdrawals would mint L2 ether outside system transactions");
-        Assert.That(error, Is.EqualTo(EezBlockValidator.WithdrawalsNotAllowed), "the withdrawal rule, not another check, rejects the block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False, "beacon withdrawals would mint L2 ether outside system transactions");
+            Assert.That(error, Is.EqualTo(EezBlockValidator.WithdrawalsNotAllowed), "the withdrawal rule, not another check, rejects the block");
+        }
     }
 
     [Test]
@@ -63,8 +72,11 @@ public class EezBlockValidatorTests
 
         bool isValid = _validator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);
 
-        Assert.That(isValid, Is.False, "bodies fetched for a known header follow the same withdrawal rule");
-        Assert.That(error, Is.EqualTo(EezBlockValidator.WithdrawalsNotAllowed), "the withdrawal rule, not another check, rejects the body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False, "bodies fetched for a known header follow the same withdrawal rule");
+            Assert.That(error, Is.EqualTo(EezBlockValidator.WithdrawalsNotAllowed), "the withdrawal rule, not another check, rejects the body");
+        }
     }
 
     [Test]
@@ -100,10 +112,13 @@ public class EezBlockValidatorTests
             case "nonce": block.Header.Nonce = 1; break;
             case "ommers": block.Header.UnclesHash = Keccak.Zero; break;
         }
-        Assert.That(validator.ValidateOrphanedBlock(block, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(EezBlockValidator.ConsensusLayerFieldsNotAllowed));
-        Assert.That(validator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? bodyError), Is.False);
-        Assert.That(bodyError, Is.EqualTo(error));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator.ValidateOrphanedBlock(block, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(EezBlockValidator.ConsensusLayerFieldsNotAllowed));
+            Assert.That(validator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? bodyError), Is.False);
+            Assert.That(bodyError, Is.EqualTo(error));
+        }
     }
 
     [TestCase("beacon")]
@@ -118,8 +133,11 @@ public class EezBlockValidatorTests
         block.Header.Nonce = 0;
         block.Header.ParentBeaconBlockRoot = change == "beacon" ? Keccak.Compute("nonzero beacon root") : Keccak.Zero;
         block.Header.RequestsHash = change == "requests" ? Keccak.Compute("nonempty requests") : ExecutionRequestExtensions.EmptyRequestsHash;
-        Assert.That(environment.BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(EezBlockValidator.ConsensusLayerFieldsNotAllowed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(environment.BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(EezBlockValidator.ConsensusLayerFieldsNotAllowed));
+        }
     }
 
 }

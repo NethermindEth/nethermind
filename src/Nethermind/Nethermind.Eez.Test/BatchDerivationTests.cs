@@ -50,8 +50,11 @@ public class BatchDerivationTests
                 $"block {block.Number} gets the recorded transactions, byte for byte");
             IReleaseSpec spec = Spec.Value.GetSpec(block.Header);
             BlockHeader header = DerivedHeader.Build(parent, spec, context, derived[i].Beneficiary, derived[i].ExtraData);
-            Assert.That(Inputs(header), Is.EqualTo(Inputs(block.Header)), $"block {block.Number} gets the recorded header inputs");
-            Assert.That(DerivedHeader.Withdrawals(spec), Is.EqualTo(block.Withdrawals), $"block {block.Number} gets the recorded withdrawals");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Inputs(header), Is.EqualTo(Inputs(block.Header)), $"block {block.Number} gets the recorded header inputs");
+                Assert.That(DerivedHeader.Withdrawals(spec), Is.EqualTo(block.Withdrawals), $"block {block.Number} gets the recorded withdrawals");
+            }
             parent = block.Header;
         }
 
@@ -103,9 +106,12 @@ public class BatchDerivationTests
     {
         DerivedBlock[] derived = Derive(new ProducingSlice(0, 2), _fixture.Payload());
 
-        Assert.That(derived[0].Transactions, Is.EqualTo(new[] { _fixture.PrecedingTransaction }), "a block before the Sync block keeps its published transactions");
-        Assert.That(derived[1].Transactions, Is.EqualTo(_fixture.SyncTransactions), "the Sync block is [load, user, delivery]");
-        Assert.That(derived[1].ExtraData, Is.EqualTo(new byte[] { 9 }), "the Sync block keeps its published extra data");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(derived[0].Transactions, Is.EqualTo(new[] { _fixture.PrecedingTransaction }), "a block before the Sync block keeps its published transactions");
+            Assert.That(derived[1].Transactions, Is.EqualTo(_fixture.SyncTransactions), "the Sync block is [load, user, delivery]");
+            Assert.That(derived[1].ExtraData, Is.EqualTo(new byte[] { 9 }), "the Sync block keeps its published extra data");
+        }
     }
 
     /// <summary>

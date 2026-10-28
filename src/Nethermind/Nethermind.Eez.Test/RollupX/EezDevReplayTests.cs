@@ -120,8 +120,11 @@ public class EezDevReplayTests
             }
         }
 
-        Assert.That(firstMismatch, Is.EqualTo(-1), firstMismatch < 0 ? "" : $"block {firstMismatch} is {derived[firstMismatch]}, not {_expected[firstMismatch]}");
-        Assert.That(_follower.Heads.Safe.Number, Is.EqualTo((ulong)_expected.Length - 1), "the last batch's endpoint is safe");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstMismatch, Is.EqualTo(-1), firstMismatch < 0 ? "" : $"block {firstMismatch} is {derived[firstMismatch]}, not {_expected[firstMismatch]}");
+            Assert.That(_follower.Heads.Safe.Number, Is.EqualTo((ulong)_expected.Length - 1), "the last batch's endpoint is safe");
+        }
         EezChainRules rules = EezChainRules.FromGenesisFile(StatelessFixtures.PathOf(Fixture, "genesis.json"));
         ISpecProvider spec = _container.Resolve<ISpecProvider>();
         EezStatelessExecutor stateless = new(spec, rules, LimboLogs.Instance);
@@ -131,8 +134,11 @@ public class EezDevReplayTests
             Block block = _chain.FindBlock(number, BlockTreeLookupOptions.RequireCanonical)!;
             Witness witness = _witnesses[number];
             EezStatelessBlockResult result = stateless.Execute([new EezStatelessBlock(Rlp.Encode(block).Bytes, witness)], [EezTransactionCheckpoint.PreExecution])[0];
-            Assert.That(result.Hash, Is.EqualTo(_expected[number]), $"stateless RollupX block {number} matches the independent testnet hash");
-            Assert.That(result.Checkpoints[0].TransactionIndex, Is.EqualTo(EezTransactionCheckpoint.PreExecution));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Hash, Is.EqualTo(_expected[number]), $"stateless RollupX block {number} matches the independent testnet hash");
+                Assert.That(result.Checkpoints[0].TransactionIndex, Is.EqualTo(EezTransactionCheckpoint.PreExecution));
+            }
             StreamingBlockExecutorTests.AssertRecordedBlock(new EezStatelessBlock(Rlp.Encode(block).Bytes, witness), result, _expected[number], spec, rules);
             if (number == 1)
             {

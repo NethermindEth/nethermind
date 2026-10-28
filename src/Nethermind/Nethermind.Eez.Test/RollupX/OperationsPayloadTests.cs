@@ -28,9 +28,12 @@ public class OperationsPayloadTests
         byte[] encoded = OperationsPayload.Encode([Empty(blocks)]);
         OperationsPayload decoded = OperationsPayload.Decode(expected);
 
-        Assert.That(encoded, Is.EqualTo(expected), "the encoder writes the published bytes");
-        Assert.That(decoded.BlockCount, Is.EqualTo(blocks), "the decoder covers every declared block");
-        Assert.That(decoded.Runs().Count(), Is.EqualTo(1), "an empty span with one beneficiary is one run, however many blocks");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(expected), "the encoder writes the published bytes");
+            Assert.That(decoded.BlockCount, Is.EqualTo(blocks), "the decoder covers every declared block");
+            Assert.That(decoded.Runs().Count(), Is.EqualTo(1), "an empty span with one beneficiary is one run, however many blocks");
+        }
     }
 
     [Test]
@@ -40,9 +43,12 @@ public class OperationsPayloadTests
 
         OperationsPayload decoded = OperationsPayload.Decode(wire);
 
-        Assert.That(wire.Length, Is.EqualTo(31), "precondition: the published fixture is 31 bytes");
-        Assert.That(decoded.BlockCount, Is.EqualTo(600));
-        Assert.That(OperationsPayload.Encode(decoded.Runs().ToArray()), Is.EqualTo(wire), "the body re-encodes byte for byte");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wire.Length, Is.EqualTo(31), "precondition: the published fixture is 31 bytes");
+            Assert.That(decoded.BlockCount, Is.EqualTo(600));
+            Assert.That(OperationsPayload.Encode(decoded.Runs().ToArray()), Is.EqualTo(wire), "the body re-encodes byte for byte");
+        }
     }
 
     [Test]
@@ -56,11 +62,14 @@ public class OperationsPayloadTests
 
         byte[] expected = [0x00, 0x02, 0x00, 0x01, 0x01, .. Ones.Bytes, 0x01, .. Twos.Bytes, 0x01, 0x00, 0x01, 0x01, 0x07,
             .. Varint(transaction.Length), .. transaction];
-        Assert.That(encoded, Is.EqualTo(expected), "counts, beneficiaries, extra data, lengths, then transactions");
-        Assert.That(decoded.Length, Is.EqualTo(2));
-        Assert.That(decoded[1].Beneficiary, Is.EqualTo(Twos));
-        Assert.That(decoded[1].ExtraData.ToArray(), Is.EqualTo(new byte[] { 7 }));
-        Assert.That(decoded[1].Transactions.Single().ToArray(), Is.EqualTo(transaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(expected), "counts, beneficiaries, extra data, lengths, then transactions");
+            Assert.That(decoded.Length, Is.EqualTo(2));
+            Assert.That(decoded[1].Beneficiary, Is.EqualTo(Twos));
+            Assert.That(decoded[1].ExtraData.ToArray(), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(decoded[1].Transactions.Single().ToArray(), Is.EqualTo(transaction));
+        }
     }
 
     [Test]
@@ -71,9 +80,12 @@ public class OperationsPayloadTests
         byte[] encoded = OperationsPayload.Encode(runs);
         OperationsRun[] decoded = OperationsPayload.Decode(encoded).Runs().ToArray();
 
-        Assert.That(encoded[2], Is.EqualTo(0xc8), "ten empty blocks are one count token despite the metadata changes");
-        Assert.That(decoded.Select(static run => run.Blocks), Is.EqualTo(new uint[] { 3, 5, 2 }), "the runs split only where metadata changes");
-        Assert.That(decoded[1].ExtraData.ToArray(), Is.EqualTo(new byte[] { 1, 2 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded[2], Is.EqualTo(0xc8), "ten empty blocks are one count token despite the metadata changes");
+            Assert.That(decoded.Select(static run => run.Blocks), Is.EqualTo(new uint[] { 3, 5, 2 }), "the runs split only where metadata changes");
+            Assert.That(decoded[1].ExtraData.ToArray(), Is.EqualTo(new byte[] { 1, 2 }));
+        }
     }
 
     [TestCase(128, new byte[] { 0x80, 0x80 }, TestName = "TwoByteMinimum")]
@@ -86,8 +98,11 @@ public class OperationsPayloadTests
 
         byte[] encoded = OperationsPayload.Encode(runs);
 
-        Assert.That(encoded.AsSpan(2, 2).ToArray(), Is.EqualTo(token));
-        Assert.That(OperationsPayload.Decode(encoded).TransactionCount, Is.EqualTo(transactions));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.AsSpan(2, 2).ToArray(), Is.EqualTo(token));
+            Assert.That(OperationsPayload.Decode(encoded).TransactionCount, Is.EqualTo(transactions));
+        }
     }
 
     [TestCase(new byte[] { 0x80, 0x00 }, TestName = "TwoByteCountFitsOneByte")]

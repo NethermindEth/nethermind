@@ -201,12 +201,18 @@ public class StreamingSessionTests
         finalizeCopy.Settlement.AbiCalldata = ByteString.Empty;
         finalizeCopy.FromBlock = 99;
         finalizeCopy.ToBlock = 100;
-        Assert.That(operation.IsFinalization, Is.True);
-        Assert.That(operation.FinalizationRange, Is.EqualTo((12UL, 12UL)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operation.IsFinalization, Is.True);
+            Assert.That(operation.FinalizationRange, Is.EqualTo((12UL, 12UL)));
+        }
         Begin predecessorCopy = operation.Predecessor!;
         predecessorCopy.AnchorHash = Hash(98);
-        Assert.That(operation.Finalize!.Settlement.AbiCalldata, Is.EqualTo(Hash(70)));
-        Assert.That(operation.Predecessor!.AnchorHash, Is.EqualTo(Hash(11)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operation.Finalize!.Settlement.AbiCalldata, Is.EqualTo(Hash(70)));
+            Assert.That(operation.Predecessor!.AnchorHash, Is.EqualTo(Hash(11)));
+        }
     }
 
     [Test]
@@ -222,8 +228,11 @@ public class StreamingSessionTests
             Assert.That((proof.Epoch, proof.RequestId), Is.EqualTo((1UL, 4UL)));
         }
         SessionBinding resumed = session.Resume("composer");
-        Assert.That(session.Ready(resumed, 5).Ready.ValidatedThrough, Is.EqualTo(13));
-        Assert.That(session.Rewind(resumed, 6, Hash(11)).Ready.ValidatedThrough, Is.EqualTo(11));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.Ready(resumed, 5).Ready.ValidatedThrough, Is.EqualTo(13));
+            Assert.That(session.Rewind(resumed, 6, Hash(11)).Ready.ValidatedThrough, Is.EqualTo(11));
+        }
         AssertCode(() => session.Rewind(session.Binding, 7, AnchorHash), StatusCode.FailedPrecondition);
     }
 
@@ -292,8 +301,11 @@ public class StreamingSessionTests
             _ => valid with { PostStateRoot = ByteString.Empty },
         };
         AssertCode(() => session.CommitBlock(operation, invalid), StatusCode.FailedPrecondition);
-        Assert.That(session.Ready(session.Binding, 2).Ready.ValidatedThrough, Is.EqualTo(10));
-        Assert.That(session.CommitBlock(operation, valid).Validated.Number, Is.EqualTo(11));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.Ready(session.Binding, 2).Ready.ValidatedThrough, Is.EqualTo(10));
+            Assert.That(session.CommitBlock(operation, valid).Validated.Number, Is.EqualTo(11));
+        }
     }
 
     [Test]
@@ -464,8 +476,11 @@ public class StreamingSessionTests
     public void Wire_KnownLiteralBytes_KeepPinnedFieldNumbers()
     {
         ClientFrame begin = ClientFrame.Parser.ParseFrom(new byte[] { 0x10, 0x07, 0x22, 0x02, 0x08, 0x01 });
-        Assert.That((begin.RequestId, begin.Begin.RollupId, begin.KindCase), Is.EqualTo((7UL, 1UL, ClientFrame.KindOneofCase.Begin)));
-        Assert.That(begin.ToByteArray(), Is.EqualTo(new byte[] { 0x10, 0x07, 0x22, 0x02, 0x08, 0x01 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((begin.RequestId, begin.Begin.RollupId, begin.KindCase), Is.EqualTo((7UL, 1UL, ClientFrame.KindOneofCase.Begin)));
+            Assert.That(begin.ToByteArray(), Is.EqualTo(new byte[] { 0x10, 0x07, 0x22, 0x02, 0x08, 0x01 }));
+        }
         ServerFrame cancelled = ServerFrame.Parser.ParseFrom(new byte[] { 0x10, 0x09, 0x18, 0x02, 0x3a, 0x00 });
         Assert.That((cancelled.RequestId, cancelled.Epoch, cancelled.KindCase), Is.EqualTo((9UL, 2UL, ServerFrame.KindOneofCase.Cancelled)));
     }

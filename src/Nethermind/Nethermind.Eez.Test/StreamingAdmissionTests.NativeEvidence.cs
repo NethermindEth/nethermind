@@ -41,8 +41,11 @@ public partial class StreamingAdmissionTests
         chunk.Block.Witness.L1HeadersRlp.Add(ByteString.CopyFrom([0xc0]));
         try
         {
-            Assert.That(Assert.Throws<RpcException>(() => assembler.Push(chunk))!.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
-            Assert.That(Assert.Throws<RpcException>(() => assembler.Finish())!.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Assert.Throws<RpcException>(() => assembler.Push(chunk))!.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+                Assert.That(Assert.Throws<RpcException>(() => assembler.Finish())!.StatusCode, Is.EqualTo(StatusCode.InvalidArgument));
+            }
         }
         finally { assembler.Abandon(); }
     }

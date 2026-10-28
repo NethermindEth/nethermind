@@ -33,10 +33,13 @@ public partial class EezL2SystemCallsTests
                 : StopCode, Osaka.Instance);
             state.Commit(Osaka.Instance);
             Transaction load = GroupTransaction(EezCalldata.LoadExecutionTableSelector, 7);
-            Assert.That(processor.Execute(load, new CallOutputTracer()).TransactionExecuted, Is.True);
-            Assert.That(state.GetBalance(EezConstants.RollupXEezl2Address), Is.EqualTo((UInt256)12), "load residue survives until the paired user completes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(processor.Execute(load, new CallOutputTracer()).TransactionExecuted, Is.True);
+                Assert.That(state.GetBalance(EezConstants.RollupXEezl2Address), Is.EqualTo((UInt256)12), "load residue survives until the paired user completes");
+            }
             Transaction user = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000)
-                .WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                            .WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             CallOutputTracer tracer = new();
             Assert.That(processor.Execute(user, tracer).TransactionExecuted, Is.True);
             using (Assert.EnterMultipleScope())
@@ -98,8 +101,11 @@ public partial class EezL2SystemCallsTests
             state.Commit(Osaka.Instance);
             Transaction rejected = GroupTransaction(EezCalldata.LoadExecutionTableSelector, 0);
             rejected.GasLimit = 100;
-            Assert.That(processor.Execute(rejected, new CallOutputTracer()).TransactionExecuted, Is.False);
-            Assert.That(processor.Execute(GroupTransaction(EezCalldata.LoadExecutionTableSelector, 0), new CallOutputTracer()).TransactionExecuted, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(processor.Execute(rejected, new CallOutputTracer()).TransactionExecuted, Is.False);
+                Assert.That(processor.Execute(GroupTransaction(EezCalldata.LoadExecutionTableSelector, 0), new CallOutputTracer()).TransactionExecuted, Is.True);
+            }
         });
 
     [Test]
@@ -113,13 +119,19 @@ public partial class EezL2SystemCallsTests
             Assert.That(processor.Execute(GroupTransaction(EezCalldata.LoadExecutionTableSelector, 7), new CallOutputTracer()).TransactionExecuted, Is.True);
             Transaction user = Build.A.Transaction.WithChainId(1).WithNonce(1).WithTo(TestItem.AddressB).WithGasLimit(100_000)
                 .WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Assert.That(processor.Execute(user, new CallOutputTracer()).TransactionExecuted, Is.False);
-            Assert.That(state.GetBalance(EezConstants.RollupXEezl2Address), Is.EqualTo((UInt256)12));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(processor.Execute(user, new CallOutputTracer()).TransactionExecuted, Is.False);
+                Assert.That(state.GetBalance(EezConstants.RollupXEezl2Address), Is.EqualTo((UInt256)12));
+            }
             user = Build.A.Transaction.WithChainId(1).WithNonce(0).WithTo(TestItem.AddressB).WithGasLimit(100_000)
-                .WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Assert.That(processor.Execute(user, new CallOutputTracer()).TransactionExecuted, Is.True);
-            Assert.That(state.GetBalance(EezConstants.RollupXEezl2Address), Is.EqualTo(UInt256.Zero),
-                "a rejected user must not consume the load's pending cleanup");
+                            .WithGasPrice(2.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(processor.Execute(user, new CallOutputTracer()).TransactionExecuted, Is.True);
+                Assert.That(state.GetBalance(EezConstants.RollupXEezl2Address), Is.EqualTo(UInt256.Zero),
+                    "a rejected user must not consume the load's pending cleanup");
+            }
         });
 
     private static EezChainRules ContractV3Rules(NativeSystemTxFormat format = NativeSystemTxFormat.ContractV3) =>

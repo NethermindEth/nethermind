@@ -57,12 +57,15 @@ public class LiveBlockProducerTests
 
         Block block = _producer.Produce(parent, CancellationToken.None)!;
 
-        Assert.That(block.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { transfer.Hash }), "the pool's transaction is in the block");
-        Assert.That(DerivedHeader.Mismatch(block, parent, _chain.SpecProvider.GetSpec(block.Header), _context), Is.Null,
-            "every header field derivation decides is the one it rebuilds");
-        Assert.That(block.Beneficiary, Is.EqualTo(Beneficiary), "the beneficiary the DA carries is the sequencer's");
-        Assert.That(block.ExtraData, Is.Empty, "the sequencer publishes no extra data");
-        Assert.That(block.Hash, Is.EqualTo(block.Header.CalculateHash()), "the block is sealed with its final header");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { transfer.Hash }), "the pool's transaction is in the block");
+            Assert.That(DerivedHeader.Mismatch(block, parent, _chain.SpecProvider.GetSpec(block.Header), _context), Is.Null,
+                "every header field derivation decides is the one it rebuilds");
+            Assert.That(block.Beneficiary, Is.EqualTo(Beneficiary), "the beneficiary the DA carries is the sequencer's");
+            Assert.That(block.ExtraData, Is.Empty, "the sequencer publishes no extra data");
+            Assert.That(block.Hash, Is.EqualTo(block.Header.CalculateHash()), "the block is sealed with its final header");
+        }
     }
 
     [Test]
@@ -72,8 +75,11 @@ public class LiveBlockProducerTests
 
         Block block = _producer.Produce(parent, CancellationToken.None)!;
 
-        Assert.That(block.Transactions, Is.Empty, "a slot's blocks are produced on the clock whether or not the pool has anything");
-        Assert.That(DerivedHeader.Mismatch(block, parent, _chain.SpecProvider.GetSpec(block.Header), _context), Is.Null, "an empty block still has the derived header");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Is.Empty, "a slot's blocks are produced on the clock whether or not the pool has anything");
+            Assert.That(DerivedHeader.Mismatch(block, parent, _chain.SpecProvider.GetSpec(block.Header), _context), Is.Null, "an empty block still has the derived header");
+        }
     }
 
     [TestCase(0, 1, TestName = "FitsExactly")]

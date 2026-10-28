@@ -25,9 +25,12 @@ public class NativeStreamTests
 
         NativeStream decoded = NativeStream.Decode(stream, RollupId);
 
-        Assert.That(decoded.Operations.ToArray(), Is.EqualTo(new byte[] { 0xaa }));
-        Assert.That(decoded.Messages, Is.Empty);
-        Assert.That(NativeStream.Encode(RollupId, decoded.Operations.Span, decoded.Messages), Is.EqualTo(stream), "the encoder writes the same bytes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Operations.ToArray(), Is.EqualTo(new byte[] { 0xaa }));
+            Assert.That(decoded.Messages, Is.Empty);
+            Assert.That(NativeStream.Encode(RollupId, decoded.Operations.Span, decoded.Messages), Is.EqualTo(stream), "the encoder writes the same bytes");
+        }
     }
 
     [Test]
@@ -76,10 +79,13 @@ public class NativeStreamTests
 
         Assert.That(decoded.Messages.Length, Is.EqualTo(messages.Length));
         StreamMessage.Call call = (StreamMessage.Call)decoded.Messages[1];
-        Assert.That(call.Value, Is.EqualTo((UInt256)5));
-        Assert.That(call.To, Is.EqualTo(To));
-        Assert.That(((StreamMessage.Return)decoded.Messages[4]).Success, Is.False);
-        Assert.That(NativeStream.Encode(RollupId, decoded.Operations.Span, decoded.Messages), Is.EqualTo(stream), "zero padding is dropped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Value, Is.EqualTo((UInt256)5));
+            Assert.That(call.To, Is.EqualTo(To));
+            Assert.That(((StreamMessage.Return)decoded.Messages[4]).Success, Is.False);
+            Assert.That(NativeStream.Encode(RollupId, decoded.Operations.Span, decoded.Messages), Is.EqualTo(stream), "zero padding is dropped");
+        }
     }
 
     [TestCaseSource(nameof(UnbalancedBrackets))]

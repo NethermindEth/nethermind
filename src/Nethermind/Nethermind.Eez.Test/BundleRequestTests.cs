@@ -17,12 +17,15 @@ public class BundleRequestTests
     {
         JsonElement bundle = Serialize(new BundleTarget(11168, 1_790_683_736));
 
-        Assert.That((bundle.GetProperty("minTimestamp").ValueKind, bundle.GetProperty("maxTimestamp").ValueKind), Is.EqualTo((JsonValueKind.Number, JsonValueKind.Number)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bundle.GetProperty("minTimestamp").ValueKind, bundle.GetProperty("maxTimestamp").ValueKind), Is.EqualTo((JsonValueKind.Number, JsonValueKind.Number)),
             "the builder accepts hex bounds and then never includes the bundle");
-        Assert.That((bundle.GetProperty("minTimestamp").GetUInt64(), bundle.GetProperty("maxTimestamp").GetUInt64()), Is.EqualTo((1_790_683_736UL, 1_790_683_736UL)),
-            "pinned to the one L1 timestamp the Sync block carries");
-        Assert.That((bundle.GetProperty("blockNumber").GetString(), bundle.GetProperty("txs")[0].GetString()), Is.EqualTo(("0x2ba0", "0x02ab")),
-            "the block and transactions stay hex, as the builder reads them");
+            Assert.That((bundle.GetProperty("minTimestamp").GetUInt64(), bundle.GetProperty("maxTimestamp").GetUInt64()), Is.EqualTo((1_790_683_736UL, 1_790_683_736UL)),
+                "pinned to the one L1 timestamp the Sync block carries");
+            Assert.That((bundle.GetProperty("blockNumber").GetString(), bundle.GetProperty("txs")[0].GetString()), Is.EqualTo(("0x2ba0", "0x02ab")),
+                "the block and transactions stay hex, as the builder reads them");
+        }
     }
 
     [Test]

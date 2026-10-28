@@ -58,8 +58,11 @@ public class RollupXRecordedExecutionTests(string recording)
     public void ExecuteRecordedWindow()
     {
         using JsonDocument transcript = Read(recording + ".json");
-        Assert.That(transcript.RootElement.GetProperty("format").GetInt32(), Is.EqualTo(2), "the recorded input format requires an explicit adapter");
-        Assert.That(transcript.RootElement.GetProperty("case").GetString(), Is.EqualTo(recording), "the selected baseline must retain its identity");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transcript.RootElement.GetProperty("format").GetInt32(), Is.EqualTo(2), "the recorded input format requires an explicit adapter");
+            Assert.That(transcript.RootElement.GetProperty("case").GetString(), Is.EqualTo(recording), "the selected baseline must retain its identity");
+        }
         using JsonDocument genesis = ReadGenesis(InputDirectory(), transcript.RootElement);
         EezChainRules rules = EezChainRules.FromGenesis(genesis.RootElement);
         using MemoryStream genesisStream = new(JsonSerializer.SerializeToUtf8Bytes(genesis.RootElement));
@@ -108,9 +111,12 @@ public class RollupXRecordedExecutionTests(string recording)
                     settlement = request.Finalize.Settlement;
                 }
             }
-            Assert.That(blocks.Count, Is.EqualTo(_blockCount), "precondition: every captured block is executed");
-            Assert.That(expected.Count, Is.EqualTo(_blockCount), "precondition: every execution has an independent expected hash and state root");
-            Assert.That(settlement, Is.Not.Null, "precondition: the recorded finalization carries the operations blobs");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blocks.Count, Is.EqualTo(_blockCount), "precondition: every captured block is executed");
+                Assert.That(expected.Count, Is.EqualTo(_blockCount), "precondition: every execution has an independent expected hash and state root");
+                Assert.That(settlement, Is.Not.Null, "precondition: the recorded finalization carries the operations blobs");
+            }
             Block terminal = Rlp.Decode<Block>(blocks[^1].Rlp)!;
             RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal);
             _executed = new EezStatelessExecutor(specs, rules, LimboLogs.Instance).Execute(blocks, plan.Positions);
@@ -218,12 +224,18 @@ public class RollupXRecordedExecutionTests(string recording)
         Assert.That(_stream.Messages, Has.Length.EqualTo(4), "the original lookup has one call and one result");
         Assert.That(_stream.Messages[0], Is.TypeOf<StreamMessage.Initiate>());
         StreamMessage.Initiate initiation = (StreamMessage.Initiate)_stream.Messages[0];
-        Assert.That(initiation.ChainId, Is.Zero, "the lookup originates on L1");
-        Assert.That(initiation.TxData.IsEmpty, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initiation.ChainId, Is.Zero, "the lookup originates on L1");
+            Assert.That(initiation.TxData.IsEmpty, Is.True);
+        }
         StreamMessage.Call call = (StreamMessage.Call)_stream.Messages[1];
         StreamMessage.Return result = (StreamMessage.Return)_stream.Messages[2];
-        Assert.That(call.ToChain, Is.EqualTo(_anchor.RollupId));
-        Assert.That(_stream.Messages[3], Is.TypeOf<StreamMessage.Finish>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.ToChain, Is.EqualTo(_anchor.RollupId));
+            Assert.That(_stream.Messages[3], Is.TypeOf<StreamMessage.Finish>());
+        }
         PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(_settlement.AbiCalldata.Span);
         int immediate = checked((int)batch.ImmediateEntryCount);
         RollupUpdate root = batch.Entries[immediate - 1].RollupUpdates.Single();
@@ -259,9 +271,12 @@ public class RollupXRecordedExecutionTests(string recording)
 
     internal static int SelectedBlockCount(Begin anchor, Finalize selection)
     {
-        Assert.That(anchor.AnchorNumber, Is.LessThan(ulong.MaxValue), "the recorded anchor has a successor");
-        Assert.That(selection.FromBlock, Is.EqualTo(anchor.AnchorNumber + 1), "the baseline starts immediately after its independent anchor");
-        Assert.That(selection.ToBlock, Is.GreaterThanOrEqualTo(selection.FromBlock), "the selected range is nonempty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(anchor.AnchorNumber, Is.LessThan(ulong.MaxValue), "the recorded anchor has a successor");
+            Assert.That(selection.FromBlock, Is.EqualTo(anchor.AnchorNumber + 1), "the baseline starts immediately after its independent anchor");
+            Assert.That(selection.ToBlock, Is.GreaterThanOrEqualTo(selection.FromBlock), "the selected range is nonempty");
+        }
         ulong span = selection.ToBlock - selection.FromBlock + 1;
         Assert.That(span, Is.InRange(1UL, 4096UL), "the independent finalization range bounds execution work");
         return (int)span;
@@ -285,9 +300,12 @@ public class RollupXRecordedExecutionTests(string recording)
         using GZipStream compressed = new(source, CompressionMode.Decompress);
         byte[] data = new byte[length];
         compressed.ReadExactly(data);
-        Assert.That(compressed.ReadByte(), Is.EqualTo(-1), "the original length includes every decompressed byte");
-        Assert.That(Convert.ToHexStringLower(SHA256.HashData(data)), Is.EqualTo(entry.GetProperty("sha256").GetString()),
-            "the recording retains the exact immutable upstream bytes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compressed.ReadByte(), Is.EqualTo(-1), "the original length includes every decompressed byte");
+            Assert.That(Convert.ToHexStringLower(SHA256.HashData(data)), Is.EqualTo(entry.GetProperty("sha256").GetString()),
+                "the recording retains the exact immutable upstream bytes");
+        }
         return JsonDocument.Parse(data);
     }
 }

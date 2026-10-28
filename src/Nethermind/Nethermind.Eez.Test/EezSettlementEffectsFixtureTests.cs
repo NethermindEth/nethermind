@@ -40,10 +40,13 @@ public class EezSettlementEffectsFixtureTests
     {
         JsonElement[] blocks = [.. StatelessFixtures.ReadJson(Window, "blocks.json").EnumerateArray()];
 
-        Assert.That(Executed.Value.Select(static r => r.Hash.ToString()), Is.EqualTo(blocks.Select(static b => b.GetProperty("hash").GetString())),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Executed.Value.Select(static r => r.Hash.ToString()), Is.EqualTo(blocks.Select(static b => b.GetProperty("hash").GetString())),
             "the window re-executes to the recorded chain, Sync block included");
-        Assert.That(Executed.Value[^1].Block.Transactions.Count(static t => t.SenderAddress == EezConstants.SystemAddress), Is.GreaterThan(0),
-            "precondition: the settling block carries system transactions");
+            Assert.That(Executed.Value[^1].Block.Transactions.Count(static t => t.SenderAddress == EezConstants.SystemAddress), Is.GreaterThan(0),
+                "precondition: the settling block carries system transactions");
+        }
     }
 
     [Test]
@@ -54,11 +57,14 @@ public class EezSettlementEffectsFixtureTests
 
         ValueHash256 publicInputsHash = EezSettlementVerifier.Verify(StatelessFixtures.ReadPostBatch(Window), Executed.Value, Context(oracle), Spec.Value);
 
-        Assert.That(batch.Entries, Has.Length.GreaterThan(2), "precondition: the batch settles an anchor and several effects");
-        Assert.That(publicInputsHash, Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
-            "every effect, DA and Sync-block rule passes on the composer's batch and the digest is the one the reference signer attested");
-        Assert.That(new EezAttestationSigner(AttesterKey).Sign(publicInputsHash).ToHexString(true), Is.EqualTo(oracle.GetProperty("mined_proof").GetString()),
-            "the attestation is byte for byte the proof L1 accepted");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.Entries, Has.Length.GreaterThan(2), "precondition: the batch settles an anchor and several effects");
+            Assert.That(publicInputsHash, Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
+                "every effect, DA and Sync-block rule passes on the composer's batch and the digest is the one the reference signer attested");
+            Assert.That(new EezAttestationSigner(AttesterKey).Sign(publicInputsHash).ToHexString(true), Is.EqualTo(oracle.GetProperty("mined_proof").GetString()),
+                "the attestation is byte for byte the proof L1 accepted");
+        }
     }
 
     [Test]

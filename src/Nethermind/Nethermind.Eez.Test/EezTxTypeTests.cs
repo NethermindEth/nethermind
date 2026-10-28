@@ -26,10 +26,13 @@ public partial class EezTxTypeTests
     [Test]
     public void IsWellFormed_SystemTransaction_IsAcceptedOnlyOnceRegistered()
     {
-        Assert.That(new TxValidator(ChainId).IsWellFormed(SystemTransaction(), Osaka.Instance).AsBool(), Is.False,
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new TxValidator(ChainId).IsWellFormed(SystemTransaction(), Osaka.Instance).AsBool(), Is.False,
             "precondition: block import rejects the type until the plugin registers it");
-        Assert.That(_txValidator.IsWellFormed(SystemTransaction(), Osaka.Instance).AsBool(), Is.True,
-            "an unsigned system transaction is well formed once its validator is registered");
+            Assert.That(_txValidator.IsWellFormed(SystemTransaction(), Osaka.Instance).AsBool(), Is.True,
+                "an unsigned system transaction is well formed once its validator is registered");
+        }
     }
 
     [Test]

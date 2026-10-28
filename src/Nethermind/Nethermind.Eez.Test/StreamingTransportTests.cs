@@ -66,8 +66,11 @@ public class StreamingTransportTests
         _input = new Reader();
         _input.AddAsync(() => Task.FromException<ClientFrame?>(new RpcException(new Status(StatusCode.ResourceExhausted, detail))));
         RpcException error = (await Assert.ThrowsAsync<RpcException>(() => _transport.Run(_input, _output, "composer", CancellationToken.None)))!;
-        Assert.That(error.StatusCode, Is.EqualTo(expected));
-        Assert.That(_executions, Is.Zero, "reader rejection cannot admit execution or sign a claim");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.StatusCode, Is.EqualTo(expected));
+            Assert.That(_executions, Is.Zero, "reader rejection cannot admit execution or sign a claim");
+        }
     }
 
     [Test]
@@ -136,15 +139,21 @@ public class StreamingTransportTests
     {
         _input.Add(BlockFrame);
         Task stream = Run();
-        Assert.That((stream.IsCompleted, _workerCancellation.IsCancellationRequested), Is.EqualTo((false, false)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((stream.IsCompleted, _workerCancellation.IsCancellationRequested), Is.EqualTo((false, false)),
             "client half-close must wait for accepted execution rather than cancel it");
-        Assert.That(_admission.TryAcquire(), Is.Null, "the accepted backend worker keeps its slot while the client has half-closed");
+            Assert.That(_admission.TryAcquire(), Is.Null, "the accepted backend worker keeps its slot while the client has half-closed");
+        }
         _worker.SetResult(Executed());
         await stream;
         await _admission.WaitUntilIdle();
-        Assert.That((_output.Frames.Count, _output.Frames[1].RequestId, _output.Frames[1].Validated.Number), Is.EqualTo((2, 2UL, 11UL)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_output.Frames.Count, _output.Frames[1].RequestId, _output.Frames[1].Validated.Number), Is.EqualTo((2, 2UL, 11UL)),
             "half-close drains and acknowledges accepted work without producing a proof");
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "fully validated progress survives a half-closed stream");
+            Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "fully validated progress survives a half-closed stream");
+        }
     }
 
     [Test]
@@ -153,14 +162,20 @@ public class StreamingTransportTests
         _input.Add(BlockFrame);
         _input.Add(() => Bound(3, new Cancel()));
         await Run();
-        Assert.That(_workerCancellation.IsCancellationRequested, Is.True, "Cancel cancels its attachment worker");
-        Assert.That(_admission.TryAcquire(), Is.Null, "the backend remains owned until the real worker drains");
-        Assert.That(_output.Frames.Count, Is.EqualTo(2), "no unfinished block is acknowledged");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_workerCancellation.IsCancellationRequested, Is.True, "Cancel cancels its attachment worker");
+            Assert.That(_admission.TryAcquire(), Is.Null, "the backend remains owned until the real worker drains");
+            Assert.That(_output.Frames.Count, Is.EqualTo(2), "no unfinished block is acknowledged");
+        }
         _worker.SetResult(Executed());
         await _admission.WaitUntilIdle();
         using BackendAdmission.BackendLease? retry = _admission.TryAcquire();
-        Assert.That(retry, Is.Not.Null, "actual completion releases global admission");
-        Assert.That(_output.Frames[^1].Cancelled, Is.Not.Null, "Cancel is the last response");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry, Is.Not.Null, "actual completion releases global admission");
+            Assert.That(_output.Frames[^1].Cancelled, Is.Not.Null, "Cancel is the last response");
+        }
     }
 
     [Test]
@@ -179,9 +194,12 @@ public class StreamingTransportTests
             return BlockFrame();
         });
         await Run();
-        Assert.That((_executions, _output.Frames.Count, _output.Frames[1].Epoch, _output.Frames[2].Validated.Number),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_executions, _output.Frames.Count, _output.Frames[1].Epoch, _output.Frames[2].Validated.Number),
             Is.EqualTo((2, 3, 2UL, 11UL)), "only the retry in the new epoch receives validation");
-        Assert.That(_output.Frames[2].Epoch, Is.EqualTo(2), "the rewound operation cannot publish its old epoch");
+            Assert.That(_output.Frames[2].Epoch, Is.EqualTo(2), "the rewound operation cannot publish its old epoch");
+        }
     }
 
     [Test]
@@ -196,8 +214,11 @@ public class StreamingTransportTests
         });
         await Run();
         await _admission.WaitUntilIdle();
-        Assert.That(_output.Frames.Count, Is.EqualTo(1), "no response from the superseded worker is written");
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "a superseded execution cannot advance retained state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_output.Frames.Count, Is.EqualTo(1), "no response from the superseded worker is written");
+            Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "a superseded execution cannot advance retained state");
+        }
     }
 
     [TestCase(false, TestName = "Run_KnownBackendRejection_AllowsRetry")]
@@ -216,10 +237,13 @@ public class StreamingTransportTests
         _input.Add(BlockFrame);
         await Run();
         ServerFrame rejected = _output.Frames[1];
-        Assert.That((rejected.RequestId, rejected.Rejected.Code, rejected.Rejected.ValidatedThrough),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((rejected.RequestId, rejected.Rejected.Code, rejected.Rejected.ValidatedThrough),
             Is.EqualTo((2UL, (int)(unexpected ? StatusCode.Internal : StatusCode.FailedPrecondition), 10UL)), "a rejection keeps its request correlation and previous progress");
-        Assert.That(rejected.Rejected.Message, Does.Not.Contain("private"), "internal backend details do not cross the wire");
-        Assert.That((_executions, _output.Frames[2].Validated.Number), Is.EqualTo((2, 11UL)), "draining a failed worker permits the same block to retry");
+            Assert.That(rejected.Rejected.Message, Does.Not.Contain("private"), "internal backend details do not cross the wire");
+            Assert.That((_executions, _output.Frames[2].Validated.Number), Is.EqualTo((2, 11UL)), "draining a failed worker permits the same block to retry");
+        }
     }
 
     [Test]
@@ -233,8 +257,11 @@ public class StreamingTransportTests
             "waiting v2 requests cannot execute next to the current backend owner");
         occupied.Dispose();
         await stream;
-        Assert.That((_executions, _output.Frames[1].Validated.Number), Is.EqualTo((1, 11UL)), "release permits exactly one waiting execution");
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_executions, _output.Frames[1].Validated.Number), Is.EqualTo((1, 11UL)), "release permits exactly one waiting execution");
+            Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11));
+        }
     }
 
     [Test]
@@ -306,12 +333,15 @@ public class StreamingTransportTests
         second.SetResult(new ExecutedStreamingBlock(12, Hash(12), Hash(11), Hash(31), Hash(32)));
         await stream;
         await _admission.WaitUntilIdle();
-        Assert.That(_output.Frames.Select(static frame => frame.RequestId),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_output.Frames.Select(static frame => frame.RequestId),
             Is.EqualTo(Enumerable.Range(1, blockCount + 2).Select(static number => (ulong)number)), "every queued request receives one ordered response");
-        Assert.That(_output.Frames.Skip(1).Take(blockCount).Select(static frame => frame.Validated.Number),
-            Is.EqualTo(Enumerable.Range(11, blockCount).Select(static number => (ulong)number)), "each block validates after its predecessor");
-        Assert.That((_output.Frames[^1].Proof, _executions), Is.EqualTo((TestProof(), blockCount)),
-            "pipelined validation and the terminal proof use one execution slot");
+            Assert.That(_output.Frames.Skip(1).Take(blockCount).Select(static frame => frame.Validated.Number),
+                Is.EqualTo(Enumerable.Range(11, blockCount).Select(static number => (ulong)number)), "each block validates after its predecessor");
+            Assert.That((_output.Frames[^1].Proof, _executions), Is.EqualTo((TestProof(), blockCount)),
+                "pipelined validation and the terminal proof use one execution slot");
+        }
     }
 
     [TestCase(false, TestName = "Run_QueueWaitDeadline_RejectsWithoutStartingWorker")]
@@ -334,14 +364,20 @@ public class StreamingTransportTests
         }
         time.Advance(TimeSpan.FromMinutes(1));
         await stream;
-        Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _executions),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _executions),
             Is.EqualTo((2UL, (int)StatusCode.DeadlineExceeded, execute ? 1 : 0)), "waiting does not renew the operation deadline");
-        Assert.That(_admission.TryAcquire(), Is.Null, "deadline expiry does not release another owner or an undrained worker");
+            Assert.That(_admission.TryAcquire(), Is.Null, "deadline expiry does not release another owner or an undrained worker");
+        }
         if (execute) _worker.SetResult(Executed());
         else occupied.Dispose();
         await _admission.WaitUntilIdle();
-        Assert.That(_output.Frames.Exists(static frame => frame.Validated is not null), Is.False);
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "expired queued work cannot run later or commit stale progress");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_output.Frames.Exists(static frame => frame.Validated is not null), Is.False);
+            Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "expired queued work cannot run later or commit stale progress");
+        }
     }
 
     [Test]
@@ -359,9 +395,12 @@ public class StreamingTransportTests
             return Task.CompletedTask;
         };
         await Run();
-        Assert.That((_output.Frames[1].Rejected.Code, _output.Frames[1].SessionId.IsEmpty, _output.Frames[1].Rejected.ValidatedHash.IsEmpty),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_output.Frames[1].Rejected.Code, _output.Frames[1].SessionId.IsEmpty, _output.Frames[1].Rejected.ValidatedHash.IsEmpty),
             Is.EqualTo(((int)StatusCode.PermissionDenied, true, true)));
-        Assert.That((_output.Frames[2].RequestId, _output.Frames[2].Validated.Number), Is.EqualTo((2UL, 11UL)));
+            Assert.That((_output.Frames[2].RequestId, _output.Frames[2].Validated.Number), Is.EqualTo((2UL, 11UL)));
+        }
     }
 
     [Test]
@@ -392,9 +431,12 @@ public class StreamingTransportTests
         await queued.Task;
         if (!copyNewEpoch) Resume();
         await stream;
-        Assert.That((_output.Frames.Count, _output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _output.Frames[^1].SessionId.IsEmpty),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_output.Frames.Count, _output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _output.Frames[^1].SessionId.IsEmpty),
             Is.EqualTo((2, 3UL, (int)code, true)));
-        Assert.That((_workerCancellation.IsCancellationRequested, _admission.TryAcquire()), Is.EqualTo((true, (BackendAdmission.BackendLease?)null)));
+            Assert.That((_workerCancellation.IsCancellationRequested, _admission.TryAcquire()), Is.EqualTo((true, (BackendAdmission.BackendLease?)null)));
+        }
         _worker.SetResult(Executed());
         await _admission.WaitUntilIdle();
         Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "neither running nor queued old-epoch work advances the resumed session");
@@ -476,9 +518,12 @@ public class StreamingTransportTests
         await second.Task;
         time.Advance(TimeSpan.FromSeconds(20));
         RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => stream))!;
-        Assert.That((exception.StatusCode, _executions, _output.Frames.Count), Is.EqualTo((StatusCode.DeadlineExceeded, 0, 3)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((exception.StatusCode, _executions, _output.Frames.Count), Is.EqualTo((StatusCode.DeadlineExceeded, 0, 3)),
             "new rejected traffic cannot extend a retired connection beyond its first retirement deadline");
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10));
+            Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10));
+        }
     }
 
     [TestCase(false, TestName = "Run_UnsupportedBlobs_DoNotWaitForBusyBackend")]
@@ -495,9 +540,12 @@ public class StreamingTransportTests
             return Bound(2, new Finalize { FromBlock = 11, ToBlock = 11, TerminalHash = Hash(11), Settlement = settlement });
         });
         await Run();
-        Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _output.Frames[^1].Rejected.ValidatedThrough, _executions),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _output.Frames[^1].Rejected.ValidatedThrough, _executions),
             Is.EqualTo((2UL, (int)StatusCode.Unimplemented, 10UL, 0)), "unsupported profile data never waits on execution or attempts range admission");
-        Assert.That(_admission.TryAcquire(), Is.Null, "profile refusal leaves the current backend owner untouched");
+            Assert.That(_admission.TryAcquire(), Is.Null, "profile refusal leaves the current backend owner untouched");
+        }
     }
 
     [Test]
@@ -541,9 +589,12 @@ public class StreamingTransportTests
             Settlement = new SettlementInput { AbiCalldata = Hash(90) },
         }));
         await Run();
-        Assert.That((_executions, _output.Frames.Count, _output.Frames[^1].Rejected.Code), Is.EqualTo((1, 3, (int)StatusCode.Unimplemented)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_executions, _output.Frames.Count, _output.Frames[^1].Rejected.Code), Is.EqualTo((1, 3, (int)StatusCode.Unimplemented)),
             "settlement claims are not signed before independent authorization exists");
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "unsupported finalization preserves useful validated progress");
+            Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "unsupported finalization preserves useful validated progress");
+        }
     }
 
     [Test]
@@ -811,9 +862,12 @@ public class StreamingTransportTests
         Task stream = Run();
         time.Advance(TimeSpan.FromMinutes(1));
         await stream;
-        Assert.That((_output.Frames[1].Rejected.Code, _workerCancellation.IsCancellationRequested), Is.EqualTo(((int)StatusCode.DeadlineExceeded, true)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_output.Frames[1].Rejected.Code, _workerCancellation.IsCancellationRequested), Is.EqualTo(((int)StatusCode.DeadlineExceeded, true)),
             "an operation deadline is reported without validating its block");
-        Assert.That(_admission.TryAcquire(), Is.Null, "the response timeout does not release real execution ownership");
+            Assert.That(_admission.TryAcquire(), Is.Null, "the response timeout does not release real execution ownership");
+        }
         _worker.SetResult(Executed());
         await _admission.WaitUntilIdle();
         Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "a timed-out result cannot advance the detached session");

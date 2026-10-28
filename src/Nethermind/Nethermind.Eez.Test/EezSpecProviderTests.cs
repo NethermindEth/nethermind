@@ -32,9 +32,12 @@ public class EezSpecProviderTests
 
         IReleaseSpec first = specProvider.GetSpec(new ForkActivation(1));
 
-        Assert.That(first, Is.InstanceOf<EezReleaseSpec>(), "precondition: the spec needs the deposit contract default");
-        Assert.That(specProvider.GetSpec(new ForkActivation(2)), Is.SameAs(first), "the hot path must not allocate a decorator per lookup");
-        Assert.That(specProvider.GenesisSpec, Is.SameAs(first), "every lookup of the same fork shares one decorator");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.InstanceOf<EezReleaseSpec>(), "precondition: the spec needs the deposit contract default");
+            Assert.That(specProvider.GetSpec(new ForkActivation(2)), Is.SameAs(first), "the hot path must not allocate a decorator per lookup");
+            Assert.That(specProvider.GenesisSpec, Is.SameAs(first), "every lookup of the same fork shares one decorator");
+        }
     }
 
     [Test]

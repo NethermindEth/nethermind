@@ -249,9 +249,12 @@ public partial class RollupXObservationCallTests
     public void Execute_PrecheckRejectedLocalCall_ReturnsItsParentResult()
     {
         Deploy([0x5f, 0x5f, 0x5f, 0x5f, 0x60, 1, 0x73, .. TestItem.AddressD.Bytes, 0x5a, 0xf1, 0x50, 0x00]);
-        Assert.That(_state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero), "precondition: the child value transfer cannot pass the balance check");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero), "precondition: the child value transfer cannot pass the balance check");
 
-        Assert.That(Execute([], ObservationMode.Lookup).Success, Is.True);
+            Assert.That(Execute([], ObservationMode.Lookup).Success, Is.True);
+        }
         AssertRestored();
     }
 

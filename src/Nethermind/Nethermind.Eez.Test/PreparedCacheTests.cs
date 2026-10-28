@@ -30,9 +30,12 @@ public class PreparedCacheTests
         RpcException exception = Assert.Throws<RpcException>(() => cache.Borrow(Range(fact)))!;
 
         ProveFailure failure = ProveFailure.Parser.ParseFrom(exception.Trailers.GetValueBytes("grpc-status-details-bin"));
-        Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition));
-        Assert.That((failure.CacheMiss.ValidationIdentity, failure.CacheMiss.BlockNumber, failure.CacheMiss.BlockHash),
-            Is.EqualTo((Identity, fact.Number, ByteString.CopyFrom(fact.Hash.Bytes))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition));
+            Assert.That((failure.CacheMiss.ValidationIdentity, failure.CacheMiss.BlockNumber, failure.CacheMiss.BlockHash),
+                Is.EqualTo((Identity, fact.Number, ByteString.CopyFrom(fact.Hash.Bytes))));
+        }
     }
 
     [Test]
@@ -170,8 +173,11 @@ public class PreparedCacheTests
 
         EezStatelessBlockResult again = fact.Materialize();
 
-        Assert.That(again.Block.Header.StateRoot, Is.EqualTo(fact.PostStateRoot));
-        Assert.That(again.Parent.StateRoot, Is.EqualTo(fact.PreStateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(again.Block.Header.StateRoot, Is.EqualTo(fact.PostStateRoot));
+            Assert.That(again.Parent.StateRoot, Is.EqualTo(fact.PreStateRoot));
+        }
     }
 
     [Test]

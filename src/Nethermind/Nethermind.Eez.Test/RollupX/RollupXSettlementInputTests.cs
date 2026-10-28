@@ -145,9 +145,12 @@ public class RollupXSettlementInputTests
             (new ForkActivation(0), Spec(1, 1)), (new ForkActivation(2), Spec(2, 2)));
         SettlementInput input = TwoBlobs();
         input.PostingContext.ParentNumber = 1;
-        Assert.That(provider.GetSpec(1, input.PostingContext.TargetTimestamp).MaxBlobsPerTx, Is.EqualTo(1), "precondition: the parent has the earlier allowance");
-        Assert.That(RollupXSettlementInput.Decode(input, _context, provider, CancellationToken.None).BlobHashes.Length, Is.EqualTo(2),
-            "the proposed posting block is the parent's child, not the ABI sentinel or the parent itself");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(1, input.PostingContext.TargetTimestamp).MaxBlobsPerTx, Is.EqualTo(1), "precondition: the parent has the earlier allowance");
+            Assert.That(RollupXSettlementInput.Decode(input, _context, provider, CancellationToken.None).BlobHashes.Length, Is.EqualTo(2),
+                "the proposed posting block is the parent's child, not the ABI sentinel or the parent itself");
+        }
     }
 
     [Test]

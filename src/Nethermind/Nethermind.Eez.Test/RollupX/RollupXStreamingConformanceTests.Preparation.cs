@@ -115,8 +115,11 @@ public partial class RollupXStreamingConformanceTests
         };
         List<ProveChunk> attempted = [cold[0], new ProveChunk { CachedRange = missing }, .. cold.Skip(2)];
         RpcException unavailable = (await Assert.ThrowsAsync<RpcException>(() => Prove(client, attempted)))!;
-        Assert.That(unavailable.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition));
-        Assert.That(ProveFailure.Parser.ParseFrom(unavailable.Trailers.GetValueBytes("grpc-status-details-bin")).CacheMiss.BlockHash, Is.EqualTo(first.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unavailable.StatusCode, Is.EqualTo(StatusCode.FailedPrecondition));
+            Assert.That(ProveFailure.Parser.ParseFrom(unavailable.Trailers.GetValueBytes("grpc-status-details-bin")).CacheMiss.BlockHash, Is.EqualTo(first.Hash));
+        }
     }
 
     [Test]

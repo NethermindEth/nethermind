@@ -192,8 +192,11 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             { { "owner", _server.ClientA.GetCertHashString(HashAlgorithmName.SHA256) } })))
         {
             await other.RequestStream.WriteAsync(new ClientFrame { SessionId = ready.SessionId, RequestId = 3, Resume = new Resume() });
-            Assert.That(await other.ResponseStream.MoveNext(), Is.True, "foreign owner receives a correlated refusal");
-            Assert.That(other.ResponseStream.Current.Rejected?.Code, Is.EqualTo((int)StatusCode.NotFound), "another pinned certificate cannot take the first owner's session");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await other.ResponseStream.MoveNext(), Is.True, "foreign owner receives a correlated refusal");
+                Assert.That(other.ResponseStream.Current.Rejected?.Code, Is.EqualTo((int)StatusCode.NotFound), "another pinned certificate cannot take the first owner's session");
+            }
             await other.RequestStream.CompleteAsync();
             Assert.That(await other.ResponseStream.MoveNext(), Is.False, "foreign resume does not attach");
         }
@@ -221,9 +224,12 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             Block = new StreamBlock { Data = _server.Chunks[1].Block }
         });
         slot.Dispose();
-        Assert.That(await call.ResponseStream.MoveNext(), Is.True, "release of shared admission permits the waiting request");
-        Assert.That((call.ResponseStream.Current.RequestId, call.ResponseStream.Current.Validated?.Number),
-            Is.EqualTo((2UL, (ulong?)from)), "production v2 validates through the backend shared with v1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await call.ResponseStream.MoveNext(), Is.True, "release of shared admission permits the waiting request");
+            Assert.That((call.ResponseStream.Current.RequestId, call.ResponseStream.Current.Validated?.Number),
+                Is.EqualTo((2UL, (ulong?)from)), "production v2 validates through the backend shared with v1");
+        }
         await call.RequestStream.CompleteAsync();
         Assert.That(await call.ResponseStream.MoveNext(), Is.False, "completed admission does not leave an active backend worker");
     }

@@ -102,7 +102,8 @@ public partial class EezL2SystemCallsTests
             Block block = ProxyHistoryBlock(header, chain, [new(100, chain.At(100).Hash)]);
             header.MixHash = TestItem.KeccakD;
             NativeHistoryBlockExecutor executor = new(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), state,
-                scope.Resolve<ISpecProvider>(), rules, HistorySchedule, 99, null, chain) { DeriveOrigin = derived };
+                scope.Resolve<ISpecProvider>(), rules, HistorySchedule, 99, null, chain)
+            { DeriveOrigin = derived };
             using BlockReceiptsTracer tracer = new();
             tracer.StartNewBlockTrace(block);
             if (derived && producing)
@@ -122,7 +123,8 @@ public partial class EezL2SystemCallsTests
             Block block = ContractV3HistoryBlock(header, chain, true);
             header.MixHash = TestItem.KeccakD;
             NativeHistoryBlockExecutor executor = new(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), state,
-                scope.Resolve<ISpecProvider>(), ContractV3HistoryRules(chain), HistorySchedule, 99, HistorySource, chain) { DeriveOrigin = true };
+                scope.Resolve<ISpecProvider>(), ContractV3HistoryRules(chain), HistorySchedule, 99, HistorySource, chain)
+            { DeriveOrigin = true };
             using BlockReceiptsTracer tracer = new();
             tracer.StartNewBlockTrace(block);
             Assert.That(() => executor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, tracer), Throws.TypeOf<InvalidBlockException>());

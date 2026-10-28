@@ -18,10 +18,13 @@ public class BlobStreamTests
 
         byte[] blob = BlobStream.Pack(stream).Single();
 
-        Assert.That(blob[0], Is.Zero, "the top byte keeps every field element below the modulus");
-        Assert.That(blob[31], Is.EqualTo(1), "stream byte 0 is the least significant byte of the element");
-        Assert.That(blob[1], Is.EqualTo(31), "stream byte 30 is the most significant data byte");
-        Assert.That(blob.Skip(32).All(static b => b == 0), Is.True, "the rest of the blob is zero");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blob[0], Is.Zero, "the top byte keeps every field element below the modulus");
+            Assert.That(blob[31], Is.EqualTo(1), "stream byte 0 is the least significant byte of the element");
+            Assert.That(blob[1], Is.EqualTo(31), "stream byte 30 is the most significant data byte");
+            Assert.That(blob.Skip(32).All(static b => b == 0), Is.True, "the rest of the blob is zero");
+        }
     }
 
     [Test]
@@ -32,9 +35,12 @@ public class BlobStreamTests
         byte[][] blobs = BlobStream.Pack(stream);
         byte[] unpacked = BlobStream.Unpack(blobs);
 
-        Assert.That(blobs.Length, Is.EqualTo(2), "one byte past a blob's capacity needs a second blob");
-        Assert.That(unpacked.AsSpan(0, stream.Length).ToArray(), Is.EqualTo(stream));
-        Assert.That(unpacked.Skip(stream.Length).All(static b => b == 0), Is.True, "the tail is zero padding");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobs.Length, Is.EqualTo(2), "one byte past a blob's capacity needs a second blob");
+            Assert.That(unpacked.AsSpan(0, stream.Length).ToArray(), Is.EqualTo(stream));
+            Assert.That(unpacked.Skip(stream.Length).All(static b => b == 0), Is.True, "the tail is zero padding");
+        }
     }
 
     [Test]

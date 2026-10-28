@@ -298,8 +298,11 @@ public sealed class NativeStreamingSessionTests(int version)
             AssertCode(() => _executor.Execute(rejected, CancellationToken.None), StatusCode.FailedPrecondition);
         Assert.That(session.Ready(session.Binding, 1).Ready.ValidatedThrough, Is.EqualTo(_frames[0].Begin.AnchorNumber));
         using SessionOperation retry = Admit(session, _blocks[0]);
-        Assert.That(retry.NativeHistory!.Count, Is.Zero, "a failed segment or block cannot poison the retained chain");
-        Assert.That(session.CommitBlock(retry, _executor.Execute(retry, CancellationToken.None)).Validated.Hash, Is.EqualTo(_blocks[0].Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry.NativeHistory!.Count, Is.Zero, "a failed segment or block cannot poison the retained chain");
+            Assert.That(session.CommitBlock(retry, _executor.Execute(retry, CancellationToken.None)).Validated.Hash, Is.EqualTo(_blocks[0].Hash));
+        }
     }
 
     [Test]
@@ -367,8 +370,11 @@ public sealed class NativeStreamingSessionTests(int version)
             Assert.That(replay.NativeHistory!.Count, Is.GreaterThan(before), "the immutable bridge may retain a validated suffix while the execution cursor rewinds");
         }
         ExecutedStreamingBlock result = _executor.Execute(replay, CancellationToken.None);
-        Assert.That(result.NativeHistory!.Count, Is.EqualTo(before + _blocks[target].Witness.L1HeadersRlp.Count));
-        Assert.That(session.CommitBlock(replay, result).Validated.Hash, Is.EqualTo(_blocks[target].Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.NativeHistory!.Count, Is.EqualTo(before + _blocks[target].Witness.L1HeadersRlp.Count));
+            Assert.That(session.CommitBlock(replay, result).Validated.Hash, Is.EqualTo(_blocks[target].Hash));
+        }
     }
 
     [Test]
@@ -429,8 +435,11 @@ public sealed class NativeStreamingSessionTests(int version)
         {
             Assert.That(duplicate.ReusedBlock, Is.Not.Null);
             ExecutedStreamingBlock cached = _executor.Execute(duplicate, CancellationToken.None);
-            Assert.That(cached, Is.SameAs(duplicate.ReusedBlock));
-            Assert.That(session.CommitBlock(duplicate, cached).Validated.Reused, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cached, Is.SameAs(duplicate.ReusedBlock));
+                Assert.That(session.CommitBlock(duplicate, cached).Validated.Reused, Is.True);
+            }
         }
         AssertCode(() => Admit(session, _blocks[1]), StatusCode.ResourceExhausted);
     }

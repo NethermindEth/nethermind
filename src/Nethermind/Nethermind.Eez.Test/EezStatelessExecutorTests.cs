@@ -29,10 +29,13 @@ public partial class EezStatelessExecutorTests
         EezStatelessBlockResult[] results = Executor(Block13, "chain-config.json")
             .Execute([StatelessFixtures.ReadBlock(Block13, "block-13.rlp", "witness-13.json")], []);
 
-        Assert.That(results[0].Hash, Is.EqualTo(new Hash256("0x16b64a78e9b3e0d533cafe81f9121735f6a2c8122c69b0bb5994ee75fe7bface")),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Hash, Is.EqualTo(new Hash256("0x16b64a78e9b3e0d533cafe81f9121735f6a2c8122c69b0bb5994ee75fe7bface")),
             "the re-executed block hashes to the recorded block hash");
-        Assert.That(results[0].PostStateRoot, Is.EqualTo(new Hash256("0xf09d8f7da5bc5036f8dd9536c953e2212390a46fb3e553ece2b7d419131537b1")),
-            "the post-state root derived from the witness matches the recording");
+            Assert.That(results[0].PostStateRoot, Is.EqualTo(new Hash256("0xf09d8f7da5bc5036f8dd9536c953e2212390a46fb3e553ece2b7d419131537b1")),
+                "the post-state root derived from the witness matches the recording");
+        }
     }
 
     [TestCase(new[] { 0, 1, 2 }, TestName = "EveryTransaction")]
@@ -46,13 +49,16 @@ public partial class EezStatelessExecutorTests
         EezStatelessBlockResult result = Executor(Checkpoint2175, "checkpoint-chain-config.json").Execute(
             [StatelessFixtures.ReadBlock(Checkpoint2175, "checkpoint-block-2175.rlp.hex", "checkpoint-witness-2175.json")], indices)[0];
 
-        Assert.That(result.Hash, Is.EqualTo(blockHash), "precondition: the settling block re-executes to its recorded hash");
-        Assert.That(result.Checkpoints.Select(static c => c.TransactionIndex), Is.EqualTo(indices), "one checkpoint per selected transaction");
-        Assert.That(result.Checkpoints.Select(static c => c.StateRoot), Is.EqualTo(indices.Select(i => expectedRoots[i])),
-            "each prefix root equals the state root the composer recorded for that transaction");
-        Assert.That(result.Checkpoints[^1].BlockHash, Is.EqualTo(blockHash), "the candidate ending with the last transaction is the block itself");
-        Assert.That(result.Checkpoints[..^1].Select(static c => c.BlockHash), Has.None.EqualTo(blockHash).And.Unique,
-            "every shorter prefix commits to a distinct candidate block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Hash, Is.EqualTo(blockHash), "precondition: the settling block re-executes to its recorded hash");
+            Assert.That(result.Checkpoints.Select(static c => c.TransactionIndex), Is.EqualTo(indices), "one checkpoint per selected transaction");
+            Assert.That(result.Checkpoints.Select(static c => c.StateRoot), Is.EqualTo(indices.Select(i => expectedRoots[i])),
+                "each prefix root equals the state root the composer recorded for that transaction");
+            Assert.That(result.Checkpoints[^1].BlockHash, Is.EqualTo(blockHash), "the candidate ending with the last transaction is the block itself");
+            Assert.That(result.Checkpoints[..^1].Select(static c => c.BlockHash), Has.None.EqualTo(blockHash).And.Unique,
+                "every shorter prefix commits to a distinct candidate block");
+        }
     }
 
     [Test]
@@ -62,10 +68,13 @@ public partial class EezStatelessExecutorTests
             Enumerable.Range(626, 5).Select(static n => StatelessFixtures.ReadBlock(Window630, $"block-{n}.rlp.hex", $"witness-{n}.json")).ToArray(), []);
 
         JsonElement oracle = StatelessFixtures.ReadJson(Window630, "oracle.json");
-        Assert.That(results[^1].Hash, Is.EqualTo(new Hash256(oracle.GetProperty("settling_block_hash").GetString()!)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[^1].Hash, Is.EqualTo(new Hash256(oracle.GetProperty("settling_block_hash").GetString()!)),
             "the settling block re-executes to its recorded hash");
-        Assert.That(results[^1].PostStateRoot, Is.EqualTo(new Hash256(oracle.GetProperty("final_state_root").GetString()!)),
-            "the window ends in the recorded final state root");
+            Assert.That(results[^1].PostStateRoot, Is.EqualTo(new Hash256(oracle.GetProperty("final_state_root").GetString()!)),
+                "the window ends in the recorded final state root");
+        }
     }
 
     [Test]
@@ -75,10 +84,13 @@ public partial class EezStatelessExecutorTests
             Enumerable.Range(79, 6).Select(static n => StatelessFixtures.ReadBlock(Window84, $"block-{n}.rlp.hex", $"witness-{n}.json")).ToArray(), []);
 
         JsonElement oracle = StatelessFixtures.ReadJson(Window84, "oracle.json");
-        Assert.That(results[0].Block.ParentHash, Is.EqualTo(new Hash256(oracle.GetProperty("window_pre_block_hash").GetString()!)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results[0].Block.ParentHash, Is.EqualTo(new Hash256(oracle.GetProperty("window_pre_block_hash").GetString()!)),
             "the window starts on the recorded parent");
-        Assert.That(results[^1].Hash, Is.EqualTo(new Hash256(oracle.GetProperty("window_post_block_hash").GetString()!)),
-            "codeless request predeploys produce no requests, so every block re-executes to its recorded hash");
+            Assert.That(results[^1].Hash, Is.EqualTo(new Hash256(oracle.GetProperty("window_post_block_hash").GetString()!)),
+                "codeless request predeploys produce no requests, so every block re-executes to its recorded hash");
+        }
     }
 
     [Test]

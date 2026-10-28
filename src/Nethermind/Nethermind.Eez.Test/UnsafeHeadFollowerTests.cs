@@ -45,10 +45,13 @@ public class UnsafeHeadFollowerTests
 
         await _follower.Advance(_heads, CancellationToken.None);
 
-        Assert.That(_engine.Inserted.Select(static b => b.Number), Is.EqualTo(new ulong[] { 3, 4 }), "the missing blocks enter the chain oldest first");
-        Assert.That(_chain.Head!.Hash, Is.EqualTo(ahead[^1].Hash), "the head is the sequencer's");
-        Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[^1].Hash), "the follower's heads record the new head");
-        Assert.That(_engine.Forkchoices[^1].Safe, Is.EqualTo(_heads.Safe.Hash), "the sequencer never moves safe");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_engine.Inserted.Select(static b => b.Number), Is.EqualTo(new ulong[] { 3, 4 }), "the missing blocks enter the chain oldest first");
+            Assert.That(_chain.Head!.Hash, Is.EqualTo(ahead[^1].Hash), "the head is the sequencer's");
+            Assert.That(_heads.Head.Hash, Is.EqualTo(ahead[^1].Hash), "the follower's heads record the new head");
+            Assert.That(_engine.Forkchoices[^1].Safe, Is.EqualTo(_heads.Safe.Hash), "the sequencer never moves safe");
+        }
     }
 
     [Test]
@@ -122,8 +125,11 @@ public class UnsafeHeadFollowerTests
 
         await _follower.Advance(_heads, CancellationToken.None);
 
-        Assert.That(_chain.Head!.Hash, Is.EqualTo(ahead[^1].Hash), "the sequencer's head is the head again");
-        Assert.That(RawBlockReads(), Is.Zero, "blocks the node already holds are not fetched again");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_chain.Head!.Hash, Is.EqualTo(ahead[^1].Hash), "the sequencer's head is the head again");
+            Assert.That(RawBlockReads(), Is.Zero, "blocks the node already holds are not fetched again");
+        }
     }
 
     [Test]

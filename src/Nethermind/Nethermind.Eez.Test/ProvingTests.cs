@@ -70,9 +70,12 @@ public class ProvingTests
 
         Attestation[] attestations = await quorum.Attest(RecordedRequest(), Registration(oracle), BundleTarget.NextBlock, CancellationToken.None);
 
-        Assert.That(attestations.Select(static a => a.ProofSystem), Is.EqualTo(new[] { proofSystem }), "the one attester's proof system proves the window");
-        Assert.That(quorum.Validity(attestations[0].Proof, new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!), AttesterServer.AttesterKey.Address),
-            Is.Null, "the proof is the attester's signature over the hash the reference signer signed for this window");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attestations.Select(static a => a.ProofSystem), Is.EqualTo(new[] { proofSystem }), "the one attester's proof system proves the window");
+            Assert.That(quorum.Validity(attestations[0].Proof, new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!), AttesterServer.AttesterKey.Address),
+                Is.Null, "the proof is the attester's signature over the hash the reference signer signed for this window");
+        }
     }
 
     [Test]

@@ -240,10 +240,13 @@ public class StreamingRegistryTests
         Begin begin = Anchor();
         begin.RollupId = rollup;
         ServerFrame rejected = connection.Dispatch(new ClientFrame { RequestId = 7, Begin = begin }).Response!;
-        Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code, rejected.Rejected.ValidatedHash.IsEmpty),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code, rejected.Rejected.ValidatedHash.IsEmpty),
             Is.EqualTo((7UL, true, 0UL, (int)StatusCode.Unimplemented, true)), "unsupported rollups never obtain a binding or consume session capacity");
-        Assert.That(connection.Dispatch(new ClientFrame { RequestId = 8, Begin = Anchor() }).Response!.Ready.ValidatedThrough,
-            Is.EqualTo(10), "a valid Begin succeeds after the unsupported request");
+            Assert.That(connection.Dispatch(new ClientFrame { RequestId = 8, Begin = Anchor() }).Response!.Ready.ValidatedThrough,
+                Is.EqualTo(10), "a valid Begin succeeds after the unsupported request");
+        }
     }
 
     [TestCase("Block", TestName = "Connection_BlockBeforeBegin_ReturnsMalformedEnvelope")]
@@ -263,10 +266,13 @@ public class StreamingRegistryTests
             default: frame.Cancel = new Cancel(); break;
         }
         ServerFrame rejected = connection.Dispatch(frame).Response!;
-        Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code),
             Is.EqualTo((7UL, true, 0UL, (int)StatusCode.InvalidArgument)), "operations without Begin or Resume cannot mutate any session");
-        Assert.That(connection.Dispatch(new ClientFrame { RequestId = 8, Begin = Anchor() }).Response!.Ready.ValidatedThrough,
-            Is.EqualTo(10), "the malformed envelope leaves admission available");
+            Assert.That(connection.Dispatch(new ClientFrame { RequestId = 8, Begin = Anchor() }).Response!.Ready.ValidatedThrough,
+                Is.EqualTo(10), "the malformed envelope leaves admission available");
+        }
     }
 
     [Test]
@@ -280,8 +286,11 @@ public class StreamingRegistryTests
         Assert.That((rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code), Is.EqualTo((true, 0UL, (int)StatusCode.NotFound)));
         StreamingConnection resumed = new(registry, "first", 1);
         ServerFrame newer = resumed.Dispatch(new ClientFrame { SessionId = ready.SessionId, RequestId = 8, Resume = new Resume() }).Response!;
-        Assert.That(newer.Epoch, Is.EqualTo(2));
-        Assert.That(original.Dispatch(Frame(newer, 9)).Response!.Rejected.Code, Is.EqualTo((int)StatusCode.PermissionDenied));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newer.Epoch, Is.EqualTo(2));
+            Assert.That(original.Dispatch(Frame(newer, 9)).Response!.Rejected.Code, Is.EqualTo((int)StatusCode.PermissionDenied));
+        }
     }
 
     [Test]
@@ -335,8 +344,11 @@ public class StreamingRegistryTests
         ServerFrame ready = original.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
         StreamingConnection wrong = new(registry, "first", 2);
         ServerFrame rejected = wrong.Dispatch(new ClientFrame { SessionId = ready.SessionId, RequestId = 7, Resume = new Resume() }).Response!;
-        Assert.That((rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code), Is.EqualTo((true, 0UL, (int)StatusCode.NotFound)));
-        Assert.That(original.Dispatch(Frame(ready, 8)).Response!.Epoch, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code), Is.EqualTo((true, 0UL, (int)StatusCode.NotFound)));
+            Assert.That(original.Dispatch(Frame(ready, 8)).Response!.Epoch, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -383,9 +395,12 @@ public class StreamingRegistryTests
         if (wrong == "id") cancel.SessionId = Hash(99);
         else cancel.Epoch++;
         ServerFrame rejected = connection.Dispatch(cancel).Response!;
-        Assert.That((rejected.SessionId.IsEmpty, rejected.Epoch, rejected.RequestId, rejected.Rejected.Code, rejected.Rejected.ValidatedThrough, rejected.Rejected.ValidatedHash.IsEmpty),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((rejected.SessionId.IsEmpty, rejected.Epoch, rejected.RequestId, rejected.Rejected.Code, rejected.Rejected.ValidatedThrough, rejected.Rejected.ValidatedHash.IsEmpty),
             Is.EqualTo((true, 0UL, 7UL, (int)StatusCode.PermissionDenied, 0UL, true)));
-        Assert.That(connection.Dispatch(Frame(ready, 8)).Response!.Rejected.Code, Is.EqualTo((int)StatusCode.Unimplemented));
+            Assert.That(connection.Dispatch(Frame(ready, 8)).Response!.Rejected.Code, Is.EqualTo((int)StatusCode.Unimplemented));
+        }
     }
 
     [Test]
@@ -441,8 +456,11 @@ public class StreamingRegistryTests
         ServerFrame ready = first.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
         first.Detach();
         ServerFrame rejected = new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
-        Assert.That(rejected.Rejected.Code, Is.EqualTo((int)StatusCode.ResourceExhausted), "authenticated Rollup0 retains its existing capacity policy");
-        Assert.That(registry.Resume("first", ready.SessionId, 1).Session.Id, Is.EqualTo(ready.SessionId), "capacity rejection preserves the original detached session");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected.Rejected.Code, Is.EqualTo((int)StatusCode.ResourceExhausted), "authenticated Rollup0 retains its existing capacity policy");
+            Assert.That(registry.Resume("first", ready.SessionId, 1).Session.Id, Is.EqualTo(ready.SessionId), "capacity rejection preserves the original detached session");
+        }
     }
 
     [TestCase((int)StreamingSettlementProfile.RollupXNative, TestName = "Capacity_RollupX_EvictsOnlyOldestDetachedSession")]
@@ -509,8 +527,11 @@ public class StreamingRegistryTests
         repeated.SessionId = ready.SessionId;
         repeated.Epoch++;
         ServerFrame stale = connection.Dispatch(repeated).Response!;
-        Assert.That((current.SessionId.Length, foreign.SessionId.Length, stale.SessionId.Length), Is.EqualTo((expectedLength, 0, 0)));
-        Assert.That((foreign.Rejected.ValidatedHash.Length, stale.Rejected.ValidatedHash.Length), Is.EqualTo((0, 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((current.SessionId.Length, foreign.SessionId.Length, stale.SessionId.Length), Is.EqualTo((expectedLength, 0, 0)));
+            Assert.That((foreign.Rejected.ValidatedHash.Length, stale.Rejected.ValidatedHash.Length), Is.EqualTo((0, 0)));
+        }
     }
 
     [TestCase("attached", TestName = "RollupXCapacity_FinalProofDelivery_RetainsAttachment")]

@@ -31,8 +31,11 @@ public class OptimisticLedgerTests
 
         _ledger.ConfirmThrough(12);
 
-        Assert.That(_ledger.Blocks(12), Is.False, "a batch the cursor settled is settled whatever its observer said");
-        Assert.That(_ledger.TakeFailed(12), Is.Null, "and it is not recovered");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_ledger.Blocks(12), Is.False, "a batch the cursor settled is settled whatever its observer said");
+            Assert.That(_ledger.TakeFailed(12), Is.Null, "and it is not recovered");
+        }
     }
 
     [Test]
@@ -43,9 +46,12 @@ public class OptimisticLedgerTests
 
         (PostedBatch Batch, bool SlotSkipped)? failed = _ledger.TakeFailed(6);
 
-        Assert.That((failed?.Batch.SyncHeight, failed?.SlotSkipped), Is.EqualTo(((ulong?)12, (bool?)true)), "the failed batch and why it failed");
-        Assert.That(_ledger.TakeFailed(6), Is.Null, "a batch is recovered once");
-        Assert.That(_ledger.Blocks(6), Is.False, "recovery reopens the gate");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((failed?.Batch.SyncHeight, failed?.SlotSkipped), Is.EqualTo(((ulong?)12, (bool?)true)), "the failed batch and why it failed");
+            Assert.That(_ledger.TakeFailed(6), Is.Null, "a batch is recovered once");
+            Assert.That(_ledger.Blocks(6), Is.False, "recovery reopens the gate");
+        }
     }
 
     [Test]
@@ -83,8 +89,11 @@ public class OptimisticLedgerTests
 
         _ledger.ExpireUnconfirmed(6, followed);
 
-        Assert.That(_ledger.TakeFailed(6).HasValue, Is.EqualTo(expired), "the block it settled in left the chain before the follower read it, so it is recovered");
-        Assert.That(_ledger.Blocks(6), Is.EqualTo(!expired), "once recovered it no longer holds the next batch back");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_ledger.TakeFailed(6).HasValue, Is.EqualTo(expired), "the block it settled in left the chain before the follower read it, so it is recovered");
+            Assert.That(_ledger.Blocks(6), Is.EqualTo(!expired), "once recovered it no longer holds the next batch back");
+        }
     }
 
     [Test]

@@ -33,13 +33,19 @@ public partial class RollupXGenesisTests
     {
         EezChainRules rules = EezChainRules.FromGenesis(Genesis());
 
-        Assert.That(rules.IsRollupX, Is.True, "a rollupX section selects the RollupX rules");
-        Assert.That(rules.Eezl2Address, Is.EqualTo(EezConstants.RollupXEezl2Address));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rules.IsRollupX, Is.True, "a rollupX section selects the RollupX rules");
+            Assert.That(rules.Eezl2Address, Is.EqualTo(EezConstants.RollupXEezl2Address));
+        }
         RollupXSchedule schedule = rules.Schedule!;
-        Assert.That((schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks), Is.EqualTo((1UL, 5U)));
-        Assert.That(schedule.L1Reference, Is.EqualTo(new RollupXL1Reference(10200, 23_318_297, ReferenceHash, ReferenceTimestamp, ReferenceRandao)));
-        Assert.That(schedule.Timestamp(7), Is.EqualTo(ReferenceTimestamp + 10 + 7), "block n sits n intervals after genesis");
-        Assert.That(schedule.IsSyncPosition(10) && !schedule.IsSyncPosition(11), Is.True, "every fifth block is a Sync position");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((schedule.BlockIntervalSeconds, schedule.SyncIntervalBlocks), Is.EqualTo((1UL, 5U)));
+            Assert.That(schedule.L1Reference, Is.EqualTo(new RollupXL1Reference(10200, 23_318_297, ReferenceHash, ReferenceTimestamp, ReferenceRandao)));
+            Assert.That(schedule.Timestamp(7), Is.EqualTo(ReferenceTimestamp + 10 + 7), "block n sits n intervals after genesis");
+            Assert.That(schedule.IsSyncPosition(10) && !schedule.IsSyncPosition(11), Is.True, "every fifth block is a Sync position");
+        }
     }
 
     /// <summary>
@@ -63,11 +69,14 @@ public partial class RollupXGenesisTests
             genesis = builder.Build();
         }
 
-        Assert.That(rules.Schedule!.L1Reference, Is.EqualTo(new RollupXL1Reference(10200, 23_413_703,
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rules.Schedule!.L1Reference, Is.EqualTo(new RollupXL1Reference(10200, 23_413_703,
             new Hash256("0x5ac534c090ac3b1383dd8a7647a9df20af2a358dec370e708e1c48bd7d6488ad"), 1_791_397_980,
             new Hash256("0x1af463d6327b8c6b5a5bb581238f0b136d2b93bce04a35b9672734f0383f44ee"))));
-        Assert.That(genesis.StateRoot, Is.EqualTo(new Hash256("0x8255029550a16e602838f463ca67bfc560ff9841d576905e2412844de258c18e")));
-        Assert.That(genesis.Hash, Is.EqualTo(new Hash256("0x05227a1af51a988231b625b276c6b29594f0a93090efd93463934cd1bf6e606e")));
+            Assert.That(genesis.StateRoot, Is.EqualTo(new Hash256("0x8255029550a16e602838f463ca67bfc560ff9841d576905e2412844de258c18e")));
+            Assert.That(genesis.Hash, Is.EqualTo(new Hash256("0x05227a1af51a988231b625b276c6b29594f0a93090efd93463934cd1bf6e606e")));
+        }
     }
 
     [Test]
@@ -76,8 +85,11 @@ public partial class RollupXGenesisTests
         EezChainRules rules = EezChainRules.FromGenesis(Genesis(static g => g["config"]!.AsObject().Remove("rollupX")));
 
         Assert.That(rules, Is.SameAs(EezChainRules.Rollup0));
-        Assert.That(rules.BurnedAtBlockStart, Is.Empty, "rollup0 burns nothing");
-        Assert.That(rules.BaseFeeMaxChangeDenominator, Is.Null, "rollup0 keeps the fork's EIP-1559 denominator");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rules.BurnedAtBlockStart, Is.Empty, "rollup0 burns nothing");
+            Assert.That(rules.BaseFeeMaxChangeDenominator, Is.Null, "rollup0 keeps the fork's EIP-1559 denominator");
+        }
     }
 
     [TestCaseSource(nameof(InvalidGenesis))]

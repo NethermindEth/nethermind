@@ -23,8 +23,11 @@ public class CarrierAttributionTests
     [Test]
     public void Attribute_EmptyWindow_IsUnsettled()
     {
-        Assert.That(Attribute(null, [C], []), Is.EqualTo(L1Settlement.None), "nothing settled for our rollup in the window");
-        Assert.That(Attribute(null, [C, B], []), Is.EqualTo(L1Settlement.None), "a shared root does not settle an empty window");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Attribute(null, [C], []), Is.EqualTo(L1Settlement.None), "nothing settled for our rollup in the window");
+            Assert.That(Attribute(null, [C, B], []), Is.EqualTo(L1Settlement.None), "a shared root does not settle an empty window");
+        }
     }
 
     [Test]
@@ -75,15 +78,21 @@ public class CarrierAttributionTests
 
         L1Settlement settlement = Attribute(null, roots, roots[3..]);
 
-        Assert.That((settlement.Start, settlement.Length), Is.EqualTo((3, 2)));
-        Assert.That(settlement.Effects, Is.EqualTo(new ProducingSlice(2, 2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((settlement.Start, settlement.Length), Is.EqualTo((3, 2)));
+            Assert.That(settlement.Effects, Is.EqualTo(new ProducingSlice(2, 2)));
+        }
     }
 
     [Test]
     public void Attribute_Matching_IsPositional()
     {
-        Assert.That(Attribute(null, [B, B, C], [B, B]), Is.EqualTo(new L1Settlement(0, 2, B, default)), "a repeated root is located, not counted twice");
-        Assert.That(Attribute(null, [B, C], [C, B]), Is.EqualTo(L1Settlement.None), "out of order matches no run");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Attribute(null, [B, B, C], [B, B]), Is.EqualTo(new L1Settlement(0, 2, B, default)), "a repeated root is located, not counted twice");
+            Assert.That(Attribute(null, [B, C], [C, B]), Is.EqualTo(L1Settlement.None), "out of order matches no run");
+        }
     }
 
     [Test]
@@ -91,8 +100,11 @@ public class CarrierAttributionTests
     {
         L1Settlement settlement = Attribute(new ClaimedChain(null, [B, B], [true, false], [false, true]), [B]);
 
-        Assert.That((settlement.Start, settlement.Length), Is.EqualTo((0, 2)));
-        Assert.That(settlement.Effects, Is.EqualTo(new ProducingSlice(0, 1)), "the failed entry's delivery is already committed by the anchor's root");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((settlement.Start, settlement.Length), Is.EqualTo((0, 2)));
+            Assert.That(settlement.Effects, Is.EqualTo(new ProducingSlice(0, 1)), "the failed entry's delivery is already committed by the anchor's root");
+        }
     }
 
     [Test]
@@ -103,8 +115,11 @@ public class CarrierAttributionTests
         L1Settlement full = Attribute(claim, [A, B, C]);
         L1Settlement resumed = Attribute(claim, [B, C]);
 
-        Assert.That((full.Start, full.Length, full.Effects), Is.EqualTo((0, 6, new ProducingSlice(0, 5))));
-        Assert.That((resumed.Start, resumed.Length, resumed.Effects, resumed.EntryState), Is.EqualTo((3, 3, new ProducingSlice(2, 3), A)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((full.Start, full.Length, full.Effects), Is.EqualTo((0, 6, new ProducingSlice(0, 5))));
+            Assert.That((resumed.Start, resumed.Length, resumed.Effects, resumed.EntryState), Is.EqualTo((3, 3, new ProducingSlice(2, 3), A)));
+        }
     }
 
     [TestCase(false, TestName = "FailedLookups")]
@@ -119,18 +134,24 @@ public class CarrierAttributionTests
         L1Settlement full = new(0, 2, endpoint, before);
         L1Settlement resumed = new(1, 1, endpoint, anchor);
 
-        Assert.That(claim.Produces, Is.EqualTo(new[] { false, false, true, false }), "lookups produce no effect");
-        Assert.That(Attribute(claim, [anchor, endpoint]), Is.EqualTo(full));
-        Assert.That(Attribute(claim, [anchor]).Effects, Is.EqualTo(new ProducingSlice(0, 0)));
-        Assert.That(Attribute(claim, [endpoint]), Is.EqualTo(resumed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(claim.Produces, Is.EqualTo(new[] { false, false, true, false }), "lookups produce no effect");
+            Assert.That(Attribute(claim, [anchor, endpoint]), Is.EqualTo(full));
+            Assert.That(Attribute(claim, [anchor]).Effects, Is.EqualTo(new ProducingSlice(0, 0)));
+            Assert.That(Attribute(claim, [endpoint]), Is.EqualTo(resumed));
+        }
         if (lookupSucceeds)
         {
-            Assert.That(Attribute(claim, [anchor, anchor, endpoint]), Is.EqualTo(full), "a lookup's log may persist");
-            Assert.That(Attribute(claim, [anchor, endpoint, endpoint]), Is.EqualTo(full));
-            Assert.That(Attribute(claim, [anchor, anchor, endpoint, endpoint]), Is.EqualTo(full));
-            Assert.That(Attribute(claim, [anchor, anchor]).Effects, Is.EqualTo(new ProducingSlice(0, 0)));
-            Assert.That(Attribute(claim, [endpoint, endpoint]), Is.EqualTo(resumed));
-            Assert.That(Attribute(claim, [anchor, anchor, anchor]), Is.EqualTo(L1Settlement.None), "a lookup logs at most once");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Attribute(claim, [anchor, anchor, endpoint]), Is.EqualTo(full), "a lookup's log may persist");
+                Assert.That(Attribute(claim, [anchor, endpoint, endpoint]), Is.EqualTo(full));
+                Assert.That(Attribute(claim, [anchor, anchor, endpoint, endpoint]), Is.EqualTo(full));
+                Assert.That(Attribute(claim, [anchor, anchor]).Effects, Is.EqualTo(new ProducingSlice(0, 0)));
+                Assert.That(Attribute(claim, [endpoint, endpoint]), Is.EqualTo(resumed));
+                Assert.That(Attribute(claim, [anchor, anchor, anchor]), Is.EqualTo(L1Settlement.None), "a lookup logs at most once");
+            }
         }
     }
 
@@ -140,10 +161,13 @@ public class CarrierAttributionTests
         ValueHash256[] roots = [Root(1), Root(2), Root(3), Root(4)];
         bool[] persists = [true, true, true, true];
 
-        Assert.That(Attribute(new ClaimedChain(null, roots, persists, [false, true]), roots), Is.EqualTo(L1Settlement.None), "the mask covers every root");
-        Assert.That(Attribute(new ClaimedChain(null, roots, persists, [true, true, true, true]), roots), Is.EqualTo(L1Settlement.None), "the anchor produces nothing");
-        Assert.That(Attribute(new ClaimedChain(null, roots, persists, [false, true, true, true]), [roots[0], roots[2], roots[3]]), Is.EqualTo(L1Settlement.None),
-            "a physical carrier is never passed over");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Attribute(new ClaimedChain(null, roots, persists, [false, true]), roots), Is.EqualTo(L1Settlement.None), "the mask covers every root");
+            Assert.That(Attribute(new ClaimedChain(null, roots, persists, [true, true, true, true]), roots), Is.EqualTo(L1Settlement.None), "the anchor produces nothing");
+            Assert.That(Attribute(new ClaimedChain(null, roots, persists, [false, true, true, true]), [roots[0], roots[2], roots[3]]), Is.EqualTo(L1Settlement.None),
+                "a physical carrier is never passed over");
+        }
     }
 
     [Test]
@@ -152,10 +176,13 @@ public class CarrierAttributionTests
         ValueHash256 current = Root(0x09);
         ClaimedChain claim = ClaimedChain.Of(Batch(Update(current, A), Update(A, B)), RollupId, new HashSet<ulong> { 1 });
 
-        Assert.That((claim.CurrentRoot, claim.Roots, claim.Persists, claim.Produces), Is.EqualTo(((ValueHash256?)current, new[] { A, B }, new[] { true, false }, new[] { false, true })));
-        Assert.That(Attribute(claim, [A]), Is.EqualTo(new L1Settlement(0, 1, A, current)), "the skipped effect stays unconsumed");
-        Assert.That(Attribute(new ClaimedChain(current, [A, A], [true, false], [false, true]), [A]).Effects, Is.EqualTo(new ProducingSlice(0, 1)),
-            "an equal-root carrier covers a pre-carried reverted outcome");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((claim.CurrentRoot, claim.Roots, claim.Persists, claim.Produces), Is.EqualTo(((ValueHash256?)current, new[] { A, B }, new[] { true, false }, new[] { false, true })));
+            Assert.That(Attribute(claim, [A]), Is.EqualTo(new L1Settlement(0, 1, A, current)), "the skipped effect stays unconsumed");
+            Assert.That(Attribute(new ClaimedChain(current, [A, A], [true, false], [false, true]), [A]).Effects, Is.EqualTo(new ProducingSlice(0, 1)),
+                "an equal-root carrier covers a pre-carried reverted outcome");
+        }
     }
 
     [TestCase(0, TestName = "FirstSkipped")]
@@ -169,8 +196,11 @@ public class CarrierAttributionTests
         L1Settlement prefix = Attribute(new ClaimedChain(default(ValueHash256), roots, [.. Enumerable.Range(0, 4).Select(i => i <= committed)], produces), roots[..(committed + 1)]);
         L1Settlement resumed = Attribute(new ClaimedChain(default(ValueHash256), roots, [.. Enumerable.Range(0, 4).Select(i => i > committed)], produces), roots[(committed + 1)..]);
 
-        Assert.That((prefix.Effects, prefix.FinalState), Is.EqualTo((new ProducingSlice(0, committed), roots[committed])));
-        Assert.That((resumed.Effects, resumed.EntryState, resumed.FinalState), Is.EqualTo((new ProducingSlice(committed, 3 - committed), roots[committed], roots[3])));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((prefix.Effects, prefix.FinalState), Is.EqualTo((new ProducingSlice(0, committed), roots[committed])));
+            Assert.That((resumed.Effects, resumed.EntryState, resumed.FinalState), Is.EqualTo((new ProducingSlice(committed, 3 - committed), roots[committed], roots[3])));
+        }
     }
 
     [Test]

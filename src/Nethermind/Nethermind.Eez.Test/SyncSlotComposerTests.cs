@@ -68,8 +68,11 @@ public class SyncSlotComposerTests
 
         BlockHeader sync = await Composer().Compose(parent, SlotPlan.Steady(Pinned, 10), _heads, CancellationToken.None);
 
-        Assert.That(sync.Number, Is.EqualTo(2), "the Sync block follows its parent");
-        Assert.That(ProvenBlocks(), Is.EqualTo(new ulong[] { 1, 2 }), "the batch settles every block after the cursor up to the Sync block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sync.Number, Is.EqualTo(2), "the Sync block follows its parent");
+            Assert.That(ProvenBlocks(), Is.EqualTo(new ulong[] { 1, 2 }), "the batch settles every block after the cursor up to the Sync block");
+        }
         await _poster.Received(1).Submit(Arg.Any<IReadOnlyList<byte[]>>(), Pinned, Arg.Any<CancellationToken>());
     }
 
@@ -133,8 +136,11 @@ public class SyncSlotComposerTests
 
         BlockHeader sync = await Composer().Compose(_heads.Head, new SlotPlan(mode, Pinned, 10), _heads, CancellationToken.None);
 
-        Assert.That(sync.Number, Is.EqualTo(1), "L2 cadence does not depend on settlement");
-        Assert.That(ProvenBlocks(), Is.Empty, "nothing is proven for a slot that posts nothing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sync.Number, Is.EqualTo(1), "L2 cadence does not depend on settlement");
+            Assert.That(ProvenBlocks(), Is.Empty, "nothing is proven for a slot that posts nothing");
+        }
     }
 
     [Test]
@@ -147,8 +153,11 @@ public class SyncSlotComposerTests
         BlockHeader recovery = await composer.Compose(_heads.Head, SlotPlan.Steady(Pinned, 10), _heads, CancellationToken.None);
         await composer.Compose(_heads.Head, SlotPlan.Steady(Pinned, 10), _heads, CancellationToken.None);
 
-        Assert.That(recovery.Number, Is.EqualTo(1), "precondition: the recovery slot still has its Sync block");
-        Assert.That(ProvenBlocks(), Is.EqualTo(new ulong[] { 1, 2 }), "the slot after the recovery settles from the cursor again");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovery.Number, Is.EqualTo(1), "precondition: the recovery slot still has its Sync block");
+            Assert.That(ProvenBlocks(), Is.EqualTo(new ulong[] { 1, 2 }), "the slot after the recovery settles from the cursor again");
+        }
     }
 
     /// <summary>

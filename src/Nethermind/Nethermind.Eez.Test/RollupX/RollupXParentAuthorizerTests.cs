@@ -464,9 +464,12 @@ public class RollupXParentAuthorizerTests
 
         RollupXAuthorization result = await Authorizer().Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance);
 
-        Assert.That(result.CanonicalEvidence.Any(header => header.Number == provenance.AcceptedL1Number), Is.True,
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CanonicalEvidence.Any(header => header.Number == provenance.AcceptedL1Number), Is.True,
             "the explicitly selected canonical acceptance remains part of the final signing recheck");
-        Assert.That(result.DescendantSeed, Is.EqualTo(_source.Blocks[101].MixHash), "later acceptance does not replace the original live-slot seed");
+            Assert.That(result.DescendantSeed, Is.EqualTo(_source.Blocks[101].MixHash), "later acceptance does not replace the original live-slot seed");
+        }
     }
 
     [TestCase("parent", TestName = "Authorize_V1DifferentParentRlp_Rejects")]
@@ -524,9 +527,12 @@ public class RollupXParentAuthorizerTests
 
         RollupXAuthorization result = await Authorizer(historyBlocks: 1).Authorize(_source.Begin(), _source.Target(), CancellationToken.None, provenance);
 
-        Assert.That(result.CanonicalEvidence.Any(static header => header.Number == 102), Is.True,
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CanonicalEvidence.Any(static header => header.Number == 102), Is.True,
             "the exact supplied acceptance is authenticated directly instead of depending on a history scan");
-        Assert.That(_source.RangeReads, Is.Zero, "explicit provenance avoids an unrelated bounded acceptance search");
+            Assert.That(_source.RangeReads, Is.Zero, "explicit provenance avoids an unrelated bounded acceptance search");
+        }
     }
 
     private RollupXParentAuthorizer Authorizer(int historyBlocks = 4096, TimeProvider? time = null) =>
@@ -689,9 +695,12 @@ public class RollupXParentAuthorizerTests
             if (!byHash)
             {
                 RangeReads++;
-                Assert.That(topic, Is.EqualTo(RootTopic), "only discovery roots use a height range");
-                Assert.That(to - from + 1, Is.LessThanOrEqualTo(128UL), "each history query stays within its page-width bound");
-                Assert.That((from >= 100, to <= TargetNumber), Is.EqualTo((true, true)), "discovery stays within the configured reference and target");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(topic, Is.EqualTo(RootTopic), "only discovery roots use a height range");
+                    Assert.That(to - from + 1, Is.LessThanOrEqualTo(128UL), "each history query stays within its page-width bound");
+                    Assert.That((from >= 100, to <= TargetNumber), Is.EqualTo((true, true)), "discovery stays within the configured reference and target");
+                }
             }
             else
                 Assert.That(filter.TryGetProperty("fromBlock", out _) || filter.TryGetProperty("toBlock", out _), Is.False,

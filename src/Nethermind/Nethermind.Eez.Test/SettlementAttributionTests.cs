@@ -114,9 +114,12 @@ public class SettlementAttributionTests
 
         L1Batch l1 = L1Batch.Of(batch, batch.CallData, rollup, Block, BlockHash, Keccak.Compute("tx"), 4);
 
-        Assert.That(l1.ClaimedCurrentState, Is.EqualTo(A), "the first update's current state");
-        Assert.That(l1.ClaimedChain, Is.EqualTo(new[] { B, C }), "our rollup's new states only, in entry order");
-        Assert.That(l1.VerifiesOurRollup, Is.True, "the batch lists our rollup");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(l1.ClaimedCurrentState, Is.EqualTo(A), "the first update's current state");
+            Assert.That(l1.ClaimedChain, Is.EqualTo(new[] { B, C }), "our rollup's new states only, in entry order");
+            Assert.That(l1.VerifiesOurRollup, Is.True, "the batch lists our rollup");
+        }
     }
 
     private static L1Settlement Settle(ValueHash256[] claimed, params ValueHash256[] settled) =>

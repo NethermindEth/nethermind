@@ -38,8 +38,11 @@ public class RollupXHeaderValidatorTests
     {
         BlockHeader header = Header();
 
-        Assert.That(_validator.Validate(header, _parent, false, out string? error), Is.True, error);
-        Assert.That(_validator.ValidateOrphaned(header, out error), Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.Validate(header, _parent, false, out string? error), Is.True, error);
+            Assert.That(_validator.ValidateOrphaned(header, out error), Is.True, error);
+        }
         _inner.ReceivedWithAnyArgs(1).Validate(default!, default!, default, out _);
     }
 
@@ -52,8 +55,11 @@ public class RollupXHeaderValidatorTests
             return false;
         });
 
-        Assert.That(_validator.Validate(Header(), _parent, false, out string? error), Is.False, "the profile adds to the Ethereum rules, it does not replace them");
-        Assert.That(error, Is.EqualTo("inner"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.Validate(Header(), _parent, false, out string? error), Is.False, "the profile adds to the Ethereum rules, it does not replace them");
+            Assert.That(error, Is.EqualTo("inner"));
+        }
     }
 
     [TestCaseSource(nameof(BrokenProfiles))]
@@ -62,8 +68,11 @@ public class RollupXHeaderValidatorTests
         BlockHeader header = Header();
         mutate(header);
 
-        Assert.That(_validator.Validate(header, _parent, false, out string? error), Is.False);
-        Assert.That(error, Does.Contain(reason));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.Validate(header, _parent, false, out string? error), Is.False);
+            Assert.That(error, Does.Contain(reason));
+        }
         _inner.DidNotReceiveWithAnyArgs().Validate(default!, default!, default, out _);
     }
 

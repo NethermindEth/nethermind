@@ -122,8 +122,11 @@ public partial class RollupXStreamingConformanceTests
         (ISpecProvider specs, EezChainRules rules) = ChainConfigLoader.LoadProfile(chain.Path);
         Block decoded = Rlp.Decode<Block>(terminal.Rlp.ToByteArray())!;
         Assert.That(decoded.Transactions.Length, Is.GreaterThan(1), "precondition: load and user are separate physical transactions");
-        Assert.That(decoded.Transactions[0].IsEezSystemTransaction(), Is.True, "precondition: checkpoint zero follows the setup load");
-        Assert.That(decoded.Transactions[1].IsEezSystemTransaction(), Is.False, "precondition: the setup load precedes its user effect");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Transactions[0].IsEezSystemTransaction(), Is.True, "precondition: checkpoint zero follows the setup load");
+            Assert.That(decoded.Transactions[1].IsEezSystemTransaction(), Is.False, "precondition: the setup load precedes its user effect");
+        }
         using Witness witness = WindowAssembler.ToWitness(terminal.Witness);
         EezStatelessBlock block = new(terminal.Rlp.ToByteArray(), witness);
         EezStatelessBlockResult executed = new EezStatelessExecutor(specs, rules, LimboLogs.Instance).Execute([block], [-1, 0])[0];

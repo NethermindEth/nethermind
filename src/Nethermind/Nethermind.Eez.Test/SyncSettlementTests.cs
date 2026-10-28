@@ -33,19 +33,22 @@ public class SyncSettlementTests
         ValueHash256 proxy = CrossChainCallHash.Compute(false, L2Contract, RollupId, L1Target, 0, 3, 0, fixture.OutboundCall.Data);
 
         Assert.That(fixture.SyncTransactions, Has.Length.EqualTo(3));
-        Assert.That(fixture.SyncTransactions[1], Is.EqualTo(fixture.UserTransaction), "the user transaction consumes the load right before it");
-        Assert.That((load.Nonce, delivery.Nonce), Is.EqualTo((StartingNonce, StartingNonce + 1)), "system nonces run in transaction order");
-        Assert.That((load.Value, delivery.Value), Is.EqualTo((UInt256.Zero, (UInt256)7)), "only a delivery carries value");
-        Assert.That(load.ChainId, Is.EqualTo(ChainId));
-        Assert.That(table.Entries, Has.Length.EqualTo(1), "one load stages one entry");
-        Assert.That((table.Entries[0].ProxyEntryHash, table.Entries[0].RollingHash), Is.EqualTo((proxy, RollingHash.SeedL2(proxy))),
-            "the staged entry is keyed by the outbound call");
-        Assert.That((table.Entries[0].Success, table.Entries[0].ReturnData), Is.EqualTo((true, fixture.OutboundDaEntry.ReturnData)),
-            "the staged entry returns the L1 result to the user transaction");
-        Assert.That((table.Entries[0].IncomingCalls, table.Entries[0].ExpectedOutgoingCalls, table.StaticEntries), Is.EqualTo((Array.Empty<CrossChainCall>(),
-            Array.Empty<ExpectedCall>(), Array.Empty<L2StaticExecutionEntry>())), "the staged entry re-executes nothing on L2");
-        Assert.That(EezCalldata.EncodeEntry(fixture.Observation.DerivedDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.InboundAction.ToEntry(RollupId))),
-            "the delivery re-inspects to the entry derivation rebuilds from its action");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.SyncTransactions[1], Is.EqualTo(fixture.UserTransaction), "the user transaction consumes the load right before it");
+            Assert.That((load.Nonce, delivery.Nonce), Is.EqualTo((StartingNonce, StartingNonce + 1)), "system nonces run in transaction order");
+            Assert.That((load.Value, delivery.Value), Is.EqualTo((UInt256.Zero, (UInt256)7)), "only a delivery carries value");
+            Assert.That(load.ChainId, Is.EqualTo(ChainId));
+            Assert.That(table.Entries, Has.Length.EqualTo(1), "one load stages one entry");
+            Assert.That((table.Entries[0].ProxyEntryHash, table.Entries[0].RollingHash), Is.EqualTo((proxy, RollingHash.SeedL2(proxy))),
+                "the staged entry is keyed by the outbound call");
+            Assert.That((table.Entries[0].Success, table.Entries[0].ReturnData), Is.EqualTo((true, fixture.OutboundDaEntry.ReturnData)),
+                "the staged entry returns the L1 result to the user transaction");
+            Assert.That((table.Entries[0].IncomingCalls, table.Entries[0].ExpectedOutgoingCalls, table.StaticEntries), Is.EqualTo((Array.Empty<CrossChainCall>(),
+                Array.Empty<ExpectedCall>(), Array.Empty<L2StaticExecutionEntry>())), "the staged entry re-executes nothing on L2");
+            Assert.That(EezCalldata.EncodeEntry(fixture.Observation.DerivedDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.InboundAction.ToEntry(RollupId))),
+                "the delivery re-inspects to the entry derivation rebuilds from its action");
+        }
     }
 
     [TestCaseSource(nameof(UnloweredEntries))]
@@ -110,10 +113,13 @@ public class SyncSettlementTests
 
         SettlingBlock observed = SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(), RollupId);
 
-        Assert.That(observed.SystemTransactions, Is.EqualTo(new[] { true, false, true }));
-        Assert.That(observed.EffectTransactions, Is.EqualTo(new[] { 1, 2 }));
-        Assert.That(observed.InboundCandidates, Is.EqualTo(new[] { new InboundCandidate(2, fixture.Observation, null, false) }).Using<InboundCandidate>(SameCandidate));
-        Assert.That(observed.OutboundEvents, Is.EqualTo(new[] { new OutboundEvent(1, 0, true, EventCallHash, 0) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed.SystemTransactions, Is.EqualTo(new[] { true, false, true }));
+            Assert.That(observed.EffectTransactions, Is.EqualTo(new[] { 1, 2 }));
+            Assert.That(observed.InboundCandidates, Is.EqualTo(new[] { new InboundCandidate(2, fixture.Observation, null, false) }).Using<InboundCandidate>(SameCandidate));
+            Assert.That(observed.OutboundEvents, Is.EqualTo(new[] { new OutboundEvent(1, 0, true, EventCallHash, 0) }));
+        }
     }
 
     [Test]
@@ -162,9 +168,12 @@ public class SyncSettlementTests
 
         SettlingBlock observed = SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(deliveryStatus: StatusCode.Failure), RollupId);
 
-        Assert.That(observed.InboundCandidates, Has.Length.EqualTo(1));
-        Assert.That((observed.InboundCandidates[0].TransactionIndex, observed.InboundCandidates[0].Observation), Is.EqualTo((2, (InboundObservation?)null)));
-        Assert.That(observed.InboundCandidates[0].Error, Does.Contain("reverted"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed.InboundCandidates, Has.Length.EqualTo(1));
+            Assert.That((observed.InboundCandidates[0].TransactionIndex, observed.InboundCandidates[0].Observation), Is.EqualTo((2, (InboundObservation?)null)));
+            Assert.That(observed.InboundCandidates[0].Error, Does.Contain("reverted"));
+        }
     }
 
     [Test]
@@ -287,16 +296,19 @@ public class SyncSettlementTests
         AuthorizedInbound[] inbound = InboundDelivery.AuthorizeAll(effects, observed.InboundCandidates, RollupId);
         AuthorizedOutbound[] outbound = OutboundCall.AuthorizeAll(effects, observed.OutboundEvents, observed.SystemTransactions, RollupId);
 
-        Assert.That(inbound, Has.Length.EqualTo(1));
-        Assert.That((inbound[0].TransactionIndex, inbound[0].Observation.CallHash), Is.EqualTo((2, fixture.Observation.CallHash)));
-        Assert.That(outbound, Has.Length.EqualTo(1));
-        Assert.That((outbound[0].LoadTransactionIndex, outbound[0].TransactionIndex), Is.EqualTo((0, 1)));
-        Assert.That(EezCalldata.EncodeEntry(outbound[0].BaseDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.OutboundDaEntry with { ReturnData = [] })),
-            "the L1 entry publishes no result, so the DA entry starts without one");
-        Assert.That(RollingHash.CallEnd(outbound[0].PendingRollingHash, true, fixture.OutboundDaEntry.ReturnData), Is.EqualTo(outbound[0].ClaimedRollingHash),
-            "DA's result closes the rolling hash the L1 entry claims");
-        Assert.DoesNotThrow(() => DaVerification.Verify(fixture.Payload(), fixture.Window, outbound, inbound, ChainId, RollupId),
-            "the authorized effects are exactly what the DA check consumes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inbound, Has.Length.EqualTo(1));
+            Assert.That((inbound[0].TransactionIndex, inbound[0].Observation.CallHash), Is.EqualTo((2, fixture.Observation.CallHash)));
+            Assert.That(outbound, Has.Length.EqualTo(1));
+            Assert.That((outbound[0].LoadTransactionIndex, outbound[0].TransactionIndex), Is.EqualTo((0, 1)));
+            Assert.That(EezCalldata.EncodeEntry(outbound[0].BaseDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.OutboundDaEntry with { ReturnData = [] })),
+                "the L1 entry publishes no result, so the DA entry starts without one");
+            Assert.That(RollingHash.CallEnd(outbound[0].PendingRollingHash, true, fixture.OutboundDaEntry.ReturnData), Is.EqualTo(outbound[0].ClaimedRollingHash),
+                "DA's result closes the rolling hash the L1 entry claims");
+            Assert.DoesNotThrow(() => DaVerification.Verify(fixture.Payload(), fixture.Window, outbound, inbound, ChainId, RollupId),
+                "the authorized effects are exactly what the DA check consumes");
+        }
     }
 
     [Test]
@@ -389,8 +401,11 @@ public class SyncSettlementTests
 
         EezSettlementException e = Assert.Throws<EezSettlementException>(() => OutboundCall.AuthorizeAll(effects, events, system, RollupId))!;
 
-        Assert.That(e.Message, Does.Contain(rule));
-        Assert.That(e.PoisonedTransactionIndex, Is.EqualTo(poisoned), "only a missing, malformed or gas-carrying event lets the composer evict the call");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(e.Message, Does.Contain(rule));
+            Assert.That(e.PoisonedTransactionIndex, Is.EqualTo(poisoned), "only a missing, malformed or gas-carrying event lets the composer evict the call");
+        }
     }
 
     [Test]

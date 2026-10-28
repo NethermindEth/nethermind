@@ -80,10 +80,13 @@ public class EezCalldataTests
             [0xde, 0xad, 0xbe, 0xef]);
         StaticExecutionEntry staticEntry = new([new ExpectedRoot(1, Word(0x1111))], Word(0x5555), [], Word(0x6666), 1, true, [0xca, 0xfe]);
 
-        Assert.That(EezCalldata.EntryHash(entry), Is.EqualTo(new ValueHash256("0x752aa6c5ddc53a6bfdfec261248ee29246f6e831c59d3567d2c22d80dbf93dc1")),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EezCalldata.EntryHash(entry), Is.EqualTo(new ValueHash256("0x752aa6c5ddc53a6bfdfec261248ee29246f6e831c59d3567d2c22d80dbf93dc1")),
             "an entry hash is keccak256 of the abi-encoded entry, leading offset word included");
-        Assert.That(EezCalldata.StaticEntryHash(staticEntry), Is.EqualTo(new ValueHash256("0x1a63bcaad1cc1d18331cee8e48f0074de3a9f1f887255d3dfdf44f62a08036c3")),
-            "a static entry hash is keccak256 of the abi-encoded static entry");
+            Assert.That(EezCalldata.StaticEntryHash(staticEntry), Is.EqualTo(new ValueHash256("0x1a63bcaad1cc1d18331cee8e48f0074de3a9f1f887255d3dfdf44f62a08036c3")),
+                "a static entry hash is keccak256 of the abi-encoded static entry");
+        }
     }
 
     [Test]
@@ -108,9 +111,12 @@ public class EezCalldataTests
         byte[] encoded = EezCalldata.EncodePostAndVerifyBatch(batch);
         PostBatch decoded = EezCalldata.DecodePostAndVerifyBatch(encoded);
 
-        Assert.That(EezCalldata.EncodePostAndVerifyBatch(decoded), Is.EqualTo(encoded), "decoding then encoding reproduces the calldata");
-        Assert.That(decoded.Entries[0].RollupUpdates[0].EtherDelta, Is.EqualTo(new Int256.Int256(-5)), "a negative ether delta survives as two's complement");
-        Assert.That(decoded.Entries[0].ExpectedCalls[0].Calls, Has.Length.EqualTo(2), "nested dynamic arrays decode in order");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EezCalldata.EncodePostAndVerifyBatch(decoded), Is.EqualTo(encoded), "decoding then encoding reproduces the calldata");
+            Assert.That(decoded.Entries[0].RollupUpdates[0].EtherDelta, Is.EqualTo(new Int256.Int256(-5)), "a negative ether delta survives as two's complement");
+            Assert.That(decoded.Entries[0].ExpectedCalls[0].Calls, Has.Length.EqualTo(2), "nested dynamic arrays decode in order");
+        }
     }
 
     [TestCase("00000000000000007fffffffffffffffffffffffffffffffffffffffffffffff", null, TestName = "LargestPositive")]
@@ -145,12 +151,15 @@ public class EezCalldataTests
         byte[] incomingCalldata = EezCalldata.EncodeExecuteIncomingCrossChainCall(incoming);
         byte[] tableCalldata = EezCalldata.EncodeLoadExecutionTable(table);
 
-        Assert.That(EezCalldata.EncodeExecuteIncomingCrossChainCall(EezCalldata.DecodeExecuteIncomingCrossChainCall(incomingCalldata)), Is.EqualTo(incomingCalldata),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EezCalldata.EncodeExecuteIncomingCrossChainCall(EezCalldata.DecodeExecuteIncomingCrossChainCall(incomingCalldata)), Is.EqualTo(incomingCalldata),
             "an inbound delivery decodes and re-encodes identically");
-        Assert.That(EezCalldata.EncodeLoadExecutionTable(EezCalldata.DecodeLoadExecutionTable(tableCalldata)), Is.EqualTo(tableCalldata),
-            "an execution table decodes and re-encodes identically");
-        Assert.That(() => EezCalldata.DecodeLoadExecutionTable(incomingCalldata), Throws.TypeOf<EezAbiException>(),
-            "calldata of one entry point is not decoded as another");
+            Assert.That(EezCalldata.EncodeLoadExecutionTable(EezCalldata.DecodeLoadExecutionTable(tableCalldata)), Is.EqualTo(tableCalldata),
+                "an execution table decodes and re-encodes identically");
+            Assert.That(() => EezCalldata.DecodeLoadExecutionTable(incomingCalldata), Throws.TypeOf<EezAbiException>(),
+                "calldata of one entry point is not decoded as another");
+        }
     }
 
     private static TestCaseData[] NonCanonicalBatches()

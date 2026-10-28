@@ -21,10 +21,13 @@ public class EezSpecChangeTxValidatorTests
     {
         Transaction tx = SystemTransactions.Create(ChainId);
 
-        Assert.That(_validator.IsWellFormed(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.SystemTransactionNotAllowed),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.IsWellFormed(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.SystemTransactionNotAllowed),
             "an unsigned system transaction can be forged by anyone, so the pool must never admit one");
-        Assert.That(_validator.IsWellFormedAfterFullValidation(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.SystemTransactionNotAllowed),
-            "the pool calls only this method after the block-import validator accepted the transaction");
+            Assert.That(_validator.IsWellFormedAfterFullValidation(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.SystemTransactionNotAllowed),
+                "the pool calls only this method after the block-import validator accepted the transaction");
+        }
     }
 
     [Test]
@@ -33,14 +36,17 @@ public class EezSpecChangeTxValidatorTests
         Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(spec: Osaka.Instance).WithChainId(ChainId)
             .SignedAndResolved(new EthereumEcdsa(ChainId), TestItem.PrivateKeyA).TestObject;
 
-        Assert.That(new SpecChangeTxValidator(ChainId).IsWellFormed(tx, Osaka.Instance).AsBool(), Is.True,
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new SpecChangeTxValidator(ChainId).IsWellFormed(tx, Osaka.Instance).AsBool(), Is.True,
             "precondition: the transaction is a well-formed Osaka blob transaction on Ethereum");
-        Assert.That(_validator.IsWellFormed(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.BlobTransactionNotAllowed),
-            "EEZ L2 has no blob transactions");
-        Assert.That(_validator.IsWellFormedAfterFullValidation(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.BlobTransactionNotAllowed),
-            "EEZ L2 has no blob transactions");
-        Assert.That(_validator.IsWellFormedLight(new LightTransaction(tx), Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.BlobTransactionNotAllowed),
-            "a persisted blob transaction must not be revived from storage");
+            Assert.That(_validator.IsWellFormed(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.BlobTransactionNotAllowed),
+                "EEZ L2 has no blob transactions");
+            Assert.That(_validator.IsWellFormedAfterFullValidation(tx, Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.BlobTransactionNotAllowed),
+                "EEZ L2 has no blob transactions");
+            Assert.That(_validator.IsWellFormedLight(new LightTransaction(tx), Osaka.Instance).Error, Is.EqualTo(EezSpecChangeTxValidator.BlobTransactionNotAllowed),
+                "a persisted blob transaction must not be revived from storage");
+        }
     }
 
     [Test]
@@ -58,7 +64,10 @@ public class EezSpecChangeTxValidatorTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(ChainId).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1)
             .SignedAndResolved(new EthereumEcdsa(ChainId), TestItem.PrivateKeyA).TestObject;
 
-        Assert.That(_validator.IsWellFormed(tx, Osaka.Instance).AsBool(), Is.True, "ordinary L2 transactions follow the Ethereum rules");
-        Assert.That(_validator.IsWellFormedAfterFullValidation(tx, Osaka.Instance).AsBool(), Is.True, "ordinary L2 transactions follow the Ethereum rules");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_validator.IsWellFormed(tx, Osaka.Instance).AsBool(), Is.True, "ordinary L2 transactions follow the Ethereum rules");
+            Assert.That(_validator.IsWellFormedAfterFullValidation(tx, Osaka.Instance).AsBool(), Is.True, "ordinary L2 transactions follow the Ethereum rules");
+        }
     }
 }

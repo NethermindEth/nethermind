@@ -69,11 +69,14 @@ public partial class RollupXSettlementVerifierTests
         else
         {
             RollupXObservationClaim claim = RollupXSettlementVerifier.Verify(batch, stream, [ObservationBlock(block)], 1)[0];
-            Assert.That(claim.Mode, Is.EqualTo(ObservationMode.Static));
-            Assert.That(claim.Callbacks, Has.Length.EqualTo(1));
-            Assert.That((claim.Callbacks[0].Source, claim.Callbacks[0].Target), Is.EqualTo((child.From, child.To)));
-            Assert.That(claim.Callbacks[0].Data, Is.EqualTo(new byte[] { 0x22 }));
-            Assert.That(claim.Callbacks[0].Output, Is.EqualTo(new byte[] { 0x45 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(claim.Mode, Is.EqualTo(ObservationMode.Static));
+                Assert.That(claim.Callbacks, Has.Length.EqualTo(1));
+                Assert.That((claim.Callbacks[0].Source, claim.Callbacks[0].Target), Is.EqualTo((child.From, child.To)));
+                Assert.That(claim.Callbacks[0].Data, Is.EqualTo(new byte[] { 0x22 }));
+                Assert.That(claim.Callbacks[0].Output, Is.EqualTo(new byte[] { 0x45 }));
+            }
         }
     }
 

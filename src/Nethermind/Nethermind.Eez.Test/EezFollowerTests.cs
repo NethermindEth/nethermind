@@ -76,8 +76,11 @@ public class EezFollowerTests
 
         await _follower.Poll(CancellationToken.None);
 
-        Assert.That(_follower.Heads.Safe.Number, Is.EqualTo(2), "safe is the L2 block L1's commitment names after the settling block");
-        Assert.That(_engine.Forkchoices[^1].Safe, Is.EqualTo(L2(2).Hash), "the node's own safe head moved with it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_follower.Heads.Safe.Number, Is.EqualTo(2), "safe is the L2 block L1's commitment names after the settling block");
+            Assert.That(_engine.Forkchoices[^1].Safe, Is.EqualTo(L2(2).Hash), "the node's own safe head moved with it");
+        }
     }
 
     [Test]
@@ -156,9 +159,12 @@ public class EezFollowerTests
 
         await _follower.Poll(CancellationToken.None);
 
-        Assert.That((_follower.Heads.Safe.Number, _follower.Heads.Head.Number), Is.EqualTo((1UL, 1UL)), "safe and the head return to the surviving settlement");
-        Assert.That(_scanner.ReceivedCalls().Any(static call => call.GetMethodInfo().Name == nameof(IL1BatchScanner.FindSettlingBlocks)
-            && (ulong)call.GetArguments()[0]! == SettlingL1Block), Is.True, "the scan starts over at the reorganized block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((_follower.Heads.Safe.Number, _follower.Heads.Head.Number), Is.EqualTo((1UL, 1UL)), "safe and the head return to the surviving settlement");
+            Assert.That(_scanner.ReceivedCalls().Any(static call => call.GetMethodInfo().Name == nameof(IL1BatchScanner.FindSettlingBlocks)
+                && (ulong)call.GetArguments()[0]! == SettlingL1Block), Is.True, "the scan starts over at the reorganized block");
+        }
     }
 
     /// <summary>
@@ -178,9 +184,12 @@ public class EezFollowerTests
         FollowerProgress progress = await _follower.Poll(CancellationToken.None);
         await _follower.Poll(CancellationToken.None);
 
-        Assert.That(progress, Is.EqualTo(FollowerProgress.Retry), "a failed poll waits before the next one");
-        Assert.That(_cursors.Select(static c => c.Number), Is.EqualTo(new ulong[] { 0, 1, 0, 1 }), "the retried block starts over from the cursor before it");
-        Assert.That(_follower.Heads.Safe.Number, Is.EqualTo(2), "the retry settles the block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progress, Is.EqualTo(FollowerProgress.Retry), "a failed poll waits before the next one");
+            Assert.That(_cursors.Select(static c => c.Number), Is.EqualTo(new ulong[] { 0, 1, 0, 1 }), "the retried block starts over from the cursor before it");
+            Assert.That(_follower.Heads.Safe.Number, Is.EqualTo(2), "the retry settles the block");
+        }
     }
 
     [Test]
@@ -250,9 +259,12 @@ public class EezFollowerTests
 
         await _follower.Poll(CancellationToken.None);
 
-        Assert.That(_l1.ReceivedCalls().Select(static call => call.GetMethodInfo().Name), Is.EqualTo(new[] { nameof(IEezL1Api.GetLatestBlock) }),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_l1.ReceivedCalls().Select(static call => call.GetMethodInfo().Name), Is.EqualTo(new[] { nameof(IEezL1Api.GetLatestBlock) }),
             "an unchanged L1 head cannot hide a reorganization, new settlements or a new finalized block");
-        Assert.That(_scanner.ReceivedCalls(), Is.Empty, "nothing new on L1 means nothing to scan");
+            Assert.That(_scanner.ReceivedCalls(), Is.Empty, "nothing new on L1 means nothing to scan");
+        }
     }
 
     [Test]

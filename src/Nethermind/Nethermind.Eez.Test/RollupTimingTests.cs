@@ -16,10 +16,13 @@ public class RollupTimingTests
     [TestCaseSource(nameof(Layouts))]
     public void Layout_ReferenceDeployments_MatchTheReferenceTable(RollupTiming timing, uint k, uint future, uint live, int windowOpenSeconds)
     {
-        Assert.That(timing.FindViolation(), Is.Null, "precondition: the reference deployments are valid");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(timing.FindViolation(), Is.Null, "precondition: the reference deployments are valid");
 
-        Assert.That((timing.K, timing.FutureCount, timing.LiveCount, timing.ProofWindowOpen), Is.EqualTo((k, future, live, TimeSpan.FromSeconds(windowOpenSeconds))),
-            "the slot layout the reference computes for the same timing");
+            Assert.That((timing.K, timing.FutureCount, timing.LiveCount, timing.ProofWindowOpen), Is.EqualTo((k, future, live, TimeSpan.FromSeconds(windowOpenSeconds))),
+                "the slot layout the reference computes for the same timing");
+        }
     }
 
     [TestCaseSource(nameof(Violations))]
@@ -40,8 +43,11 @@ public class RollupTimingTests
         SlotComposition near = Mainnet.Compose(head, sync, 64);
         SlotComposition far = Mainnet.Compose(head, sync + Mainnet.K, RollupTiming.MaxBlocksPerCatchup);
 
-        Assert.That(head + near.Blocks, Is.EqualTo(sync), "the next Sync block lands on the grid");
-        Assert.That(far.Blocks, Is.EqualTo(Mainnet.K + 1UL), "one span longer than a slot realigns a head a slot further behind");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head + near.Blocks, Is.EqualTo(sync), "the next Sync block lands on the grid");
+            Assert.That(far.Blocks, Is.EqualTo(Mainnet.K + 1UL), "one span longer than a slot realigns a head a slot further behind");
+        }
     }
 
     [Test]
@@ -57,9 +63,12 @@ public class RollupTimingTests
             }
 
             ulong terminal = head + composition.Blocks;
-            Assert.That(terminal % Mainnet.K, Is.Zero, $"the catch-up from {head} ends on the grid");
-            Assert.That(composition.Blocks, Is.LessThanOrEqualTo(RollupTiming.MaxBlocksPerCatchup), $"the catch-up from {head} stays within the cap");
-            Assert.That(terminal, Is.LessThanOrEqualTo(sync), $"the catch-up from {head} never passes the Sync height");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(terminal % Mainnet.K, Is.Zero, $"the catch-up from {head} ends on the grid");
+                Assert.That(composition.Blocks, Is.LessThanOrEqualTo(RollupTiming.MaxBlocksPerCatchup), $"the catch-up from {head} stays within the cap");
+                Assert.That(terminal, Is.LessThanOrEqualTo(sync), $"the catch-up from {head} never passes the Sync height");
+            }
         }
     }
 
@@ -68,8 +77,11 @@ public class RollupTimingTests
     {
         SlotComposition composition = Mainnet.Compose(0, 317, RollupTiming.MaxBlocksPerCatchup);
 
-        Assert.That(composition.Kind, Is.EqualTo(SlotCompositionKind.Catchup), "precondition: the gap exceeds the cap");
-        Assert.That((317 - composition.Blocks) % Mainnet.K, Is.Zero, "the catch-up steps back whole slots from the Sync height");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(composition.Kind, Is.EqualTo(SlotCompositionKind.Catchup), "precondition: the gap exceeds the cap");
+            Assert.That((317 - composition.Blocks) % Mainnet.K, Is.Zero, "the catch-up steps back whole slots from the Sync height");
+        }
     }
 
     [TestCase(6UL, TestName = "OneSlot")]
@@ -80,8 +92,11 @@ public class RollupTimingTests
     {
         SlotComposition composition = Mainnet.Compose(0, 10_000, budget);
 
-        Assert.That(composition.Kind, Is.EqualTo(SlotCompositionKind.Catchup), "precondition: far behind");
-        Assert.That(composition.Blocks, Is.LessThanOrEqualTo(budget), "one catch-up stays within its budget");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(composition.Kind, Is.EqualTo(SlotCompositionKind.Catchup), "precondition: far behind");
+            Assert.That(composition.Blocks, Is.LessThanOrEqualTo(budget), "one catch-up stays within its budget");
+        }
     }
 
     [TestCase(0UL, 6_000UL, TestName = "OnGridSyncHeight")]
@@ -91,9 +106,12 @@ public class RollupTimingTests
     {
         ulong? boundary = Mainnet.HistoricalChunkBoundary(cursor, syncHeight, RollupTiming.MaxBlocksPerCatchup);
 
-        Assert.That(boundary, Is.Not.Null, "a backlog over the cap always has a boundary");
-        Assert.That((syncHeight - boundary!.Value) % Mainnet.K, Is.Zero, "the boundary is a Sync height derivation rebuilds by position");
-        Assert.That(boundary.Value - cursor, Is.InRange(1UL, RollupTiming.MaxBlocksPerCatchup), "the chunk settles something and stays within the cap");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(boundary, Is.Not.Null, "a backlog over the cap always has a boundary");
+            Assert.That((syncHeight - boundary!.Value) % Mainnet.K, Is.Zero, "the boundary is a Sync height derivation rebuilds by position");
+            Assert.That(boundary.Value - cursor, Is.InRange(1UL, RollupTiming.MaxBlocksPerCatchup), "the chunk settles something and stays within the cap");
+        }
     }
 
     [TestCase(100UL, 400UL, 300UL, null, TestName = "BacklogFitsTheCap")]

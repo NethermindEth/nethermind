@@ -39,10 +39,13 @@ public class EezSettlementVerifierTests
         ValueHash256 publicInputsHash = EezSettlementVerifier.Verify(RecordedBatch(), Window.Value, Context(), Spec.Value);
         byte[] signature = new EezAttestationSigner(AttesterKey).Sign(publicInputsHash);
 
-        Assert.That(publicInputsHash, Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(publicInputsHash, Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
             "every check passes on the recorded window and the public inputs hash is the one signed on the devnet");
-        Assert.That(signature.ToHexString(true), Is.EqualTo(oracle.GetProperty("expected_test_signature").GetString()),
-            "the attestation is the recorded attester's signature, byte for byte");
+            Assert.That(signature.ToHexString(true), Is.EqualTo(oracle.GetProperty("expected_test_signature").GetString()),
+                "the attestation is the recorded attester's signature, byte for byte");
+        }
     }
 
     [Test]
@@ -60,10 +63,13 @@ public class EezSettlementVerifierTests
             byte[] signature = signer.Sign(digest);
             Signature recoverable = new(signature.AsSpan(0, 64), signature[64] - 27);
 
-            Assert.That(signature[64], Is.AnyOf(27, 28), "the verifier accepts only v of 27 or 28");
-            Assert.That(signature.AsSpan(32, 32).SequenceCompareTo(halfOrder), Is.LessThanOrEqualTo(0), "the verifier rejects a high s");
-            Assert.That(new EthereumEcdsa(0).RecoverAddress(recoverable, in digest), Is.EqualTo(signer.Address),
-                "the raw digest is signed, without a message prefix");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(signature[64], Is.AnyOf(27, 28), "the verifier accepts only v of 27 or 28");
+                Assert.That(signature.AsSpan(32, 32).SequenceCompareTo(halfOrder), Is.LessThanOrEqualTo(0), "the verifier rejects a high s");
+                Assert.That(new EthereumEcdsa(0).RecoverAddress(recoverable, in digest), Is.EqualTo(signer.Address),
+                    "the raw digest is signed, without a message prefix");
+            }
         }
     }
 
@@ -88,8 +94,11 @@ public class EezSettlementVerifierTests
 
         EezSettlementException e = Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(RecordedBatch(), window, Context(), Spec.Value))!;
 
-        Assert.That(e.Failure, Is.EqualTo(EezSettlementFailure.Rejected));
-        Assert.That(e.Message, Does.Contain(rule));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(e.Failure, Is.EqualTo(EezSettlementFailure.Rejected));
+            Assert.That(e.Message, Does.Contain(rule));
+        }
     }
 
     [Test]

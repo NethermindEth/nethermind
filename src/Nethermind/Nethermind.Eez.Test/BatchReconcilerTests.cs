@@ -55,8 +55,11 @@ public class BatchReconcilerTests
 
         BlockHeader end = await Reconcile(Batch(published, settled, _genesis.Hash!), _genesis);
 
-        Assert.That((end.Number, end.Hash), Is.EqualTo((2UL, settled)), "the block L1's commitment names is the new cursor");
-        Assert.That(_engine.Inserted, Has.Count.EqualTo(2), "both blocks enter the chain through the engine");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((end.Number, end.Hash), Is.EqualTo((2UL, settled)), "the block L1's commitment names is the new cursor");
+            Assert.That(_engine.Inserted, Has.Count.EqualTo(2), "both blocks enter the chain through the engine");
+        }
     }
 
     [Test]
@@ -69,8 +72,11 @@ public class BatchReconcilerTests
 
         BlockHeader end = await Reconcile(batch, _genesis);
 
-        Assert.That(end.Number, Is.EqualTo(2), "re-deriving a batch is idempotent");
-        Assert.That(_engine.Inserted, Is.Empty, "blocks that already match stay as they are");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(end.Number, Is.EqualTo(2), "re-deriving a batch is idempotent");
+            Assert.That(_engine.Inserted, Is.Empty, "blocks that already match stay as they are");
+        }
     }
 
     /// <summary>
@@ -88,8 +94,11 @@ public class BatchReconcilerTests
 
         BlockHeader end = await Reconcile(Batch(published, settled, _genesis.Hash!), _genesis);
 
-        Assert.That(end.Hash, Is.EqualTo(settled), "the replayed block is the one L1 settled");
-        Assert.That(_engine.Inserted.Select(static b => b.Number), Is.EqualTo(new ulong[] { 2 }), "only the differing block is replayed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(end.Hash, Is.EqualTo(settled), "the replayed block is the one L1 settled");
+            Assert.That(_engine.Inserted.Select(static b => b.Number), Is.EqualTo(new ulong[] { 2 }), "only the differing block is replayed");
+        }
     }
 
     [Test]
@@ -100,8 +109,11 @@ public class BatchReconcilerTests
 
         BlockHeader end = await Reconcile(Batch(published, first, _genesis.Hash!), _genesis);
 
-        Assert.That(end.Number, Is.EqualTo(1), "L1 settled the first block only");
-        Assert.That(_chain.Head!.Number, Is.EqualTo(2), "the block above it stays as head, derived but not settled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(end.Number, Is.EqualTo(1), "L1 settled the first block only");
+            Assert.That(_chain.Head!.Number, Is.EqualTo(2), "the block above it stays as head, derived but not settled");
+        }
     }
 
     [Test]
@@ -134,9 +146,12 @@ public class BatchReconcilerTests
 
         await Reconcile(Batch(published, settled, _genesis.Hash!), _genesis);
 
-        Assert.That(_engine.Forkchoices[0], Is.EqualTo((_genesis.Hash!, _genesis.Hash!, _genesis.Hash!)), "safe and the head move to the parent before the first replaced block");
-        Assert.That(_heads.Safe.Hash, Is.EqualTo(_genesis.Hash), "safe stays at the parent until the follower settles the batch");
-        Assert.That(_heads.Head.Hash, Is.EqualTo(settled), "the head is the last replayed block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_engine.Forkchoices[0], Is.EqualTo((_genesis.Hash!, _genesis.Hash!, _genesis.Hash!)), "safe and the head move to the parent before the first replaced block");
+            Assert.That(_heads.Safe.Hash, Is.EqualTo(_genesis.Hash), "safe stays at the parent until the follower settles the batch");
+            Assert.That(_heads.Head.Hash, Is.EqualTo(settled), "the head is the last replayed block");
+        }
     }
 
     [Test]
@@ -167,8 +182,11 @@ public class BatchReconcilerTests
 
         BlockHeader end = await Reconcile(Batch([published], settled, _genesis.Hash!), _genesis);
 
-        Assert.That(end.Hash, Is.EqualTo(settled), "the settled block replaces the forged one");
-        Assert.That(_chain.Head!.Hash, Is.EqualTo(settled), "the forged block is no longer canonical");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(end.Hash, Is.EqualTo(settled), "the settled block replaces the forged one");
+            Assert.That(_chain.Head!.Hash, Is.EqualTo(settled), "the forged block is no longer canonical");
+        }
     }
 
     /// <summary>

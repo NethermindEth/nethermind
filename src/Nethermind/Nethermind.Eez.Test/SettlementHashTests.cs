@@ -36,13 +36,16 @@ public class SettlementHashTests
         ValueHash256 afterNestedEnd = RollingHash.NestedEnd(afterNestedBegin);
         ValueHash256 afterCallNotFound = RollingHash.CallNotFound(afterNestedEnd, CallHash);
 
-        Assert.That(l1Seed, Is.EqualTo(Expected(expected, "l1Seed")), "the L1 seed folds (rollupId, currentState) in order, then the proxy entry hash");
-        Assert.That(RollingHash.SeedL2(ProxyEntryHash), Is.EqualTo(Expected(expected, "l2Seed")), "the L2 seed binds only the proxy entry hash");
-        Assert.That(afterCallBegin, Is.EqualTo(Expected(expected, "afterCallBegin")), "CALL_BEGIN folds the tag and the call hash");
-        Assert.That(afterCallEnd, Is.EqualTo(Expected(expected, "afterCallEnd")), "CALL_END folds the tag, the success byte and the raw return data");
-        Assert.That(afterNestedBegin, Is.EqualTo(Expected(expected, "afterNestedBegin")), "NESTED_BEGIN folds the tag and the call hash");
-        Assert.That(afterNestedEnd, Is.EqualTo(Expected(expected, "afterNestedEnd")), "NESTED_END folds only the tag");
-        Assert.That(afterCallNotFound, Is.EqualTo(Expected(expected, "afterCallNotFound")), "CALL_NOT_FOUND folds the tag and the call hash");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(l1Seed, Is.EqualTo(Expected(expected, "l1Seed")), "the L1 seed folds (rollupId, currentState) in order, then the proxy entry hash");
+            Assert.That(RollingHash.SeedL2(ProxyEntryHash), Is.EqualTo(Expected(expected, "l2Seed")), "the L2 seed binds only the proxy entry hash");
+            Assert.That(afterCallBegin, Is.EqualTo(Expected(expected, "afterCallBegin")), "CALL_BEGIN folds the tag and the call hash");
+            Assert.That(afterCallEnd, Is.EqualTo(Expected(expected, "afterCallEnd")), "CALL_END folds the tag, the success byte and the raw return data");
+            Assert.That(afterNestedBegin, Is.EqualTo(Expected(expected, "afterNestedBegin")), "NESTED_BEGIN folds the tag and the call hash");
+            Assert.That(afterNestedEnd, Is.EqualTo(Expected(expected, "afterNestedEnd")), "NESTED_END folds only the tag");
+            Assert.That(afterCallNotFound, Is.EqualTo(Expected(expected, "afterCallNotFound")), "CALL_NOT_FOUND folds the tag and the call hash");
+        }
     }
 
     [Test]
@@ -53,8 +56,11 @@ public class SettlementHashTests
         ValueHash256 afterSuccess = RollingHash.StaticResult(default, true, [0xaa, 0xbb, 0xcc]);
         ValueHash256 afterFailure = RollingHash.StaticResult(afterSuccess, false, [0xde, 0xad, 0xbe, 0xef]);
 
-        Assert.That(afterSuccess, Is.EqualTo(Expected(expected, "afterStaticSuccess")), "static results fold untagged from a zero seed");
-        Assert.That(afterFailure, Is.EqualTo(Expected(expected, "afterStaticFailure")), "a failed static result folds a zero success byte");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterSuccess, Is.EqualTo(Expected(expected, "afterStaticSuccess")), "static results fold untagged from a zero seed");
+            Assert.That(afterFailure, Is.EqualTo(Expected(expected, "afterStaticFailure")), "a failed static result folds a zero success byte");
+        }
     }
 
     [TestCase(false, 7UL, 1UL, "0", 0UL, "0x010203", "0x16b1575ff5a4ec44167aebf047dd46f77db3766f7481445ad09c8136bff735a8", TestName = "CommonMutable")]
@@ -91,10 +97,13 @@ public class SettlementHashTests
         ValueHash256[] hashes = PublicInputs.Compute(Hashes(vector.GetProperty("entryHashes")), Hashes(vector.GetProperty("staticEntryHashes")),
             Hashes(vector.GetProperty("blobHashes")), callData, assignments, vector.GetProperty("proofSystemCount").GetInt32(), boundSender);
 
-        Assert.That(shared, Is.EqualTo(new ValueHash256(vector.GetProperty("expectedSharedPublicInput").GetString()!)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(shared, Is.EqualTo(new ValueHash256(vector.GetProperty("expectedSharedPublicInput").GetString()!)),
             "the shared input binds every hash array, the calldata hash and the bound sender");
-        Assert.That(hashes, Is.EqualTo(Hashes(vector.GetProperty("expectedPublicInputsHashes"))),
-            "each proof system binds the shared input to the rollups and verification keys assigned to it");
+            Assert.That(hashes, Is.EqualTo(Hashes(vector.GetProperty("expectedPublicInputsHashes"))),
+                "each proof system binds the shared input to the rollups and verification keys assigned to it");
+        }
     }
 
     private static TestCaseData[] PublicInputVectors() => StatelessFixtures.ReadJson(Fixture, "public_inputs_hash_vectors.json")

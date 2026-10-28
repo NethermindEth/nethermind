@@ -31,8 +31,11 @@ public partial class EezSystemTxDecoderTests
 
         byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-        Assert.That(encoded, Is.EqualTo(CanonicalVector), "the wire bytes must match the canonical encoding byte for byte");
-        Assert.That(tx.CalculateHash(), Is.EqualTo(Keccak.Compute(CanonicalVector)), "the hash covers the type byte and the body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(CanonicalVector), "the wire bytes must match the canonical encoding byte for byte");
+            Assert.That(tx.CalculateHash(), Is.EqualTo(Keccak.Compute(CanonicalVector)), "the hash covers the type byte and the body");
+        }
     }
 
     [Test]
@@ -40,13 +43,16 @@ public partial class EezSystemTxDecoderTests
     {
         Transaction tx = Decode(CanonicalVector);
 
-        Assert.That(tx.IsEezSystemTransaction(), Is.True, "the reserved type byte selects the system transaction codec");
-        Assert.That(tx.HasSystemTransactionFields(EezChainRules.Rollup0), Is.True, "decoding supplies the fixed sender, target, budget and price");
-        Assert.That(tx.Signature, Is.Null, "a system transaction is unsigned");
-        Assert.That((tx.ChainId, tx.Nonce, tx.Value, tx.Data.ToArray()), Is.EqualTo((1UL, 0UL, UInt256.Zero, new byte[] { 1, 2, 3, 4 })),
-            "the body fields are chain id, nonce, target, value and input in that order");
-        Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(CanonicalVector),
-            "re-encoding a decoded transaction reproduces the wire bytes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.IsEezSystemTransaction(), Is.True, "the reserved type byte selects the system transaction codec");
+            Assert.That(tx.HasSystemTransactionFields(EezChainRules.Rollup0), Is.True, "decoding supplies the fixed sender, target, budget and price");
+            Assert.That(tx.Signature, Is.Null, "a system transaction is unsigned");
+            Assert.That((tx.ChainId, tx.Nonce, tx.Value, tx.Data.ToArray()), Is.EqualTo((1UL, 0UL, UInt256.Zero, new byte[] { 1, 2, 3, 4 })),
+                "the body fields are chain id, nonce, target, value and input in that order");
+            Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(CanonicalVector),
+                "re-encoding a decoded transaction reproduces the wire bytes");
+        }
     }
 
     [Test]

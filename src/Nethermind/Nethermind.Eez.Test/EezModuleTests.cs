@@ -85,10 +85,13 @@ public class EezModuleTests
     {
         using IContainer container = SequencerContainer(Result.Success);
 
-        Assert.That(container.Resolve<EezDriver>().Sequences, Is.True, "the driver runs the sequencer after the follower");
-        Assert.That(container.Resolve<ISyncSlotComposer>(), Is.Not.Null, "the composer, the quorum, the registration reader and the poster resolve");
-        Assert.That(container.Resolve<ILiveBlockProducer>(), Is.Not.Null, "the Live block producer opens its producer environment");
-        Assert.That(container.Resolve<AttestationQuorum>().ProofSystems, Has.Length.EqualTo(1), "one attester per configured prover");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<EezDriver>().Sequences, Is.True, "the driver runs the sequencer after the follower");
+            Assert.That(container.Resolve<ISyncSlotComposer>(), Is.Not.Null, "the composer, the quorum, the registration reader and the poster resolve");
+            Assert.That(container.Resolve<ILiveBlockProducer>(), Is.Not.Null, "the Live block producer opens its producer environment");
+            Assert.That(container.Resolve<AttestationQuorum>().ProofSystems, Has.Length.EqualTo(1), "one attester per configured prover");
+        }
     }
 
     [Test]
@@ -133,10 +136,13 @@ public class EezModuleTests
     [Test]
     public void Resolve_TransactionProcessors_AreEezProcessorsOnEveryConstructionPath()
     {
-        Assert.That(_scope.Resolve<ITransactionProcessor>(), Is.InstanceOf<EezTransactionProcessor>(),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_scope.Resolve<ITransactionProcessor>(), Is.InstanceOf<EezTransactionProcessor>(),
             "block processing, RPC and prewarming resolve the scoped processor");
-        Assert.That(_scope.Resolve<ITransactionProcessorFactory>(), Is.InstanceOf<EezTransactionProcessorFactory>(),
-            "block-level access list execution builds its processors through the factory");
+            Assert.That(_scope.Resolve<ITransactionProcessorFactory>(), Is.InstanceOf<EezTransactionProcessorFactory>(),
+                "block-level access list execution builds its processors through the factory");
+        }
     }
 
     [Test]
@@ -150,9 +156,12 @@ public class EezModuleTests
     [Test]
     public void Resolve_Validators_AreTheEezRules()
     {
-        Assert.That(_scope.Resolve<IBlockValidator>(), Is.InstanceOf<EezBlockValidator>(), "block import rejects blobs and withdrawals");
-        Assert.That(_scope.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey), Is.InstanceOf<EezSpecChangeTxValidator>(),
-            "pool admission rejects system and blob transactions");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_scope.Resolve<IBlockValidator>(), Is.InstanceOf<EezBlockValidator>(), "block import rejects blobs and withdrawals");
+            Assert.That(_scope.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey), Is.InstanceOf<EezSpecChangeTxValidator>(),
+                "pool admission rejects system and blob transactions");
+        }
     }
 
     [TestCase(false, TestName = "ScopedProcessor")]

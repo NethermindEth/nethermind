@@ -51,11 +51,14 @@ public class AttesterTests
         JsonElement[] events = SignedEvents(logger);
         Assert.That(events, Has.Length.EqualTo(1), "only completed signed windows produce upstream proof evidence");
         JsonElement fields = events[0].GetProperty("fields");
-        Assert.That((fields.GetProperty("validated_from_block").GetInt32(), fields.GetProperty("validated_to_block").GetInt32(),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((fields.GetProperty("validated_from_block").GetInt32(), fields.GetProperty("validated_to_block").GetInt32(),
             fields.GetProperty("recomputed_public_inputs_hash").GetString()),
             Is.EqualTo((from, to, oracle.GetProperty("public_inputs_hash").GetString())), "upstream state-chaining matches the actual signed height and independently expected digest");
 
-        Assert.That(response.PublicInputsHash.ToByteArray().ToHexString(true), Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()));
+            Assert.That(response.PublicInputsHash.ToByteArray().ToHexString(true), Is.EqualTo(oracle.GetProperty("public_inputs_hash").GetString()));
+        }
         if (oracle.TryGetProperty("mined_proof", out JsonElement proof))
         {
             Assert.That(response.Signature.ToByteArray().ToHexString(true), Is.EqualTo(proof.GetString()), "the signature is the proof L1 accepted");
@@ -84,9 +87,12 @@ public class AttesterTests
 
         RpcException e = (await Assert.ThrowsAsync<RpcException>(() => server.Prove(mutate(Window(EffectWindow, 463, 468)))))!;
 
-        Assert.That(e.StatusCode, Is.EqualTo(code));
-        Assert.That(e.Status.Detail, Does.StartWith(message));
-        Assert.That(SignedEvents(logger), Is.Empty, "rejected input cannot count as a successful signed window");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(e.StatusCode, Is.EqualTo(code));
+            Assert.That(e.Status.Detail, Does.StartWith(message));
+            Assert.That(SignedEvents(logger), Is.Empty, "rejected input cannot count as a successful signed window");
+        }
     }
 
     private static JsonElement[] SignedEvents(RecordingLogger logger) => logger.Messages
@@ -247,8 +253,11 @@ public class AttesterTests
             ISpecProvider bare = ChainConfigLoader.Load(StatelessFixtures.PathOf(EffectWindow, "chain-config.json"));
             ISpecProvider full = ChainConfigLoader.Load(genesis);
 
-            Assert.That((bare.ChainId, full.ChainId), Is.EqualTo((6290UL, 6290UL)));
-            Assert.That(full.GetSpec(new ForkActivation(1, 1)).IsEip7702Enabled, Is.EqualTo(bare.GetSpec(new ForkActivation(1, 1)).IsEip7702Enabled));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((bare.ChainId, full.ChainId), Is.EqualTo((6290UL, 6290UL)));
+                Assert.That(full.GetSpec(new ForkActivation(1, 1)).IsEip7702Enabled, Is.EqualTo(bare.GetSpec(new ForkActivation(1, 1)).IsEip7702Enabled));
+            }
         }
         finally
         {
@@ -279,8 +288,11 @@ public class AttesterTests
         try
         {
             ISpecProvider provider = ChainConfigLoader.Load(path);
-            Assert.That(provider.GenesisSpec.FeeCollector, Is.EqualTo(Nethermind.Core.Test.Builders.TestItem.AddressD));
-            Assert.That(provider.GetSpec(new ForkActivation(1, 1)).FeeCollector, Is.EqualTo(Nethermind.Core.Test.Builders.TestItem.AddressD));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GenesisSpec.FeeCollector, Is.EqualTo(Nethermind.Core.Test.Builders.TestItem.AddressD));
+                Assert.That(provider.GetSpec(new ForkActivation(1, 1)).FeeCollector, Is.EqualTo(Nethermind.Core.Test.Builders.TestItem.AddressD));
+            }
         }
         finally
         {

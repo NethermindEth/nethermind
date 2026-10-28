@@ -40,8 +40,11 @@ public partial class EezStatelessExecutorTests
         Begin begin = frames[0].Begin;
         NativeGenesisSnapshot profile = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(capture, "l2-genesis.json")),
             (NativeSystemTxFormat)version);
-        Assert.That(begin.AnchorNumber, Is.Zero, "precondition: the cold capture starts at genesis");
-        Assert.That(profile.GenesisHash, Is.EqualTo(new ValueHash256(begin.AnchorHash.Span)), "the allocation-derived genesis equals the independently captured anchor");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(begin.AnchorNumber, Is.Zero, "precondition: the cold capture starts at genesis");
+            Assert.That(profile.GenesisHash, Is.EqualTo(new ValueHash256(begin.AnchorHash.Span)), "the allocation-derived genesis equals the independently captured anchor");
+        }
         NativeL1HeaderRules headerRules = ReadNativeHeaderRules(capture);
         NativeL1HeaderChain evidence = new();
         using (new NativeDecoderScope(profile.Rules))

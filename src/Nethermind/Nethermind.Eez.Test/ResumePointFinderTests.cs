@@ -132,9 +132,12 @@ public class ResumePointFinderTests
 
         SettledRecord? record = await new ResumePointFinder(_l1, _l2, Registry, RollupId, DeployBlock, 100, schedule).Find(100, CancellationToken.None);
 
-        Assert.That(record?.L2End, Is.SameAs(endpoint), "the held catch-up endpoint remains the resume point even when finalized");
-        Assert.That(record?.L1Number, Is.EqualTo(9));
-        Assert.That(record?.DescendantSeed, Is.EqualTo(reorganized ? TestItem.KeccakA : TestItem.KeccakB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record?.L2End, Is.SameAs(endpoint), "the held catch-up endpoint remains the resume point even when finalized");
+            Assert.That(record?.L1Number, Is.EqualTo(9));
+            Assert.That(record?.DescendantSeed, Is.EqualTo(reorganized ? TestItem.KeccakA : TestItem.KeccakB));
+        }
         _l2.ForkChoiceUpdated(endpoint.Hash, endpoint.Hash);
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(10200UL);
         _l1.GetBlockByNumber(3, Arg.Any<CancellationToken>()).Returns(new EezL1Block
@@ -167,8 +170,11 @@ public class ResumePointFinderTests
             NullUnsafeHeadSource.Instance, new RollupXHeaderRules(MainnetSpecProvider.Instance, rules), rules, _l2, new ChainEngine(_l2), config, LimboLogs.Instance);
         await follower.Boot(CancellationToken.None);
         await follower.Poll(CancellationToken.None);
-        Assert.That(follower.Heads.Finalized.Hash, Is.EqualTo(endpoint.Hash), "restart preserves the finalized catch-up endpoint");
-        Assert.That(seenSeed, Is.EqualTo(reorganized ? TestItem.KeccakA : TestItem.KeccakB), "the follower forwards the recovered seed into the next reconciliation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(follower.Heads.Finalized.Hash, Is.EqualTo(endpoint.Hash), "restart preserves the finalized catch-up endpoint");
+            Assert.That(seenSeed, Is.EqualTo(reorganized ? TestItem.KeccakA : TestItem.KeccakB), "the follower forwards the recovered seed into the next reconciliation");
+        }
     }
 
     private ResumePointFinder Finder(ulong scanBlocks) => new(_l1, _l2, Registry, RollupId, DeployBlock, scanBlocks);

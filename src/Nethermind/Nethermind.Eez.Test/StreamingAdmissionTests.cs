@@ -37,10 +37,13 @@ public partial class StreamingAdmissionTests
         Assert.That(workerCancellation.CanBeCanceled, Is.True, "precondition: input admission finished and the backend worker started");
         cancellation.Cancel();
         RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => response))!;
-        Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.Cancelled), "response cancellation is reported before worker completion");
-        Assert.That(admission.TryAcquire(), Is.Null, "a cancelled v1 response cannot admit a second expensive worker");
-        Assert.That(prover.WaitUntilIdle().IsCompleted, Is.False, "shutdown waits for the real worker");
-        Assert.That(workerCancellation.IsCancellationRequested, Is.True, "the v1 worker receives cancellation without losing its owned token source");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.Cancelled), "response cancellation is reported before worker completion");
+            Assert.That(admission.TryAcquire(), Is.Null, "a cancelled v1 response cannot admit a second expensive worker");
+            Assert.That(prover.WaitUntilIdle().IsCompleted, Is.False, "shutdown waits for the real worker");
+            Assert.That(workerCancellation.IsCancellationRequested, Is.True, "the v1 worker receives cancellation without losing its owned token source");
+        }
         worker.SetResult(new ProveResponse());
         await prover.WaitUntilIdle();
         using BackendAdmission.BackendLease? retry = admission.TryAcquire();

@@ -33,8 +33,11 @@ public class PostBatchGasTests
 
         PostBatch batch = AnchorBatch.Build(RollupId, Keccak.Compute("settled").ValueHash256, Keccak.Compute("last").ValueHash256, slot, ProofSystems(proofSystems));
 
-        Assert.That(PostBatchGas.Needed(batch, proofSystems), Is.LessThanOrEqualTo(PostBatchGas.DefaultLimit), "a full slot settles in one batch");
-        Assert.That(budget, Is.GreaterThan(50_000 / (int)blocksPerSlot), "the budget still leaves each block room for real transactions");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PostBatchGas.Needed(batch, proofSystems), Is.LessThanOrEqualTo(PostBatchGas.DefaultLimit), "a full slot settles in one batch");
+            Assert.That(budget, Is.GreaterThan(50_000 / (int)blocksPerSlot), "the budget still leaves each block room for real transactions");
+        }
     }
 
     [Test]

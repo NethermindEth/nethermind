@@ -218,11 +218,14 @@ public partial class RollupXStreamingConformanceTests
             [(new Hash256(block.Hash.Span), new Hash256(block.ParentHash.Span))]);
         RollupXSettlementExecution execution = new(specs, rules, context, LimboLogs.Instance);
         Hash256 seed = parent.MixHash!;
-        Assert.That(execution.Validate(window, input, parent, seed, parent.Hash!, CancellationToken.None), Is.EqualTo(new ValueHash256(RecordedProof(document.RootElement).Proof.PublicInputsHash.Span)),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(execution.Validate(window, input, parent, seed, parent.Hash!, CancellationToken.None), Is.EqualTo(new ValueHash256(RecordedProof(document.RootElement).Proof.PublicInputsHash.Span)),
             "precondition: the original seed reproduces the independent one-block digest");
-        Assert.That(seed, Is.Not.EqualTo(TestItem.KeccakA), "precondition: the mutation changes the trusted descendant seed");
-        Assert.That(() => execution.Validate(window, input, parent, TestItem.KeccakA, parent.Hash!, CancellationToken.None), Throws.TypeOf<EezSettlementException>(),
-            "valid execution cannot be signed against a different trusted descendant seed");
+            Assert.That(seed, Is.Not.EqualTo(TestItem.KeccakA), "precondition: the mutation changes the trusted descendant seed");
+            Assert.That(() => execution.Validate(window, input, parent, TestItem.KeccakA, parent.Hash!, CancellationToken.None), Throws.TypeOf<EezSettlementException>(),
+                "valid execution cannot be signed against a different trusted descendant seed");
+        }
     }
 
     private static ServerFrame RecordedProof(JsonElement scenario) => scenario.GetProperty("events").EnumerateArray()
@@ -238,8 +241,11 @@ public partial class RollupXStreamingConformanceTests
         foreach (string name in cases)
         {
             using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, name);
-            Assert.That(document.RootElement.GetProperty("format").GetInt32(), Is.EqualTo(2), "format changes require an explicit replay adapter");
-            Assert.That(document.RootElement.GetProperty("case").GetString() + ".json", Is.EqualTo(name), "every selected case retains its identity");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(document.RootElement.GetProperty("format").GetInt32(), Is.EqualTo(2), "format changes require an explicit replay adapter");
+                Assert.That(document.RootElement.GetProperty("case").GetString() + ".json", Is.EqualTo(name), "every selected case retains its identity");
+            }
             yield return new TestCaseData(name).SetName("ProveStream_RollupX_Upstream_" + Path.GetFileNameWithoutExtension(name));
         }
     }
@@ -286,9 +292,12 @@ public partial class RollupXStreamingConformanceTests
                         ServerFrame actual = streams[transport].ResponseStream.Current.Clone();
                         if (expected.Proof is not null && rejectedProof is { } rejection)
                         {
-                            Assert.That(actual.Proof, Is.Null, context + ": untrusted evidence must not return a signature");
-                            Assert.That(actual.Rejected, Is.Not.Null, context + ": the real finalizer must reject");
-                            Assert.That((actual.RequestId, actual.Rejected.Code), Is.EqualTo((expected.RequestId, (int)rejection)), context);
+                            using (Assert.EnterMultipleScope())
+                            {
+                                Assert.That(actual.Proof, Is.Null, context + ": untrusted evidence must not return a signature");
+                                Assert.That(actual.Rejected, Is.Not.Null, context + ": the real finalizer must reject");
+                                Assert.That((actual.RequestId, actual.Rejected.Code), Is.EqualTo((expected.RequestId, (int)rejection)), context);
+                            }
                             rejections++;
                             await streams[transport].RequestStream.CompleteAsync();
                         }

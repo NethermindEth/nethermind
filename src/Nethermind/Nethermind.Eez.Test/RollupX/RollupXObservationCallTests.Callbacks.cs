@@ -140,10 +140,13 @@ public partial class RollupXObservationCallTests
 
         Assert.That(outcome.Success, Is.True);
         byte[] expected = [.. Word(7), .. Word(7), .. Word((byte)Math.Max(0, originalBalance - 7))];
-        Assert.That(outcome.Output, Is.EqualTo(expected));
-        Assert.That(_state.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(uint)originalBalance));
-        Assert.That(_state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
-        Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(7));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outcome.Output, Is.EqualTo(expected));
+            Assert.That(_state.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(uint)originalBalance));
+            Assert.That(_state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+            Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(7));
+        }
     }
 
     [Test]

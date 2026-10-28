@@ -67,13 +67,16 @@ public class EezTransactionProcessorTests
         CallOutputTracer tracer = new();
         TransactionResult result = _processor.Execute(SystemTransaction(nonce: 0, Deposit), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: a zero-price system transaction passes validation despite a positive base fee");
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: the EEZL2 call succeeds");
-        Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(Deposit), "the minted value is transferred to EEZL2");
-        Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo((UInt256)systemBalanceWei), "the mint only funds the call and leaves existing system ether untouched");
-        Assert.That(_state.GetNonce(EezConstants.SystemAddress), Is.EqualTo(1UL), "the system nonce advances");
-        Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero), "a system transaction pays no fee to the beneficiary");
-        Assert.That(_block.Header.GasUsed, Is.EqualTo(GasCostOf.Transaction), "the call is metered: intrinsic gas plus a STOP");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: a zero-price system transaction passes validation despite a positive base fee");
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: the EEZL2 call succeeds");
+            Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(Deposit), "the minted value is transferred to EEZL2");
+            Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo((UInt256)systemBalanceWei), "the mint only funds the call and leaves existing system ether untouched");
+            Assert.That(_state.GetNonce(EezConstants.SystemAddress), Is.EqualTo(1UL), "the system nonce advances");
+            Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero), "a system transaction pays no fee to the beneficiary");
+            Assert.That(_block.Header.GasUsed, Is.EqualTo(GasCostOf.Transaction), "the call is metered: intrinsic gas plus a STOP");
+        }
     }
 
     [TestCaseSource(nameof(FailingCalls))]
@@ -85,12 +88,15 @@ public class EezTransactionProcessorTests
         CallOutputTracer tracer = new();
         TransactionResult result = _processor.Execute(SystemTransaction(nonce: 0, Deposit), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: a failed call is still an included transaction");
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), "precondition: the EEZL2 call fails");
-        Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(UInt256.Zero), "a failed call moves no value");
-        Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo((UInt256)systemBalanceWei), "the mint is discarded, restoring the pre-mint balance");
-        Assert.That(_state.GetNonce(EezConstants.SystemAddress), Is.EqualTo(1UL), "the nonce increment survives the failed call");
-        Assert.That(_block.Header.GasUsed, Is.EqualTo(expectedGasUsed), "the failed call's gas still counts against the block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: a failed call is still an included transaction");
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), "precondition: the EEZL2 call fails");
+            Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(UInt256.Zero), "a failed call moves no value");
+            Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo((UInt256)systemBalanceWei), "the mint is discarded, restoring the pre-mint balance");
+            Assert.That(_state.GetNonce(EezConstants.SystemAddress), Is.EqualTo(1UL), "the nonce increment survives the failed call");
+            Assert.That(_block.Header.GasUsed, Is.EqualTo(expectedGasUsed), "the failed call's gas still counts against the block");
+        }
     }
 
     [TestCaseSource(nameof(NonProtocolFields))]
@@ -102,9 +108,12 @@ public class EezTransactionProcessorTests
 
         TransactionResult result = _processor.Execute(tx, new CallOutputTracer());
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction),
             "only the protocol's sender, target, budget and price may execute as a system transaction");
-        Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(UInt256.Zero), "a rejected transaction mints nothing");
+            Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(UInt256.Zero), "a rejected transaction mints nothing");
+        }
     }
 
     [Test]
@@ -115,10 +124,13 @@ public class EezTransactionProcessorTests
         CallOutputTracer tracer = new();
         TransactionResult result = _processor.Execute(SystemTransaction(nonce: 0, UInt256.Zero), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: a zero-value system transaction executes");
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "the EEZL2 call succeeds");
-        Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo(UInt256.Zero), "nothing is minted");
-        Assert.That(_state.GetNonce(EezConstants.SystemAddress), Is.EqualTo(1UL), "the system account is created with its first nonce");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: a zero-value system transaction executes");
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "the EEZL2 call succeeds");
+            Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo(UInt256.Zero), "nothing is minted");
+            Assert.That(_state.GetNonce(EezConstants.SystemAddress), Is.EqualTo(1UL), "the system account is created with its first nonce");
+        }
     }
 
     [Test]
@@ -130,9 +142,12 @@ public class EezTransactionProcessorTests
 
         TransactionResult result = _processor.Execute(SystemTransaction(nonce: 0, UInt256.One), new CallOutputTracer());
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction),
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction),
             "a mint that overflows the balance invalidates the transaction instead of wrapping");
-        Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo(UInt256.MaxValue), "the balance is left untouched");
+            Assert.That(_state.GetBalance(EezConstants.SystemAddress), Is.EqualTo(UInt256.MaxValue), "the balance is left untouched");
+        }
     }
 
     [Test]
@@ -156,8 +171,11 @@ public class EezTransactionProcessorTests
 
         TransactionResult result = _processor.Execute(tx, new CallOutputTracer());
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the ordinary transfer executes");
-        Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo(21_000 * tip), "the beneficiary still earns the priority fee of ordinary transactions");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the ordinary transfer executes");
+            Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo(21_000 * tip), "the beneficiary still earns the priority fee of ordinary transactions");
+        }
     }
 
     [TestCaseSource(nameof(FeeCollectorCalls))]
@@ -171,9 +189,12 @@ public class EezTransactionProcessorTests
         CallOutputTracer tracer = new();
         TransactionResult result = _processor.Execute(OrdinaryTransaction(tip), tracer);
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the call is included even if it reverts or halts");
-        Assert.That(tracer.StatusCode == StatusCode.Success, Is.EqualTo(success), "precondition: the fixture reaches the intended EVM outcome");
-        Assert.That(_block.Header.GasUsed < 26_000, Is.EqualTo(refund), "precondition: storage clear receives its real refund");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the call is included even if it reverts or halts");
+            Assert.That(tracer.StatusCode == StatusCode.Success, Is.EqualTo(success), "precondition: the fixture reaches the intended EVM outcome");
+            Assert.That(_block.Header.GasUsed < 26_000, Is.EqualTo(refund), "precondition: storage clear receives its real refund");
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_state.GetBalance(TestItem.AddressD), Is.EqualTo(BaseFee * _block.Header.GasUsed), "base fees use final charged gas after refunds");
@@ -189,8 +210,11 @@ public class EezTransactionProcessorTests
         DeployEezl2(StopCode, 0);
         const ulong tip = 3;
         TransactionResult result = _processor.Execute(OrdinaryTransaction(tip), new CallOutputTracer());
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the ordinary call executes");
-        Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo((BaseFee + tip) * _block.Header.GasUsed), "base fee credit accumulates with the tip");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the ordinary call executes");
+            Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo((BaseFee + tip) * _block.Header.GasUsed), "base fee credit accumulates with the tip");
+        }
     }
 
     [Test]
@@ -199,8 +223,11 @@ public class EezTransactionProcessorTests
         ConfigureFeeCollector(TestItem.AddressD, Osaka.Instance);
         DeployEezl2(StopCode, 0);
         TransactionResult result = _processor.Execute(SystemTransaction(0, UInt256.Zero), new CallOutputTracer());
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the native call executes despite a positive block base fee");
-        Assert.That(_state.GetBalance(TestItem.AddressD), Is.EqualTo(UInt256.Zero), "native transactions credit no base fee");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the native call executes despite a positive block base fee");
+            Assert.That(_state.GetBalance(TestItem.AddressD), Is.EqualTo(UInt256.Zero), "native transactions credit no base fee");
+        }
     }
 
     [TestCase(false, false, TestName = "BeforeEip6780CollectorIsDeleted")]
@@ -235,8 +262,11 @@ public class EezTransactionProcessorTests
             .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
         CallOutputTracer tracer = new();
         TransactionResult result = _processor.Execute(tx, tracer);
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the reverted call is included");
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), "precondition: outer frame reverts the nested SELFDESTRUCT");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the reverted call is included");
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), "precondition: outer frame reverts the nested SELFDESTRUCT");
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_state.AccountExists(EezConstants.Eezl2Address), Is.True, "rollback restores the collector account");

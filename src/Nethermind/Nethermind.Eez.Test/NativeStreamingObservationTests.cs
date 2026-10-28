@@ -90,8 +90,11 @@ public sealed class NativeStreamingObservationTests
                             Proof proof = await finalizer.Finalize(operation, CancellationToken.None);
                             previous = connection.CompleteProof(operation, proof);
                             ValueHash256 digest = new(selected.GetProperty("public_inputs_hash").GetString()!);
-                            Assert.That(new ValueHash256(proof.PublicInputsHash.Span), Is.EqualTo(digest));
-                            Assert.That(proof.Proof_.Length, Is.EqualTo(65));
+                            using (Assert.EnterMultipleScope())
+                            {
+                                Assert.That(new ValueHash256(proof.PublicInputsHash.Span), Is.EqualTo(digest));
+                                Assert.That(proof.Proof_.Length, Is.EqualTo(65));
+                            }
                             Signature signature = new(proof.Proof_.Span[..64], proof.Proof_.Span[64] - 27);
                             Assert.That(new EthereumEcdsa(0).RecoverAddress(signature, in digest),
                                 Is.EqualTo(new Address(metadata.GetProperty("attester").GetString()!)));

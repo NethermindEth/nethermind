@@ -23,10 +23,13 @@ public class DaPayloadCodecTests
 
         DaPayload decoded = DaPayloadCodec.Decode(payload);
 
-        Assert.That(decoded.RollupId, Is.EqualTo(RollupId));
-        Assert.That(decoded.Span.BlockCount, Is.EqualTo(6), "the recorded batch settles blocks 79 to 84");
-        Assert.That(DaPayloadCodec.Encode(decoded.RollupId, Blocks(decoded.Span), decoded.Actions), Is.EqualTo(payload),
-            "the codec writes what the composer wrote");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.RollupId, Is.EqualTo(RollupId));
+            Assert.That(decoded.Span.BlockCount, Is.EqualTo(6), "the recorded batch settles blocks 79 to 84");
+            Assert.That(DaPayloadCodec.Encode(decoded.RollupId, Blocks(decoded.Span), decoded.Actions), Is.EqualTo(payload),
+                "the codec writes what the composer wrote");
+        }
     }
 
     [Test]
@@ -42,11 +45,14 @@ public class DaPayloadCodecTests
 
         DaPayload decoded = DaPayloadCodec.Decode(DaPayloadCodec.Encode(RollupId, blocks, actions));
 
-        Assert.That(decoded.Span.TransactionCounts, Is.EqualTo(new[] { 1, 0, 2 }), "a zero count keeps an empty block in place");
-        Assert.That(decoded.Span.Beneficiaries, Is.EqualTo(new[] { Beneficiary, Beneficiary, Address.Zero }));
-        Assert.That(decoded.Span.ExtraData.Select(static e => e.ToArray()), Is.EqualTo(blocks.Select(static b => b.ExtraData)));
-        Assert.That(decoded.Span.Transactions.Select(static t => t.ToArray()), Is.EqualTo(blocks.SelectMany(static b => b.Transactions)));
-        Assert.That(decoded.Actions.Select(Describe), Is.EqualTo(actions.Select(Describe)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Span.TransactionCounts, Is.EqualTo(new[] { 1, 0, 2 }), "a zero count keeps an empty block in place");
+            Assert.That(decoded.Span.Beneficiaries, Is.EqualTo(new[] { Beneficiary, Beneficiary, Address.Zero }));
+            Assert.That(decoded.Span.ExtraData.Select(static e => e.ToArray()), Is.EqualTo(blocks.Select(static b => b.ExtraData)));
+            Assert.That(decoded.Span.Transactions.Select(static t => t.ToArray()), Is.EqualTo(blocks.SelectMany(static b => b.Transactions)));
+            Assert.That(decoded.Actions.Select(Describe), Is.EqualTo(actions.Select(Describe)));
+        }
     }
 
     [Test]
@@ -101,8 +107,11 @@ public class DaPayloadCodecTests
 
         ExecutionEntry entry = action.ToEntry(RollupId);
 
-        Assert.That(entry.ProxyEntryHash, Is.EqualTo(CrossChainCallHash.Compute(false, action.SourceAddress, 0, action.TargetAddress, RollupId, action.Value, 0, action.Data)));
-        Assert.That(entry.RollingHash, Is.EqualTo(RollingHash.CallEnd(RollingHash.CallBegin(RollingHash.SeedL2(entry.ProxyEntryHash), entry.ProxyEntryHash), true, action.ReturnData)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.ProxyEntryHash, Is.EqualTo(CrossChainCallHash.Compute(false, action.SourceAddress, 0, action.TargetAddress, RollupId, action.Value, 0, action.Data)));
+            Assert.That(entry.RollingHash, Is.EqualTo(RollingHash.CallEnd(RollingHash.CallBegin(RollingHash.SeedL2(entry.ProxyEntryHash), entry.ProxyEntryHash), true, action.ReturnData)));
+        }
     }
 
     [Test]

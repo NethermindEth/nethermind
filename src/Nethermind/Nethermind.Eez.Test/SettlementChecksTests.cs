@@ -32,10 +32,13 @@ public class SettlementChecksTests
         RollupUpdate[] updates = RollupUpdateChain.Verify(batch, RollupId, pre, post);
         BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, [], [], []);
 
-        Assert.That(EntryShapes.Classify(batch.Entries[0], updates[0], RollupId), Is.EqualTo(EntryShape.Anchor), "the recorded entry is the canonical anchor");
-        Assert.That(effects, Is.Empty, "a window without cross-chain calls binds no effects");
-        Assert.That(PostBatchProfile.PublicInputsHash(batch, RollupId, new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!)),
-            Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)), "the profile's public inputs hash is the one the signer signed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EntryShapes.Classify(batch.Entries[0], updates[0], RollupId), Is.EqualTo(EntryShape.Anchor), "the recorded entry is the canonical anchor");
+            Assert.That(effects, Is.Empty, "a window without cross-chain calls binds no effects");
+            Assert.That(PostBatchProfile.PublicInputsHash(batch, RollupId, new ValueHash256(oracle.GetProperty("proof_system_vkey").GetString()!)),
+                Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)), "the profile's public inputs hash is the one the signer signed");
+        }
     }
 
     [TestCaseSource(nameof(OutOfProfileBatches))]
@@ -84,8 +87,11 @@ public class SettlementChecksTests
 
         InboundObservation observation = InboundDelivery.Inspect(7, EezCalldata.EncodeExecuteIncomingCrossChainCall(call), true, RollupId);
 
-        Assert.That(observation.CallHash, Is.EqualTo(callHash), "the call hash is recomputed from the delivered call");
-        Assert.That(observation.ReturnData, Is.EqualTo(new byte[] { 0xab }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observation.CallHash, Is.EqualTo(callHash), "the call hash is recomputed from the delivered call");
+            Assert.That(observation.ReturnData, Is.EqualTo(new byte[] { 0xab }));
+        }
         ExecutionEntry expected = new([], callHash, call.Entries[0].IncomingCalls, [], call.Entries[0].RollingHash, RollupId, true, [0xab]);
         Assert.That(EezCalldata.EntryHash(observation.DerivedDaEntry), Is.EqualTo(EezCalldata.EntryHash(expected)),
             "the DA entry carries the delivered call and the L2 rolling hash, and no state updates");
@@ -129,8 +135,11 @@ public class SettlementChecksTests
 
         (ExecutionEntry baseDaEntry, ValueHash256 pending) = OutboundCall.Authorize(entry, update, callHash, 0, RollupId);
 
-        Assert.That(baseDaEntry, Is.EqualTo(entry with { RollupUpdates = [], RollingHash = default }), "the DA entry drops the updates and the L1 rolling hash");
-        Assert.That(RollingHash.CallEnd(pending, true, PublishedResult), Is.EqualTo(entry.RollingHash), "the call's end, closed with DA's result, is the claimed rolling hash");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseDaEntry, Is.EqualTo(entry with { RollupUpdates = [], RollingHash = default }), "the DA entry drops the updates and the L1 rolling hash");
+            Assert.That(RollingHash.CallEnd(pending, true, PublishedResult), Is.EqualTo(entry.RollingHash), "the call's end, closed with DA's result, is the claimed rolling hash");
+        }
     }
 
     [Test]

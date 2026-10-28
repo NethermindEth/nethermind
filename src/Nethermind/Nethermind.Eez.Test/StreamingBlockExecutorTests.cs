@@ -143,8 +143,11 @@ public class StreamingBlockExecutorTests
         using SessionOperation operation = session.AdmitBlock(session.Binding, 1, _block);
         Assert.That(cancellation.IsCancellationRequested, Is.False, "cancellation must begin inside execution");
         Assert.That(() => executor.Execute(operation, cancellation.Token), Throws.TypeOf<OperationCanceledException>());
-        Assert.That(cancellation.IsCancellationRequested, Is.True, "the real execution reached the spec lookup");
-        Assert.That(session.Ready(session.Binding, 2).Ready.ValidatedThrough, Is.EqualTo(_parent.Number), "cancellation cannot acknowledge the executed block");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancellation.IsCancellationRequested, Is.True, "the real execution reached the spec lookup");
+            Assert.That(session.Ready(session.Binding, 2).Ready.ValidatedThrough, Is.EqualTo(_parent.Number), "cancellation cannot acknowledge the executed block");
+        }
         AssertCode(() => session.AdmitBlock(session.Binding, 3, _block), StatusCode.ResourceExhausted);
     }
 

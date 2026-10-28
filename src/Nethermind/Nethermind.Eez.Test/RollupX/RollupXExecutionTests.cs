@@ -68,8 +68,11 @@ public class RollupXExecutionTests
 
         TransactionResult result = processor.Execute(SystemTransaction(EezConstants.RollupXEezl2Address), new CallOutputTracer());
 
-        Assert.That(result.TransactionExecuted, Is.True, "precondition: the system transaction is not refused for a declared limit above what is left");
-        Assert.That(block.Header.GasUsed - gasUsedBefore, Is.EqualTo(expectedGas), "a halted call uses its whole budget, which is min(left, cap)");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "precondition: the system transaction is not refused for a declared limit above what is left");
+            Assert.That(block.Header.GasUsed - gasUsedBefore, Is.EqualTo(expectedGas), "a halted call uses its whole budget, which is min(left, cap)");
+        }
     }
 
     [Test]
@@ -101,10 +104,13 @@ public class RollupXExecutionTests
 
         Transaction decoded = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping)!;
 
-        Assert.That(decoded.To, Is.EqualTo(EezConstants.RollupXEezl2Address));
-        Assert.That(decoded.GasLimit, Is.EqualTo(EezChainRules.RollupXSystemTxGasCap), "the RollupX manager implies the cap, which execution narrows");
-        Assert.That(decoded.HasSystemTransactionFields(Rules), Is.True);
-        Assert.That(decoded.HasSystemTransactionFields(EezChainRules.Rollup0), Is.False, "a rollup0 chain refuses RollupX's manager");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.To, Is.EqualTo(EezConstants.RollupXEezl2Address));
+            Assert.That(decoded.GasLimit, Is.EqualTo(EezChainRules.RollupXSystemTxGasCap), "the RollupX manager implies the cap, which execution narrows");
+            Assert.That(decoded.HasSystemTransactionFields(Rules), Is.True);
+            Assert.That(decoded.HasSystemTransactionFields(EezChainRules.Rollup0), Is.False, "a rollup0 chain refuses RollupX's manager");
+        }
     }
 
     [Test]
@@ -126,8 +132,11 @@ public class RollupXExecutionTests
 
         UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
 
-        Assert.That(spec.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)50), "precondition: RollupX's denominator");
-        Assert.That(baseFee, Is.EqualTo((UInt256)expectedWei), "the base fee moves by 1/50 of the gap to the 15M target");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)50), "precondition: RollupX's denominator");
+            Assert.That(baseFee, Is.EqualTo((UInt256)expectedWei), "the base fee moves by 1/50 of the gap to the 15M target");
+        }
     }
 
     [Test]
@@ -147,10 +156,13 @@ public class RollupXExecutionTests
         new ProtocolBalanceCleanup(inner, _state, _specProvider, Rules)
             .ProcessTransactions(Build.A.Block.WithNumber(1).TestObject, ProcessingOptions.None, new BlockReceiptsTracer());
 
-        Assert.That(managerBalanceSeenByTransactions, Is.EqualTo(UInt256.Zero), "the burn runs before the first transaction");
-        Assert.That(_state.AccountExists(EezConstants.RollupXEezl2Address), Is.True, "the manager keeps its code and only loses its ether");
-        Assert.That(_state.AccountExists(EezConstants.SystemAddress), Is.False, "an emptied system account without a nonce is removed under EIP-161");
-        Assert.That(_state.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)9), "no other balance is touched");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(managerBalanceSeenByTransactions, Is.EqualTo(UInt256.Zero), "the burn runs before the first transaction");
+            Assert.That(_state.AccountExists(EezConstants.RollupXEezl2Address), Is.True, "the manager keeps its code and only loses its ether");
+            Assert.That(_state.AccountExists(EezConstants.SystemAddress), Is.False, "an emptied system account without a nonce is removed under EIP-161");
+            Assert.That(_state.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)9), "no other balance is touched");
+        }
     }
 
     [Test]
@@ -165,8 +177,11 @@ public class RollupXExecutionTests
 
         new ExecutionRequestsProcessor(transactionProcessor, EezExecutionRequests.For(Rules)).ProcessExecutionRequests(block, _state, [], spec);
 
-        Assert.That(block.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash), "the header still commits to no requests");
-        Assert.That(block.ExecutionRequests, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash), "the header still commits to no requests");
+            Assert.That(block.ExecutionRequests, Is.Empty);
+        }
         transactionProcessor.DidNotReceiveWithAnyArgs().Execute(default!, default!);
     }
 
@@ -181,11 +196,14 @@ public class RollupXExecutionTests
             .Build();
         using ILifetimeScope scope = container.BeginLifetimeScope(processing => processing.AddSingleton(_state));
 
-        Assert.That(scope.Resolve<IBeaconBlockRootHandler>(), Is.SameAs(NoBeaconRootsCall.Instance), "RollupX never calls the beacon roots contract");
-        Assert.That(scope.Resolve<ExecutionRequestsOptions>().ReadsRequests, Is.False, "RollupX blocks carry no requests");
-        Assert.That(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), Is.InstanceOf<ProtocolBalanceCleanup>(), "every block starts with the burn");
-        Assert.That(scope.Resolve<ISpecProvider>().GetSpec(new ForkActivation(1)).BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)50));
-        Assert.That(scope.Resolve<IHeaderValidator>(), Is.InstanceOf<RollupXHeaderValidator>(), "headers are held to RollupX's fixed profile");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Resolve<IBeaconBlockRootHandler>(), Is.SameAs(NoBeaconRootsCall.Instance), "RollupX never calls the beacon roots contract");
+            Assert.That(scope.Resolve<ExecutionRequestsOptions>().ReadsRequests, Is.False, "RollupX blocks carry no requests");
+            Assert.That(scope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>(), Is.InstanceOf<ProtocolBalanceCleanup>(), "every block starts with the burn");
+            Assert.That(scope.Resolve<ISpecProvider>().GetSpec(new ForkActivation(1)).BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)50));
+            Assert.That(scope.Resolve<IHeaderValidator>(), Is.InstanceOf<RollupXHeaderValidator>(), "headers are held to RollupX's fixed profile");
+        }
     }
 
     [Test]
@@ -251,8 +269,11 @@ public class RollupXExecutionTests
             });
         EezStatelessExecutor executor = new(_specProvider, Rules, LimboLogs.Instance);
         StatelessBlockProcessingEnv env = executor.CreateEnvironment(witness, transactionsExecutorDecorator: (_, _) => probe);
-        Assert.That(env.ExecutionRequestsOptions.ReadsRequests, Is.False);
-        Assert.That(env.BeaconBlockRootHandlerFactory!(Substitute.For<ITransactionProcessor>(), _state), Is.SameAs(NoBeaconRootsCall.Instance));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.ExecutionRequestsOptions.ReadsRequests, Is.False);
+            Assert.That(env.BeaconBlockRootHandlerFactory!(Substitute.For<ITransactionProcessor>(), _state), Is.SameAs(NoBeaconRootsCall.Instance));
+        }
         IBlockProcessor.IBlockTransactionsExecutor decorated = env.TransactionsExecutorDecorator!(Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(), _state);
         decorated.ProcessTransactions(Build.A.Block.WithNumber(1).TestObject, ProcessingOptions.None, new BlockReceiptsTracer());
         Assert.That(capturedPrefix, Is.EqualTo(expectedPrefix), "the pre-execution checkpoint decorator sees the independently constructed post-burn state");

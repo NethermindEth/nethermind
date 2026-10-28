@@ -51,8 +51,11 @@ public class EezSequencerTests
         _clock.Add(TimeSpan.FromSeconds(2));
         await sequencer.Advance(_heads, anchor, CancellationToken.None);
 
-        Assert.That(_heads.Head.Number, Is.EqualTo(2), "a Live block each L2 block time, on the clock");
-        Assert.That(_composer.Calls, Is.Empty, "nothing is composed before the proof window opens");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_heads.Head.Number, Is.EqualTo(2), "a Live block each L2 block time, on the clock");
+            Assert.That(_composer.Calls, Is.Empty, "nothing is composed before the proof window opens");
+        }
     }
 
     /// <summary>
@@ -73,9 +76,12 @@ public class EezSequencerTests
 
         Assert.That(_composer.Calls, Has.Count.EqualTo(1), "one Sync block for the slot");
         (BlockHeader parent, SlotPlan plan) = _composer.Calls[0];
-        Assert.That((parent.Number, parent.Timestamp), Is.EqualTo((5UL, _genesisTimestamp + 10)), "the Live blocks still missing and the Future block before it");
-        Assert.That(plan, Is.EqualTo(SlotPlan.Steady(new BundleTarget(11, _genesisTimestamp + 12), 10)),
-            "pinned to the next L1 block, whose timestamp the Sync block carries, with the anchor as what the follower has read");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parent.Number, parent.Timestamp), Is.EqualTo((5UL, _genesisTimestamp + 10)), "the Live blocks still missing and the Future block before it");
+            Assert.That(plan, Is.EqualTo(SlotPlan.Steady(new BundleTarget(11, _genesisTimestamp + 12), 10)),
+                "pinned to the next L1 block, whose timestamp the Sync block carries, with the anchor as what the follower has read");
+        }
     }
 
     [Test]
@@ -98,9 +104,12 @@ public class EezSequencerTests
         await sequencer.Advance(_heads, Anchor(secondsAfterGenesis: 1_200), CancellationToken.None);
 
         (BlockHeader parent, SlotPlan plan) = _composer.Calls[0];
-        Assert.That((parent.Number + 1) % Timing.K, Is.Zero, "the catch-up ends at a Sync height derivation rebuilds by position");
-        Assert.That(parent.Number + 1, Is.LessThanOrEqualTo(RollupTiming.MaxBlocksPerCatchup), "one catch-up settles in one batch");
-        Assert.That(plan, Is.EqualTo(SlotPlan.Catchup(10)), "past blocks settle in whichever L1 block takes them");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parent.Number + 1) % Timing.K, Is.Zero, "the catch-up ends at a Sync height derivation rebuilds by position");
+            Assert.That(parent.Number + 1, Is.LessThanOrEqualTo(RollupTiming.MaxBlocksPerCatchup), "one catch-up settles in one batch");
+            Assert.That(plan, Is.EqualTo(SlotPlan.Catchup(10)), "past blocks settle in whichever L1 block takes them");
+        }
     }
 
     [Test]
