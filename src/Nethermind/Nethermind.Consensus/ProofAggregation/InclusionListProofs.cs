@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,15 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
     /// <summary>Held proofs verified under the target fork per local list, so a verifier miss cannot stall
     /// <c>engine_getInclusionListV2</c> past its timeout.</summary>
     internal const int MaxHeldProofVerifications = 2;
+
+    /// <summary>List-proof verdicts kept apart from the shared verdict cache: up to 16 lists for each of a few slots.</summary>
+    /// <remarks>The same lists arrive through every forkchoiceUpdated and newPayload of a slot, so wrapper traffic evicting the
+    /// shared cache must not make each call verify them natively again.</remarks>
+    internal const int MaxListVerdicts = 16 * 8;
+
+    private readonly Lock _verdictsLock = new();
+    private readonly Dictionary<(ValueHash256 Proof, ValueHash256 Deps, ValueHash256 AggregatedVk), bool> _verdicts = [];
+    private readonly Queue<(ValueHash256 Proof, ValueHash256 Deps, ValueHash256 AggregatedVk)> _verdictOrder = new();
 
     /// <summary>Chooses the held verified recursive proof a locally built list attaches: taking <paramref name="candidates"/> in the
     /// caller's order, the smallest held proof covering a candidate whose <c>InclusionListProof</c> container fits
@@ -92,14 +102,29 @@ public sealed class InclusionListProofService(ILeanProofVerifier verifier, LeanP
         return proven;
     }
 
+    /// <remarks>A proof over more than <see cref="Eip8288Constants.MaxProofDependencies"/> dependencies is not verified: the pinned
+    /// guest commits to at most that many, so none verifies, and the builder could not fold one into its block aggregate.</remarks>
     private bool TryVerify(CommitteeInclusionList list, IReleaseSpec spec, out List<FrameDependency>? proofDeps)
     {
         proofDeps = null;
-        if (list.StarkProof.Length == 0 || list.ProofDeps.Length == 0
+        if (list.StarkProof.Length == 0 || list.ProofDeps.Length is 0 or > Eip8288Constants.MaxProofDependencies
             || !InclusionListProofValidator.TryParseProofDeps(list.ProofDeps, out proofDeps))
             return false;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(proofDeps!);
-        return ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.For(spec), in depsHash, list.StarkProof);
+        Eip8288Verifier forkVerifier = Eip8288Verifier.For(spec);
+        ValueHash256 proofHash = ValueKeccak.Compute(list.StarkProof);
+        (ValueHash256, ValueHash256, ValueHash256) key = (proofHash, Eip8288Dependencies.ComputeDepsHash(proofDeps!), forkVerifier.AggregatedVk);
+        lock (_verdictsLock)
+            if (_verdicts.TryGetValue(key, out bool known)) return known;
+        bool valid = ProofVerdictCache.VerifyRecursive(verifier, in forkVerifier, in key.Item2, list.StarkProof, proofHash);
+        lock (_verdictsLock)
+        {
+            if (_verdicts.TryAdd(key, valid))
+            {
+                _verdictOrder.Enqueue(key);
+                if (_verdictOrder.Count > MaxListVerdicts) _verdicts.Remove(_verdictOrder.Dequeue());
+            }
+        }
+        return valid;
     }
 }
 

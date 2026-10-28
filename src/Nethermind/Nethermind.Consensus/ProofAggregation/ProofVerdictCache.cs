@@ -48,11 +48,16 @@ public sealed class ProofVerdictCache
     /// <summary>Verifies a recursive aggregate proof against <paramref name="depsHash"/> under <paramref name="forkVerifier"/>'s
     /// <c>AGGREGATED_VK</c>.</summary>
     public static bool VerifyRecursive(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, in ValueHash256 depsHash, byte[] proof)
+        => VerifyRecursive(verifier, in forkVerifier, in depsHash, proof, ValueKeccak.Compute(proof));
+
+    /// <inheritdoc cref="VerifyRecursive(ILeanProofVerifier, in Eip8288Verifier, in ValueHash256, byte[])"/>
+    /// <param name="proofHash">The caller's <c>keccak256(proof)</c>.</param>
+    internal static bool VerifyRecursive(ILeanProofVerifier verifier, in Eip8288Verifier forkVerifier, in ValueHash256 depsHash, byte[] proof,
+        ValueHash256 proofHash)
     {
         ValueHash256 deps = depsHash;
         ValueHash256 key = forkVerifier.AggregatedVk;
         ProofVerdictCache cache = For(verifier);
-        ValueHash256 proofHash = ValueKeccak.Compute(proof);
         return cache.Verify(cache._aggregate, new AggregateKey(proofHash, deps, key), proof, proofHash,
             () => verifier.VerifyRecursiveStark(in deps, key.Bytes, proof));
     }

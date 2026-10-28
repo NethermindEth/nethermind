@@ -205,9 +205,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
-        // An empty or invalid list proof obligates only the list's dependency-free transactions (EIPs#12475).
-        _inclusionListProofs?.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
-        ValueHash256 inclusionListDigest = ComputeInclusionListDigest(block);
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
@@ -261,6 +258,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
+
+        // Verifying list proofs natively is the costliest step before execution, so it follows every check that can answer
+        // without them. An empty or invalid list proof obligates only the list's dependency-free transactions (EIPs#12475).
+        ValueHash256? resolvedInclusionListDigest = null;
+        ValueHash256 InclusionListDigest()
+        {
+            if (resolvedInclusionListDigest is { } digest) return digest;
+            _inclusionListProofs?.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
+            return (resolvedInclusionListDigest = ComputeInclusionListDigest(block)).Value;
+        }
 
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
@@ -317,7 +324,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer, so reuse a
                 // cached one only while the verdict is serviceable.
-                if (IsVerdictServiceable(block) && TryGetCachedResult(block, inclusionListDigest, out ResultWrapper<PayloadStatusV1>? cachedResult))
+                if (IsVerdictServiceable(block) && TryGetCachedResult(block, InclusionListDigest(), out ResultWrapper<PayloadStatusV1>? cachedResult))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return cachedResult;
@@ -327,7 +334,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 if (_stateReader.HasStateForBlock(block.Header)
                     || (await WriteReceivedIfWaiting(receivedLine, _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider)) && _stateReader.HasStateForBlock(block.Header)))
                 {
-                    if (EvaluateInclusionListFromState(block, inclusionListDigest) is { } fromState)
+                    if (EvaluateInclusionListFromState(block, InclusionListDigest()) is { } fromState)
                     {
                         if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
                         return fromState;
@@ -413,7 +420,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, inclusionListDigest, receivedLine);
+        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers, InclusionListDigest(), receivedLine);
 
         switch (result)
         {

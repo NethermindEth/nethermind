@@ -157,21 +157,41 @@ public class InclusionListProofsTests
 
     // EIP-8288 Test Case 9: the same signed list has the same proof verdict under the target block's fork, so resolving it again,
     // as forkchoiceUpdated, newPayload and a later compliance check do, reuses the cached verdict.
+    // Wrapper traffic evicting the shared verdict cache must not make each forkchoiceUpdated verify the lists natively again.
     [Test]
-    public void Resolving_the_same_list_again_reuses_its_verdict()
+    public void Resolving_the_same_list_again_reuses_its_verdict([Values] bool sharedCacheEvicted)
     {
         FakeLeanProofVerifier verifier = new(true);
         InclusionListProofService service = new(verifier);
         Transaction covered = ValidDependencyFrame(default);
         byte[][] proofDeps = Encode(Eip8288Dependencies.ForTransaction(covered, FrameTxSigHash.ComputeValue));
+        int otherVerifications = 0;
         for (int i = 0; i < 3; i++)
         {
             CommitteeInclusionList[] lists = [new([covered], [2], proofDeps), new([covered], [2], proofDeps)];
             service.ResolveObligations(lists, Eip8288Prototype.Instance);
             Assert.That(lists.Select(static list => list.VerifiedProofDeps), Has.All.Not.Null);
             Assert.That(InclusionListProofService.ProvenInputs(lists), Has.Count.EqualTo(1), "one proof shared by two lists is folded once");
+            if (!sharedCacheEvicted) continue;
+            ValueHash256 deps = ValueKeccak.Compute([(byte)i]);
+            for (int j = 0; j <= ProofVerdictCache.Capacity; j++, otherVerifications++)
+                ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.Pinned, in deps, BitConverter.GetBytes(j));
         }
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        Assert.That(verifier.VerificationCalls - otherVerifications, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void A_list_proof_beyond_the_proving_bound_obligates_nothing_and_is_not_verified()
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        FrameDependency[] dependencies = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1).Select(i => Dependency($"wide-{i}"))];
+        CommitteeInclusionList[] lists = [new([ValidDependencyFrame(default)], [1], Encode(Eip8288Dependencies.Canonicalize(dependencies)))];
+        new InclusionListProofService(verifier).ResolveObligations(lists, Eip8288Prototype.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lists[0].VerifiedProofDeps, Is.Null);
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
     }
 
     [Test]
