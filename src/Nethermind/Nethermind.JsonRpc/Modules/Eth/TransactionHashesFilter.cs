@@ -14,7 +14,7 @@ public class TransactionHashesFilter : IJsonRpcParam
 
     public void ReadJson(JsonElement jsonValue, JsonSerializerOptions options)
     {
-        // An empty list leaves the filter unset so every receipt is delivered, as geth does.
+        // An empty list leaves the filter unset so every receipt is delivered, the same as a missing list.
         if (jsonValue.TryGetProperty("transactionHashes", out JsonElement hashesElement) &&
             hashesElement.ValueKind == JsonValueKind.Array &&
             hashesElement.GetArrayLength() is int hashCount and > 0)

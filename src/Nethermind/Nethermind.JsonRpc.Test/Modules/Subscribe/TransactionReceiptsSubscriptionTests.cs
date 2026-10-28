@@ -115,6 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             HashSet<ValueHash256> hashes = Enumerable.Range(0, hashCount)
                 .Select(_ => (ValueHash256)Keccak.Compute("test" + Guid.NewGuid()))
                 .ToHashSet();
+            string filterJson = $$"""{"transactionHashes":[{{string.Join(',', hashes.Select(static h => $"\"{h}\""))}}]}""";
 
             TransactionHashesFilter filter = new() { TransactionHashes = hashes };
 
@@ -123,13 +124,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Action act = () => new TransactionReceiptsSubscription(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _specProvider, _logManager, filter);
 
-                Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
-
-                string filterJson = $$"""{"transactionHashes":[{{string.Join(',', hashes.Select(static h => $"\"{h}\""))}}]}""";
-                Assert.That(() => ParseFilter(filterJson), Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
+                    Assert.That(() => ParseFilter(filterJson), Throws.TypeOf<ArgumentException>().With.Message.Contains("Cannot subscribe to more than 200 transaction hashes"));
+                }
             }
             else
             {
+                Assert.That(ParseFilter(filterJson).TransactionHashes, Is.EquivalentTo(hashes));
+
                 using TransactionReceiptsSubscription subscription = new(
                     _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _specProvider, _logManager, filter);
 
