@@ -37,6 +37,11 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public int Serialize(Span<byte> destination, AuthMessage msg)
         {
+            if (msg.Nonce.Length != NonceLength)
+            {
+                throw new ArgumentException($"{nameof(AuthMessage)} nonce must be {NonceLength} bytes, not {msg.Nonce.Length}.", nameof(msg));
+            }
+
             msg.Signature.Bytes.CopyTo(destination[SigOffset..]);
             destination[SigOffset + SigLength - 1] = msg.Signature.RecoveryId;
             msg.EphemeralPublicHash.Bytes.CopyTo(destination[EphemeralHashOffset..]);

@@ -40,4 +40,12 @@ public class AuthResponseMessageSerializerTests
 
     [Test]
     public void Test() => TestEncodeDecode();
+
+    [Test]
+    public void Rejects_nonce_of_wrong_length([Values(AckMessageSerializer.NonceLength - 1, AckMessageSerializer.NonceLength + 1)] int nonceLength)
+    {
+        AckMessage message = new() { EphemeralPublicKey = _privateKey.PublicKey, Nonce = new byte[nonceLength] };
+
+        Assert.Throws<ArgumentException>(() => _serializer.SerializeToArray(message));
+    }
 }

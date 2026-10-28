@@ -190,7 +190,6 @@ public class EciesCipherTests
 
         byte[] data = _messageSerializationService.SerializeToArray(ackMessage);
 
-        // TODO: check 102
         Assert.That(data, Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
     }
 

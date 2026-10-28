@@ -3,8 +3,10 @@
 
 using System;
 using System.Text;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -210,10 +212,14 @@ public class EncryptionHandshakeServiceTests
         byte[] padding = new byte[expectedPadding];
         Array.Fill(padding, (byte)0xAB);
         Func<int, int> nextInt = useMaxRandom ? static max => max - 1 : static _ => 0;
-        TestRandom random = new(nextInt, NetTestVectors.NonceA, NetTestVectors.EphemeralKeyA.KeyBytes, padding);
-        HandshakeService service = new(_messageSerializationService, _eciesCipher, random, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
+        using TestRandom random = new(nextInt, NetTestVectors.NonceA, NetTestVectors.EphemeralKeyA.KeyBytes, padding);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ICryptoRandom>(random)
+            .AddSingleton(_eciesCipher)
+            .Build();
 
-        Packet auth = service.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
+        Packet auth = container.Resolve<IHandshakeService>().Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
 
         (_, byte[]? plainText) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, auth.Data[2..], auth.Data[..2]);
         RlpReader body = new(plainText.AsSpan());

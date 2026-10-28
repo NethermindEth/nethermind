@@ -20,6 +20,11 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public int Serialize(Span<byte> destination, AckMessage msg)
         {
+            if (msg.Nonce.Length != NonceLength)
+            {
+                throw new ArgumentException($"{nameof(AckMessage)} nonce must be {NonceLength} bytes, not {msg.Nonce.Length}.", nameof(msg));
+            }
+
             msg.EphemeralPublicKey.Bytes.CopyTo(destination[EphemeralPublicKeyOffset..]);
             msg.Nonce.CopyTo(destination.Slice(NonceOffset, NonceLength));
             destination[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
