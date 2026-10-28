@@ -654,7 +654,7 @@ public class StartupTests
     [Test]
     [NonParallelizable]
     public async Task ProcessJsonRpcRequest_DebugDeadlineReportsFailureThroughKestrel(
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash))] string method,
         [Values] bool bufferResponse, [Values] bool flush, [Values] bool batch,
         [Values(0, 32 * 1024)] int payloadSize)
     {
@@ -686,7 +686,7 @@ public class StartupTests
             EnabledModules = [ModuleType.Engine, ModuleType.Debug],
             BufferResponses = bufferResponse
         }, jsonRpcLocalStats: stats, debugModule: debugModule);
-        string selector = method == "debug_traceBlockByNumber" ? "\"latest\"" : JsonSerializer.Serialize(TestItem.KeccakA.ToString());
+        string selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber) ? "\"latest\"" : JsonSerializer.Serialize(TestItem.KeccakA.ToString());
         string request = CreateJsonRpcRequest(method, paramsJson: "[" + selector + ",{\"streamMode\":true}]");
         if (batch) request = "[" + CreateJsonRpcRequest(idJson: "2") + "," + request + "]";
         long successes = JsonRpcMetrics.JsonRpcSuccesses;
@@ -729,6 +729,8 @@ public class StartupTests
         stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == method && !report.Success), Arg.Any<long>(), Arg.Any<long?>());
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(() => resultCancellation.Token, Throws.TypeOf<ObjectDisposedException>(),
+                "the pipeline must release the result's source before fixture cleanup");
             Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo(batch ? 1 : 0));
             Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(1));
         }

@@ -3,10 +3,10 @@
 
 using Autofac;
 using System;
-using Nethermind.Blockchain.Tracing.GethStyle;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;

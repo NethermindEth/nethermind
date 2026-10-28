@@ -342,9 +342,8 @@ public class GethStyleTracerTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public void Execution_deadline_excludes_paused_time_without_resetting_remaining_budget(int pauses)
+    [Test]
+    public void Execution_deadline_excludes_paused_time_without_resetting_remaining_budget([Values(1, 2)] int pauses)
     {
         DeadlineClock clock = new();
         using GethTraceDeadline deadline = new(clock: clock);

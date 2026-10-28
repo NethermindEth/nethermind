@@ -161,6 +161,10 @@ internal sealed class GethLikeBlockDeadlineTracer(
     }
 }
 
+/// <summary>Shares the current transaction deadline within one tracer graph.</summary>
+/// <remarks>
+/// Not thread-safe. Each graph requires a fresh scope; parallel traces must not share an instance.
+/// </remarks>
 internal sealed class GethTraceDeadlineScope
 {
     internal GethTraceDeadline? Current { get; set; }
