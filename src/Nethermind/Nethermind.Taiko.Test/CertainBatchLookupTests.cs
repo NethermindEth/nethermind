@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -295,26 +296,63 @@ public class CertainBatchLookupTests
         Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(signalSlotsEnabled ? (UInt256?)blockNumber : null));
     }
 
-    private static IBlockFinder CreateBlockFinderWithShastaHead(ulong blockNumber, byte[] anchorSelector)
+    /// <param name="proposalIds">Proposal id of each block, from the head (block number <c>proposalIds.Length</c>) down to block 1.</param>
+    /// <param name="preconfBlocks">How many blocks from the head have a preconfirmation L1 origin.</param>
+    [TestCase(new ulong[] { 5, 5, 5 }, 0, 6UL, null, 0, TestName = "Batch newer than head")]
+    [TestCase(new ulong[] { 6, 4, 4 }, 0, 5UL, null, 1, TestName = "Batch missing between proposals")]
+    [TestCase(new ulong[] { 6, 5, 5 }, 0, 5UL, 2UL, 1, TestName = "Steps past newer batch")]
+    [TestCase(new ulong[] { 5, 5, 4 }, 1, 5UL, 2UL, 1, TestName = "Skips preconf head of same batch")]
+    public void TestBatchLookup_ScanPathFollowsProposalIds(ulong[] proposalIds, int preconfBlocks, ulong batchId, ulong? expectedBlockId, int expectedBlocksLoaded)
     {
-        // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=1, 6 bytes big-endian].
-        byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
-        extraData[TaikoHeaderHelper.ShastaExtraDataLen - 1] = 1;
-
-        BlockHeader header = Build.A.BlockHeader
-            .WithNumber(blockNumber)
-            .WithExtraData(extraData)
-            .TestObject;
-        Transaction anchorTx = Build.A.Transaction
-            .WithData(anchorSelector)
-            .TestObject;
-        Block block = Build.A.Block
-            .WithHeader(header)
-            .WithTransactions(anchorTx)
-            .TestObject;
+        ulong headNumber = (ulong)proposalIds.Length;
+        Block[] blocks = new Block[proposalIds.Length];
+        for (int i = 0; i < proposalIds.Length; i++)
+        {
+            ulong blockNumber = headNumber - (ulong)i;
+            blocks[i] = CreateShastaBlock(blockNumber, proposalIds[i], TaikoBlockValidator.AnchorV4Selector);
+            if (i < preconfBlocks)
+            {
+                _store.WriteL1Origin(blockNumber, new L1Origin(blockNumber, Hash256.Zero, 0, Hash256.Zero, null));
+            }
+        }
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(block);
+        blockFinder.Head.Returns(blocks[0]);
+        int blocksLoaded = 0;
+        blockFinder.FindBlock(Arg.Any<ulong>()).Returns(callInfo =>
+        {
+            blocksLoaded++;
+            ulong blockNumber = callInfo.ArgAt<ulong>(0);
+            return blockNumber is 0 ? null : blocks[headNumber - blockNumber];
+        });
+
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, blockFinder: blockFinder);
+
+        ResultWrapper<UInt256?> result = rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.EqualTo((UInt256?)expectedBlockId));
+            Assert.That(blocksLoaded, Is.EqualTo(expectedBlocksLoaded));
+        }
+    }
+
+    private static Block CreateShastaBlock(ulong blockNumber, UInt256 proposalId, byte[] anchorSelector)
+    {
+        // Shasta extraData layout: [basefeeSharingPctg=0][proposalId, 6 bytes big-endian].
+        byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
+        proposalId.ToBigEndian().AsSpan(32 - TaikoHeaderHelper.ShastaExtraDataProposalIDLength).CopyTo(extraData.AsSpan(TaikoHeaderHelper.ShastaExtraDataProposalIDIndex));
+
+        return Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithNumber(blockNumber).WithExtraData(extraData).TestObject)
+            .WithTransactions(Build.A.Transaction.WithData(anchorSelector).TestObject)
+            .TestObject;
+    }
+
+    private static IBlockFinder CreateBlockFinderWithShastaHead(ulong blockNumber, byte[] anchorSelector)
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(CreateShastaBlock(blockNumber, 1, anchorSelector));
         return blockFinder;
     }
 
