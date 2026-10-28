@@ -119,8 +119,21 @@ public class StreamingEndpointTests(string fixture, int from, int to)
         try { await call.RequestStream.WriteAsync(new ClientFrame { Begin = _server.Anchor }); }
         catch (Exception exception) when (exception is IOException or RpcException) { }
         RpcException failure = (await Assert.ThrowsAsync<RpcException>(async () => await response))!;
-        Assert.That(failure.StatusCode, Is.AnyOf(StatusCode.Unavailable, StatusCode.Unauthenticated), "TLS requires a pinned certificate and its private key");
-        Assert.That(_server.L1.Requests, Is.EqualTo(0), "an untrusted connection never acquires settlement evidence");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsTransportRejection(failure), Is.True, $"TLS requires a pinned certificate and its private key: {failure}");
+            Assert.That(_server.L1.Requests, Is.EqualTo(0), "an untrusted connection never acquires settlement evidence");
+        }
+    }
+
+    [Test]
+    public void TransportRejection_InternalStatus_RequiresProtocolFailure([Values] bool transport)
+    {
+        Exception? cause = transport
+            ? new HttpRequestException("HTTP/2 connection failed", new HttpProtocolException(0, "peer closed connection", null))
+            : null;
+        RpcException failure = new(new Status(StatusCode.Internal, "request failed", cause));
+        Assert.That(IsTransportRejection(failure), Is.EqualTo(transport), "an application Internal status cannot stand in for transport rejection");
     }
 
     [Test]
@@ -222,6 +235,15 @@ public class StreamingEndpointTests(string fixture, int from, int to)
         ServerFrame ready = call.ResponseStream.Current;
         Assert.That(ready.Ready?.ValidatedThrough, Is.EqualTo((ulong)from - 1), "Ready binds the configured rollup anchor");
         return ready;
+    }
+
+    private static bool IsTransportRejection(RpcException failure)
+    {
+        if (failure.StatusCode is StatusCode.Unavailable or StatusCode.Unauthenticated) return true;
+        if (failure.StatusCode != StatusCode.Internal) return false;
+        for (Exception? cause = failure.Status.DebugException; cause is not null; cause = cause.InnerException)
+            if (cause is HttpProtocolException) return true;
+        return false;
     }
 
     private static CallOptions Options(Metadata? headers = null) => new(headers, DateTime.UtcNow.AddSeconds(30));
