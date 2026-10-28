@@ -61,6 +61,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     ) : Module, IOverridableEnv, IDisposable
     {
         private IDisposable? _worldScopeCloser;
+        private bool _isReset;
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly CodeOverrideStore _codeOverrides = childLifetimeScope.Resolve<CodeOverrideStore>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
@@ -131,7 +132,9 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
-            Reset();
+            // Closing the previous scope already reset the environment; only one never reset since needs it here.
+            if (!_isReset) Reset();
+            _isReset = false;
 
             if (specOverride is not null)
                 overridableSpecProvider.SetOverride(specOverride);
@@ -156,6 +159,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             _worldScopeCloser?.Dispose();
             _worldScopeCloser = null;
             overridableScope.ResetOverrides();
+            _isReset = true;
         }
 
         protected override void Load(ContainerBuilder builder)
