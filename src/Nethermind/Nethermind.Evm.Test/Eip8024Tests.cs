@@ -85,8 +85,11 @@ public class Eip8024Tests : VirtualMachineTestsBase
     public void ValidOperation_Succeeds(byte[] code, int expectedReturn)
     {
         TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedReturn));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedReturn));
+        }
     }
 
     private static IEnumerable<TestCaseData> MissingImmediateSuccessTestCases()

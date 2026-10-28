@@ -44,8 +44,11 @@ public class MonitoringServiceTests
             }
         }
 
-        Assert.That(container, Is.Not.Null, "metrics server did not start");
-        Assert.That(await ServesMetrics(port), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container, Is.Not.Null, "metrics server did not start");
+            Assert.That(await ServesMetrics(port), Is.True);
+        }
         await container.DisposeAsync();
 
         using TcpListener reboundListener = new(IPAddress.Loopback, port);
@@ -118,7 +121,10 @@ public class MonitoringServiceTests
     {
         AuthenticationHeaderValue header = MonitoringService.CreateBasicAuthHeader(username, password);
 
-        Assert.That(header.Scheme, Is.EqualTo("Basic"));
-        Assert.That(header.Parameter, Is.EqualTo(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.Scheme, Is.EqualTo("Basic"));
+            Assert.That(header.Parameter, Is.EqualTo(Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))));
+        }
     }
 }

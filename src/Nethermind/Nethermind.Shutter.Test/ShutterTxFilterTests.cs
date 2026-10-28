@@ -35,11 +35,11 @@ class ShutterTxFilterTests
            .WithGasLimit(21000)
            .Signed(TestItem.PrivateKeyA).TestObject;
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(IsAllowed(tx0, 21000));
             Assert.That(IsAllowed(tx1, 21000));
-        });
+        }
     }
 
     [Test]

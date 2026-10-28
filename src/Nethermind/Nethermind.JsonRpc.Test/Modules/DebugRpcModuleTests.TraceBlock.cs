@@ -77,7 +77,9 @@ public partial class DebugRpcModuleTests
             JToken json = JToken.Parse(response);
             if (timeout == "1s")
             {
+#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
                 Assert.That(json["error"], Is.Null, response);
+#pragma warning restore NUnit2045
                 Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
             }
             else
@@ -90,8 +92,11 @@ public partial class DebugRpcModuleTests
                 }
             }
         }
-        Assert.That(clock.Timers, Is.Not.Empty);
-        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, Is.Not.Empty);
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     [Test]
@@ -220,6 +225,95 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Specified_javascript_request_cancellation_interrupts_user_code(
+        [Values("construction", "setup", "step", "result")] string phase)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using CancellationTokenSource external = new();
+        DeadlineExecution clock = new();
+        bool continued = false;
+        Action cancel = () => external.Cancel();
+        Action afterCancellation = () => continued = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(cancel,after){globalThis.cancelTrace=cancel;globalThis.afterCancellation=after;}}"))
+            installer.InvokeMethod("install", cancel, afterCancellation);
+        string body = "cancelTrace();for(let i=0;i<10000;i++){};afterCancellation();";
+        string script = "{fault:function(){},"
+            + (phase == "construction" ? "marker:(function(){" + body + "})()," : "")
+            + "setup:function(){" + (phase == "setup" ? body : "") + "},"
+            + "step:function(){" + (phase == "step" ? body : "") + "},"
+            + "result:function(){" + (phase == "result" ? body : "") + "return {};}}";
+
+        OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock, script, external.Token);
+            if (phase == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+        })!;
+        engine.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
+            Assert.That(external.IsCancellationRequested, Is.True);
+            Assert.That(continued, Is.False, "V8 must interrupt user code, not merely observe cancellation after its callback returns");
+            Assert.That(clock.Timers, Has.Count.EqualTo(phase is "construction" or "setup" ? 0 : 1));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+            Assert.That(Engine.CurrentEngine, Is.Null);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Specified_block_binds_request_token_before_selecting_tracer_graph(
+        [Values] bool byHash, [Values] bool filtered, [Values] bool mux)
+    {
+        IGethStyleTracer? rpcTracer = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<IGethStyleTracer>((_, inner) =>
+            {
+                rpcTracer = inner;
+                return inner;
+            }));
+        Block block = await chain.AddBlock(CreateTraceBlockTransactions(chain));
+        _ = chain.DebugRpcModule;
+        Assert.That(rpcTracer, Is.Not.Null, "resolve the tracer through the production RPC factory's child scope");
+        using CancellationTokenSource external = new();
+        ConcurrentBag<CancellationToken> observed = [];
+        string registered = $"request-token-{Guid.NewGuid():N}";
+        GethLikeNativeTracerFactory.RegisterTracer(registered, (childOptions, _, transaction, _) =>
+        {
+            observed.Add(childOptions.ExecutionCancellationToken);
+            return new NativeNoopTracer(transaction, childOptions);
+        });
+        GethTraceOptions options = new()
+        {
+            EnforceExecutionDeadline = true,
+            Tracer = mux ? "muxTracer" : registered,
+            TracerConfig = mux ? JsonSerializer.SerializeToElement(new Dictionary<string, object> { [registered] = new { } }) : null,
+            TxHash = filtered ? block.Transactions[^1].Hash : null
+        };
+        BlockParameter selector = byHash ? new(block.Hash!) : new(block.Number);
+
+        IReadOnlyCollection<GethLikeTxTrace> traces = rpcTracer!.TraceBlock(selector, options, external.Token);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(traces, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
+                Assert.That(observed, Is.Not.Empty);
+                Assert.That(observed, Is.All.EqualTo(external.Token));
+                Assert.That(external.IsCancellationRequested, Is.False);
+            }
+        }
+        finally
+        {
+            traces.TryDispose();
+        }
+    }
+
+    [Test]
     public async Task Specified_javascript_constructor_failure_releases_timer()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -252,7 +346,11 @@ public partial class DebugRpcModuleTests
             "fatal" => () => throw CreateException(true, true, null),
             "cancellation" => () => throw new OperationCanceledException(),
             "interrupt" => engine.Interrupt,
-            "input-interrupt" => () => { engine.AbortInput("deadline input marker"); engine.Interrupt(); },
+            "input-interrupt" => () =>
+            {
+                engine.AbortInput("deadline input marker");
+                engine.Interrupt();
+            },
             _ => () => { }
         };
         using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failDeadlineTrace=action;}}"))
@@ -283,11 +381,15 @@ public partial class DebugRpcModuleTests
     }
 
     private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
-        Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script) =>
+        Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script, CancellationToken external = default) =>
         new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(), new GethTraceOptions
         {
-            EnforceExecutionDeadline = true, CaptureJavaScriptErrors = true,
-            DeadlineClock = clock, Timeout = TimeSpan.FromSeconds(1), Tracer = script
+            EnforceExecutionDeadline = true,
+            CaptureJavaScriptErrors = true,
+            DeadlineClock = clock,
+            ExecutionCancellationToken = external,
+            Timeout = TimeSpan.FromSeconds(1),
+            Tracer = script
         });
 
     [TestCase("callTracer", "onlyTopCall")]
@@ -316,7 +418,9 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
         JToken json = JToken.Parse(response);
+#pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
         Assert.That(json["error"], Is.Null, response);
+#pragma warning restore NUnit2045
         Assert.That((JArray)json["result"]!, Is.Empty);
     }
 
@@ -341,8 +445,11 @@ public partial class DebugRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer, tracerConfig, streamMode = true });
 
-        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
-        Assert.That(streamed, Is.EqualTo(buffered));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+            Assert.That(streamed, Is.EqualTo(buffered));
+        }
         Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
     }
 
@@ -368,13 +475,16 @@ public partial class DebugRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer, tracerConfig, streamMode = true });
 
-        Assert.That(streamed, Is.EqualTo(buffered));
-        Assert.That(JToken.Parse(streamed)["error"], empty ? Is.Null : Is.Not.Null, streamed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That(JToken.Parse(streamed)["error"], empty ? Is.Null : Is.Not.Null, streamed);
+        }
     }
 
     [Test]
     public async Task NativeStreamTimeout_Valid_duration_keeps_indexed_streaming(
-        [Values("5s", "0s", "-1s", "4294968s")] string timeout)
+        [Values("5s", "0s", "-1s", "3m", "4294968s")] string timeout)
     {
         IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -393,10 +503,13 @@ public partial class DebugRpcModuleTests
         Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the consumed native stream must use the indexed path");
         string buffered = await RpcTest.TestSerializedRequest(module, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", timeout, streamMode = false });
-        Assert.That(streamed, Is.EqualTo(buffered));
-        Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
-        Assert.That(clock.Timers, Has.Count.EqualTo(block.Transactions.Length));
-        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed, Is.EqualTo(buffered));
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Timers, Has.Count.EqualTo(block.Transactions.Length));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock)
@@ -574,9 +687,12 @@ public partial class DebugRpcModuleTests
         JToken streamed = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer, tracerConfig, timeout = "bad", streamMode = true }));
 
-        Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
-        Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
-        Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
+            Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
+            Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
+        }
     }
 
     [Test]
@@ -604,12 +720,16 @@ public partial class DebugRpcModuleTests
         if (timeout == "5s")
         {
             using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null,
                 Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+#pragma warning restore NUnit2045
             Assert.That(constructorCalls, Is.Zero, "the native constructor must remain deferred until the writer is consumed");
 
             JArray envelopes = JArray.Parse(await StreamToStringAsync(result!));
+#pragma warning disable NUnit2045 // The collection shape must be checked before indexing or taking its first element.
             Assert.That(constructorCalls, Is.EqualTo(1));
+#pragma warning restore NUnit2045
             Assert.That(envelopes, Has.Count.EqualTo(1));
             Assert.That((int?)envelopes[0]["errorCode"], Is.EqualTo(ErrorCodes.InternalError));
             Assert.That((string?)envelopes[0]["error"], Is.EqualTo("tracing failed: native host failure"));
@@ -625,9 +745,12 @@ public partial class DebugRpcModuleTests
             };
             JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options));
 
-            Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
-            Assert.That(response["result"], Is.Null);
-            Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
+                Assert.That(response["result"], Is.Null);
+                Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+            }
         }
     }
 
@@ -642,8 +765,11 @@ public partial class DebugRpcModuleTests
         JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "noopTracer", timeout = "bad", streamMode = true, txHash = selection == "unmatched" ? TestItem.KeccakD : null }));
 
-        Assert.That(response["error"], Is.Null, response.ToString());
-        Assert.That((JArray)response["result"]!, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Null, response.ToString());
+            Assert.That((JArray)response["result"]!, Is.Empty);
+        }
     }
 
     private static IEnumerable<TestCaseData> NativeBooleanConfigCases()
@@ -715,7 +841,9 @@ public partial class DebugRpcModuleTests
                 timeout = "0s"
             });
         JToken error = JToken.Parse(response)["error"]!;
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(error, Is.Not.Null, response);
+#pragma warning restore NUnit2045
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
@@ -752,6 +880,92 @@ public partial class DebugRpcModuleTests
                 else Assert.That(traces[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
             }
         }
+    }
+
+    private static IEnumerable<TestCaseData> RawBlockTimeoutCases()
+    {
+        const string raw = "debug_traceBlock";
+        const string noop = NativeNoopTracer.NoopTracer;
+        const string invalidConfig = """{"diffMode":[]}""";
+        const string nullConfig = """{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""";
+        (string Selection, object Timeout, bool? Streaming, string? Tracer, string? Config, string Method, int? Code, string? Diagnostic)[] cases =
+        [
+            ("genesis", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("genesis", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("genesis", "5s", false, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("decode", "5s", false, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("decode", "5s", true, null, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("empty", "5s", false, null, null, raw, null, null),
+            ("empty", "5s", true, null, null, raw, null, null),
+            ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "decoding block RLP"),
+            ("genesis", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
+            ("empty", "bad", null, noop, null, raw, null, null),
+            ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "bad", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
+            ("nonempty", "5s", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
+            ("nonempty", "5s", null, noop, null, raw, null, null),
+            ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
+            ("nonempty", 7, null, noop, null, raw, ErrorCodes.InvalidParams, null),
+            ("nonempty", new string('x', 65), null, noop, null, raw, ErrorCodes.InvalidParams, null),
+            ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidParams, null),
+            ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "5s", false, null, null, raw, null, null),
+            ("nonempty", "5s", true, null, null, raw, null, null),
+            ("empty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("empty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("unmatched", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("unmatched", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("decode", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("decode", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1")
+        ];
+        int index = 0;
+        foreach ((string selection, object timeout, bool? streaming, string? tracer, string? config, string method, int? code, string? diagnostic) in cases)
+        {
+            Dictionary<string, object?> options = new() { ["timeout"] = timeout, ["tracer"] = tracer };
+            if (streaming is { } streamMode) options["streamMode"] = streamMode;
+            if (config is not null) options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>(config);
+            if (selection == "unmatched") options["txHash"] = TestItem.KeccakD;
+            yield return new TestCaseData(selection, method, options, code, diagnostic)
+                .SetName($"RawBlockTimeout_{index++}_{selection}_{method}");
+        }
+    }
+
+    [TestCaseSource(nameof(RawBlockTimeoutCases))]
+    public async Task Debug_traceBlock_timeout_validation_preserves_fail_fast_errors_and_valid_traces(
+        string selection, string method, Dictionary<string, object?> options, int? expectedCode, string? diagnostic)
+    {
+        using Context context = await Context.Create();
+        Block block = selection switch
+        {
+            "genesis" => context.Blockchain.BlockTree.FindBlock(context.Blockchain.BlockTree.Genesis!.Hash!)!,
+            "empty" => await context.Blockchain.AddBlock(),
+            _ => await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain))
+        };
+        string input = selection == "decode" ? "0xc0" : Rlp.Encode(block).ToString();
+        object[] parameters = method == "debug_traceTransactionInBlockByHash"
+            ? [input, block.Transactions[0].Hash!, options] : [input, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        if (expectedCode is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+                Assert.That(json["result"], Is.Null, response);
+                if (diagnostic is not null) Assert.That(json["error"]?.ToString(), Does.Contain(diagnostic), response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(selection == "unmatched" ? 0 : block.Transactions.Length), response);
+            for (int i = 0; i < traces.Count; i++)
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+        }
+
     }
 
     private static IEnumerable<TestCaseData> BlockTimeoutPrecedenceCases()
@@ -851,9 +1065,7 @@ public partial class DebugRpcModuleTests
             for (int i = 0; i < traces.Count; i++)
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
-
     }
-
 
     [Test]
     public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
@@ -883,8 +1095,11 @@ public partial class DebugRpcModuleTests
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, baselineOptions.RootElement);
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, nullOptions.RootElement);
 
-        Assert.That(JToken.Parse(expected)["error"], Is.Null, expected);
-        Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(expected)["error"], Is.Null, expected);
+            Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
+        }
     }
 
     [Test]
@@ -898,8 +1113,11 @@ public partial class DebugRpcModuleTests
         string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { enableMemory, enableReturnData = true, streamMode = true });
 
-        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
-        Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+            Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
+        }
     }
 
     [TestCaseSource(nameof(BlockTimeoutPrecedenceCases))]
@@ -938,11 +1156,17 @@ public partial class DebugRpcModuleTests
 
         if (expected == "lookup")
         {
+            string message = method switch
+            {
+                "debug_traceBlockByNumber" => $"block #{blockNumber} not found",
+                "debug_traceBlockByHash" => $"block {selector} not found",
+                _ => $"Cannot find header for block hash: {selector}"
+            };
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo(method == "debug_traceBlockByNumber"
-                    ? $"block #{blockNumber} not found" : $"block {selector} not found"), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+                Assert.That(json["result"], Is.Null, response);
             }
             return;
         }
@@ -1597,12 +1821,18 @@ public partial class DebugRpcModuleTests
             using (tracer.StartNewTxTrace(secondTransaction)) tracer.EndTxTrace();
             secondResult = tracer.BuildResult();
             Assert.That(secondResult, Has.Count.EqualTo(1));
-            Assert.That(secondResult.Single().TxHash, Is.EqualTo(secondTransaction.Hash));
-            Assert.That(secondResult.Single().TraceError, Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondResult.Single().TxHash, Is.EqualTo(secondTransaction.Hash));
+                Assert.That(secondResult.Single().TraceError, Is.Null);
+            }
             if (firstResult is not null)
             {
-                Assert.That(firstResult.Single().TxHash, Is.EqualTo(firstTransaction.Hash));
-                Assert.That(firstResult.Single().TraceError, Is.EqualTo(constructionError ? "first construction failed" : null));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(firstResult.Single().TxHash, Is.EqualTo(firstTransaction.Hash));
+                    Assert.That(firstResult.Single().TraceError, Is.EqualTo(constructionError ? "first construction failed" : null));
+                }
             }
             tracer.Dispose();
             tracer.Dispose();
@@ -1683,7 +1913,7 @@ public partial class DebugRpcModuleTests
                 foreach (bool parentAvailable in values)
                 {
                     yield return new TestCaseData(method, streaming, parentAvailable, true, false, "");
-                    if (method == "debug_traceBlockByNumber")
+                    if (method is "debug_traceBlockByNumber" or "debug_traceBlockByHash")
                     {
                         yield return new TestCaseData(method, streaming, parentAvailable, false, false, "");
                         yield return new TestCaseData(method, streaming, parentAvailable, true, true, "");
@@ -1757,7 +1987,8 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(actual["result"], Is.Null, response);
                 Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ResourceNotFound));
-                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo($"block #{unprocessed.Number} not found"));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo(method == "debug_traceBlockByHash"
+                    ? $"block {unprocessed.Hash} not found" : $"block #{unprocessed.Number} not found"));
             }
             return;
         }
@@ -1981,6 +2212,57 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlockByHash_unknown_hash_uses_block_error([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", TestItem.KeccakD);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"], Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo($"block {TestItem.KeccakD} not found"));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_replays_retained_orphan([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block canonical = await chain.AddBlock();
+        Block orphan = Build.A.Block.WithParent(parent).WithExtraData([0x01]).TestObject;
+        chain.BlockTree.SuggestBlock(orphan, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(chain.BlockTree.FindHash(orphan.Number), Is.EqualTo(canonical.Hash));
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", orphan.Hash!);
+        JToken actual = JToken.Parse(response);
+        Assert.That(actual["error"], Is.Null, response);
+        Assert.That((JArray)actual["result"]!, Is.Empty);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader genesis = chain.BlockTree.Genesis!;
+        if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
+        Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
+        Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", genesis.Hash!);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"], Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(bodyAvailable ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
+                ? "genesis is not traceable" : $"block {genesis.Hash} not found"));
+        }
+    }
+
+    [Test]
     public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
     {
         IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
@@ -2032,7 +2314,9 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
             new { tracer = "keccak256PreimageTracer" });
         JToken result = JToken.Parse(response);
+#pragma warning disable NUnit2045 // The RPC call must succeed before accessing its result.
         Assert.That(result["error"], Is.Null, response);
+#pragma warning restore NUnit2045
         Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
         for (int i = 0; i < block.Transactions.Length; i++)
             Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
@@ -2705,7 +2989,9 @@ public partial class DebugRpcModuleTests
         using JsonDocument doc = JsonDocument.Parse(response);
         JsonElement root = doc.RootElement;
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(root.TryGetProperty("error", out JsonElement error), Is.True, "Missing 'error' field");
+#pragma warning restore NUnit2045
         Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("genesis is not traceable"));
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
@@ -2753,14 +3039,19 @@ public partial class DebugRpcModuleTests
         using JsonDocument doc = JsonDocument.Parse(response);
         JsonElement root = doc.RootElement;
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(root.TryGetProperty("result", out JsonElement resultArray), Is.True, "Missing 'result' field");
+#pragma warning restore NUnit2045
         Assert.That(resultArray.ValueKind, Is.EqualTo(JsonValueKind.Array), "'result' must be an array");
         Assert.That(resultArray.GetArrayLength(), Is.GreaterThan(0), "Result array must not be empty");
 
         foreach (JsonElement entry in resultArray.EnumerateArray())
         {
-            Assert.That(entry.TryGetProperty("result", out _), Is.True, "Each entry must have 'result'");
-            Assert.That(entry.TryGetProperty("txHash", out _), Is.True, "Each entry must have 'txHash'");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.TryGetProperty("result", out _), Is.True, "Each entry must have 'result'");
+                Assert.That(entry.TryGetProperty("txHash", out _), Is.True, "Each entry must have 'txHash'");
+            }
         }
     }
 

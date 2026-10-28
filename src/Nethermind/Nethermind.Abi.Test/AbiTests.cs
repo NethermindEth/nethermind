@@ -362,8 +362,11 @@ public class AbiTests
         const string stringParam = "hello there!";
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, staticTuple, stringParam);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.That(arguments[0], Is.EqualTo(staticTuple));
-        Assert.That(arguments[1], Is.EqualTo(stringParam));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arguments[0], Is.EqualTo(staticTuple));
+            Assert.That(arguments[1], Is.EqualTo(stringParam));
+        }
     }
 
     [Test]
@@ -377,8 +380,11 @@ public class AbiTests
         const string stringParam = "hello there!";
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, stringParam, staticTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.That(arguments[0], Is.EqualTo(stringParam));
-        Assert.That(arguments[1], Is.EqualTo(staticTuple));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arguments[0], Is.EqualTo(stringParam));
+            Assert.That(arguments[1], Is.EqualTo(staticTuple));
+        }
     }
 
     [Test]
@@ -476,8 +482,11 @@ public class AbiTests
 
         byte[] encoded = abi.Encode(array, false);
 
-        Assert.That(abi.Encode(list, false), Is.EqualTo(encoded));
-        Assert.That(abi.Encode(pool, false), Is.EqualTo(encoded));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(abi.Encode(list, false), Is.EqualTo(encoded));
+            Assert.That(abi.Encode(pool, false), Is.EqualTo(encoded));
+        }
     }
 
     [Test]

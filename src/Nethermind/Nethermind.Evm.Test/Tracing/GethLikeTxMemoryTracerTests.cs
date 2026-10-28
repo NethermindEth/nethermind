@@ -487,17 +487,20 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].StackWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
-        Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
+            Assert.That(trace.Entries[1].StackWordCount(), Is.EqualTo(1), "entry[1] length");
+            Assert.That(trace.Entries[1].GetStackWord(0), Is.EqualTo(sample1), "entry[1][0]");
 
-        Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
-        Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
-        Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
+            Assert.That(trace.Entries[2].StackWordCount(), Is.EqualTo(2), "entry[2] length");
+            Assert.That(trace.Entries[2].GetStackWord(0), Is.EqualTo(sample1), "entry[2][0]");
+            Assert.That(trace.Entries[2].GetStackWord(1), Is.EqualTo(UInt256.Zero), "entry[2][1]");
 
-        Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].StackWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetStackWord(0), Is.EqualTo(sample1), "entry[3][0]");
+        }
     }
 
     [Test]
@@ -519,20 +522,23 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         UInt256 sample1 = Hex(SampleHexData1);
 
-        Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[0].MemoryWordCount(), Is.EqualTo(0), "entry[0] length");
 
-        Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
+            Assert.That(trace.Entries[1].MemoryWordCount(), Is.EqualTo(0), "entry[1] length");
 
-        Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
+            Assert.That(trace.Entries[2].MemoryWordCount(), Is.EqualTo(0), "entry[2] length");
 
-        Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
-        Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
+            Assert.That(trace.Entries[3].MemoryWordCount(), Is.EqualTo(1), "entry[3] length");
+            Assert.That(trace.Entries[3].GetMemoryWord(0), Is.EqualTo(sample1), "entry[3][0]");
 
-        Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
-        Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
+            Assert.That(trace.Entries[4].MemoryWordCount(), Is.EqualTo(1), "entry[4] length");
+            Assert.That(trace.Entries[4].GetMemoryWord(0), Is.EqualTo(sample1), "entry[4][0]");
 
-        Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
-        Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+            Assert.That(trace.Entries[5].MemoryWordCount(), Is.EqualTo(1), "entry[5] length");
+            Assert.That(trace.Entries[5].GetMemoryWord(0), Is.EqualTo(sample1), "entry[5][0]");
+        }
     }
 
     [Test]

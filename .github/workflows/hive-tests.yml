@@ -198,7 +198,7 @@ jobs:
           retention-days: 7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./nethermind/.github/actions/setup-dotnet
         with:
           global-json-file: nethermind/global.json
 
@@ -206,4 +206,4 @@ jobs:
         working-directory: nethermind
         run: |
           rm -f ../hive/workspace/logs/hive.json
-          dotnet run --file scripts/HiveResults.cs -- "../hive/workspace/logs/*.json"
+          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"

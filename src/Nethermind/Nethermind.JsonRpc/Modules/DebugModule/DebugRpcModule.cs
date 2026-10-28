@@ -141,9 +141,6 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
-        if (options?.BlockOverrides?.Withdrawals is not null)
-            return ResultWrapper<GethLikeTxTrace>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
-
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {
@@ -158,8 +155,8 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
-        if (options?.BlockOverrides?.BeaconRoot is not null)
-            return ResultWrapper<GethLikeTxTrace>.Fail("block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput);
+        if (BlockchainBridge.GetUnsupportedBlockOverrideError(options?.BlockOverrides) is { } overrideError)
+            return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
 
         // The call converts against the fork it runs in, which a block override can change.
         IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
@@ -333,20 +330,27 @@ public class DebugRpcModule(
     /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
     /// <see cref="Block"/> overload never takes the indexed parallel path.
     /// </remarks>
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false)
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false, Hash256? missingBodyHash = null)
     {
         Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
         if (resolvedBlock is null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
-                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
+                missingBodyHash is not null ? $"block {missingBodyHash} not found"
+                    : selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
                 ErrorCodes.ResourceNotFound);
         }
 
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
         if (validateStructLogTimeout && string.IsNullOrEmpty(effective.Tracer))
         {
-            if (CheckBlockTraceTimeout(resolvedBlock, effective) is { } timeoutError) return timeoutError;
+            bool hasTransactionToTrace = effective.TxHash is { } txHash
+                ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
+                : resolvedBlock.Transactions.Length != 0;
+            if (hasTransactionToTrace && effective.ParsedTimeout.Error is { } durationError)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput);
+            }
         }
         BlockParameter blockParameter = new(header.Hash!);
         return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
@@ -519,15 +523,12 @@ public class DebugRpcModule(
         }
 
         if (block.IsGenesis)
-
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
-        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
+        if (options?.ParsedTimeout.Error is null && CanStreamBlockTrace(options))
         {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            if (string.IsNullOrEmpty(effective.Tracer) && CheckBlockTraceTimeout(block, effective) is { } timeoutError) return timeoutError;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetBlockTrace(block!, token, options, writer, pipeWriter)));
@@ -550,7 +551,6 @@ public class DebugRpcModule(
         catch (TraceDurationFormatException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("invalid argument 1", ErrorCodes.InvalidParams);
-
         }
         catch (RlpException)
         {
@@ -634,16 +634,16 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
-        if (headerError is not null)
+        BlockHeader? header = blockFinder.FindHeader(blockHash);
+        if (header is null)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block {blockHash} not found", headerError.ErrorCode, headerError.IsTemporary);
+            return GetFailureResult<IReadOnlyCollection<GethLikeTxTrace>, BlockHeader>(
+                new SearchResult<BlockHeader>($"block {blockHash} not found", ErrorCodes.ResourceNotFound),
+                debugBridge.HaveNotSyncedHeadersYet());
         }
 
-        if (!blockFinder.HasBlock(header.Number, blockHash) && blockFinder.FindBlock(blockHash, header.Number) is null)
-        {
-            return MissingTraceBlock($"block {blockHash} not found", header.Number);
-        }
+        if (blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number) is null)
+            return MissingTraceBlock($"block {blockHash} not found", header.Number, debugBridge.HaveNotSyncedHeadersYet());
 
         if (header.Number == 0)
         {
@@ -658,7 +658,7 @@ public class DebugRpcModule(
 
         options = WithOpcodeStepLimit(options);
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
-            return StreamBlockTrace(header, options, validateStructLogTimeout: true);
+            return StreamBlockTrace(header, options, validateStructLogTimeout: true, missingBodyHash: blockHash);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -688,16 +688,6 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
-    }
-
-    private static ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? CheckBlockTraceTimeout(Block block, GethTraceOptions options)
-    {
-        bool hasTransactionToTrace = options.TxHash is { } txHash
-            ? block.GetTransactionIndex(txHash.ValueHash256) >= 0
-            : block.Transactions.Length != 0;
-        return hasTransactionToTrace && options.ParsedTimeout.Error is { } durationError
-            ? ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput)
-            : null;
     }
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null)

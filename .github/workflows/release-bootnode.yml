@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: ./.github/actions/setup-dotnet
 
       - name: Detect version
         id: version
@@ -59,8 +59,8 @@ jobs:
           INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           # The same derivation that feeds the image's OCI version label, so the tag and the label
-          # cannot diverge. Version.cs fails on a missing VersionPrefix or an unusable result.
-          if ! version=$(dotnet run --file scripts/Version.cs -- tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj); then
+          # cannot diverge. version.cs fails on a missing VersionPrefix or an unusable result.
+          if ! version=$(dotnet run --file scripts/version.cs -- tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj); then
             echo "Bootnode version must produce valid Docker and Git tags."
             exit 1
           fi

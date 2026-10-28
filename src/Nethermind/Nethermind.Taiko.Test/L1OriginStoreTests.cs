@@ -46,8 +46,11 @@ public class L1OriginStoreTests
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
         Assert.That(retrieved, Is.Not.Null);
-        Assert.That(retrieved!.BlockId, Is.EqualTo(blockId));
-        Assert.That(retrieved.L1BlockHeight, Is.EqualTo(456));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved!.BlockId, Is.EqualTo(blockId));
+            Assert.That(retrieved.L1BlockHeight, Is.EqualTo(456));
+        }
     }
 
     [Test]
@@ -100,8 +103,11 @@ public class L1OriginStoreTests
         _store.WriteBatchToLastBlockID(1, 100);
         _store.WriteBatchToLastBlockID(2, 200);
 
-        Assert.That(_store.ReadBatchToLastBlockID(1), Is.EqualTo((UInt256)100));
-        Assert.That(_store.ReadBatchToLastBlockID(2), Is.EqualTo((UInt256)200));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.ReadBatchToLastBlockID(1), Is.EqualTo((UInt256)100));
+            Assert.That(_store.ReadBatchToLastBlockID(2), Is.EqualTo((UInt256)200));
+        }
     }
 
     [Test]
@@ -113,8 +119,11 @@ public class L1OriginStoreTests
         _store.WriteL1Origin(1, origin1);
         _store.WriteL1Origin(2, origin2);
 
-        Assert.That(_store.ReadL1Origin(1)!.L1BlockHeight, Is.EqualTo(100));
-        Assert.That(_store.ReadL1Origin(2)!.L1BlockHeight, Is.EqualTo(200));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.ReadL1Origin(1)!.L1BlockHeight, Is.EqualTo(100));
+            Assert.That(_store.ReadL1Origin(2)!.L1BlockHeight, Is.EqualTo(200));
+        }
     }
 
     [Test]
@@ -180,7 +189,9 @@ public class L1OriginStoreTests
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
         Assert.That(retrieved, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(retrieved!.Signature, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(retrieved.Signature!.Length, Is.EqualTo(65));
         Assert.That(retrieved.Signature, Is.EqualTo(signature));
     }
@@ -195,8 +206,11 @@ public class L1OriginStoreTests
         L1Origin? retrieved = _store.ReadL1Origin(blockId);
 
         Assert.That(retrieved, Is.Not.Null);
-        Assert.That(retrieved!.L1BlockHeight, Is.EqualTo(0));
-        Assert.That(retrieved.IsPreconfBlock, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved!.L1BlockHeight, Is.EqualTo(0));
+            Assert.That(retrieved.IsPreconfBlock, Is.True);
+        }
     }
 
     [Test]
@@ -264,8 +278,11 @@ public class L1OriginStoreTests
         L1Origin? returned = _store.SetL1OriginSignature(blockId, signature);
 
         Assert.That(returned, Is.Not.Null);
-        Assert.That(returned!.Signature, Is.EqualTo(signature));
-        Assert.That(_store.ReadL1Origin(blockId)!.Signature, Is.EqualTo(signature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returned!.Signature, Is.EqualTo(signature));
+            Assert.That(_store.ReadL1Origin(blockId)!.Signature, Is.EqualTo(signature));
+        }
     }
 
     [Test]

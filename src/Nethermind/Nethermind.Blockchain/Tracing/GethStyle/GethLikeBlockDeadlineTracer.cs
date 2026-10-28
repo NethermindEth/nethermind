@@ -30,7 +30,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
             : tracer;
 
     // A second cancellation wrapper would hide the transaction's IsCancelled from VM dispatch.
-    internal static IBlockTracer WithCancellation(IBlockTracer<GethLikeTxTrace> tracer, CancellationToken external)
+    internal static IBlockTracer WithCancellation(IBlockTracer tracer, CancellationToken external)
     {
         if (tracer is not GethLikeBlockDeadlineTracer deadline) return tracer.WithCancellation(external);
         deadline._external = external;
