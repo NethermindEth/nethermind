@@ -47,6 +47,14 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
 
+# What a guest whose toolchain is not the published image overrides: the target
+# architecture, its bindings manifest, the bflat command and the docker arguments
+# that bring a local bflat into the image (the Airbender guest).
+GUEST_ARCH ?= riscv64
+GUEST_EXTLIB_MANIFEST ?= $(BIN_DIR)/runtimes/linux-$(GUEST_ARCH)/native/$(GUEST_EXTLIB).bflat.manifest
+BFLAT ?= bflat
+BFLAT_DOCKER_ARGS ?=
+
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
 # sources, not the managed assembly, so the shared file has to be mounted and
@@ -123,8 +131,9 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
 		$(SHARED_MOUNT) \
+		$(BFLAT_DOCKER_ARGS) \
 		$(BFLAT_IMAGE) \
-		bflat build --arch riscv64 --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
+		$(BFLAT) build --arch $(GUEST_ARCH) --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
 		$(OPT_FLAGS) \
 		$(TRIM_FLAGS) \
 		--no-pie \
@@ -133,7 +142,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--nostdlibrefs \
 		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
-		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		--extlib $(GUEST_EXTLIB_MANIFEST) \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
@@ -146,6 +155,10 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+	@# The flat ROM image and instruction section bflat writes beside an Airbender ELF.
+	@for ext in bin text; do \
+		if [ -f $(GUEST_DIR)/Program.$$ext ]; then mv -f $(GUEST_DIR)/Program.$$ext $(GUEST_DIR)/bin/nethermind.$$ext; fi; \
+	done
 
 # Assembled by the bflat image's own clang, for the ISA the gates above allow.
 $(GUEST_DIR)/%.o: $(GUEST_DIR)/%.S
@@ -176,6 +189,8 @@ clean:
 	rm -rf \
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
+		$(GUEST_DIR)/Program.bin \
+		$(GUEST_DIR)/Program.text \
 		$(GUEST_DIR)/Program.o \
 		$(GUEST_DIR)/Program.map.xml \
 		$(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))

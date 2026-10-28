@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -104,6 +105,13 @@ public ref partial struct EvmStack
     internal readonly unsafe bool IsAnalyzedJumpDestination(nuint destination)
     {
         Debug.Assert(destination < (nuint)CodeLength, "Only a position inside the code indexes the bitmap unchecked.");
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // A 32-bit guest tests its bit in one 32-bit word of the little-endian bitmap, not across a register pair.
+            uint word = Unsafe.Add(ref Unsafe.As<long, uint>(ref _jumpDestinationBits), (nint)(destination >> 5));
+            return ((word >> (int)destination) & 1) != 0;
+        }
+
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, (nint)(destination >> 6));
         // The bitmap is a long[], so rounding the segment's address changes nothing but lets the JIT drop its alignment test.
         ulong bits = (ulong)(StrictAlignmentFlag.IsActive ? *(long*)((nuint)Unsafe.AsPointer(ref segment) & ~(nuint)(sizeof(long) - 1)) : segment);

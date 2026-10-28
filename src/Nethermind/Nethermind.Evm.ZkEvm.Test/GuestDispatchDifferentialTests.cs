@@ -53,7 +53,7 @@ public class GuestDispatchDifferentialTests
     public enum Table { Untraced, Cancelable, Traced }
 
     private readonly record struct Outcome(
-        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy);
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy, long Refund);
 
     [Test]
     public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
@@ -374,6 +374,25 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Each destination has the bits of a JUMPDEST below 2^32 and a set bit above, which a 32-bit guest must not drop.
+    /// </remarks>
+    [TestCase("640100000007565B00", TestName = "JUMP")]
+    [TestCase("6001640100000009575B00", TestName = "JUMPI")]
+    [TestCase("64010000000A600090565B00", TestName = "SWAP1 JUMP")]
+    [TestCase("64010000000A600050565B00", TestName = "POP JUMP")]
+    public void Jumps_to_a_destination_above_32_bits_fault_in_every_table(string hex)
+    {
+        CodeInfo codeInfo = new(Convert.FromHexString(hex));
+        Outcome traced = Run(100_000, [], 0, codeInfo, Table.Traced, ReleaseSpec);
+        Outcome untraced = Run(100_000, [], 0, codeInfo, Table.Untraced, ReleaseSpec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced.Exception, Is.EqualTo(EvmExceptionType.InvalidJumpDestination));
+            Assert.That(Matches(untraced, traced), Is.True, $"untraced {untraced}\n traced   {traced}");
+        }
+    }
+
+    /// <remarks>
     /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
     /// stored to memory, and the gas each program leaves tells a charge that differs.
     /// </remarks>
@@ -476,6 +495,59 @@ public class GuestDispatchDifferentialTests
                 Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
                 Assert.That(complete.GasLeft, Is.Zero);
                 Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(expected.ToBigEndian())));
+            }
+        }
+    }
+
+    /// <remarks>
+    /// The writes leave a slot as it was, reset one to zero and back, create one and clear it again, and reset and then
+    /// clear a third, each slot first cold and then warm, so every charge and refund of EIP-2200 and EIP-3529 is taken.
+    /// Every amount of gas up to the program's need puts the end of the gas inside each charge and at the stipend sentry.
+    /// In a static frame the first write faults instead. The guest handler serves forks before EIP-8038 only.
+    /// </remarks>
+    [Test]
+    public void Storage_writes_match_the_shared_handlers([Values] bool isStatic)
+    {
+        IReleaseSpec spec = ReleaseSpec;
+        (int Key, UInt256 Value)[] writes =
+        [
+            (5, StorageValueAt(5)), (6, 0), (6, StorageValueAt(6)), (FirstEmptyKey, 1), (FirstEmptyKey, 0), (7, 9), (7, 0),
+        ];
+        List<byte> program = [];
+        foreach ((int key, UInt256 value) in writes)
+        {
+            program.AddRange([(byte)Instruction.PUSH2, .. value.ToBigEndian()[^2..], (byte)Instruction.PUSH1, (byte)key, (byte)Instruction.SSTORE]);
+        }
+
+        program.AddRange([(byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+        byte[] code = [.. program];
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true).GasLeft;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true, isStatic: isStatic);
+            if (!Matches(untraced, traced) || untraced.Refund != traced.Refund)
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        // The stipend sentry needs more gas at each write than the writes go on to use.
+        Outcome complete = Run(ample, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true, isStatic: isStatic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            if (isStatic)
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StaticCallViolation));
+            }
+            else
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.GasLeft, Is.EqualTo(ample - needed));
+                Assert.That(complete.Refund, Is.Not.Zero);
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(StorageValueAt(6).ToBigEndian())));
             }
         }
     }
@@ -828,7 +900,7 @@ public class GuestDispatchDifferentialTests
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
             if (NeedsWorldStateOrHash((Instruction)opcode) &&
-                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.TLOAD or Instruction.TSTORE) &&
+                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE) &&
                 !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
@@ -862,11 +934,14 @@ public class GuestDispatchDifferentialTests
             memoryHex = Convert.ToHexString(memory);
         }
 
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0], frame.Refund);
     }
 
-    /// <summary>The value every test world state holds at <paramref name="key"/>.</summary>
-    private static UInt256 StorageValueAt(UInt256 key) => key * 7 + 3;
+    /// <summary>The value every test world state holds at <paramref name="key"/> when the transaction starts.</summary>
+    /// <remarks>Zero from <see cref="FirstEmptyKey"/> on, so a write can create a slot.</remarks>
+    private static UInt256 StorageValueAt(UInt256 key) => key >= FirstEmptyKey ? UInt256.Zero : key * 7 + 3;
+
+    private const int FirstEmptyKey = 0x80;
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
@@ -884,8 +959,15 @@ public class GuestDispatchDifferentialTests
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
             _worldState = Substitute.For<IWorldState>();
+            Dictionary<StorageCell, UInt256> storage = [];
             _worldState.When(static state => state.Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(call => call[1] = storage.TryGetValue((StorageCell)call[0], out UInt256 value) ? value : StorageValueAt(((StorageCell)call[0]).Index));
+            _worldState.When(static state => state.GetOriginal(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
                 .Do(static call => call[1] = StorageValueAt(((StorageCell)call[0]).Index));
+            _worldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
+                .Do(call => storage[(StorageCell)call[0]] = (UInt256)call[1]);
+            _worldState.When(static state => state.Set(Arg.Any<StorageCell>(), Arg.Any<UInt256>(), Arg.Any<UInt256>()))
+                .Do(call => storage[(StorageCell)call[0]] = (UInt256)call[1]);
             Dictionary<StorageCell, UInt256> transient = [];
             _worldState.When(static state => state.SetTransientState(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
                 .Do(call => transient[(StorageCell)call[0]] = (UInt256)call[1]);

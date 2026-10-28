@@ -224,7 +224,7 @@ public static class EthereumEcdsaExtensions
 
     // A type whose signed bytes are not a prefix of its encoding, no encoding at all, or, when checked, the encoding
     // of another transaction falls back to encoding the transaction.
-    private static ValueHash256 SignatureHash(
+    internal static ValueHash256 SignatureHash(
         IEthereumEcdsa ecdsa, Transaction tx, Signature signature, ReadOnlySpan<byte> encoded, bool useSignatureChainId, bool checkOwnership = false) =>
         TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
             && (!checkOwnership || EndsWithSignature(encoded, signedPayload, signature))

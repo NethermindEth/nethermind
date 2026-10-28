@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -15,6 +16,13 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 {
     // Keeping this call boundary reduces guest execution cost.
     private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
+
+    /// <remarks>
+    /// Calls the body directly: a generic virtual call resolves through reflection metadata, which a guest built
+    /// without reflection data does not have.
+    /// </remarks>
+    public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
+        ExecuteTransactionCore<OffFlag>(vmState, worldState, txTracer);
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.

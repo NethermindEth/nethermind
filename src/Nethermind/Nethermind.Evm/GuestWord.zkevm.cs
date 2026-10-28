@@ -239,31 +239,32 @@ internal static unsafe class GuestWord
             return;
         }
 
-        ulong limb3 = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
-        ulong limb2 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
-        ulong limb1 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
-        ulong limb0 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
-        slot = limb0;
-        Unsafe.Add(ref slot, 1) = limb1;
-        Unsafe.Add(ref slot, 2) = limb2;
-        Unsafe.Add(ref slot, 3) = limb3;
+        // Each limb is stored as soon as it is read: the memory never overlaps the stack, and a 32-bit guest holding
+        // all four would take callee-saved registers for them.
+        slot = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
+        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
+        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
+        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
     }
 
-    /// <summary>Stores a word big-endian to the 32 bytes at <paramref name="destination"/>, given its limbs from the most significant.</summary>
-    /// <remarks>The store counterpart of <see cref="LoadBigEndian"/>.</remarks>
+    /// <summary>Stores the word at <paramref name="value"/>, in limb layout, big-endian to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// The store counterpart of <see cref="LoadBigEndian"/>. Each limb is read as it is stored: the stack never overlaps
+    /// the memory, and a 32-bit guest holding all four would take callee-saved registers for them.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void StoreBigEndian(ref byte destination, ulong limb3, ulong limb2, ulong limb1, ulong limb0)
+    internal static void StoreBigEndian(ref byte destination, ref ulong value)
     {
         if (StrictAlignmentFlag.IsActive && IsWordAligned(ref destination))
         {
-            StoreAlignedBigEndian(AlignedWords(ref destination), limb3, limb2, limb1, limb0);
+            StoreAlignedBigEndian(AlignedWords(ref destination), Unsafe.Add(ref value, 3), Unsafe.Add(ref value, 2), Unsafe.Add(ref value, 1), value);
             return;
         }
 
-        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, limb3);
-        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), limb2);
-        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), limb1);
-        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), limb0);
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, Unsafe.Add(ref value, 3));
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), Unsafe.Add(ref value, 2));
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), Unsafe.Add(ref value, 1));
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), value);
     }
 
     // Separate from their callers so the IL that SP1 alone runs does not count against their inlining elsewhere.
