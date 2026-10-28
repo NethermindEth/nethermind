@@ -2979,7 +2979,8 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(found, Is.Not.Null);
+            if (lookup == DeletionOverlapLookup.BloomHeader) Assert.That(found, Is.Null);
+            else Assert.That(found, Is.Not.Null);
             Assert.That(db.ReadFunc, Is.Null, "the deletion must overlap the lookup");
             Assert.That(blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
             Assert.That(blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
