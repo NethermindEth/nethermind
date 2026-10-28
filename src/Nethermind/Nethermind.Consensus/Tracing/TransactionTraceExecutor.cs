@@ -79,7 +79,7 @@ public sealed class TransactionTraceExecutor(
             if (boundary.Seeds is { } seeds && readOverlay is not null)
             {
                 target = boundary.IndexOf(block);
-                if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
+                if (target >= 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
                 {
                     if (state.TryApplyAccountOverlay(overlay)) first = target;
                     else readOverlay.Disarm();

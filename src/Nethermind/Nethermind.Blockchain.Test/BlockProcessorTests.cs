@@ -460,6 +460,71 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public async Task TransactionTraceBoundary_TheFirstTransaction_IsSeededAndReadsThroughTheBlockCache()
+    {
+        BlockReadCache cache = new();
+        CachingFirstTransactionSeeds seeds = new(cache);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        Hash256 target = block.Transactions[0].Hash!;
+        GethTraceOptions options = new() { TxHash = target, Tracer = "prestateTracer" };
+        ExecutionCounter replayed = new();
+        ExecutionCounter seeded = new();
+
+        string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds: null, replayed));
+        string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds, seeded));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Seeded, Is.EqualTo(new[] { 0 }), "the first transaction is armed with the block's cache like every other one");
+            Assert.That(seeded.Calls, Is.EqualTo(1));
+            Assert.That(cache.TryGetAccount(TestItem.PrivateKeyB.Address, out _), Is.True, "the sender is read through the block's cache");
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+    }
+
+    /// <summary>Seeds only the first transaction, whose prefix is empty, with a cache the test reads afterwards.</summary>
+    private sealed class CachingFirstTransactionSeeds(BlockReadCache cache) : IPrefixStateSeedSource
+    {
+        public List<int> Seeded { get; } = [];
+
+        public bool Enabled => true;
+
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
+        {
+            Seeded.Add(transactionIndex);
+            if (transactionIndex != 0) return false;
+
+            slot.Arm(EmptyPrefix.Instance, EmptyPrefix.Instance, cache);
+            return true;
+        }
+    }
+
+    private sealed class EmptyPrefix : IStateReadOverlay, IDisposable
+    {
+        public static readonly EmptyPrefix Instance = new();
+
+        public bool TryGetAccount(Address address, Account? underlying, out Account? overlaid)
+        {
+            overlaid = null;
+            return false;
+        }
+
+        public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
+        {
+            value = default;
+            return false;
+        }
+
+        public bool HasStorage(Address address) => false;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    [Test]
     public async Task ChangesetCapture_WhenCreateReturnsEmptyCode_PreservesCommittedStorageClear([Values] bool revert)
     {
         IReleaseSpec spec = Prague.Instance;
@@ -703,7 +768,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public async Task TransactionTraceBoundary_WhenTheTargetIsFirst_NeverAsksForASeed()
+    public async Task TransactionTraceBoundary_WhenTheTargetIsFirst_AsksForTheEmptyPrefix_AndARefusalStillTracesIt()
     {
         IReleaseSpec spec = Prague.Instance;
         RefusingSeedSource seeds = new();
@@ -712,9 +777,15 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         GethTraceOptions traceOptions = new() { TxHash = block.Transactions[0].Hash!, Tracer = "callTracer" };
 
-        ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[0].Hash!, traceOptions, seeds, out _);
+        string expected = ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[0].Hash!, traceOptions, seeds: null, out _);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[0].Hash!, traceOptions, seeds, out int executed);
 
-        Assert.That(seeds.AskedFor, Is.EqualTo(-1), "there is nothing before the first transaction to seed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.AskedFor, Is.EqualTo(0), "the first transaction is seeded with an empty prefix, which arms the block's cache");
+            Assert.That(executed, Is.EqualTo(1));
+            Assert.That(actual, Is.EqualTo(expected));
+        }
     }
 
     [TestCase("callTracer")]
@@ -916,8 +987,8 @@ public partial class BlockProcessorTests
         // The withdrawal credits the recipient of the block's transactions after them, so the chain refuses it.
         Block two = await AddBlockWithWithdrawal(chain, new Withdrawal { Address = TestItem.AddressC, Index = 1, ValidatorIndex = 1, AmountInGwei = 7 }, 3);
         BlockHeader third = chain.BlockTree.Head!.Header;
-        // The first transaction runs on the parent state alone; only the ones after it are seeded, so the second one
-        // is the first to read slot 1 of E, which only the first block wrote, through the chain.
+        // The first transaction calls C, which the chain refuses for the withdrawal, so the second one is the first to
+        // read slot 1 of E, which only the first block wrote, through the chain.
         Address[] recipients = [TestItem.AddressC, TestItem.AddressE, TestItem.AddressE];
         Transaction[] transfers = new Transaction[recipients.Length];
         for (int i = 0; i < transfers.Length; i++)
