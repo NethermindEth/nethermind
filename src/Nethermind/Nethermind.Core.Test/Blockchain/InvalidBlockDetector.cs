@@ -27,6 +27,8 @@ public class InvalidBlockDetector
             remove => baseBlockProcessor.TransactionsExecuted -= value;
         }
 
+        public bool RecoversBoundedTraceSenders => baseBlockProcessor.RecoversBoundedTraceSenders;
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
             IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
         {

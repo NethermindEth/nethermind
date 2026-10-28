@@ -25,9 +25,11 @@ public sealed class BlockchainProcessorFacade(
 {
     public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
+        bool processorRecoversSenders = blockProcessor.RecoversBoundedTraceSenders && TransactionTraceBoundary.Get(tracer, options) is not null;
         for (int i = 0; i < preprocessorSteps.Count; i++)
         {
-            preprocessorSteps[i].RecoverData(block);
+            if (processorRecoversSenders) preprocessorSteps[i].RecoverDataForTransactionTrace(block);
+            else preprocessorSteps[i].RecoverData(block);
         }
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);

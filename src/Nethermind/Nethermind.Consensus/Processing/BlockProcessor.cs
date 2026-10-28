@@ -74,6 +74,9 @@ public partial class BlockProcessor(
 
     public event Action<Block>? TransactionsExecuted;
 
+    /// <inheritdoc/>
+    public virtual bool RecoversBoundedTraceSenders => false;
+
     public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");

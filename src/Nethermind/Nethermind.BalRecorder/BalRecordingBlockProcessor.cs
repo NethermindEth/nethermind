@@ -32,6 +32,8 @@ public class BalRecordingBlockProcessor(
         remove => inner.TransactionsExecuted -= value;
     }
 
+    public bool RecoversBoundedTraceSenders => inner.RecoversBoundedTraceSenders;
+
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         // Force the generated BAL to be built even on the parallel/verify-only fast path so it can be recorded.

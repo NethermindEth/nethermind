@@ -45,6 +45,8 @@ public sealed class InlineCaptureBlockProcessor(IBlockProcessor inner, InlineCha
         remove => inner.TransactionsExecuted -= value;
     }
 
+    public bool RecoversBoundedTraceSenders => inner.RecoversBoundedTraceSenders;
+
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
     {
         if (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) || options.ContainsFlag(ProcessingOptions.ProducingBlock))
