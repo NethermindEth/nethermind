@@ -25,6 +25,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 
+    [ConfigItem(Description = "Size, in bytes, of the block cache dedicated to the flat history AccountHistory, StorageHistory and StorageClears columns, which serve the historical state reads of archival queries. Only used when HistoryEnabled is on. 0 keeps those columns on the shared block cache (`Db.SharedBlockCacheSize`).", DefaultValue = "2147483648")]
+    ulong HistoryBlockCacheSize { get; set; }
+
     [ConfigItem(Description = "How flat history is retained. 'None' keeps it unbounded from genesis or the pivot and never prunes it. 'Rolling' keeps a bounded window of the most recent HistoryRetentionBlocks blocks and reclaims below it. 'SinceBlock' keeps everything from HistoryRetentionSinceBlock onward forever and captures nothing below it. Both bounded modes select the windowed row format and so require a database that has never captured history unwindowed.", DefaultValue = "None")]
     HistoryRetentionMode HistoryRetention { get; set; }
 

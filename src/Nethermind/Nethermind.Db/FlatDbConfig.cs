@@ -10,6 +10,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool Enabled { get; set; } = true;
     public FlatDbOnRepair OnRepair { get; set; } = FlatDbOnRepair.Resync;
     public bool HistoryEnabled { get; set; } = false;
+    public ulong HistoryBlockCacheSize { get; set; } = 2UL.GiB;
     public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
     public ulong HistoryRetentionSinceBlock { get; set; } = 0;

@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -146,5 +148,103 @@ public class FlatRocksDbConfigAdjusterTests
 
         Assert.That(() => adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account)),
             Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [Test]
+    public void FlatHistoryDatabase_HistoryReadColumns_ShareOneDedicatedBlockCache()
+    {
+        _flatDbConfig.HistoryEnabled.Returns(true);
+        _flatDbConfig.HistoryBlockCacheSize.Returns(64UL.MiB);
+        string dbName = Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        nint? account = adjuster.GetForDatabase(dbName, nameof(FlatHistoryColumns.AccountHistory)).BlockCache;
+        nint? storage = adjuster.GetForDatabase(dbName, nameof(FlatHistoryColumns.StorageHistory)).BlockCache;
+        nint? clears = adjuster.GetForDatabase(dbName, nameof(FlatHistoryColumns.StorageClears)).BlockCache;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account, Is.Not.Null);
+            Assert.That(storage, Is.EqualTo(account));
+            Assert.That(clears, Is.EqualTo(account));
+        }
+        _disposeStack.Received(1).Push(Arg.Any<IDisposable>());
+    }
+
+    [TestCase(nameof(FlatHistoryColumns.AvailableBlocks))]
+    [TestCase(nameof(FlatHistoryColumns.AccountCommitments))]
+    [TestCase(nameof(FlatHistoryColumns.StorageCommitments))]
+    [TestCase(nameof(FlatHistoryColumns.TransactionChangesets))]
+    [TestCase(null)]
+    public void FlatHistoryDatabase_OtherColumns_KeepTheSharedBlockCache(string columnName)
+    {
+        _flatDbConfig.HistoryEnabled.Returns(true);
+        _flatDbConfig.HistoryBlockCacheSize.Returns(64UL.MiB);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), columnName);
+
+        Assert.That(result.BlockCache, Is.Null);
+    }
+
+    [Test]
+    public void FlatHistoryDatabase_WithZeroHistoryCacheSize_KeepsTheSharedBlockCache()
+    {
+        _flatDbConfig.HistoryEnabled.Returns(true);
+        _flatDbConfig.HistoryBlockCacheSize.Returns(0UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result, Is.SameAs(_baseConfig));
+    }
+
+    [Test]
+    public void FlatHistoryDatabase_WithHistoryDisabled_KeepsTheSharedBlockCache()
+    {
+        _flatDbConfig.HistoryEnabled.Returns(false);
+        _flatDbConfig.HistoryBlockCacheSize.Returns(64UL.MiB);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result.BlockCache, Is.Null);
+    }
+
+    [Test]
+    public void FlatHistoryDatabase_WithRollingRetention_KeepsCompactOnDeletionsWithTheDedicatedCache()
+    {
+        _flatDbConfig.HistoryEnabled.Returns(true);
+        _flatDbConfig.HistoryBlockCacheSize.Returns(64UL.MiB);
+        _flatDbConfig.HistoryRetention.Returns(HistoryRetentionMode.Rolling);
+        _flatDbConfig.HistoryRetentionBlocks.Returns(450_000UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.StorageHistory));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.BlockCache, Is.Not.Null);
+            Assert.That(result.CompactOnDeletions, Is.True);
+            Assert.That(result.RocksDbOptions, Is.EqualTo("base_options=true;"));
+        }
+    }
+
+    [Test]
+    public void OtherDatabases_DoNotGetTheHistoryBlockCache()
+    {
+        _flatDbConfig.HistoryEnabled.Returns(true);
+        _flatDbConfig.HistoryBlockCacheSize.Returns(64UL.MiB);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Receipts), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result, Is.SameAs(_baseConfig));
     }
 }
