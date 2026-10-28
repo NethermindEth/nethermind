@@ -336,9 +336,12 @@ public class JsonRpcServiceTests
 
         ResultWrapper<HexBytes> response = AssertWrapperResponse<HexBytes>(TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()));
 
-        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ExecutionError));
-        Assert.That(response.Result.Error, Is.EqualTo("out of gas"));
-        Assert.That(response.HasErrorData, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ExecutionError));
+            Assert.That(response.Result.Error, Is.EqualTo("out of gas"));
+            Assert.That(response.HasErrorData, Is.False);
+        }
     }
 
     [Test]
@@ -355,14 +358,17 @@ public class JsonRpcServiceTests
     [Test]
     public void Payload_type_shape_classifies_runtime_polymorphic_types()
     {
-        Assert.That(RpcPayloadTypeShape<int>.CanHaveDerivedRuntimeType, Is.False);
-        Assert.That(RpcPayloadTypeShape<SealedPayload>.CanHaveDerivedRuntimeType, Is.False);
-        Assert.That(RpcPayloadTypeShape<object>.CanHaveDerivedRuntimeType, Is.True);
-        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanHaveDerivedRuntimeType, Is.True);
-        Assert.That(RpcPayloadTypeShape<SealedPayload[]>.CanHaveDerivedRuntimeType, Is.False);
-        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload[]>.CanHaveDerivedRuntimeType, Is.True);
-        Assert.That(RpcPayloadTypeShape<SealedPayload>.CanBeStreamable, Is.False);
-        Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcPayloadTypeShape<int>.CanHaveDerivedRuntimeType, Is.False);
+            Assert.That(RpcPayloadTypeShape<SealedPayload>.CanHaveDerivedRuntimeType, Is.False);
+            Assert.That(RpcPayloadTypeShape<object>.CanHaveDerivedRuntimeType, Is.True);
+            Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanHaveDerivedRuntimeType, Is.True);
+            Assert.That(RpcPayloadTypeShape<SealedPayload[]>.CanHaveDerivedRuntimeType, Is.False);
+            Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload[]>.CanHaveDerivedRuntimeType, Is.True);
+            Assert.That(RpcPayloadTypeShape<SealedPayload>.CanBeStreamable, Is.False);
+            Assert.That(RpcPayloadTypeShape<PolymorphicBasePayload>.CanBeStreamable, Is.True);
+        }
     }
 
     [TestCaseSource(nameof(RuntimePolymorphicPayloadCases))]
@@ -374,8 +380,11 @@ public class JsonRpcServiceTests
 
         using JsonDocument document = JsonDocument.Parse(serialized);
         JsonElement payload = getPayload(document.RootElement);
-        Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
-        Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.GetProperty("baseValue").GetString(), Is.EqualTo("base"));
+            Assert.That(payload.GetProperty("derivedValue").GetString(), Is.EqualTo("derived"));
+        }
     }
 
     [Test]
@@ -443,7 +452,9 @@ public class JsonRpcServiceTests
 
         JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getBlockReceipts", "0x1b4");
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
+#pragma warning restore NUnit2045
         Assert.That(((JsonRpcErrorResponse)response).Error?.Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
     }
 
@@ -452,8 +463,11 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
-        Assert.That(TestRequest(ethRpcModule, "eth_chainID"), Is.InstanceOf<JsonRpcErrorResponse>());
-        Assert.That(TestRequest(ethRpcModule, "eth_chainId"), Is.InstanceOf<ResultWrapper<ulong>>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestRequest(ethRpcModule, "eth_chainID"), Is.InstanceOf<JsonRpcErrorResponse>());
+            Assert.That(TestRequest(ethRpcModule, "eth_chainId"), Is.InstanceOf<ResultWrapper<ulong>>());
+        }
     }
 
     [Test]
@@ -1200,11 +1214,17 @@ public class JsonRpcServiceTests
         secondRequest.Id = 2;
         ResultWrapper<string> secondResponse = AssertWrapperResponse<string>(SendRequestWithPool(pool, secondRequest));
 
-        Assert.That(firstResponse, Is.SameAs(cached));
-        Assert.That(secondResponse, Is.Not.SameAs(cached));
-        Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
-        Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
-        Assert.That(secondResponse.StreamedResultObservation, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResponse, Is.SameAs(cached));
+            Assert.That(secondResponse, Is.Not.SameAs(cached));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstResponse.Id, Is.EqualTo(new JsonRpcId(1)));
+            Assert.That(secondResponse.Id, Is.EqualTo(new JsonRpcId(2)));
+            Assert.That(secondResponse.StreamedResultObservation, Is.Null);
+        }
     }
 
     [Test]
@@ -1229,8 +1249,11 @@ public class JsonRpcServiceTests
 
         string result = RpcTest.AssertSuccess<string>(TestRequest(metadataTestRpcModule, "test_string", new { a = 1 }));
 
-        Assert.That(result, Is.EqualTo("ok"));
-        Assert.That(captured, Is.EqualTo("""{"a":1}"""));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("ok"));
+            Assert.That(captured, Is.EqualTo("""{"a":1}"""));
+        }
     }
 
     [Test]
@@ -1246,8 +1269,11 @@ public class JsonRpcServiceTests
 
         int result = RpcTest.AssertSuccess<int>(TestRequest(metadataTestRpcModule, "test_byte_arrays", "[]"));
 
-        Assert.That(result, Is.EqualTo(0));
-        Assert.That(captured, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(0));
+            Assert.That(captured, Is.Empty);
+        }
     }
 
     [TestCaseSource(nameof(BlockForRpcTestSource))]
@@ -1256,13 +1282,19 @@ public class JsonRpcServiceTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         BlockForRpc rpcBlock = new(block, false, specProvider);
 
-        Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(block.WithdrawalsRoot));
-        Assert.That(rpcBlock.Withdrawals, Is.EqualTo(block.Withdrawals));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(block.WithdrawalsRoot));
+            Assert.That(rpcBlock.Withdrawals, Is.EqualTo(block.Withdrawals));
+        }
 
         string json = new EthereumJsonSerializer().Serialize(rpcBlock);
 
-        Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(expected));
-        Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(expected));
+            Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(expected));
+        }
     }
 
     private static IEnumerable<TestCaseData> BlockForRpcTestSource()
@@ -1315,7 +1347,7 @@ public class JsonRpcServiceTests
     private static void AssertErrorDataWithoutStackTrace(JsonRpcErrorResponse response, Type? expectedType = null, string? expectedMessage = null)
     {
         string data = response.Error!.Data?.ToString() ?? string.Empty;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // Still actionable: the caller learns what went wrong.
             if (expectedType is not null) Assert.That(data, Does.Contain(expectedType.FullName!), data);
@@ -1324,7 +1356,7 @@ public class JsonRpcServiceTests
             Assert.That(data, Does.Not.Contain("   at "), data);
             Assert.That(data, Does.Not.Contain(".cs:line"), data);
             Assert.That(data, Does.Not.Contain("Nethermind.JsonRpc.JsonRpcService"), data);
-        });
+        }
     }
 
     private static IEnumerable<TestCaseData> OutOfMemoryPools()

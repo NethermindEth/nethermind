@@ -55,7 +55,9 @@ public class HistoryRowScannerTests
             Assert.That(session.IsReady, Is.True);
         }
         using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
+#pragma warning disable NUnit2045 // The reopened store must be ready before creating its reader.
         Assert.That(reopened.IsReady, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.EqualTo(account));
         Assert.That(reopened.CurrentState.BlockNumber, Is.Zero);
     }
@@ -111,8 +113,11 @@ public class HistoryRowScannerTests
         using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
 
         Assert.Throws<OperationCanceledException>(() => session.ImportGenesis(Allocations(), cancellation.Token));
-        Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
-        Assert.That(session.IsReady, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Accounts).GetAllKeys(), Is.Empty);
+            Assert.That(session.IsReady, Is.False);
+        }
 
         IEnumerable<KeyValuePair<Address, Account>> Allocations()
         {

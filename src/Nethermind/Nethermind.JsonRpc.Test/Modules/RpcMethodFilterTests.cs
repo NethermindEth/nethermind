@@ -35,8 +35,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { "eth*", "debug*" });
 
             RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
-            Assert.That(filter.AcceptMethod("eth_blockNumber"), Is.True);
-            Assert.That(filter.AcceptMethod("debug_trace"), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(filter.AcceptMethod("eth_blockNumber"), Is.True);
+                Assert.That(filter.AcceptMethod("debug_trace"), Is.True);
+            }
         }
 
         [TestCase("eth_blocknumber", "eth_blockNumber", true)]
