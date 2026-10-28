@@ -525,9 +525,14 @@ public sealed partial class ProofWrapperTransport : IDisposable
             (WrapperStore.Entry entry, bool[]? replace) = served[i];
             entries[i] = new(entry.Announcement.Hash, replace is null ? entry.Wrapper : WrapperCompaction.Compact(entry.Wrapper, replace, entry.EncodingHashes));
         }
-        if (entries.Length > 0) WrapperMetrics.Record(WrapperEvent.Served, entries.Length);
         outbox.Send(peer, new ProofWrappersMessage(request.RequestId, entries));
         outbox.Flush();
+        if (entries.Length == 0) return;
+        WrapperMetrics.Record(WrapperEvent.Served, entries.Length);
+        int references = 0;
+        foreach ((_, bool[]? replace) in served)
+            foreach (bool reference in replace ?? []) if (reference) references++;
+        if (references > 0) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
     }
 
     /// <summary>Per transaction of <paramref name="entry"/>, whether its encoding was previously sent to <paramref name="peer"/>
@@ -535,14 +540,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private static bool[]? Replacements(WrapperPeer peer, WrapperStore.Entry entry, long now)
     {
         bool[]? replace = null;
-        int references = 0;
         for (int i = 0; i < entry.EncodingHashes.Length; i++)
-        {
-            if (!peer.Delivered.Contains(entry.EncodingHashes[i], now)) continue;
-            (replace ??= new bool[entry.EncodingHashes.Length])[i] = true;
-            references++;
-        }
-        if (references > 0) WrapperMetrics.Record(WrapperEvent.ReferenceSent, references);
+            if (peer.Delivered.Contains(entry.EncodingHashes[i], now)) (replace ??= new bool[entry.EncodingHashes.Length])[i] = true;
         return replace;
     }
 
