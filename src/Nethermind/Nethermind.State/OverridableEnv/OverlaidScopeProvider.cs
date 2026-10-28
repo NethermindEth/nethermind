@@ -78,7 +78,13 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTree(inner.CreateStorageTree(address), address, slot);
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+        {
+            // An account the cache answered never reached the scope, which would read it again for its storage root.
+            // Every scope armed with the cache stands on the same parent state, so the cached account is its own read.
+            if (slot.Cache is { } cache && cache.TryGetAccount(address, out Account? account)) inner.HintGet(address, account);
+            return new StorageTree(inner.CreateStorageTree(address), address, slot);
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => inner.StartWriteBatch(estimatedAccountNum);
 

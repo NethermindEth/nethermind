@@ -154,6 +154,38 @@ public class OverlaidScopeProviderTests
     }
 
     [Test]
+    public void AStorageTree_OfAnAccountTheCacheAnswered_HandsTheScopeThatAccount_SoTheScopeDoesNotReadItAgain()
+    {
+        BlockReadCache cache = new();
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache);
+        _scope.Get(TestItem.AddressA);
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache);
+        _scope.Get(TestItem.AddressA);
+
+        _scope.CreateStorageTree(TestItem.AddressA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _inner.Received(1).Get(TestItem.AddressA);
+            Received.InOrder(() =>
+            {
+                _inner.HintGet(TestItem.AddressA, Underlying);
+                _inner.CreateStorageTree(TestItem.AddressA);
+            });
+        }
+    }
+
+    [Test]
+    public void AStorageTree_OfAnAccountTheCacheDoesNotHold_HintsNothing([Values] bool armed)
+    {
+        if (armed) _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), new BlockReadCache());
+
+        _scope.CreateStorageTree(TestItem.AddressA);
+
+        _inner.DidNotReceiveWithAnyArgs().HintGet(default!, default);
+    }
+
+    [Test]
     public void AStorageSlot_IsReadFromTheTreeOnceForTheBlock([Values(4, 14)] int cacheBits)
     {
         BlockReadCache cache = new(storageSetsBits: cacheBits);
