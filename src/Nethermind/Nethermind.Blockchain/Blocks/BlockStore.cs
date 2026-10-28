@@ -202,14 +202,17 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
     {
+        RpcLookupPaths.Increment(RpcLookupPaths.Counter.BlockAttempts);
         ValueHash256 cacheKey = blockHash.ValueHash256;
         if (_blockCache.TryGet(in cacheKey, out Block? cachedBlock))
         {
+            RpcLookupPaths.Increment(RpcLookupPaths.Counter.BlockCache);
             return new ReceiptRecoveryBlock(cachedBlock);
         }
 
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
         {
+            RpcLookupPaths.Increment(RpcLookupPaths.Counter.BlockPending);
             return new ReceiptRecoveryBlock(pendingBlock);
         }
 
@@ -224,6 +227,7 @@ public class BlockStore : IBlockStore, IClearableCache
         try
         {
             block = _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
+            if (block is not null) RpcLookupPaths.RecordBody(memoryOwner.Memory.Length, memoryOwner is PinnedBlockMemory);
             return block;
         }
         finally
@@ -244,6 +248,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
             PinnedBlockMemory owner = new(native, handle, bytes);
             handle = 0;
+            RpcLookupPaths.Increment(RpcLookupPaths.Counter.NativeAcquired);
             return owner;
         }
         finally
@@ -277,7 +282,11 @@ public class BlockStore : IBlockStore, IClearableCache
         protected override void Dispose(bool disposing)
         {
             nint released = Interlocked.Exchange(ref _handle, 0);
-            if (released != 0) db.DangerousReleaseHandle(released);
+            if (released != 0)
+            {
+                db.DangerousReleaseHandle(released);
+                RpcLookupPaths.Increment(RpcLookupPaths.Counter.NativeReleased);
+            }
         }
     }
 

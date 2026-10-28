@@ -474,6 +474,7 @@ namespace Nethermind.Blockchain.Receipts
         /// </remarks>
         public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart)
         {
+            RpcLookupPaths.Increment(RpcLookupPaths.Counter.ReceiptAttempts);
             receipt = null;
             txIndex = -1;
             logIndexStart = 0;
@@ -483,22 +484,32 @@ namespace Nethermind.Blockchain.Receipts
 
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached))
             {
+                RpcLookupPaths.Increment(RpcLookupPaths.Counter.ReceiptCache);
                 return TryFind(cached, block.TransactionCount, txHash, out receipt, out txIndex, out logIndexStart);
             }
 
             if (_pendingReceipts is not null && _pendingReceipts.TryGet(blockHash, out (TxReceipt[] Receipts, RlpBehaviors Behaviors) pending))
             {
+                RpcLookupPaths.Increment(RpcLookupPaths.Counter.ReceiptPending);
                 return TryFind(pending.Receipts, block.TransactionCount, txHash, out receipt, out txIndex, out logIndexStart);
             }
 
             // A repeat lookup in one block, e.g. a backfill of all its transactions, is cheaper from the receipts cache Get fills.
-            if (_defaultReceiptsRecovery is null || !_singleReceiptBlocks.Set(blockHash)) return false;
+            if (_defaultReceiptsRecovery is null || !_singleReceiptBlocks.Set(blockHash))
+            {
+                RpcLookupPaths.Increment(RpcLookupPaths.Counter.ReceiptDeclined);
+                return false;
+            }
 
             Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
             try
             {
                 RlpReader reader = new(receiptsData);
-                if (!ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes)) return false;
+                if (!ReceiptArrayStorageDecoder.TrySkipCompactPrefix(ref reader, out ReadOnlySpan<byte> txHashes))
+                {
+                    RpcLookupPaths.Increment(RpcLookupPaths.Counter.ReceiptUnsupportedCompact);
+                    return false;
+                }
 
                 int index = -1;
                 if (txHashes.IsEmpty)
@@ -518,7 +529,11 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     index = MemoryMarshal.Cast<byte, ValueHash256>(txHashes).IndexOf(txHash.ValueHash256);
                 }
-                if (index < 0) return false;
+                if (index < 0)
+                {
+                    RpcLookupPaths.Increment(RpcLookupPaths.Counter.ReceiptMissingTarget);
+                    return false;
+                }
 
                 int end = reader.ReadSequenceLength() + reader.Position;
                 RlpBehaviors behaviors = RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes
@@ -558,6 +573,9 @@ namespace Nethermind.Blockchain.Receipts
                 receipt = found;
                 txIndex = index;
                 logIndexStart = logsBefore;
+                RpcLookupPaths.Increment(txHashes.IsEmpty
+                    ? RpcLookupPaths.Counter.SelectedWithoutHashes
+                    : RpcLookupPaths.Counter.SelectedWithHashes);
                 return true;
             }
             finally
