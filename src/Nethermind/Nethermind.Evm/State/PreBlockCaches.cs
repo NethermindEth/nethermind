@@ -18,13 +18,12 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
-    private readonly Func<CacheType>[] _clearCaches;
-
     private readonly SeqlockCache<StorageCell, UInt256> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly PrecompileCaches _precompileCaches;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
     private volatile CodePrefetcher? _codePrefetcher;
+    private IConsumerColdReadObserver? _coldReadObserver;
     private int _consumerScopes;
 
     private readonly Lock _reconcileLock = new();
@@ -49,12 +48,6 @@ public class PreBlockCaches
         _stateCache = new SeqlockCache<AddressAsKey, Account>(config.StateCacheSetsBits);
         _storageBypass = new WipedContracts(config.MaxStorageWipesBeforeClear);
         _precompileCaches = precompileCaches;
-        _clearCaches =
-        [
-            () => { _storageCache.Clear(); return CacheType.None; },
-            () => { _stateCache.Clear(); return CacheType.None; },
-            () => { _precompileCaches.ClearBlockCache(); return CacheType.None; }
-        ];
         _writeBack = new WriteBackBatch(this);
     }
 
@@ -103,15 +96,33 @@ public class PreBlockCaches
     }
 
     /// <summary>
+    /// Told about every read a consumer scope makes past the account and storage caches, before it goes to the backing
+    /// store; null when nothing listens. The driver sets it while a block's pre-warming session runs.
+    /// </summary>
+    public IConsumerColdReadObserver? ColdReadObserver
+    {
+        get => Volatile.Read(ref _coldReadObserver);
+        set => Volatile.Write(ref _coldReadObserver, value);
+    }
+
+    /// <summary>Clears <see cref="ColdReadObserver"/> if it is still <paramref name="observer"/>.</summary>
+    public void ClearColdReadObserver(IConsumerColdReadObserver observer) =>
+        Interlocked.CompareExchange(ref _coldReadObserver, null, observer);
+
+    /// <summary>For a consumer scope: reports one read past the account and storage caches, before it is made.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReportConsumerColdRead() => _coldReadObserver?.OnColdRead();
+
+    /// <summary>
     /// Whether a consumer scope is open: from <see cref="BeginConsumerScope"/> until <see cref="EndConsumerScope"/>,
     /// which the consumer calls only once its underlying scope has been torn down and its background readers drained.
-    /// No speculative session may run in that time.
+    /// No speculative pass may run in that time.
     /// </summary>
     public bool ConsumerScopeOpen => Volatile.Read(ref _consumerScopes) > 0;
 
     /// <summary>
-    /// Raised by <see cref="BeginConsumerScope"/> before the consumer reads. The driver joins any speculative session
-    /// here, so a consumer scope and a session never coexist and nothing but the consumer writes while it is open.
+    /// Raised by <see cref="BeginConsumerScope"/> before the consumer reads. The driver stops any speculative session
+    /// here, waiting for one in a pass, so nothing but the consumer writes while it is open.
     /// </summary>
     public event Action? ConsumerScopeOpened;
 
@@ -162,26 +173,22 @@ public class PreBlockCaches
         }
     }
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
-            return ClearCachesCore();
+            ClearCachesCore();
         }
     }
 
-    private CacheType ClearCachesCore()
+    private void ClearCachesCore()
     {
-        CacheType isDirty = CacheType.None;
-        foreach (Func<CacheType> clearCache in _clearCaches)
-        {
-            isDirty |= clearCache();
-        }
-
+        _storageCache.Clear();
+        _stateCache.Clear();
+        _precompileCaches.ClearBlockCache(publishMetrics: false);
         _storageBypass.Clear();
         _validFor = null;
-        return isDirty;
     }
 
     // Epoch bumps only: safe while populators for another head are still writing, unlike the precompile dictionary's clear.
@@ -231,7 +238,7 @@ public class PreBlockCaches
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="PrepareFor"/>, a clear here adopts no identity: only the driver vouches for the caches, once
-    /// it has prepared them for the block. <see cref="BeginConsumerScope"/> beforehand joins any speculative session,
+    /// it has prepared them for the block. <see cref="BeginConsumerScope"/> beforehand stops any speculative session,
     /// so no populator writes while this runs or while the scope reads.
     /// </remarks>
     /// <param name="stateRoot">The state root the consumer is about to read.</param>
@@ -587,6 +594,8 @@ public class PreBlockCaches
         private readonly PooledSet<StorageCell> _cells;
         private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
         private readonly StrongBox<int> _remainingCells;
+        private PooledSet<StorageCell>? _reads;
+        private int _maxReads;
         private bool _disposed;
 
         internal StorageReadCapture(PreBlockCaches owner, StrongBox<int> remainingCells)
@@ -604,6 +613,33 @@ public class PreBlockCaches
         /// <summary>Distinct cells encountered while backing reads were skipped.</summary>
         /// <remarks>Exposed as the concrete pooled set so consumers enumerate without boxing; treat as read-only.</remarks>
         public PooledSet<StorageCell> Cells => _cells;
+
+        /// <summary>
+        /// Distinct cells read from the cache rather than skipped, once <see cref="RecordReads"/> asked for them; null
+        /// otherwise. With <see cref="Cells"/>, every cell the run read.
+        /// </summary>
+        public PooledSet<StorageCell>? Reads => _reads;
+
+        /// <summary>Also records the cells read from the cache, up to <paramref name="maxReads"/> of them.</summary>
+        public void RecordReads(int maxReads)
+        {
+            _maxReads = maxReads;
+            _reads ??= new PooledSet<StorageCell>(Math.Clamp(maxReads, 0, InitialCellCapacity));
+        }
+
+        /// <summary>Records a cell read from the cache, if <see cref="RecordReads"/> asked for them.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void RecordRead(in StorageCell storageCell)
+        {
+            PooledSet<StorageCell>? reads = _reads;
+            if (reads is null || reads.Count >= _maxReads) return;
+            if (Environment.CurrentManagedThreadId != _ownerThreadId)
+            {
+                throw new InvalidOperationException("A capture must only record on the thread that created it.");
+            }
+
+            reads.Add(storageCell);
+        }
 
         /// <summary>Records a missed storage cell while the shared cell budget lasts.</summary>
         /// <remarks>
@@ -647,6 +683,7 @@ public class PreBlockCaches
             }
 
             _cells.Dispose();
+            _reads?.Dispose();
         }
     }
 }
@@ -682,15 +719,4 @@ public sealed record PreBlockCachesConfig
     /// blocks; the cap turns what would be a clear per such block into one per this many wipes.
     /// </remarks>
     public int MaxStorageWipesBeforeClear { get; init; } = 4096;
-}
-
-[Flags]
-public enum CacheType
-{
-    None = 0,
-    Storage = 0b1,
-    State = 0b10,
-    /// <summary>RLP node-storage caching was enabled when cleared; this does not indicate whether it contained entries.</summary>
-    Rlp = 0b100,
-    Precompile = 0b1000
 }

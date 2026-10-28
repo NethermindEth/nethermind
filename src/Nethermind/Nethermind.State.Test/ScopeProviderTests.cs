@@ -840,6 +840,44 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ApplyBal_RevivedAccount_IsNotServedItsWipedStorageFromTheCaches()
+    {
+        StorageCell slotE2 = new(TestItem.AddressE, 2);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        // EIP-161 removes E, storage and all, when a transaction leaves it empty; it then comes back without slot 1.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressE)
+                .WithBalanceChanges(new BalanceChange(1, 5), new BalanceChange(2, 0), new BalanceChange(3, 9))
+                .WithStorageChanges(slotE2.Index, new StorageChange(3, 4))
+                .TestObject)
+            .TestObject;
+
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.ApplyBal(bal);
+            ws.RecalculateStateRoot();
+        });
+
+        bool carried = caches.PrepareFor(newRoot);
+
+        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
+        {
+            consumer.Get(in SlotE1, out UInt256 wiped);
+            consumer.Get(in slotE2, out UInt256 written);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(carried, Is.True, "the caches describe the committed state");
+                Assert.That(consumer.GetBalance(TestItem.AddressE), Is.EqualTo((UInt256)9));
+                Assert.That(wiped, Is.EqualTo(UInt256.Zero), "the slot from before the removal is gone");
+                Assert.That(written, Is.EqualTo((UInt256)4));
+            }
+        }
+    }
+
+    [Test]
     public void Test_StorageOnlyChange_CachesTheAccountWithItsNewStorageRoot()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);

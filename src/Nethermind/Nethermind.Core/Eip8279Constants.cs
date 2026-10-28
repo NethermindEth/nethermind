@@ -23,6 +23,9 @@ public static class Eip8279Constants
     /// <summary>Block access list bytes contributed by an account's post nonce.</summary>
     public const ulong NonceBytes = 8;
 
+    /// <summary>Block access list bytes contributed by code adopted through EIP-8298 <c>SETCODEFROM</c>: its code hash.</summary>
+    public const ulong AdoptedCodeHashBytes = 32;
+
     /// <summary>Length of the EIP-7702 delegation designator an authorization writes.</summary>
     public const ulong DelegationCodeBytes = 23;
 

@@ -40,7 +40,6 @@ using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -142,7 +141,7 @@ public class StatelessInputGeneratorTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(100).WithParent(grandparent).TestObject;
         BlockHeader current = Build.A.BlockHeader.WithNumber(101).WithParent(parent).TestObject;
         StatelessBlockTree blockTree = new([grandparent, parent]);
-        BlockhashProvider provider = new(blockTree, Substitute.For<IWorldState>(), NullLogManager.Instance);
+        BlockhashProvider provider = new(blockTree, NullLogManager.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -239,6 +238,28 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Raw_block_input_recovers_the_access_list_without_requests()
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: true, currentChainActivation: true, requests: false);
+        using (witness)
+        {
+            Block rawBlock = Rlp.Decode<Block>(Rlp.Encode(block))!;
+            Assert.That(rawBlock.EncodedBlockAccessList, Is.Null);
+
+            byte[] encoded = (await InputGenerator.EncodeInput(rawBlock, witness, specProvider))!;
+            StatelessInput<SszExecutionPayloadAmsterdam>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayloadAmsterdam> input);
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(input.NewPayloadRequest.ToBlock(requestsEnabled: true)!.Header.CalculateHash(), Is.EqualTo(block.Hash));
+                Assert.That(result.IsSuccess, Is.True);
+            }
+        }
+    }
+
+    [Test]
     public async Task Empty_or_pre_request_block_needs_no_replay([Values] bool requestsEnabled)
     {
         Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).TestObject;
@@ -303,7 +324,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false)
+    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -350,7 +371,7 @@ public class StatelessInputGeneratorTests
         };
         try
         {
-            Transaction tx = Build.A.Transaction.WithTo(spec.DepositContractAddress!).WithGasLimit(1_000_000)
+            Transaction tx = Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
                 .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
             Block suggested = Build.A.Block.WithParent(parent).WithPostMergeRules()
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
@@ -360,7 +381,7 @@ public class StatelessInputGeneratorTests
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
             block.DisposeAccountChanges();
-            Assert.That(block.ExecutionRequests, Has.Length.EqualTo(amsterdam ? 5 : 3));
+            Assert.That(block.ExecutionRequests, Has.Length.EqualTo(!requests ? 0 : amsterdam ? 5 : 3));
             return (block, witness, specProvider);
         }
         catch
@@ -369,8 +390,11 @@ public class StatelessInputGeneratorTests
             throw;
         }
 
-        void AddRequestsCode(Address address, byte[] requests) =>
-            AddCode(address, Prepare.EvmCode.StoreDataInMemory(0, requests).Return(requests.Length, 0).Done);
+        void AddRequestsCode(Address address, byte[] data)
+        {
+            if (!requests) data = [];
+            AddCode(address, Prepare.EvmCode.StoreDataInMemory(0, data).Return(data.Length, 0).Done);
+        }
 
         void AddCode(Address address, byte[] code)
         {

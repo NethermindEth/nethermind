@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -11,7 +12,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -26,6 +26,7 @@ public class PrewarmerTxAdapter(
     BlockCachePreWarmer preWarmer,
     IPrewarmerState prewarmerState,
     IWorldState worldState,
+    ICodeInfoRepository codeInfoRepository,
     ILogManager logManager) : ITransactionProcessorAdapter
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PrewarmerTxAdapter>();
@@ -33,13 +34,14 @@ public class PrewarmerTxAdapter(
 
     internal (int Replayed, int Rejected, int Missing) Tally { get; private set; }
 
+    [SkipLocalsInit]
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
-            if (preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint)
-                && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
+            TransactionFootprint? footprint = preWarmer.FindFootprint(transaction, _blockExecutionContext.Header, out bool eligible);
+            if (eligible && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
                 return result;
             }
@@ -49,6 +51,15 @@ public class PrewarmerTxAdapter(
         }
 
         return baseAdapter.Execute(transaction, txTracer);
+    }
+
+    // Apart, so the logging is no part of the frame of every replay.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void Undo(Snapshot snapshot, Transaction tx, Exception ex)
+    {
+        worldState.Restore(snapshot);
+        Blockchain.Metrics.PrewarmHandoffFailures++;
+        if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
     }
 
     private TransactionResult ExecuteReportingWrites(Transaction transaction, ITxTracer txTracer, CommittedStorageWrites committed)
@@ -71,6 +82,7 @@ public class PrewarmerTxAdapter(
         baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
 
+    [SkipLocalsInit]
     private bool TryReplay(TransactionFootprint? footprint, Transaction tx, ITxTracer txTracer, out TransactionResult result)
     {
         result = default;
@@ -87,7 +99,7 @@ public class PrewarmerTxAdapter(
         BlockHeader header = _blockExecutionContext.Header;
         IReleaseSpec spec = _blockExecutionContext.Spec;
         // The pre-execution checks a warm run skips: the gas left in the block, and a sender with code (EIP-3607).
-        if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!)) return false;
+        if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!, codeInfoRepository)) return false;
 
         if (!footprint.Matches(worldState))
         {
@@ -103,9 +115,7 @@ public class PrewarmerTxAdapter(
         }
         catch (Exception ex)
         {
-            worldState.Restore(snapshot);
-            Blockchain.Metrics.PrewarmHandoffFailures++;
-            if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
+            Undo(snapshot, tx, ex);
             return false;
         }
 
@@ -115,7 +125,6 @@ public class PrewarmerTxAdapter(
         GasConsumed gas = receipt.Gas;
         tx.SpentGas = gas.SpentGas;
         tx.BlockGasUsed = gas.EffectiveBlockGas;
-        EvmMetrics.UpdateBlockGasPrice(tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas));
         footprint.Counts.Flush();
 
         if (receipt.Success)
@@ -130,6 +139,7 @@ public class PrewarmerTxAdapter(
         Tally = Tally with { Replayed = Tally.Replayed + 1 };
         Blockchain.Metrics.PrewarmHandoffs++;
         if (footprint.Refreshed) Blockchain.Metrics.PrewarmRefreshesTakenOver++;
+        if (footprint.FromMempool) Blockchain.Metrics.PrewarmMempoolRunsTakenOver++;
         result = footprint.Result;
         return true;
     }

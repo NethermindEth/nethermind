@@ -13,6 +13,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -141,7 +142,7 @@ public class BlockValidator(
     {
         if (spec.IsEip7934Enabled)
         {
-            int encodedSize = block.EncodedSize ?? _blockDecoder.GetLength(block, RlpBehaviors.None);
+            int encodedSize = block.EncodedSize ??= _blockDecoder.GetLength(block, RlpBehaviors.None);
             if (encodedSize > spec.Eip7934MaxRlpBlockSize)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} RLP encoded size of {encodedSize} bytes exceeds the max limit of {spec.Eip7934MaxRlpBlockSize} bytes");
@@ -184,7 +185,7 @@ public class BlockValidator(
         if (suggestedBlock.BlockAccessList is null
             && processedBlock.GeneratedBlockAccessList is not null
             && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
-            && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
+            && !ValidateBlockLevelAccessListSize(processedBlock, processedBlock.GeneratedBlockAccessList.ItemCount, ref balSizeError))
         {
             error = balSizeError;
             return false;
@@ -192,6 +193,17 @@ public class BlockValidator(
 
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
+            // A list reattached from the store for queued processing (sync, restart replay, reorg) skipped the
+            // pre-execution check, and parallel execution only verified against it, so check it here. Only on a
+            // matching block, so a divergent one still reports the mismatch.
+            if (suggestedBlock.BlockAccessList is not null
+                && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+                && !ValidateBlockLevelAccessListSize(processedBlock, suggestedBlock.BlockAccessList.ItemCount, ref balSizeError))
+            {
+                error = balSizeError;
+                return false;
+            }
+
             error = null;
             return true;
         }
@@ -327,26 +339,64 @@ public class BlockValidator(
     {
         Transaction[] transactions = block.Transactions;
         bool isEip2780Enabled = spec.IsEip2780Enabled;
+        bool isEip7778Enabled = spec.IsEip7778Enabled;
+        ulong minimumBlockGas = 0;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
             Transaction transaction = transactions[txIndex];
 
-            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
-            // makes the intrinsic-gas validation below sender-dependent.
-            if (isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
-                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
-
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+
+            // The EIP-2780 self-transfer discount makes intrinsic gas sender-dependent, but an unknown sender is
+            // priced as a transfer to someone else, the higher charge: a transaction that is well formed without
+            // its sender is well formed with it. Only one that fails needs the sender, so the request thread
+            // doesn't recover, one by one, the senders the background recovery has not reached yet.
+            // The retry doesn't ask whether the sender is still missing: the background recovery can publish it
+            // after the check above priced the transaction without it, and that rejection must still be re-checked.
+            if (!isWellFormed && isEip2780Enabled && transaction.Signature is not null)
+            {
+                transaction.SenderAddress ??= _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            }
+
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
                 errorMessage = isWellFormed.Error;
                 return false;
             }
+
+            if (isEip7778Enabled)
+            {
+                minimumBlockGas = minimumBlockGas.SaturatingAdd(MinimumBlockGas(transaction, spec));
+                if (minimumBlockGas > block.Header.GasLimit)
+                {
+                    errorMessage = BlockErrorMessages.MinimumBlockGasAboveGasLimit(minimumBlockGas, block.Header.GasLimit);
+                    if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {errorMessage}");
+                    return false;
+                }
+            }
         }
 
         return true;
+    }
+
+    /// <summary>The least execution-dimension block gas <paramref name="tx"/> can charge, known before it runs.</summary>
+    /// <remarks>
+    /// A lower bound only under EIP-7778, where refunds no longer reduce block gas: a transaction then charges at
+    /// least its intrinsic execution gas or its EIP-7623 floor. Summed over the body, it rejects a block that cannot
+    /// fit its gas limit before any of it executes. Frame and system transactions are left out rather than priced.
+    /// </remarks>
+    private static ulong MinimumBlockGas(Transaction tx, IReleaseSpec spec)
+    {
+        if (tx.SupportsFrames || tx.IsSystem()) return 0;
+
+        // An unrecovered sender is priced as a transfer to someone else; the EIP-2780 self-transfer price is the lower one.
+        IntrinsicGas<EthereumGasPolicy> gas = spec.IsEip2780Enabled && tx.SenderAddress is null
+            ? EthereumGasPolicy.CalculateIntrinsicGasAsEip2780SelfTransfer(tx, spec)
+            : EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
+        return Math.Max(gas.Standard.Value, gas.FloorGas.Value);
     }
 
     protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error)
@@ -381,6 +431,9 @@ public class BlockValidator(
 
             if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
+                // Senders may still be unrecovered here; the error message names the sender.
+                if (transaction.SenderAddress is null && transaction.Signature is not null)
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
@@ -460,7 +513,7 @@ public class BlockValidator(
                 return false;
             }
 
-            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            if (!ValidateBlockLevelAccessListSize(block, block.BlockAccessList.ItemCount, ref error))
             {
                 return false;
             }
@@ -477,16 +530,12 @@ public class BlockValidator(
 
     }
 
-    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    private bool ValidateBlockLevelAccessListSize(Block block, int itemCount, ref string? error)
     {
-        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
-        // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
-        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
-
-        if (itemCount > 0 && itemCount > maxBalItems)
+        if (Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit))
         {
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
+            ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }

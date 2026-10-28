@@ -2,17 +2,36 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Ethash;
+using Nethermind.Core.Specs;
+using Nethermind.Merge.Plugin;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Caching;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using EraException = Nethermind.Era1.Exceptions.EraException;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
+using NSubstitute;
 using NUnit.Framework;
+using System.Net;
+using System.Security.Cryptography;
+using Nethermind.Blockchain.Headers;
+using Nethermind.EraE.Config;
+using Nethermind.EraE.Store;
+using EraImportException = Nethermind.Era1.EraImportException;
+using KnownHeaders = Nethermind.Era1.KnownHeaders;
 
 namespace Nethermind.EraE.Test.Import;
 
@@ -238,6 +257,496 @@ public class EraImporterTests
         Assert.That(
             () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
             Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task Import_ValidatesBlockAgainstItsParent()
+    {
+        // The archive's own verification passes; only the parent-relative rules, which processing cannot catch, reject.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), Arg.Any<bool>()).Returns(false);
+        await using ImportEnvironment env = await CreateImportEnvironment(
+            configure: b => b.AddSingleton<IBlockValidator>(blockValidator));
+        Hash256 genesisHash = env.TargetTree.Genesis!.Hash!;
+
+        Assert.That(
+            () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
+            Throws.TypeOf<EraVerificationException>());
+        blockValidator.Received().ValidateSuggestedBlock(Arg.Is<Block>(b => b.Number == 1), Arg.Is<BlockHeader>(p => p.Hash == genesisHash), out Arg.Any<string?>(), Arg.Any<bool>());
+    }
+
+    public enum ImportedHeader
+    {
+        Valid,
+        ProofOfWorkAfterProofOfStake,
+        ProofOfWorkAfterTerminalBlock,
+        NonIncreasingTimestamp,
+        UnknownParent
+    }
+
+    [Test]
+    public async Task Import_WithRealValidator([Values] ImportedHeader importedHeader)
+    {
+        bool terminalParent = importedHeader == ImportedHeader.ProofOfWorkAfterTerminalBlock;
+        bool proofOfWorkChild = importedHeader is ImportedHeader.ProofOfWorkAfterProofOfStake or ImportedHeader.ProofOfWorkAfterTerminalBlock;
+        TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = terminalParent ? 1_000_000UL : 0UL };
+        Block genesis = Build.A.Block.Genesis.WithPostMergeRules().WithDifficulty(terminalParent ? 1UL : 0UL).WithTimestamp(1_663_000_000).TestObject;
+        BlockBuilder parentBuilder = Build.A.Block.WithParent(genesis).WithPostMergeRules();
+        if (terminalParent)
+            parentBuilder.WithDifficulty(999_999).WithPostMergeFlag(false);
+        Block parent = parentBuilder.TestObject;
+        Block targetParent = importedHeader == ImportedHeader.UnknownParent
+            ? Build.A.Block.WithParent(genesis).WithPostMergeRules().WithExtraData([1]).TestObject
+            : parent;
+        BlockTreeBuilder targetTreeBuilder = new(genesis, specProvider);
+        BlockTree targetTree = targetTreeBuilder.WithBlocks(genesis, targetParent).TestObject;
+        targetTree.TryUpdateMainChain(targetParent.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: [targetParent]);
+        await using IContainer targetCtx = new ContainerBuilder()
+            .AddModule(new EraETestModule(useRealValidator: true))
+            .AddModule(new EthHashModule(new MiningConfig()))
+            .AddSingleton<IBlockTree>(targetTree)
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<ITimestamper>(new Timestamper(1_663_000_100L))
+            .AddSingleton(new ChainSpec { Genesis = genesis, Parameters = new ChainParameters { TerminalTotalDifficulty = specProvider.TerminalTotalDifficulty } })
+            .AddSingleton<IMergeConfig>(new MergeConfig())
+            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+            .AddDecorator<ISealValidator, MergeSealValidator>()
+            .Build();
+        BlockBuilder childBuilder = Build.A.Block.WithParent(parent).WithPostMergeRules();
+        if (importedHeader == ImportedHeader.NonIncreasingTimestamp)
+            childBuilder.WithTimestamp(parent.Timestamp);
+        Block child = childBuilder.TestObject;
+        if (proofOfWorkChild)
+        {
+            child.Header.IsPostMerge = false;
+            child.Header.Difficulty = targetCtx.Resolve<IDifficultyCalculator>().Calculate(child.Header, parent.Header);
+            child.Header.Hash = child.Header.CalculateHash();
+        }
+        Block descendant = Build.A.Block.WithParent(child).WithPostMergeRules().TestObject;
+        BlockTree sourceTree = new BlockTreeBuilder(genesis, new TestSpecProvider(Paris.Instance)).WithBlocks(genesis, parent, child, descendant).TestObject;
+        sourceTree.TryUpdateMainChain(descendant.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: [descendant]);
+
+        IPoSSwitcher archiveConsensus = Substitute.For<IPoSSwitcher>();
+        archiveConsensus.IsPostMerge(Arg.Any<BlockHeader>()).Returns(call => call.Arg<BlockHeader>().Difficulty == 0);
+        await using IContainer sourceCtx = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IPoSSwitcher>(archiveConsensus)
+            .AddSingleton<IBlockTree>(sourceTree)
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Paris.Instance))
+            .Build();
+        string exportPath = sourceCtx.ResolveTempDirPath();
+        await sourceCtx.Resolve<IEraExporter>().Export(exportPath, 2, 3);
+
+        IEraImporter importer = targetCtx.Resolve<IEraImporter>();
+        Hash256? finalizedBeforeImport = targetTree.FinalizedHash;
+        if (terminalParent)
+        {
+            targetCtx.Resolve<IPoSSwitcher>();
+            ((IClearableCache)targetTreeBuilder.HeaderStore).ClearCache();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindHeader(parent.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.TotalDifficulty, Is.Null);
+                Assert.That(targetTree.GetInfo(parent.Number, parent.Hash!).Info?.TotalDifficulty, Is.EqualTo(specProvider.TerminalTotalDifficulty));
+            }
+        }
+
+        if (importedHeader == ImportedHeader.Valid)
+        {
+            await importer.Import(exportPath, 2, 3, null, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(targetTree.FindBlock(descendant.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(targetTree.FinalizedHash, Is.EqualTo(descendant.Hash));
+            }
+        }
+        else
+        {
+            string expectedError = proofOfWorkChild
+                ? "A proof-of-work block cannot follow a terminal or proof-of-stake parent."
+                : BlockErrorMessages.InvalidTimestamp;
+            Assert.That(() => importer.Import(exportPath, 2, 3, null, CancellationToken.None),
+                importedHeader == ImportedHeader.UnknownParent
+                    ? Throws.TypeOf<Nethermind.Era1.EraImportException>().With.Message.Contains("Unknown parent")
+                    : Throws.TypeOf<EraVerificationException>().With.Message.Contains(expectedError));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Null);
+                Assert.That(targetTree.FindBlock(descendant.Hash!, BlockTreeLookupOptions.None), Is.Null);
+                Assert.That(targetTree.Head!.Hash, Is.EqualTo(targetParent.Hash));
+                Assert.That(targetTree.FinalizedHash, Is.EqualTo(finalizedBeforeImport));
+            }
+        }
+    }
+
+    private const BlockTreeInsertHeaderOptions MainChainHeader = BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+    private const BlockTreeInsertHeaderOptions BeaconHeader = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+    private const BlockTreeInsertHeaderOptions SideHeader = BlockTreeInsertHeaderOptions.NotOnMainChain | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+
+    [Test]
+    public async Task Import_PostMergeEpochForeignToLocalHeaders_KeepsLocalHeaders([Values(MainChainHeader, BeaconHeader)] BlockTreeInsertHeaderOptions localHeaderOptions)
+    {
+        const ulong chainLength = 16;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree);
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        Hash256?[] localHashes = InsertForeignHeaders(targetTree, sourceTree, 1, chainLength, localHeaderOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null),
+                Throws.TypeOf<EraVerificationException>());
+            for (ulong i = 1; i < chainLength; i++)
+                Assert.That(targetTree.FindLevel(i)!.BlockInfos.Select(static info => info.BlockHash), Is.EqualTo(new[] { localHashes[i] }), $"headers at {i}");
+        }
+    }
+
+    [Test]
+    public async Task Import_PostMergeEpochMatchingLocalHeaders_ImportsBodies(
+        [Values(MainChainHeader, BeaconHeader)] BlockTreeInsertHeaderOptions localHeaderOptions,
+        [Values(1UL, 9UL)] ulong firstLocalHeight)
+    {
+        const ulong chainLength = 16;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree);
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        InsertArchiveHeaders(targetTree, sourceTree, firstLocalHeight, chainLength, localHeaderOptions);
+
+        await targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < chainLength; i++)
+                Assert.That(targetTree.FindBlock(i, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Hash), $"body {i}");
+        }
+    }
+
+    [TestCase(1UL, 9UL, MainChainHeader, null, TestName = "Import_ForeignArchive_NoHeaderBelowLowestLocal")]
+    [TestCase(5UL, 9UL, MainChainHeader, null, TestName = "Import_ForeignArchive_NoHeaderBetweenMatchingAndForeignLocal")]
+    [TestCase(1UL, 9UL, SideHeader, null, TestName = "Import_ForeignArchive_NoHeaderBelowLowestUnmarkedLocal")]
+    [TestCase(1UL, 1UL, MainChainHeader, BeaconHeader, TestName = "Import_ForeignArchive_MainIsLocalBeaconMainIsArchive")]
+    [TestCase(1UL, 1UL, BeaconHeader, SideHeader, TestName = "Import_ForeignArchive_BeaconMainIsLocalUnmarkedIsArchive")]
+    public async Task Import_ForeignArchive_LeavesLocalLevelsUntouched(ulong firstHeightWithoutMatchingHeader, ulong firstLocalHeight, BlockTreeInsertHeaderOptions localOptions, BlockTreeInsertHeaderOptions? archiveHeaderOptions)
+    {
+        const ulong chainLength = 16;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree);
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        InsertArchiveHeaders(targetTree, sourceTree, 1, firstHeightWithoutMatchingHeader, MainChainHeader);
+        InsertForeignHeaders(targetTree, sourceTree, firstLocalHeight, chainLength, localOptions);
+        if (archiveHeaderOptions is not null)
+            InsertArchiveHeaders(targetTree, sourceTree, firstLocalHeight, chainLength, archiveHeaderOptions.Value);
+
+        (bool, Hash256?)[] mainBefore = MainChainHashes(targetTree, chainLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null),
+                Throws.TypeOf<EraVerificationException>());
+            Assert.That(MainChainHashes(targetTree, chainLength), Is.EqualTo(mainBefore));
+            AssertNoArchiveBodies(targetTree, sourceTree, chainLength);
+        }
+    }
+
+    [Test]
+    public async Task Import_PreMergeArchiveWithForeignTotalDifficulty_KeepsLocalTotalDifficulty()
+    {
+        const int chainLength = 32;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree, static (_, block) =>
+        {
+            block.Header.TotalDifficulty += 1000;
+            return block;
+        });
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        InsertArchiveHeaders(targetTree, sourceTree, 1, chainLength, BlockTreeInsertHeaderOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null),
+                Throws.TypeOf<EraVerificationException>());
+            for (ulong i = 1; i < chainLength; i++)
+                Assert.That(targetTree.FindLevel(i)!.BlockInfos[0].TotalDifficulty, Is.EqualTo(sourceTree.FindHeader(i, BlockTreeLookupOptions.None)!.TotalDifficulty), $"total difficulty {i}");
+        }
+    }
+
+    [Test]
+    public async Task Import_PartialRangeNotLinkingToLocalHeaderAboveIt_LeavesHeaderlessHeightsEmpty()
+    {
+        const ulong chainLength = 16;
+        const ulong lowestLocalHeader = 9;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree);
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        InsertForeignHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, BeaconHeader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, lowestLocalHeader - 1, null),
+                Throws.TypeOf<EraVerificationException>());
+            AssertNoLevels(targetTree, 1, lowestLocalHeader);
+        }
+    }
+
+    [Test]
+    public async Task Import_ArchiveBlockAboveHeaderlessHeightsHasAnotherNumber_LeavesHeaderlessHeightsEmpty()
+    {
+        const ulong chainLength = 16;
+        const ulong lowestLocalHeader = 9;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree, static (number, block) =>
+        {
+            if (number != lowestLocalHeader)
+                return block;
+
+            BlockHeader renumbered = block.Header.Clone();
+            renumbered.Number = lowestLocalHeader - 1;
+            renumbered.Hash = renumbered.CalculateHash();
+            return new Block(renumbered, block.Body);
+        });
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        InsertForeignHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, BeaconHeader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null),
+                Throws.TypeOf<EraImportException>());
+            AssertNoLevels(targetTree, 1, lowestLocalHeader);
+        }
+    }
+
+    [Test]
+    public async Task Import_ArchiveBlockBelowKnownHeaderHasAnotherNumber_LeavesHeaderlessHeightsEmpty()
+    {
+        const ulong chainLength = 16;
+        const ulong lowestLocalHeader = 9;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        BlockHeader renumbered = sourceTree.FindHeader(lowestLocalHeader - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+        renumbered.Number = lowestLocalHeader - 2;
+        renumbered.Hash = renumbered.CalculateHash();
+        BlockHeader local = sourceTree.FindHeader(lowestLocalHeader, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+        local.ParentHash = renumbered.Hash;
+        local.Hash = local.CalculateHash();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree, (number, block) => number switch
+        {
+            lowestLocalHeader => new Block(local, block.Body),
+            lowestLocalHeader - 1 => new Block(renumbered, block.Body),
+            _ => block
+        });
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        targetTree.Insert(local, BeaconHeader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, lowestLocalHeader, null),
+                Throws.TypeOf<EraImportException>());
+            AssertNoLevels(targetTree, 1, lowestLocalHeader);
+        }
+    }
+
+    [Test]
+    public async Task EnsureHeaderlessHeightsLinkToKnownHeaders_CancelledWhileWalkingHeaderlessHeights_StopsReadingArchive()
+    {
+        const ulong chainLength = 16;
+        const ulong lowestLocalHeader = 9;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree);
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        InsertArchiveHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, BeaconHeader);
+        using CancellationTokenSource cts = new();
+        int archiveReads = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => KnownHeaders.EnsureHeaderlessHeightsLinkToKnownHeaders(
+                    targetTree,
+                    1,
+                    chainLength - 1,
+                    number =>
+                    {
+                        archiveReads++;
+                        cts.Cancel();
+                        return Task.FromResult(sourceTree.FindBlock(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded));
+                    },
+                    cts.Token),
+                Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(archiveReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Import_ThroughRemoteStore_ChecksHeaderlessHeightsAgainstLocalHeaders([Values] bool localHeadersMatchArchive)
+    {
+        const ulong chainLength = 16;
+        const ulong lowestLocalHeader = 9;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        string eraFile = EraPathUtils.GetAllEraFiles(sourceCtx.ResolveTempDirPath(), EraETestModule.TestNetwork).Single();
+        byte[] eraBytes = await File.ReadAllBytesAsync(eraFile);
+        string manifest = $"{Convert.ToHexStringLower(SHA256.HashData(eraBytes))}  {Path.GetFileName(eraFile)}\n";
+        HttpClient httpClient = new(new FakeEraServerHandler(Path.GetFileName(eraFile), eraBytes, manifest));
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree, configure: builder => builder
+            .AddSingleton(httpClient)
+            .AddSingleton<IEraEConfig>(new EraEConfig
+            {
+                MaxEraSize = 16,
+                NetworkName = EraETestModule.TestNetwork,
+                RemoteBaseUrl = "http://era.test/"
+            }));
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        if (localHeadersMatchArchive)
+            InsertArchiveHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, MainChainHeader);
+        else
+            InsertForeignHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, MainChainHeader);
+
+        Directory.CreateDirectory(targetCtx.ResolveTempDirPath());
+        Func<Task> import = () => targetCtx.Resolve<IEraImporter>().Import(targetCtx.ResolveTempDirPath(), 1, ulong.MaxValue, null);
+
+        if (localHeadersMatchArchive)
+        {
+            await import();
+            using (Assert.EnterMultipleScope())
+            {
+                for (ulong i = 1; i < chainLength; i++)
+                    Assert.That(targetTree.FindBlock(i, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Hash), $"body {i}");
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => import(), Throws.TypeOf<EraVerificationException>());
+                AssertNoLevels(targetTree, 1, lowestLocalHeader);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Import_HeaderAboveRangeListedButNotStored_LeavesHeaderlessHeightsEmpty()
+    {
+        const ulong chainLength = 16;
+        const ulong lowestLocalHeader = 9;
+        await using IContainer sourceCtx = await EraETestModule.CreateExportedPostMergeEraEnv(chainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+        await using IContainer targetCtx = CreateHeaderSyncTarget(sourceTree);
+        IBlockTree targetTree = targetCtx.Resolve<IBlockTree>();
+        Hash256?[] local = InsertForeignHeaders(targetTree, sourceTree, lowestLocalHeader, chainLength, MainChainHeader);
+        targetCtx.Resolve<IHeaderStore>().Delete(local[lowestLocalHeader]!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                () => targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, lowestLocalHeader - 1, null),
+                Throws.TypeOf<EraVerificationException>());
+            AssertNoLevels(targetTree, 1, lowestLocalHeader);
+        }
+    }
+
+    private static IContainer CreateHeaderSyncTarget(IBlockTree sourceTree, Func<ulong, Block, Block>? rewriteArchiveBlock = null, Action<ContainerBuilder>? configure = null)
+    {
+        ContainerBuilder builder = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true });
+        configure?.Invoke(builder);
+        if (rewriteArchiveBlock is not null)
+            builder.AddDecorator<IEraStoreFactory>((_, factory) => new RewritingStoreFactory(factory, rewriteArchiveBlock));
+
+        IContainer targetCtx = builder.Build();
+        targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        return targetCtx;
+    }
+
+    private static void InsertArchiveHeaders(IBlockTree targetTree, IBlockTree sourceTree, ulong from, ulong to, BlockTreeInsertHeaderOptions options)
+    {
+        BlockTreeLookupOptions lookup = (options & BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded) != 0
+            ? BlockTreeLookupOptions.TotalDifficultyNotNeeded
+            : BlockTreeLookupOptions.None;
+        for (ulong i = from; i < to; i++)
+            targetTree.Insert(sourceTree.FindHeader(i, lookup)!.Clone(), options);
+    }
+
+    private static Hash256?[] InsertForeignHeaders(IBlockTree targetTree, IBlockTree sourceTree, ulong from, ulong to, BlockTreeInsertHeaderOptions options)
+    {
+        Hash256?[] hashes = new Hash256?[to];
+        for (ulong i = from; i < to; i++)
+        {
+            BlockHeader local = sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Clone();
+            local.ExtraData = [0x4c, 0x4f, 0x43, (byte)i];
+            local.ParentHash = hashes[i - 1] ?? TestItem.KeccakA;
+            local.Hash = local.CalculateHash();
+            targetTree.Insert(local, options);
+            hashes[i] = local.Hash;
+        }
+        return hashes;
+    }
+
+    private static void AssertNoLevels(IBlockTree targetTree, ulong from, ulong to)
+    {
+        for (ulong i = from; i < to; i++)
+            Assert.That(targetTree.FindLevel(i), Is.Null, $"level {i}");
+    }
+
+    private static void AssertNoArchiveBodies(IBlockTree targetTree, IBlockTree sourceTree, ulong chainLength)
+    {
+        for (ulong i = 1; i < chainLength; i++)
+            Assert.That(targetTree.FindBlock(sourceTree.FindHeader(i, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, i), Is.Null, $"archive body {i}");
+    }
+
+    private sealed class FakeEraServerHandler(string eraFileName, byte[] eraBytes, string manifest) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string name = request.RequestUri!.Segments[^1];
+            HttpContent? content = name == eraFileName
+                ? new ByteArrayContent(eraBytes)
+                : name == new EraEConfig().RemoteChecksumFile ? new StringContent(manifest) : null;
+            return Task.FromResult(new HttpResponseMessage(content is null ? HttpStatusCode.NotFound : HttpStatusCode.OK) { Content = content! });
+        }
+    }
+
+    private sealed class RewritingStoreFactory(IEraStoreFactory inner, Func<ulong, Block, Block> rewrite) : IEraStoreFactory
+    {
+        public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators) => new RewritingStore(inner.Create(src, trustedAccumulators), rewrite);
+    }
+
+    private sealed class RewritingStore(IEraStore inner, Func<ulong, Block, Block> rewrite) : IEraStore
+    {
+        public (ulong First, ulong Last) BlockRange => inner.BlockRange;
+        public bool HasEpoch(ulong blockNumber) => inner.HasEpoch(blockNumber);
+        public ulong NextEraStart(ulong blockNumber) => inner.NextEraStart(blockNumber);
+        public void Dispose() => inner.Dispose();
+
+        public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(ulong number, bool ensureValidated = true, CancellationToken cancellation = default)
+        {
+            (Block? block, TxReceipt[]? receipts) = await inner.FindBlockAndReceipts(number, ensureValidated, cancellation);
+            return (block is null ? null : rewrite(number, block), receipts);
+        }
+    }
+
+    private static (bool, Hash256?)[] MainChainHashes(IBlockTree tree, ulong chainLength)
+    {
+        (bool, Hash256?)[] result = new (bool, Hash256?)[chainLength];
+        for (ulong i = 1; i < chainLength; i++)
+        {
+            ChainLevelInfo? level = tree.FindLevel(i);
+            result[i] = (level?.HasBlockOnMainChain ?? false, level?.BlockInfos.FirstOrDefault()?.BlockHash);
+        }
+        return result;
     }
 
     private static async Task<ImportEnvironment> CreateImportEnvironment(

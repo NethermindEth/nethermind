@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence;
@@ -32,6 +33,7 @@ public class ClearColumnsTests
 
         byte[] slotKey = Bytes.FromHexString("0x0102");
         db.GetColumnDb(FlatDbColumns.Storage)[slotKey] = Bytes.FromHexString("0xabcdef");
+        BasePersistence.WriteSnapCheckpoint(db, [0x01]);
         Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.False);
 
         BasePersistence.ClearAllColumns(db);
@@ -43,6 +45,7 @@ public class ClearColumnsTests
             Assert.That(BasePersistence.ReadCurrentState(metadata),
                 Is.EqualTo(new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)));
             Assert.That(BasePersistence.ReadWipedForSync(metadata), Is.True);
+            Assert.That(BasePersistence.ReadSnapCheckpoint(metadata), Is.Null, "a wipe leaves nothing for a snap checkpoint to resume");
             Assert.That(db.GetColumnDb(FlatDbColumns.Storage).Get(slotKey), Is.Null);
         }
     }
@@ -58,9 +61,9 @@ public class ClearColumnsTests
 
     private static IEnumerable<(string, Func<IColumnsDb<FlatDbColumns>, IPersistence>)> PersistenceFactories()
     {
-        yield return (nameof(RocksDbPersistence), static db => new RocksDbPersistence(db, LimboLogs.Instance));
-        yield return (nameof(PreimageRocksdbPersistence), static db => new PreimageRocksdbPersistence(db, LimboLogs.Instance, FlatLayout.PreimageFlat));
-        yield return (nameof(FlatInTriePersistence), static db => new FlatInTriePersistence(db, LimboLogs.Instance));
+        yield return (nameof(RocksDbPersistence), static db => new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance));
+        yield return (nameof(PreimageRocksdbPersistence), static db => new PreimageRocksdbPersistence(db, LimboLogs.Instance, FlatLayout.PreimageFlat, NullTrieNodeLog.Instance));
+        yield return (nameof(FlatInTriePersistence), static db => new FlatInTriePersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance));
     }
 
     // The sync that follows a wipe never advances the state pointer, so on a restart mid-sync only the wipe marker
@@ -110,7 +113,7 @@ public class ClearColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Events.Count(static e => e == WriteOrderSpyColumnsDb.CommitEvent), Is.GreaterThan(1));
-            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(2));
+            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(3), "the wipe marker and the snap checkpoint deletion, then the pointer reset");
             Assert.That(db.Events[0], Is.EqualTo(nameof(FlatDbColumns.Metadata)));
             Assert.That(db.Events.IndexOf(WriteOrderSpyColumnsDb.CommitEvent), Is.LessThan(db.Events.LastIndexOf(nameof(FlatDbColumns.Metadata))));
             Assert.That(db.Events.TakeLast(2), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));

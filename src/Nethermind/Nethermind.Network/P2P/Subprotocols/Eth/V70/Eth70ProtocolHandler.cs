@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -33,6 +34,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private static readonly ReceiptMessageDecoder69 ReceiptMessageDecoder = new();
+    private static readonly Func<ReceiptsMessage70, int, ReceiptsMessage70> SelectReceipts =
+        static (message, _) => message;
+    private static readonly Action<IByteBuffer, GetReceiptsMessage70> ValidateReceipts =
+        static (content, request) => ReceiptsResponseBudget.ThrowIfExceeded(content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
 
     /// <summary>Sentinel for <c>lastBlockNumber</c> meaning no receipt block has been seen yet.</summary>
     private const ulong NoBlockSeen = ulong.MaxValue;
@@ -73,11 +78,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                GetReceiptsMessage70 request = _receiptsRequests70.GetPendingRequest(message.Content);
-                ReceiptsResponseBudget.ThrowIfExceeded(message.Content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
-                ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
-                ReportIn(receiptsMessage, size);
-                Handle(receiptsMessage, size);
+                HandleCorrelatedResponse(_receiptsRequests70, message.Content, size, SelectReceipts, ValidateReceipts);
                 return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);
@@ -86,8 +87,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 return base.HandleMessageCore(message);
         }
     }
-
-    private void Handle(ReceiptsMessage70 msg, long size) => _receiptsRequests70.Handle(msg.RequestId, msg, size);
 
     internal ValueTask<ReceiptsMessage70> Handle(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
@@ -271,6 +270,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         using ArrayPoolList<RlpBehaviors> receiptRlpBehaviors = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasUpperBoundAgainstHeader = new(blockHashes.Count);
         using ArrayPoolList<bool> validateReceiptGasEqualToHeader = new(blockHashes.Count);
+        bool[]? eip8116Blocks = null;
 
         {
             ReadOnlySpan<Hash256> blockHashesSpan = blockHashes.AsSpan();
@@ -286,6 +286,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                     receiptRlpBehaviors.Add(RlpBehaviors.None);
                     validateReceiptGasUpperBoundAgainstHeader.Add(false);
                     validateReceiptGasEqualToHeader.Add(false);
+                    // Without a timestamp the EIP-8116 rule is unknown; per-transaction checks accept both forms.
+                    if (_specProvider.GetFinalSpec().IsEip8116Enabled)
+                    {
+                        (eip8116Blocks ??= new bool[blockHashes.Count])[i] = true;
+                    }
+
                     continue;
                 }
 
@@ -297,6 +303,10 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
                 validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled);
+                if (spec.IsEip8116Enabled)
+                {
+                    (eip8116Blocks ??= new bool[blockHashes.Count])[i] = true;
+                }
             }
         }
 
@@ -357,6 +367,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         RlpBehaviors receiptBehaviors = receiptRlpBehaviors[blockIndex];
                         bool validateGasUpperBound = validateReceiptGasUpperBoundAgainstHeader[blockIndex];
                         bool validateGasEqual = validateReceiptGasEqualToHeader[blockIndex];
+                        bool isEip8116Enabled = eip8116Blocks?[blockIndex] == true;
 
                         if (isFirst && firstBlockReceiptIndex > 0)
                         {
@@ -365,12 +376,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                                 throw new SubprotocolException("Unexpected receipts continuation without pending state");
                             }
 
-                            partialReceiptsGas = partialReceipts[^1].GasUsedTotal;
                             partialReceipts.AddRange(blockReceipts);
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
                                 blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
                                 !response.LastBlockIncomplete || !isLast, partialReceiptsGas, partialReceiptsLogsGas,
-                                partialReceiptsContentSize);
+                                partialReceiptsContentSize, isEip8116Enabled);
+                            partialReceiptsGas = validationResult.GasUsedTotal;
                             partialReceiptsLogsGas = validationResult.LogsGas;
                             partialReceiptsContentSize = validationResult.ReceiptsContentSize;
 
@@ -415,7 +426,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
                                 blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
-                                false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize);
+                                false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize, isEip8116Enabled);
                             partialReceipts = new ArrayPoolList<TxReceipt>(blockReceipts.Length + firstBlockReceiptIndex);
                             partialReceipts.AddRange(blockReceipts);
                             firstBlockReceiptIndex = partialReceipts.Count;
@@ -429,7 +440,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                         ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed, blockGasLimit, transactions,
                             receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex, true, partialReceiptsGas,
-                            partialReceiptsLogsGas, partialReceiptsContentSize);
+                            partialReceiptsLogsGas, partialReceiptsContentSize, isEip8116Enabled);
                         aggregated.Add(blockReceipts);
                         blockIndex++;
                         firstBlockReceiptIndex = 0;
@@ -550,7 +561,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         bool isCompleteSegment,
         ulong previousGasUsed,
         ulong previousLogsGas,
-        ulong previousReceiptsContentSize)
+        ulong previousReceiptsContentSize,
+        bool isEip8116Enabled)
     {
         if (blockReceipts is { Length: 0 })
         {
@@ -574,7 +586,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             ValidateReceiptSizeAgainstTransactionGasLimit(receiptSize, transactions, receiptIndex);
             receiptsContentSize = checked(receiptsContentSize + receiptSize);
             ValidateTotalReceiptsSizeAgainstBlockGasLimit(receiptsContentSize, blockGasLimit);
-            previousGasUsed = ValidateReceiptGas(receipt, previousGasUsed);
+            previousGasUsed = ValidateReceiptGas(receipt, previousGasUsed, isEip8116Enabled);
             logsGas = AddReceiptLogsGas(logsGas, receipt);
         }
 
@@ -605,11 +617,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private static ulong GetReceiptSize(TxReceipt receipt, RlpBehaviors behaviors) =>
         (ulong)ReceiptMessageDecoder.GetLength(receipt, behaviors);
 
-    private static ulong ValidateReceiptGas(TxReceipt receipt, ulong previousGasUsed)
+    /// <returns>The block's gas used up to and including <paramref name="receipt"/>.</returns>
+    /// <remarks>An EIP-8116 receipt holds its transaction's own gas used, so the running total is summed here.</remarks>
+    private static ulong ValidateReceiptGas(TxReceipt receipt, ulong previousGasUsed, bool isEip8116Enabled)
     {
-        ulong receiptGasUsed = GetReceiptGasUsed(receipt, previousGasUsed);
+        ulong receiptGasUsed = isEip8116Enabled ? receipt.GasUsedTotal : GetReceiptGasUsed(receipt, previousGasUsed);
         ValidateReceiptGasCoversIntrinsicCost(receiptGasUsed);
-        return receipt.GasUsedTotal;
+        return isEip8116Enabled ? checked(previousGasUsed + receiptGasUsed) : receipt.GasUsedTotal;
     }
 
     private static ulong GetReceiptGasUsed(TxReceipt receipt, ulong previousGasUsed)

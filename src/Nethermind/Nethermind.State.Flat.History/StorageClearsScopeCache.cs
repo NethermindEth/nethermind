@@ -11,26 +11,29 @@ namespace Nethermind.State.Flat.History;
 /// lowest poisoned clear above it.
 /// </summary>
 /// <remarks>The poisoned-clear range lies above the scope's block, so a capture can still add to it: a negative
-/// is trusted only while no capture has published since it was probed.</remarks>
+/// is trusted only while no capture has published since it was probed. Each memo is created on its first use: a
+/// history format uses only one of them, and a scope that reads no storage needs neither.</remarks>
 internal sealed class StorageClearsScopeCache
 {
     private const ulong NoPoisonedClear = ulong.MaxValue;
 
-    private readonly ConcurrentDictionary<ValueHash256, bool> _hasAnyClear = new();
-    private readonly ConcurrentDictionary<ValueHash256, PoisonProbe> _poisonedAbove = new();
+    private ConcurrentDictionary<ValueHash256, bool>? _hasAnyClear;
+    private ConcurrentDictionary<ValueHash256, PoisonProbe>? _poisonedAbove;
 
     public bool HasAnyClearUpTo(in ValueHash256 addrHash, scoped ReadOnlySpan<byte> accountKey, StorageClearStore clears, ulong block)
     {
-        if (_hasAnyClear.TryGetValue(addrHash, out bool hasAny)) return hasAny;
+        ConcurrentDictionary<ValueHash256, bool> hasAnyClear = LazyInitializer.EnsureInitialized(ref _hasAnyClear, static () => new());
+        if (hasAnyClear.TryGetValue(addrHash, out bool hasAny)) return hasAny;
 
         hasAny = clears.HasClearInRange(accountKey, 0, block);
-        _hasAnyClear.TryAdd(addrHash, hasAny);
+        hasAnyClear.TryAdd(addrHash, hasAny);
         return hasAny;
     }
 
     public bool TryGetPoisonedClearAbove(in ValueHash256 addrHash, StorageClearStore clears, HistoryAvailability availability, ulong block, out ulong clearBlock)
     {
-        if (_poisonedAbove.TryGetValue(addrHash, out PoisonProbe cached)
+        ConcurrentDictionary<ValueHash256, PoisonProbe> poisonedAbove = LazyInitializer.EnsureInitialized(ref _poisonedAbove, static () => new());
+        if (poisonedAbove.TryGetValue(addrHash, out PoisonProbe cached)
             && (cached.ClearBlock != NoPoisonedClear || !availability.HasCapturedSince(cached.Generation)))
         {
             clearBlock = cached.ClearBlock;
@@ -39,7 +42,7 @@ internal sealed class StorageClearsScopeCache
 
         long generation = availability.CaptureGeneration;
         clearBlock = clears.TryGetPoisonedClearAbove(addrHash.Bytes, block, out ulong found) ? found : NoPoisonedClear;
-        _poisonedAbove[addrHash] = new PoisonProbe(clearBlock, generation);
+        poisonedAbove[addrHash] = new PoisonProbe(clearBlock, generation);
         return clearBlock != NoPoisonedClear;
     }
 

@@ -76,4 +76,20 @@ public class SortedSpoolTests
         }
         Assert.That(finalMerges, Is.EqualTo(1), "final merge hook");
     }
+
+    /// <remarks>One producer disposing while another is created must not lose either update to the open-writer count.</remarks>
+    [Test]
+    public void Spool_counts_writers_created_and_disposed_concurrently()
+    {
+        const int writerCount = 2;
+        using SortedSpool spool = new(_directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None);
+
+        Parallel.For(0, writerCount, new ParallelOptions { MaxDegreeOfParallelism = writerCount }, _ =>
+        {
+            for (int iteration = 0; iteration < 100_000; iteration++) spool.CreateWriter().Dispose();
+        });
+
+        using SortedSpool.Cursor cursor = spool.Read();
+        Assert.That(cursor.MoveNext(), Is.False);
+    }
 }

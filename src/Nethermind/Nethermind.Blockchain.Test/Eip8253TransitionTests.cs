@@ -42,10 +42,11 @@ public class Eip8253TransitionTests
     private const ulong ForkBlockNumber = 2;
 
     // On Mainnet 0x8398…8462 was created by 0x9ca2…9f79 at nonce 0, so a factory placed there collides with it.
-    private static readonly Address Target = Eip8253Constants.MainnetAccounts[5];
+    private static readonly Address Target = Eip8253TestData.MainnetAccounts[5];
     private static readonly Address TargetCreator = new("0x9ca228250f9d8f86c23690074c2b96d5f5479f79");
-    private static readonly Address AbsentTarget = Eip8253Constants.MainnetAccounts[0];
+    private static readonly Address AbsentTarget = Eip8253TestData.MainnetAccounts[0];
     private static readonly Address LookAlike = TestItem.AddressF;
+    private static readonly Address[] MainnetList = Eip8253TestData.MainnetAccounts.ToArray();
     private static readonly UInt256 TargetBalance = 1.Ether;
     private static readonly UInt256 StoredValue = 0xabcdef;
 
@@ -55,7 +56,7 @@ public class Eip8253TransitionTests
     [Test]
     public async Task Fork_block_bumps_every_listed_account_before_its_transactions([Values] bool parallelExecution)
     {
-        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, ForkBlockNumber, parallelExecution);
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, MainnetList, ForkBlockNumber, parallelExecution);
         Assert.That(ContractAddress.From(TargetCreator, 0), Is.EqualTo(Target), "precondition: the factory's CREATE derives the target");
 
         Block preFork = await chain.AddBlock();
@@ -82,7 +83,7 @@ public class Eip8253TransitionTests
 
             AssertOnlyBump(forkBal.GetAccountChanges(Target), balanceChangeIndex: 2);
             AssertOnlyBump(forkBal.GetAccountChanges(AbsentTarget), balanceChangeIndex: null);
-            Assert.That(Eip8253Constants.MainnetAccounts.ToArray().Select(a => forkBal.GetAccountChanges(a)?.NonceChanges),
+            Assert.That(Eip8253TestData.MainnetAccounts.ToArray().Select(a => forkBal.GetAccountChanges(a)?.NonceChanges),
                 Is.All.EqualTo(new[] { new NonceChange(0, 1) }), "every listed account records the bump at index 0");
             Assert.That(forkBal.GetAccountChanges(LookAlike)!.NonceChanges, Is.Empty, "an unlisted account of the same shape is not bumped");
 
@@ -94,7 +95,7 @@ public class Eip8253TransitionTests
     [Test]
     public async Task Fork_block_validation_requires_the_bump_in_the_block_access_list([Values] bool parallelExecution, [Values] bool dropBump)
     {
-        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, ForkBlockNumber, parallelExecution);
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, MainnetList, ForkBlockNumber, parallelExecution);
         await chain.AddBlock();
         Block fork = await chain.AddBlock(Transfer(0, Target, UInt256.One));
         ReadOnlyBlockAccessList bal = GetBlockAccessList(chain, fork);
@@ -114,7 +115,7 @@ public class Eip8253TransitionTests
     [Test]
     public async Task Fork_block_witness_replays_statelessly_to_the_same_state_root()
     {
-        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, ForkBlockNumber, parallelExecution: false);
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, MainnetList, ForkBlockNumber, parallelExecution: false);
         await chain.AddBlock();
         Block fork = await chain.AddBlock(Transfer(0, Target, UInt256.One));
         BlockHeader parent = chain.BlockTree.FindHeader(fork.ParentHash!, BlockTreeLookupOptions.None)!;
@@ -133,12 +134,12 @@ public class Eip8253TransitionTests
         }
     }
 
-    [TestCase(BlockchainIds.Mainnet, 0ul, TestName = "Transition_skipped_when_parent_already_has_the_fork")]
-    [TestCase(BlockchainIds.Sepolia, ForkBlockNumber, TestName = "Transition_skipped_on_a_chain_without_a_list")]
-    [TestCase(BlockchainIds.Mainnet, ulong.MaxValue, TestName = "Transition_skipped_while_the_fork_is_inactive")]
-    public async Task Transition_skipped(ulong chainId, ulong forkBlockNumber)
+    [TestCase(0ul, true, TestName = "Transition_skipped_when_parent_already_has_the_fork")]
+    [TestCase(ForkBlockNumber, false, TestName = "Transition_skipped_on_Mainnet_id_when_the_chain_config_lists_no_accounts")]
+    [TestCase(ulong.MaxValue, true, TestName = "Transition_skipped_while_the_fork_is_inactive")]
+    public async Task Transition_skipped(ulong forkBlockNumber, bool listed)
     {
-        using BasicTestBlockchain chain = await CreateChain(chainId, forkBlockNumber, parallelExecution: true);
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, listed ? MainnetList : [], forkBlockNumber, parallelExecution: true);
 
         await chain.AddBlock();
         Block block = await chain.AddBlock();
@@ -153,9 +154,25 @@ public class Eip8253TransitionTests
     }
 
     [Test]
+    public async Task Fork_block_bumps_the_accounts_the_chain_config_lists_whatever_the_chain_id([Values] bool parallelExecution)
+    {
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Sepolia, [Target], ForkBlockNumber, parallelExecution);
+        await chain.AddBlock();
+        Block fork = await chain.AddBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fork.Number, Is.EqualTo(ForkBlockNumber));
+            AssertAccount(chain, fork, Target, nonce: 1, TargetBalance, StoredValue);
+            Assert.That(GetBlockAccessList(chain, fork).GetAccountChanges(Target)!.NonceChanges, Is.EqualTo(new[] { new NonceChange(0, 1) }));
+            Assert.That(chain.StateReader.TryGetAccount(fork.Header, AbsentTarget, out _), Is.False, "an account the config does not list is not created");
+        }
+    }
+
+    [Test]
     public async Task Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active([Values] bool producing)
     {
-        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, forkBlockNumber: 0, parallelExecution: false);
+        using BasicTestBlockchain chain = await CreateChain(BlockchainIds.Mainnet, MainnetList, forkBlockNumber: 0, parallelExecution: false);
         BlockHeader[] headers = new BlockHeader[3];
         for (int i = 0; i < headers.Length; i++) headers[i] = (await chain.AddBlock()).Header;
 
@@ -186,19 +203,17 @@ public class Eip8253TransitionTests
     [Test]
     public void Mainnet_list_has_the_published_accounts_in_address_hash_order()
     {
-        Address[] accounts = Eip8253Constants.MainnetAccounts.ToArray();
+        Address[] accounts = Eip8253TestData.MainnetAccounts.ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accounts, Has.Length.EqualTo(28));
             Assert.That(accounts.Select(static a => Keccak.Compute(a.Bytes).ToString()), Is.Ordered.Using((IComparer<string>)StringComparer.Ordinal));
-            Assert.That(Eip8253Constants.GetAccounts(BlockchainIds.Mainnet).ToArray(), Is.EqualTo(accounts));
-            Assert.That(Eip8253Constants.GetAccounts(BlockchainIds.Sepolia).IsEmpty, Is.True);
         }
     }
 
-    private static async Task<BasicTestBlockchain> CreateChain(ulong chainId, ulong forkBlockNumber, bool parallelExecution)
+    private static async Task<BasicTestBlockchain> CreateChain(ulong chainId, Address[] accounts, ulong forkBlockNumber, bool parallelExecution)
     {
-        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = accounts };
         TestSpecProvider specProvider = new(forkBlockNumber == 0 ? eip8253 : Bogota.Instance)
         {
             NextForkSpec = eip8253,

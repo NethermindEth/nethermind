@@ -52,37 +52,90 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         protected override ParityTraceAction RentAction() => throw new AssertionException("Output capture must not allocate an action");
     }
 
-    [Test]
-    public void Streaming_vm_only_trace_returns_discarded_action_input()
+    [TestCase(ParityTraceTypes.VmTrace, 0)]
+    [TestCase(ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, 1)]
+    public void Streaming_trace_returns_each_copied_action_input_once(ParityTraceTypes types, int expectedCopies)
     {
         Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
         Block block = Build.A.Block.WithTransactions(tx).TestObject;
         ArrayBufferWriter<byte> sink = new();
         using Utf8JsonWriter writer = new(sink);
-        InputReturningTracer tracer = new(block, tx, writer);
+        InputReturningTracer tracer = new(block, tx, types, writer);
         try
         {
             tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
             tracer.BuildResult();
-            Assert.That(tracer.ReturnedInputs, Is.EqualTo(1));
             tracer.ResetForNextTx(block, tx);
+            // released again in finally: a double release must not return anything twice
             tracer.ReleaseResources();
-            Assert.That(tracer.ReturnedInputs, Is.EqualTo(1));
         }
         finally
         {
             tracer.ReleaseResources();
         }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.CopiedInputs, Is.EqualTo(expectedCopies));
+            Assert.That(tracer.ReturnedInputs, Is.EqualTo(expectedCopies));
+        }
     }
 
-    private sealed class InputReturningTracer(Block block, Transaction tx, Utf8JsonWriter writer)
-        : StreamingParityLikeTxTracer(block, tx, ParityTraceTypes.VmTrace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+    private sealed class InputReturningTracer(Block block, Transaction tx, ParityTraceTypes types, Utf8JsonWriter writer)
+        : StreamingParityLikeTxTracer(block, tx, types, writer, null, CancellationToken.None, fillVmTraceSlot: false)
     {
+        public int CopiedInputs { get; private set; }
         public int ReturnedInputs { get; private set; }
+
+        protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+        {
+            if (!input.IsEmpty) CopiedInputs++;
+            return base.CopyInput(input);
+        }
+
         protected override void ReturnInputBytes(in CappedArray<byte> input)
         {
             if (input.Length > 0) ReturnedInputs++;
             base.ReturnInputBytes(input);
+        }
+    }
+
+    [Test]
+    public void Vm_trace_only_skips_action_input_copies()
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        byte[] code = Prepare.EvmCode.CallWithInput(TestItem.AddressC, 50000, "0xdeadbeef").Op(Instruction.STOP).Done;
+
+        (ParityLikeTxTrace vmOnly, int vmOnlyCopies) = TraceCountingInputCopies(ParityTraceTypes.VmTrace, code);
+        (ParityLikeTxTrace full, int fullCopies) = TraceCountingInputCopies(ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, code);
+
+        EthereumJsonSerializer serializer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vmOnlyCopies, Is.Zero);
+            Assert.That(fullCopies, Is.EqualTo(2));
+            Assert.That(full.Action!.Subtraces.Single().Input, Is.SequenceEqualTo(Bytes.FromHexString("0xdeadbeef")));
+            Assert.That(serializer.Serialize(vmOnly.VmTrace), Is.EqualTo(serializer.Serialize(full.VmTrace)));
+        }
+    }
+
+    private (ParityLikeTxTrace Trace, int CopiedInputs) TraceCountingInputCopies(ParityTraceTypes types, byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, [1, 2, 3], UInt256.Zero);
+        InputCountingTracer tracer = new(block, transaction, types);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (tracer.BuildResult(), tracer.CopiedInputs);
+    }
+
+    private sealed class InputCountingTracer(Block block, Transaction tx, ParityTraceTypes types) : ParityLikeTxTracer(block, tx, types)
+    {
+        public int CopiedInputs { get; private set; }
+
+        protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
+        {
+            if (!input.IsEmpty) CopiedInputs++;
+            return base.CopyInput(input);
         }
     }
 
@@ -128,6 +181,39 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(action.Result.Output, Is.EqualTo(Bytes.FromHexString("0xdeadbeef")));
             Assert.That(action.Result.Address, Is.Null);
             Assert.That(action.Result.Code, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Nested_results_are_not_overwritten_by_later_calls([Values("return", "revert", "identity", "create")] string target)
+    {
+        // If the tracing guard were dropped, a shorter ID output would be a slice of the precompile scratch, which is copied anyway.
+        int length = target == "identity" ? VirtualMachineStatics.MinPrecompileScratch : 32;
+        byte[] first = Enumerable.Repeat((byte)0xa1, length).ToArray();
+        byte[] second = Enumerable.Repeat((byte)0xb2, length).ToArray();
+        Address callee = target == "identity" ? Address.FromNumber(4) : TestItem.AddressC;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode
+            .Op(Instruction.CALLDATASIZE).PushData(0).PushData(0).Op(Instruction.CALLDATACOPY)
+            .Op(Instruction.CALLDATASIZE).PushData(0).Op(target == "revert" ? Instruction.REVERT : Instruction.RETURN)
+            .Done, Spec);
+
+        byte[] code = target == "create"
+            ? Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(first).Done, 0).Create(Prepare.EvmCode.ForInitOf(second).Done, 0).Op(Instruction.STOP).Done
+            : CallWithValue(CallWithValue(Prepare.EvmCode, first), second).Op(Instruction.STOP).Done;
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(ParityTraceTypes.Trace, code);
+
+        // Zero-value precompile calls are left out of a parity trace.
+        Prepare CallWithValue(Prepare prepare, byte[] input) => prepare
+            .StoreDataInMemory(0, input)
+            .PushData(0).PushData(0).PushData(input.Length).PushData(0).PushData(1).PushData(callee).PushData(50000)
+            .Op(Instruction.CALL);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target == "create" ? subtraces[0].Result!.Code : subtraces[0].Result!.Output, Is.EqualTo(first));
+            Assert.That(target == "create" ? subtraces[1].Result!.Code : subtraces[1].Result!.Output, Is.EqualTo(second));
         }
     }
 
@@ -679,8 +765,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations =
-            streaming ? StreamVmTraceOperations(code) : CollectVmTraceOperations(code);
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(code, streaming);
 
         int frameIndex = 0;
         while (frameIndex < operations.Count && !operations[frameIndex].HasSubtrace)

@@ -7,10 +7,10 @@ namespace Nethermind.Era1;
 
 public interface IEraConfig : IConfig
 {
-    [ConfigItem(Description = "Directory of era1 archives to be imported.", DefaultValue = "", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
+    [ConfigItem(Description = "Directory of era1 archives to be imported.", DefaultValue = "null", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
     string? ImportDirectory { get; set; }
 
-    [ConfigItem(Description = "Directory of archive export.", DefaultValue = "", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
+    [ConfigItem(Description = "Directory of archive export.", DefaultValue = "null", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
     string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Block number to import/export from.", DefaultValue = "0", HiddenFromDocs = false)]

@@ -100,8 +100,12 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public void Clear()
     {
+        // Drop the cached snapshot first so it does not pin the data being wiped, and again afterwards: a read
+        // during the wipe re-caches a reader whose snapshot predates the end of the wipe (so it can still report the
+        // pre-wipe CurrentState), which would otherwise be served until the next write batch or timer tick.
         ClearReaderCache();
         _inner.Clear();
+        ClearReaderCache();
     }
 
     private void ClearReaderCache()
@@ -134,6 +138,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) => inner.SetAccountRaw(addrHash, account);
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.SelfDestructRange(fromPath, toPath);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
 

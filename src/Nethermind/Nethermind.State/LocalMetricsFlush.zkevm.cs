@@ -5,8 +5,6 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State;
 
-#pragma warning disable NETH003 // File name does not match the contained type
-
 /// <summary>
 /// No-op flush for the zkVM guest, which reads no metrics — see the std counterpart for the fold.
 /// </summary>

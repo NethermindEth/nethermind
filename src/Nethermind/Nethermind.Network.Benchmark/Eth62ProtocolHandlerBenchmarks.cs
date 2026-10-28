@@ -42,7 +42,7 @@ namespace Nethermind.Network.Benchmarks
         public void SetUp()
         {
             Console.WriteLine("AAA");
-            Session session = new(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), LimboLogs.Instance);
+            Session session = new(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), NullLogManager.Instance);
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;
@@ -50,10 +50,10 @@ namespace Nethermind.Network.Benchmarks
                 SerializerInfo.Create(new TransactionsMessageSerializer()),
                 SerializerInfo.Create(new StatusMessageSerializer())
                 );
-            NodeStatsManager stats = new(TimerFactory.Default, LimboLogs.Instance);
+            NodeStatsManager stats = new(TimerFactory.Default, NullLogManager.Instance);
             EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
             BlockTree tree = Build.A.BlockTree().TestObject;
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new(
                 ecdsa,
@@ -62,13 +62,13 @@ namespace Nethermind.Network.Benchmarks
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),
                 new SpecChangeTxValidator(TestBlockchainIds.ChainId),
-                LimboLogs.Instance,
+                NullLogManager.Instance,
                 new TransactionComparerProvider(specProvider, tree).GetDefaultComparer(),
                 TestFrameTxWidthLedger.For(new TxPoolConfig()));
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, NullLogManager.Instance);
             _handler.DisableTxFiltering();
 
             StatusMessage statusMessage = new();

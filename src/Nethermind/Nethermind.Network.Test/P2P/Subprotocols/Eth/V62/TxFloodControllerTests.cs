@@ -168,6 +168,31 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Local_verification_headroom_rejections_do_not_penalize_the_peer([Values] bool stateGasRejection)
+        {
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameTxVerifyGasTooHigh);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.False);
+                _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            }
+
+            AcceptTxResult rejection = stateGasRejection ? AcceptTxResult.FrameTxVerifyStateGasTooHigh : AcceptTxResult.NonceGap;
+            for (int i = 0; i < 600; i++) _controller.Report(rejection);
+            Assert.That(_controller.IsDowngraded, Is.False);
+            _controller.Report(rejection);
+            Assert.That(_controller.IsDowngraded, Is.True);
+            for (int i = 601; i < 6000; i++) _controller.Report(rejection);
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            _controller.Report(rejection);
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+        }
+
+        [Test]
         public void Deferred_frame_simulation_throttles_but_never_disconnects()
         {
             // The peer does not choose when this node sheds simulation load, so a deferral must not
@@ -183,6 +208,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(_controller.IsDowngraded, Is.True);
                 _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
             }
+        }
+
+        [Test]
+        public void Spent_peer_validation_budget_disconnects_a_flooding_peer()
+        {
+            // The peer's own failing validations spent the budget, so its drops count like any other rejection.
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FramePeerValidationBudgetSpent);
+            }
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
         }
 
         [Test]

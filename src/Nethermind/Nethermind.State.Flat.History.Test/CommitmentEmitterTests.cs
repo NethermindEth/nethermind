@@ -408,6 +408,11 @@ public class CommitmentEmitterTests
             "a composed depth is rebuilt from its children's exact rows, so it must sit strictly between the stored root and the exact depth");
 
     [Test]
+    public void Adjacent_composed_depths_are_refused() =>
+        Assert.That(() => new CommitmentDepthPolicy(CommitmentDepthPolicy.DefaultIntervalLog2, 3, 5, 2, 4, 6, 4, (1 << 1) | (1 << 2)), Throws.InstanceOf<InvalidConfigurationException>(),
+            "a composed node is built from its children's rows, and a composed depth writes none, so the depth below a composed one must have rows");
+
+    [Test]
     public void A_composed_account_depth_writes_no_row_and_its_children_keep_theirs()
     {
         TreePath root = TreePath.Empty;
@@ -649,6 +654,90 @@ public class CommitmentEmitterTests
         }
 
         return Keccak.Compute(rows.ToArray()).ToString();
+    }
+
+    [Test]
+    public void A_walk_emitter_handed_back_and_reused_writes_the_rows_a_new_one_writes()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> reusedColumns = new();
+        using CommitmentMetadata reusedMetadata = new(reusedColumns, Policy);
+        List<CommitmentEmitter> released = [];
+        CommitmentEmitter reused = CommitmentEmitter.ForWalk(reusedColumns, Policy, reusedMetadata, release: released.Add);
+
+        for (ulong partition = 0; partition < 2; partition++)
+        {
+            using (CommitmentEmitter fresh = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+            {
+                EmitPartition(fresh, partition);
+            }
+
+            using (partition == 0 ? reused : reused.Reuse())
+            {
+                EmitPartition(reused, partition);
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(released, Has.Count.EqualTo(2), "every dispose hands the emitter back instead of releasing it");
+            Assert.That(released, Has.All.SameAs(reused));
+            foreach (FlatHistoryColumns column in Enum.GetValues<FlatHistoryColumns>())
+            {
+                Assert.That(reusedColumns.GetColumnDb(column).GetAll(ordered: true), Is.EqualTo(_historyColumns.GetColumnDb(column).GetAll(ordered: true)).Using<KeyValuePair<byte[], byte[]>>(
+                    static (left, right) => left.Key.AsSpan().SequenceEqual(right.Key) && left.Value.AsSpan().SequenceEqual(right.Value)),
+                    $"{column}: nothing a partition remembered may reach the next one, the same branch included");
+            }
+        }
+    }
+
+    [Test]
+    public void A_walk_emitter_disposed_twice_is_handed_back_once_and_a_retired_one_never()
+    {
+        List<CommitmentEmitter> released = [];
+        CommitmentEmitter emitter = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata, release: released.Add);
+
+        emitter.Dispose();
+        emitter.Dispose();
+        int afterTwoDisposes = released.Count;
+        emitter.Reuse().Dispose();
+        int afterReuse = released.Count;
+        emitter.Retire();
+        emitter.Reuse().Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterTwoDisposes, Is.EqualTo(1), "a second dispose must not put the emitter in the pool twice, where two workers could take it");
+            Assert.That(afterReuse, Is.EqualTo(2), "taken back out, it is handed back again on its next dispose");
+            Assert.That(released, Has.Count.EqualTo(2), "a retired emitter released its buffers and is never handed back");
+        }
+    }
+
+    private static void EmitPartition(CommitmentEmitter emitter, ulong partition)
+    {
+        ChildVector first = Children(0, 1, 2);
+        ChildVector second = Children(0, 1, 2, 5);
+        byte[] extension = new byte[37];
+        extension[0] = 0xe4;
+        extension[1] = 0x82;
+        extension[3] = 0x12;
+        extension[4] = 0xa0;
+        TestItem.KeccakC.Bytes.CopyTo(extension.AsSpan(5));
+        TreePath child = TreePath.FromHexString("7");
+
+        // The first partition notes the extension's target, 712; the second records that target's parent, 71, without
+        // touching the target, so only a target remembered from the first partition would mark child 2 changed.
+        ulong from = partition * Policy.Interval + 1;
+        emitter.BeginBlock(from);
+        emitter.RecordAccountNode(TreePath.Empty, BranchRlp.Encode(first));
+        if (partition == 0) emitter.RecordAccountNode(child, extension);
+        else emitter.RecordAccountNode(child.Append(1), BranchRlp.Encode(first));
+        emitter.CompleteBlock();
+        emitter.BeginBlock(from + 1);
+        emitter.RecordAccountNode(TreePath.Empty, BranchRlp.Encode(second));
+        emitter.CompleteBlock();
+        emitter.FlushOpenWindows();
+        ChildVector.Return(first);
+        ChildVector.Return(second);
     }
 
     private static ChildVector Children(params int[] present)

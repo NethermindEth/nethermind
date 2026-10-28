@@ -10,6 +10,7 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp;
@@ -215,11 +216,7 @@ internal static partial class RlpHelpers
         return DecodeLargerByteArraySpan(data, position, prefix, limit, size, out value);
     }
 
-#if !ZK_EVM
-    // Cold path, kept out of line so the short-string case above stays small. The guest wants the
-    // opposite: with no call, its byte-string decodes are 1.3M ziskemu steps cheaper.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#endif
+    [MethodImpl(LargerByteArrayInlining)]
     private static int DecodeLargerByteArraySpan(
         ReadOnlySpan<byte> data, int position, int prefix, RlpLimit? limit, int size, out ReadOnlySpan<byte> value)
     {
@@ -497,8 +494,8 @@ internal static partial class RlpHelpers
     /// Canonical RLP integers are minimal, so a balance, fee or total difficulty is nearly always
     /// shorter than the full 32 bytes. <see cref="UInt256"/>'s constructor sends every other length
     /// through a loop that runs eight iterations per word whatever length it was handed, so those are
-    /// built here instead, touching each byte once. A full-width value is left to the constructor,
-    /// whose whole-word path vectorises.
+    /// built here instead, touching each byte once. A full-width value is read whole by
+    /// <see cref="Bytes.ReadUInt256BigEndian"/>.
     /// </remarks>
     private static UInt256 ToUInt256(ReadOnlySpan<byte> byteSpan)
     {
@@ -510,7 +507,7 @@ internal static partial class RlpHelpers
 
         if (length == UInt256Bytes)
         {
-            return new UInt256(byteSpan, true);
+            return Bytes.ReadUInt256BigEndian(byteSpan);
         }
 
         int end1 = length - sizeof(ulong);

@@ -74,7 +74,7 @@ public partial class StatelessBlockProcessingEnv(
     {
         using ArrayPoolList<BlockHeader>? readOnlyCollection = _blockTree is null ? witness.DecodeHeaders() : null;
         StatelessBlockTree statelessBlockTree = _blockTree ?? new(readOnlyCollection!);
-        BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
+        BlockhashProvider blockhashProvider = new(statelessBlockTree, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
@@ -87,9 +87,7 @@ public partial class StatelessBlockProcessingEnv(
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree),
-            specProvider: specProvider,
-            headerFinder: statelessBlockTree
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree)
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(

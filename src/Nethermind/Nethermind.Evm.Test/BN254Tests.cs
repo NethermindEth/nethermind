@@ -1,9 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.MclBindings;
 using NUnit.Framework;
+using static Nethermind.MclBindings.Mcl;
 
 namespace Nethermind.Evm.Test;
 
@@ -25,25 +31,90 @@ public class BN254Tests
 
     [Test]
     public void Add_rejects_wrong_input_length([Values(0, 64, 96, 127, 129, 192)] int inputLength) =>
-        Assert.That(BN254.Add(new byte[64], new byte[inputLength]), Is.False);
+        Assert.That(BN254.Add(new byte[64], new byte[inputLength]), Is.Not.Null);
 
     [Test]
     public void Add_rejects_short_output([Values(0, 63)] int outputLength) =>
-        Assert.That(BN254.Add(new byte[outputLength], new byte[128]), Is.False);
+        Assert.That(BN254.Add(new byte[outputLength], new byte[128]), Is.Not.Null);
 
     [Test]
     public void Add_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
-        Assert.That(BN254.Add(new byte[outputLength], Bytes.FromHexString(ValidAddInput)), Is.True);
+        Assert.That(BN254.Add(new byte[outputLength], Bytes.FromHexString(ValidAddInput)), Is.Null);
 
     [Test]
     public void Mul_rejects_wrong_input_length([Values(0, 64, 95, 97, 128)] int inputLength) =>
-        Assert.That(BN254.Mul(new byte[64], new byte[inputLength]), Is.False);
+        Assert.That(BN254.Mul(new byte[64], new byte[inputLength]), Is.Not.Null);
 
     [Test]
     public void Mul_rejects_short_output([Values(0, 63)] int outputLength) =>
-        Assert.That(BN254.Mul(new byte[outputLength], new byte[96]), Is.False);
+        Assert.That(BN254.Mul(new byte[outputLength], new byte[96]), Is.Not.Null);
 
     [Test]
     public void Mul_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
-        Assert.That(BN254.Mul(new byte[outputLength], Bytes.FromHexString(ValidMulInput)), Is.True);
+        Assert.That(BN254.Mul(new byte[outputLength], Bytes.FromHexString(ValidMulInput)), Is.Null);
+
+    [Test]
+    public unsafe void IsInG2_agrees_with_the_generic_order_check(
+        [Range(0, 15)] int seed,
+        [Values(BN254PairingCheckPrecompileTests.G2NotInSubgroup, BN254PairingCheckPrecompileTests.G2OfOrder10069)] string offset)
+    {
+        RuntimeHelpers.RunClassConstructor(typeof(BN254).TypeHandle);
+
+        // hashAndMapTo clears the cofactor and leaves the point in Jacobian coordinates
+        mclBnG2 point = default;
+        mclBnG2_hashAndMapTo(ref point, (byte*)&seed, sizeof(int));
+        mclBnG2 shifted = default;
+        mclBnG2_add(ref shifted, point, ParseG2(offset));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mclBnG2_isValidOrder(point), Is.EqualTo(1));
+            Assert.That(BN254.IsInG2(point), Is.True);
+            Assert.That(mclBnG2_isValidOrder(shifted), Is.Zero);
+            Assert.That(BN254.IsInG2(shifted), Is.False);
+        }
+    }
+
+    [Test]
+    public void IsInG2_kernel_meets_the_twist_only_in_G2()
+    {
+        BigInteger x = BN254.Seed;
+        BigInteger p = 36 * BigInteger.Pow(x, 4) + 36 * BigInteger.Pow(x, 3) + 24 * x * x + 6 * x + 1;
+        BigInteger r = 36 * BigInteger.Pow(x, 4) + 36 * BigInteger.Pow(x, 3) + 18 * x * x + 6 * x + 1;
+        BigInteger t = 6 * x * x + 1;
+
+        // (x + 1) + xψ + xψ² - 2xψ³ reduced to a + bψ with ψ² = tψ - p, so ψ³ = (t² - p)ψ - tp
+        BigInteger a = x + 1 - x * p + 2 * x * t * p;
+        BigInteger b = x + x * t - 2 * x * (t * t - p);
+        BigInteger degree = a * a + a * b * t + b * b * p;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p, Is.EqualTo(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583")));
+            Assert.That(r, Is.EqualTo(BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617")));
+            Assert.That(degree % r, Is.EqualTo(BigInteger.Zero));
+            Assert.That(BigInteger.GreatestCommonDivisor(degree, 2 * p - r), Is.EqualTo(BigInteger.One));
+        }
+    }
+
+    /// <summary>Parses the EIP-197 encoding x.im, x.re, y.im, y.re (each 32 bytes, big-endian) into an affine point.</summary>
+    private static unsafe mclBnG2 ParseG2(string hex)
+    {
+        const int fieldHexLength = 64;
+
+        mclBnG2 point = default;
+        SetFp(ref point.x.d1, hex.AsSpan(0, fieldHexLength));
+        SetFp(ref point.x.d0, hex.AsSpan(fieldHexLength, fieldHexLength));
+        SetFp(ref point.y.d1, hex.AsSpan(2 * fieldHexLength, fieldHexLength));
+        SetFp(ref point.y.d0, hex.AsSpan(3 * fieldHexLength, fieldHexLength));
+        mclBnFp_setInt32(ref point.z.d0, 1);
+        return point;
+
+        static void SetFp(ref mclBnFp fp, ReadOnlySpan<char> value)
+        {
+            byte[] ascii = Encoding.ASCII.GetBytes(value.ToArray());
+            fixed (byte* ptr = ascii)
+                Assert.That(mclBnFp_setStr(ref fp, ptr, (nuint)ascii.Length, 16), Is.Zero);
+        }
+    }
 }

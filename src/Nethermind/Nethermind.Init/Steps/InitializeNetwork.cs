@@ -23,17 +23,6 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
-public static class NettyMemoryEstimator
-{
-    private const uint PageSize = 8192;
-
-    public static void SetPageSize() =>
-        // For some reason needs to be half page size to get page size
-        Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-
-    public static ulong Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1UL << arenaOrder) * PageSize;
-}
-
 [RunnerStepDependencies(
     typeof(LoadGenesisBlock),
     typeof(SetupKeyStore),
@@ -147,13 +136,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await InitPeer().ContinueWith(initPeerTask =>
+        try
         {
-            if (initPeerTask.IsFaulted)
-            {
-                _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
-            }
-        });
+            await InitPeer();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to init the peer manager.", e);
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -173,13 +163,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await StartDiscovery().ContinueWith(initDiscoveryTask =>
+        try
         {
-            if (initDiscoveryTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
-            }
-        });
+            await StartDiscovery();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to start the discovery protocol.", e);
+        }
 
         try
         {
@@ -258,6 +249,7 @@ public class InitializeNetwork : IStep
         if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");

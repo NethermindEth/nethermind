@@ -621,7 +621,9 @@ public partial class EngineModuleTests
     public async Task Cannot_build_invalid_block_with_the_branch()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 4 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the improvement the test waits for: with a 40 ms slot
+        // the loop stopped improving before the transactions that trigger it were submitted.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
 
         using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder
             .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance))
@@ -989,7 +991,7 @@ public partial class EngineModuleTests
             return waiter.Completion.Task;
         }
 
-        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
 

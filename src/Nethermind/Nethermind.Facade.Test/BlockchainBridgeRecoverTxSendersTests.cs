@@ -76,15 +76,31 @@ public class BlockchainBridgeRecoverTxSendersTests(bool compactReceipts)
     }
 
     [Test]
-    public void Recovers_a_sender_the_receipt_does_not_store([Values] bool cached)
+    public void Recovers_a_sender_the_receipt_does_not_store()
     {
         Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB);
         StoreReceipts(block, TestItem.AddressC, null);
-        if (cached) MoveReceiptsIntoCache(block);
 
         _blockchainBridge.RecoverTxSenders(block);
 
         Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressC, TestItem.AddressB }));
+    }
+
+    [Test]
+    public void Takes_the_cached_sender_a_full_read_recovered_for_a_receipt_that_stores_none()
+    {
+        Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB);
+        StoreReceipts(block, TestItem.AddressC, null);
+        TxReceipt[] cached = MoveReceiptsIntoCache(block);
+
+        _blockchainBridge.RecoverTxSenders(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cached.Select(static receipt => receipt.Sender), Is.EqualTo(new[] { TestItem.AddressC, TestItem.AddressB }));
+            Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressC, TestItem.AddressB }));
+            Assert.That(_receiptFinder.FullReads, Is.Zero);
+        }
     }
 
     [Test]
@@ -101,6 +117,18 @@ public class BlockchainBridgeRecoverTxSendersTests(bool compactReceipts)
             Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressC, TestItem.AddressD }));
             Assert.That(_receiptFinder.FullReads, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public void Recovers_the_senders_after_an_empty_stored_receipt()
+    {
+        Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC);
+        TxReceipt?[] receipts = [Build.A.Receipt.WithSender(TestItem.AddressA).TestObject, null, Build.A.Receipt.WithSender(TestItem.AddressC).TestObject];
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = new ReceiptArrayStorageDecoder(compactReceipts).EncodeAsBytes(receipts!, RlpBehaviors.Storage);
+
+        _blockchainBridge.RecoverTxSenders(block);
+
+        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC }));
     }
 
     [Test]
@@ -158,13 +186,14 @@ public class BlockchainBridgeRecoverTxSendersTests(bool compactReceipts)
     }
 
     /// <summary>
-    /// Caches the stored receipts as a full read does without recovering senders, then drops them from the db, so only
-    /// the cached receipts can answer.
+    /// Caches the stored receipts through a full read, which keeps the stored senders and recovers the missing ones,
+    /// then drops them from the db, so only the cached receipts can answer.
     /// </summary>
-    private void MoveReceiptsIntoCache(Block block)
+    private TxReceipt[] MoveReceiptsIntoCache(Block block)
     {
-        _receiptFinder.Inner.Get(Rlp.Decode<Block>(Rlp.Encode(block).Bytes), recover: true, recoverSender: false);
+        TxReceipt[] receipts = _receiptFinder.Inner.Get(Rlp.Decode<Block>(Rlp.Encode(block).Bytes));
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Remove(block.Hash!.Bytes);
+        return receipts;
     }
 
     private PersistentReceiptStorage CreateStorage()

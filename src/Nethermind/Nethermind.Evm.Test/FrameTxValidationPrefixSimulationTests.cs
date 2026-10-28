@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -303,9 +304,9 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheDefaultBudget_RejectedAsOverBudget")]
-    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheDefaultBudget_ResolvesPayerUnderARaisedBudget")]
-    public void Simulate_PrefixAboveTheDefaultBudget_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
+    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheSharedFloor_RejectedAsOverBudget")]
+    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheSharedFloor_ResolvesPayerUnderARaisedBudget")]
+    public void Simulate_PrefixAboveTheSharedFloor_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
     {
         byte[] countdownFrom15400 = [0x61, 0x3c, 0x28, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x03, 0x57, 0x50];
         DeployContract(Sender, [.. countdownFrom15400, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
@@ -399,16 +400,22 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     // Matched on the reason, so an unrelated rule firing first cannot stand in for the target one.
-    private void AssertPrefixCallTarget(Address target, bool violates)
+    private FrameTxValidationTracer AssertPrefixCallTarget(Address target, bool violates, string reason = "disallowed target", Instruction call = Instruction.STATICCALL)
     {
-        byte[] code = Prepare.EvmCode
-            .StaticCall(target, 50_000)
+        Prepare prepare = call switch
+        {
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(target, 50_000),
+            _ => throw new ArgumentOutOfRangeException(nameof(call), call, null),
+        };
+        byte[] code = prepare
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
-        Assert.That(tracer.ViolationReason, violates ? Does.Contain("disallowed target") : Is.Null);
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain(reason) : Is.Null);
+        return tracer;
     }
 
     // The banned list is the security surface of admission, so it is swept whole: any of these in the
@@ -449,6 +456,199 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
+    }
+
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, SETCODEFROM is
+    // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
+    [Test]
+    public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)
+    {
+        UseBogotaWithFrames(eip8298);
+        DeployContract(TestItem.AddressC, ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateAdoptingPrefix((byte)Instruction.SETCODEFROM, inDeployFrame);
+
+        if (eip8298)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode SETCODEFROM in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateAdoptingPrefix(0xf6, inDeployFrame);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    // With EIP-8360 off, 0xF6 is undefined, so the prefix must fare exactly as with another undefined opcode (0x0C).
+    [Test]
+    public void Simulate_PrefixUsesTcreate_BannedOnlyUnderEip8360([Values] bool eip8360)
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8360Enabled = eip8360 });
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateOpcodeBeforeApprove((byte)Instruction.TCREATE);
+
+        if (eip8360)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode TCREATE in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateOpcodeBeforeApprove(0x0c);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on four zero operands in a self-verify frame that then approves.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateOpcodeBeforeApprove(byte opcode)
+    {
+        byte[] operands = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).Done;
+        DeployContract(Sender, [.. operands, opcode, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on <see cref="TestItem.AddressC"/> in deploy-frame initcode or a self-verify frame.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateAdoptingPrefix(byte opcode, bool inDeployFrame)
+    {
+        byte[] adopt = [.. Prepare.EvmCode.PushData(TestItem.AddressC).Done, opcode, (byte)Instruction.POP];
+        if (!inDeployFrame)
+        {
+            DeployContract(Sender, [.. adopt, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+            return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+        }
+
+        // A distinct initcode per opcode keeps each run's deployed sender fresh.
+        Address deployed = InstallFactory([.. adopt, (byte)Instruction.STOP]);
+        FundAccount(deployed, 1.Ether);
+        return SimulateAllowingAbort(DeployTx(deployed));
+    }
+
+    private void UseBogotaWithFrames(bool eip8298) =>
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8298Enabled = eip8298 });
+
+    // Under EIP-8298 a helper holding SETCODEFROM as an instruction is refused, and one that can only reach it by
+    // delegating (DELEGATECALL, CALLCODE) is admitted but recorded as a code dependency. The same bytes as PUSH
+    // data or EIP-8024 immediates cannot run. With it off, as on master.
+    public sealed record MutableCodeTarget(string Name, byte[] Code, bool Refused, bool Tracked)
+    {
+        public override string ToString() => Name;
+    }
+
+    private static readonly MutableCodeTarget[] MutableCodeTargets =
+    [
+        new("plain code", [(byte)Instruction.STOP], false, false),
+        new("SETCODEFROM", [(byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, false),
+        new("DELEGATECALL", [(byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, true),
+        new("CALLCODE", [(byte)Instruction.CALLCODE, (byte)Instruction.STOP], false, true),
+        new("DELEGATECALL and SETCODEFROM", [(byte)Instruction.DELEGATECALL, (byte)Instruction.SETCODEFROM, (byte)Instruction.STOP], true, false),
+        new("PUSH data", [(byte)Instruction.PUSH2, (byte)Instruction.SETCODEFROM, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, false),
+        new("EIP-8024 immediates", [(byte)Instruction.DUPN, (byte)Instruction.SETCODEFROM, (byte)Instruction.EXCHANGE, (byte)Instruction.DELEGATECALL, (byte)Instruction.STOP], false, false),
+    ];
+
+    [Test]
+    public void Simulate_PrefixCallsTargetWithMutableCode_IsClassifiedByItsCode(
+        [ValueSource(nameof(MutableCodeTargets))] MutableCodeTarget target,
+        [Values] bool eip8298,
+        [Values(Instruction.STATICCALL, Instruction.DELEGATECALL)] Instruction call)
+    {
+        UseBogotaWithFrames(eip8298);
+        DeployContract(TestItem.AddressC, target.Code);
+
+        FrameTxValidationTracer tracer = AssertPrefixCallTarget(TestItem.AddressC, target.Refused && eip8298, "has mutable code", call);
+
+        Assert.That(tracer.CodeDependencies, target.Tracked && eip8298
+            ? Is.EqualTo(new[] { new FrameTxCodeDependency(TestItem.AddressC, ValueKeccak.Compute(target.Code)) })
+            : Is.Empty);
+    }
+
+    // A proxy account delegating into an implementation that holds DELEGATECALL is admitted, with the
+    // implementation recorded so the pool revalidates and caps on its code.
+    [Test]
+    public void Simulate_ProxyAccountDelegatingIntoADelegatingImplementation_Admitted()
+    {
+        UseBogotaWithFrames(eip8298: true);
+        byte[] implementation = Prepare.EvmCode.PushData(1).Op(Instruction.POP).STOP().Op(Instruction.DELEGATECALL).Done;
+        DeployContract(TestItem.AddressC, implementation);
+        DeployContract(Sender, [.. Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50_000).Op(Instruction.POP).Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(TestItem.AddressC, ValueKeccak.Compute(implementation)) }));
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameTargetWithMutableCode_IsClassifiedByItsCode(
+        [Values] bool eip8298,
+        [Values(Instruction.SETCODEFROM, Instruction.DELEGATECALL)] Instruction held)
+    {
+        UseBogotaWithFrames(eip8298);
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode, epilogue: [(byte)Instruction.STOP, (byte)held]);
+        FundAccount(deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(DeployTx(deployed));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, eip8298 && held == Instruction.SETCODEFROM ? Is.EqualTo($"deploy frame target {Factory} has mutable code") : Is.Null);
+            Assert.That(tracer.CodeDependencies.Select(d => d.Account), eip8298 && held == Instruction.DELEGATECALL ? Is.EqualTo(new[] { Factory }) : Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Simulate_MutableCodeVerdict_IsCachedPerCodeHashOnlyUnderEip8298([Values] bool eip8298)
+    {
+        UseBogotaWithFrames(eip8298);
+        // Unique per run, so neither another test nor an earlier run has cached this code's verdict.
+        byte[] targetCode = Prepare.EvmCode.PushData(Guid.NewGuid().ToByteArray()).Op(Instruction.STOP).Done;
+        DeployContract(TestItem.AddressC, targetCode);
+        (ValueHash256, bool) key = (ValueKeccak.Compute(targetCode), Spec.IsEip8024Enabled);
+
+        AssertPrefixCallTarget(TestItem.AddressC, violates: false, "has mutable code");
+        bool scanned = FrameTxValidationTracer.MutableCodeCache.TryGet(key, out FrameTxValidationTracer.CodeMutability cached);
+        Assert.That(scanned, Is.EqualTo(eip8298), "verdict cached");
+        if (!eip8298) return;
+        Assert.That(cached, Is.EqualTo(FrameTxValidationTracer.CodeMutability.None), "cached verdict");
+
+        // A seeded verdict is used as is, so the code is not scanned again.
+        FrameTxValidationTracer.MutableCodeCache.Set(key, FrameTxValidationTracer.CodeMutability.Direct);
+        AssertPrefixCallTarget(TestItem.AddressC, violates: true, "has mutable code");
     }
 
     [TestCase(true, TestName = "GAS immediately before a call is permitted")]
@@ -1022,19 +1222,17 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [TestCase(0, true, TestName = "a payer covering the EIP-7623 floor resolves")]
-    [TestCase(-1, false, TestName = "a payer one wei short of the EIP-7623 floor does not")]
-    public void Simulate_PricesTheApproveGateOnTheSameBudgetExecutionEscrows(int balanceDelta, bool resolves)
+    [TestCase(0, true, TestName = "a payer covering max_fee resolves")]
+    [TestCase(-1, false, TestName = "a payer one wei short of max_fee does not")]
+    public void Simulate_PricesTheApproveGateAtTheMaxFee(int balanceDelta, bool resolves)
     {
-        // A calldata-heavy prefix prices on the EIP-7623 floor, so the simulated APPROVE gate must use
-        // the budget the main path escrows on.
-        Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
-                CalldataOf(30_000)));
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
-        Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
+        // The base fees at inclusion are unknown here, so the simulated APPROVE gate prices max_cost at its bound,
+        // max_fee, as the admission exposure gate does.
+        const ulong maxFee = 1_000_000;
+        Transaction tx = FrameTx(nonce: 0, new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero, default));
+        tx.MaxFee = maxFee;
 
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxFee + (ulong)(long)balanceDelta));
 
         (_, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -1112,13 +1310,6 @@ public class FrameTxValidationPrefixSimulationTests
         raw[32] = 1; // r = 1
         raw[64] = 1; // s = 1
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw);
-    }
-
-    private static byte[] CalldataOf(int length)
-    {
-        byte[] data = new byte[length];
-        data.AsSpan().Fill(0xff);
-        return data;
     }
 
     private static TestCaseData ParityCase(string name, byte param, bool approveWhenZero, bool expectedValid) =>
@@ -1262,6 +1453,6 @@ public class FrameTxValidationPrefixSimulationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 }

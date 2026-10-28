@@ -186,5 +186,5 @@ dotnet_diagnostic.IDE0130.severity = none
 # IDE0005: These Merge.Plugin source files are also linked into Nethermind.Stateless.Executor
 # (which has ImplicitUsings enabled), where their explicit usings are flagged as redundant. The
 # usings are required in Merge.Plugin (ImplicitUsings disabled), so suppress the false positive.
-[src/Nethermind/Nethermind.Merge.Plugin/Data/{ExecutionPayload,ExecutionPayloadV4,IExecutionPayloadParams}.cs]
+[src/Nethermind/Nethermind.Merge.Plugin/Data/{ExecutionPayload,ExecutionPayloadV4,IExecutionPayloadParams,PayloadTransactionCountGuard}.cs]
 dotnet_diagnostic.IDE0005.severity = none

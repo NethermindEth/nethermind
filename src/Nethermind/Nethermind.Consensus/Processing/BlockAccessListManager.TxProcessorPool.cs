@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
@@ -24,10 +25,13 @@ namespace Nethermind.Consensus.Processing;
 /// <see cref="ITxProcessorWithWorldStateManager"/>:
 ///   * <see cref="ParallelTxProcessorWithWorldStateManager"/> rents/returns processors per
 ///     tx index from a bounded pool and stages each tx's BAL slice in <c>_perTxBal</c> so
-///     the validator can merge them in canonical order. Each rented processor also gets a
-///     pooled <see cref="ParentReaderLease"/> — a snapshot of the parent-state world from
-///     which the BAL-backed world state reads any value the suggested BAL doesn't carry at
-///     the current index.
+///     the validator can merge them in canonical order. Each processor keeps a pooled
+///     <see cref="ParentReaderLease"/> for the whole block — a snapshot of the parent-state
+///     world from which the BAL-backed world state reads any value the suggested BAL doesn't
+///     carry at the current index. The lease is attached per tx. Once the last tx slot is rented,
+///     each worker releases the lease of the processor it returns, and the first one also releases
+///     the leases of idle processors. The post-execution merge releases any left, normally none, the
+///     next block's <c>Setup</c> covers a block that failed, and disposing a processor releases its lease.
 ///   * <see cref="SequentialTxProcessorWithWorldStateManager"/> reuses a single processor
 ///     for the whole block.
 /// <see cref="TxProcessorWithWorldState"/> bundles the tx processor with its world states
@@ -82,6 +86,13 @@ public partial class BlockAccessListManager
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
 
+        // Transaction slots of the block not rented yet. Once it is zero, every processor returned from a transaction has
+        // served its last one in the block, so its worker releases its parent reader instead of the block thread.
+        private int _txRentsLeft;
+
+        // Elects the one worker that releases the readers still kept by idle processors after the last rent.
+        private int _keptReadersReleased;
+
         public ParallelTxProcessorWithWorldStateManager(
             IWorldState stateProvider,
             ILogManager logManager,
@@ -111,6 +122,27 @@ public partial class BlockAccessListManager
             int newLastBalIndex = block.Transactions.Length + 1;
             ReclaimAndResize(newLastBalIndex + 1, previousSize);
             _lastBalIndex = newLastBalIndex;
+
+            // Normally released by the workers once the last transaction is rented; this covers a block that failed before it.
+            ReleaseKeptParentReaders();
+            _txRentsLeft = block.Transactions.Length;
+            _keptReadersReleased = 0;
+        }
+
+        /// <summary>A parent reader serves one block: it reads that block's parent state through caches that change
+        /// between blocks, and holds the snapshots under it until released.</summary>
+        /// <remarks>Runs while no worker rents a processor, though other workers may still return theirs. It may miss a
+        /// processor returned meanwhile, which the release at the post-execution merge then covers, and a processor
+        /// visited twice releases nothing the second time. It rotates the queue instead of enumerating it, because
+        /// enumerating a <see cref="ConcurrentQueue{T}"/> freezes its segments and makes the next enqueues allocate new ones.</remarks>
+        public void ReleaseKeptParentReaders()
+        {
+            int pooled = Volatile.Read(ref _processorCount);
+            for (int i = 0; i < pooled && _processors.TryDequeue(out TxProcessorWithWorldState? processor); i++)
+            {
+                processor.ReleaseParentReader();
+                _processors.Enqueue(processor);
+            }
         }
 
         // Thread-safety note for _inUse / _perTxBal:
@@ -133,26 +165,30 @@ public partial class BlockAccessListManager
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
-            ParentReaderLease? parentReader = RentParentReader(_currentBlock.Header);
+            ParentReaderLease? parentReader = null;
 
             try
             {
+                BlockHeader header = _currentBlock.Header;
+                parentReader = processor.GetParentReader(header) ?? RentParentReader(header);
                 // Install a fresh BAL before Setup so the worker has somewhere to record changes.
                 processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
                 processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader, _readPlan);
                 _inUse[idx] = processor;
+                if (IsTransactionSlot(idx)) Interlocked.Decrement(ref _txRentsLeft);
                 return processor;
             }
             catch
             {
-                parentReader?.Dispose();
+                // A kept lease is released with the processor below; only a lease the processor does not hold yet is disposed here.
+                if (parentReader is not null && !processor.Keeps(parentReader)) parentReader.Dispose();
                 if (processor.WorldState.GetGeneratingBlockAccessList() is { } generatedBal)
                 {
                     StaticPool<BlockAccessListAtIndex>.Return(generatedBal);
                 }
                 processor.WorldState.SetGeneratingBlockAccessList(null);
-                // Detach any parent reader Setup may have installed so the recycled slot isn't poisoned.
-                processor.ClearParentReader();
+                // Release the parent reader too, so the recycled slot isn't poisoned.
+                processor.ReleaseParentReader();
                 ReturnProcessor(processor);
                 throw;
             }
@@ -173,10 +209,18 @@ public partial class BlockAccessListManager
             if (slice is not null) slice.CoveredStorageReads = processor.WorldState.ReadCoverage?.ChargeableReadCount ?? 0;
             _perTxBal[idx] = slice;
             processor.WorldState.SetGeneratingBlockAccessList(null);
-            processor.ClearParentReader();
+            processor.DetachParentReader();
             _inUse[idx] = null;
+
+            // No later transaction of the block rents a processor, so this is its last use in the block: release the
+            // reader here, on the worker, in parallel with the other workers.
+            bool lastUse = idx == _lastBalIndex || (IsTransactionSlot(idx) && Volatile.Read(ref _txRentsLeft) <= 0);
+            if (lastUse) processor.ReleaseParentReader();
             ReturnProcessor(processor);
+            if (lastUse && IsTransactionSlot(idx) && Interlocked.Exchange(ref _keptReadersReleased, 1) == 0) ReleaseKeptParentReaders();
         }
+
+        private bool IsTransactionSlot(int idx) => idx > 0 && idx < _lastBalIndex;
 
         /// <summary>
         /// Merges the per-tx BAL into <paramref name="target"/> in caller-controlled order, then
@@ -189,6 +233,9 @@ public partial class BlockAccessListManager
             int idx = ClampBalIndex(balIndex);
 
             Return((uint)idx);
+            // Normally a no-op: the workers released the readers after the last rent. This covers a transaction slot that
+            // was never rented, and a processor returned to the pool after the worker that released the idle ones checked it.
+            if (idx == _lastBalIndex) ReleaseKeptParentReaders();
 
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
@@ -211,7 +258,6 @@ public partial class BlockAccessListManager
 
         public void Dispose()
         {
-            (_parentReaderEnvPool as IDisposable)?.Dispose();
             foreach (TxProcessorWithWorldState? processor in _inUse)
             {
                 processor?.Dispose();
@@ -221,6 +267,9 @@ public partial class BlockAccessListManager
             {
                 processor.Dispose();
             }
+
+            // After the processors, which return their parent readers' sources to this pool.
+            (_parentReaderEnvPool as IDisposable)?.Dispose();
         }
 
         private int ClampBalIndex(uint balIndex)
@@ -264,7 +313,7 @@ public partial class BlockAccessListManager
                 ThrowParentStateUnavailable(targetBlock);
             }
 
-            return new ParentReaderLease(source, _parentReaderEnvPool, scope);
+            return new ParentReaderLease(source, _parentReaderEnvPool, scope, targetBlock);
         }
 
         [DoesNotReturn]
@@ -359,9 +408,11 @@ public partial class BlockAccessListManager
         public readonly TracedAccessWorldState WorldState;
         public readonly ITransactionProcessor TxProcessor;
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
+        public ExecutionRequestsProcessor ExecutionRequests => field ??= new ExecutionRequestsProcessor(TxProcessor);
         private readonly IDisposable _virtualMachine;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
+        private bool _parentReaderAttached;
         private BalReadCoverage? _readCoverage;
 
         public TxProcessorWithWorldState(
@@ -375,7 +426,7 @@ public partial class BlockAccessListManager
             {
                 // A build without the capability never constructs the parallel pool; failing here
                 // keeps a mis-wired processor from producing a wrong BAL.
-                if (!ExecutionFlags.ParallelExecution) ThrowParallelExecutionUnavailable();
+                if (ZkEvmFlag.IsActive) ThrowParallelExecutionUnavailable();
                 _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager);
                 worldState = _balWorldState;
             }
@@ -383,14 +434,39 @@ public partial class BlockAccessListManager
             (TxProcessor, TxProcessorAdapter, _virtualMachine) = txProcessorFactory.Create(WorldState, parallel);
         }
 
-        /// <summary>Hands the data stacks the processor's virtual machine keeps back to the shared pool.</summary>
-        public void Dispose() => _virtualMachine.Dispose();
+        /// <summary>
+        /// Releases the kept parent reader and hands the data stacks the processor's virtual machine keeps back to the
+        /// shared pool.
+        /// </summary>
+        public void Dispose()
+        {
+            ReleaseParentReader();
+            _virtualMachine.Dispose();
+        }
 
+        /// <summary>The parent reader kept for <paramref name="targetBlock"/>; one kept for another block is released.</summary>
+        public ParentReaderLease? GetParentReader(BlockHeader targetBlock)
+        {
+            if (_parentReader is { } parentReader && ReferenceEquals(parentReader.TargetBlock, targetBlock)) return parentReader;
+            ReleaseParentReader();
+            return null;
+        }
+
+        /// <remarks>
+        /// The processor keeps <paramref name="parentReader"/> after the slice. Reusing it in a later slice of the block is
+        /// safe: the parent reader only reads the parent state, which no slice writes, and the BAL-backed world state
+        /// resets its own per-slice caches in its <c>Setup</c> and <c>ClearParentReader</c>.
+        /// </remarks>
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan = null)
         {
-            if (_parentReader is not null) ThrowParentReaderStillAttached();
+            if (_parentReaderAttached) ThrowParentReaderStillAttached();
 
-            _parentReader = parentReader;
+            if (!ReferenceEquals(_parentReader, parentReader))
+            {
+                _parentReader?.Dispose();
+                _parentReader = parentReader;
+            }
+
             WorldState.Clear();
             WorldState.SetIndex(balIndex);
             _balWorldState?.SetBlockAccessIndex(balIndex);
@@ -399,6 +475,7 @@ public partial class BlockAccessListManager
             {
                 if (parentReader is null) ThrowParentReaderUnavailable();
                 _balWorldState.SetParentReader(parentReader.WorldState);
+                _parentReaderAttached = true;
                 if (readPlan is not null && !ReferenceEquals(_readCoverage?.Plan, readPlan))
                     _readCoverage = readPlan.CreateCoverage();
                 BalReadCoverage? coverage = readPlan is null ? null : _readCoverage;
@@ -408,10 +485,19 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void ClearParentReader()
+        /// <summary>Ends the slice's use of the parent reader and keeps the lease for the next slice of the block.</summary>
+        public void DetachParentReader()
         {
             WorldState.ReadCoverage = null;
             _balWorldState?.ClearParentReader();
+            _parentReaderAttached = false;
+        }
+
+        public bool Keeps(ParentReaderLease parentReader) => ReferenceEquals(_parentReader, parentReader);
+
+        public void ReleaseParentReader()
+        {
+            DetachParentReader();
             _parentReader?.Dispose();
             _parentReader = null;
         }
@@ -422,7 +508,7 @@ public partial class BlockAccessListManager
 
         [DoesNotReturn]
         private static void ThrowParentReaderStillAttached()
-            => throw new InvalidOperationException("Previous parent reader was not cleared before reusing this processor.");
+            => throw new InvalidOperationException("Previous parent reader was not detached before reusing this processor.");
 
         [DoesNotReturn]
         private static void ThrowParentReaderUnavailable()
@@ -431,15 +517,18 @@ public partial class BlockAccessListManager
 
     // RAII wrapper around a borrowed read-only tx-processing env: holds the pooled source
     // plus the scope built against the parent state root, and returns the source to its
-    // pool when disposed. Used by parallel workers so each tx gets its own snapshot reader
-    // without contending on the mutable state provider.
+    // pool when disposed. Each parallel processor keeps one for the block, so it reads the
+    // parent state without contending on the mutable state provider.
     private sealed class ParentReaderLease(
         IReadOnlyTxProcessorSource source,
         ObjectPool<IReadOnlyTxProcessorSource> envPool,
-        IReadOnlyTxProcessingScope scope) : IDisposable
+        IReadOnlyTxProcessingScope scope,
+        BlockHeader targetBlock) : IDisposable
     {
         private IReadOnlyTxProcessorSource? _source = source;
         private IReadOnlyTxProcessingScope? _scope = scope;
+
+        public BlockHeader TargetBlock { get; } = targetBlock;
 
         public IWorldState WorldState => _scope?.WorldState ?? ThrowDisposed();
 

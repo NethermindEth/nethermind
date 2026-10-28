@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -31,9 +32,19 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
-        CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default);
+
+        /// <summary>Gets the transaction at <paramref name="index"/> of a stored block, decoding no other transaction.</summary>
+        /// <returns>False when the block body is not stored; true otherwise, with a null transaction for an index past the end.</returns>
+        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount)
+        {
+            transaction = null;
+            transactionCount = 0;
+            return false;
+        }
+
+        CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
-        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, CancellationToken cancellationToken = default);
+        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
 
         /// <summary>Fills the omitted execution and state limits of a frame transaction's frames by replaying it.</summary>
         /// <remarks>Runs in <paramref name="header"/>'s state with the overrides applied. Every probe runs the whole
@@ -48,6 +59,9 @@ namespace Nethermind.Facade
         /// the most the filled transaction's total gas budget may be.</param>
         /// <param name="errorMargin">In basis points: each limit's search stops once its bounds are within this fraction of
         /// the upper bound, which it returns. 0 searches exactly; it must be below 10000.</param>
+        /// <param name="maxFeeAt">For a call priced per gas, the <c>max_fee</c> its prices buy over a given <c>max_gas</c>,
+        /// which each run is priced at over its own <c>max_gas</c>, raised in search runs to fund the search tip;
+        /// <see langword="null"/> keeps <paramref name="tx"/>'s <c>max_fee</c>.</param>
         /// <param name="stateOverride">Account overrides applied before the estimate.</param>
         /// <param name="blockOverride">Block overrides applied to <paramref name="header"/>'s copy.</param>
         /// <param name="cancellationToken">Cancels the estimate between and within runs.</param>
@@ -55,15 +69,16 @@ namespace Nethermind.Facade
         /// otherwise valid transaction reverted, rather than ran out of gas or the transaction was invalid.</param>
         /// <returns>The frames with every requested limit filled, or the failure.</returns>
         Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
 
-        CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, CancellationToken cancellationToken = default);
+        CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         ulong GetChainId();
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
-        void UninstallFilter(int filterId);
+        /// <returns><c>true</c> if the filter existed and was removed; otherwise, <c>false</c>.</returns>
+        bool UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         /// <returns>A pooled list that the caller disposes.</returns>
         ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId);

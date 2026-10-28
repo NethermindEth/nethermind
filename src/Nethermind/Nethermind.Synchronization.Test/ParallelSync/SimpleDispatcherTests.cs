@@ -107,7 +107,9 @@ public class SimpleDispatcherTests
             new TestSyncConfig { MaxProcessingThreads = MaxThreads, SyncDispatcherAllocateTimeoutMs = allocateTimeoutMs },
             LimboLogs.Instance);
 
-    [Test, CancelAfter(30_000)]
+    // Isolated, as the sibling allocation test: its waits run on the thread pool, which parallel fixtures in this
+    // assembly starve for longer than the 30 s budget on the slow lanes.
+    [Test, NonParallelizable, CancelAfter(30_000)]
     public async Task In_flight_dispatches_exceed_processing_threads_up_to_the_cap_and_run_drains_them_all(CancellationToken cancellationToken)
     {
         TestFeed feed = new(totalRequests: PeerCount);
@@ -438,7 +440,7 @@ public class SimpleDispatcherTests
             feed.ReleaseHandleResponse.TrySetResult();
         }
 
-        Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(await completedWhenRunReturned, Is.EqualTo(1), "Run must wait for in-flight HandleResponse");

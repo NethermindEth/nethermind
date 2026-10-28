@@ -147,4 +147,21 @@ public class JwtAuthenticationTests
             SensitiveLogMasking.Enabled = originalMasking;
         }
     }
+
+    [Test]
+    public void FromFile_creates_the_secret_readable_by_the_owner_only()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Ignore("Unix file modes only");
+            return;
+        }
+
+        using TempPath tempDirectory = TempPath.GetTempDirectory();
+        string secretPath = Path.Combine(tempDirectory.Path, "jwt.hex");
+
+        JwtAuthentication.FromFile(secretPath, Timestamper.Default, NullLogger.Instance);
+
+        Assert.That(File.GetUnixFileMode(secretPath), Is.EqualTo(UnixFileMode.UserRead | UnixFileMode.UserWrite));
+    }
 }

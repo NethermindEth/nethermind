@@ -134,10 +134,11 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         base.Dispose(disposing);
     }
 
-    public ValueTask<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
+        if (!data.IsEmpty) await WriteAsync(data, cancellationToken);
         WriteByte(Delimiter);
-        return ValueTask.FromResult(1);
+        return 1;
     }
 
     private readonly record struct JsonParseState(JsonReaderState ReaderState = default, int BytesConsumed = 0, int StartOffset = -1)

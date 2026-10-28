@@ -36,7 +36,7 @@ Independently of the runner, **sweep mode** (the corpus presets and
 Nethermind snapshot root, at `<root>/<client>-<block>` (the Nethermind set
 follows the sweep's `state_layout`: `nethermind-flat-<block>` for `flat`, the
 default, and `nethermind-<block>` for `halfpath`), so `tool_config.clients` may
-name `geth` and `reth` entries alongside Nethermind ones. `run-rpc-sweep.sh`
+name `geth` and `reth` entries alongside Nethermind ones. `run-rpc-sweep.cs`
 checks every requested type's set exists before it starts a node, so a type the
 selected box cannot serve is one clear error rather than a per-client warning
 and a partly-empty matrix reported as success. Scratch is wiped between arms, so
@@ -64,6 +64,19 @@ reth path does not refresh the cross-run fingerprint anchor. If an old anchor
 exists, it is diagnostic only: it cannot monitor the accumulated writes, restore
 isolation, or make those timings comparable. Use separate fresh reth
 snapshots/runs when a clean A/B is required.
+
+### Single-node gas cap
+
+For `jsonbench`, `flood` and `ethcallchaos`, set `node_config.rpc_gas_cap` to a
+positive JSON integer of at most 15 digits, for example `{"rpc_gas_cap":2000000000}`. The resolved
+cap is passed to both nodes when a reference client is used. Existing defaults
+remain 1B gas, or 1T for private-corpus single-node runs. This key is refused in
+sweep presets rather than silently ignored.
+
+Use this key instead of adding `--JsonRpc.GasCap` to
+`additional_nethermind_flags`: the startup script already supplies that option,
+and repeating it can prevent the node from starting. The heavy synthetic
+`eth_call` workload requests 2B gas and needs a cap of at least that value.
 
 ### Per-arm options
 
@@ -134,15 +147,15 @@ The runner keeps **block-tagged snapshot sets** under
 `<snapshot root>/nethermind-flat-<block>` — e.g. `nethermind-flat-25490000` —
 each carrying provenance sidecars (`_snapshot_metadata.json`,
 `_snapshot_web3_clientVersion.json`, `_snapshot_eth_getBlockByNumber.json`) that
-`start-node.sh` logs at startup.
+`start-node.cs` logs at startup.
 
 `snapshot_block` selects a set and defaults to `25490000`. Every node in a run
 shares one set, so any two builds being compared are at the same head by
 construction (`assert_same_head` still enforces it before a diff, and
-`corpus_parity.py` refuses to compare two replays whose head block hashes
+`corpus-parity.cs` refuses to compare two replays whose head block hashes
 differ).
 
-Per-client node profiles in `start-node.sh`. Only the `nethermind` row is
+Per-client node profiles in `start-node.cs`. Only the `nethermind` row is
 reachable on the current runner (see **Supported configuration** above); the
 others are kept because they are what a future geth/reth snapshot set would
 launch through, and they are unchanged:
@@ -180,7 +193,7 @@ clean latency — for perf A/B use two separate single-node runs.
 ## How the node is started (and why the snapshot is safe)
 
 Under `overlay`/`copy`/`readonly-bind` the pristine snapshot at `db_source` is
-**never mounted writable** — `start-node.sh` builds an isolated, writable *view*
+**never mounted writable** — `start-node.cs` builds an isolated, writable *view*
 and gives the container only that view. `direct` is the exception: it mounts the
 snapshot itself read-write and accepts the node's startup writes.
 
@@ -212,7 +225,7 @@ don't put that client on `direct` — hence nethermind/geth stay on `overlay`.
 
 ### Tamper tripwire (active verification of goal #2)
 
-`start-node.sh` fingerprints the snapshot before the run; `stop-node.sh`
+`start-node.cs` fingerprints the snapshot before the run; `stop-node.cs`
 recomputes it after. The fingerprint is a full recursive listing (path, type,
 size, mtime, mode, owner, symlink target) plus a sha256 of the small RocksDB
 control files rewritten the instant a DB is opened read-write (`CURRENT`,
@@ -229,7 +242,7 @@ run whose verify never ran).
 Path safety is layered: `resolve` validates `db_source`/`scratch_root` shape, and
 every script canonicalizes them (`realpath`, symlink-proof), rejects shallow
 paths, enforces disjointness, and refuses any recursive delete while something is
-still mounted underneath ([`cleanup.sh`](cleanup.sh) applies the same guards in
+still mounted underneath ([`cleanup.cs`](cleanup.cs) applies the same guards in
 the workflow's defensive-cleanup step).
 
 ## Workflow inputs
@@ -343,7 +356,7 @@ answers `eth_blockNumber` long before it serves `eth_call` warm: snapshot persis
 writing for minutes and the JIT has not tiered up. With a non-zero duration the workflow first
 replays the same workload (same `benchmark_config`/corpus, `corpus_warmup_rps`, fail-rate gate
 lifted) into scratch — never staged or published — and **only then starts the profilers**
-(`start-profilers.sh`), so a `perf` or `dottrace` profile covers the measured cell alone. The
+(`start-profilers.cs`), so a `perf` or `dottrace` profile covers the measured cell alone. The
 measured cell reuses the json-bench checkout, runner image and corpus fixture the warm-up
 prepared (`JB_REUSE_PREPARED=true`), so its first request follows the profiler start within
 seconds rather than after a re-clone, rebuild and re-conversion. The
@@ -478,7 +491,7 @@ only; production baselines come from master. `tool_config.corpus_baseline` (`non
 the presets set.
 
 `Validate the cached master baseline` runs before the sweep and drops a restored tree this run cannot
-use — one staged at a different `corpus_results.BASELINE_SCHEMA` (a staged-file schema change since
+use — one staged at a different `CorpusResults.BaselineSchema` (a staged-file schema change since
 that master push) or measured on another cell — with a `::warning::`; the sweep then measures master
 in this job, so a schema bump costs a slower run rather than an empty comment.
 
@@ -573,7 +586,7 @@ serializes every other job behind it. What makes the number trustworthy:
 - **CPU frequency cap** (`node_config.cpu_max_freq_khz`, default 3.8 GHz on amd64): turbo boost is
   off and the governor is `performance` for the whole job, restored afterwards.
 
-The workflow's `Render corpus comparison` step runs `corpus_results.py comment --baseline
+The workflow's `Render corpus comparison` step runs `corpus-results.cs comment --baseline
 nethermind_<baseline tag> --candidate nethermind_<candidate tag>` against the **staged** tree
 (labels derived from `baseline_image` / `docker_image` the way the sweep derives them, `_rN`
 repeats pooled into one arm per side), appends it to the step summary and, on a
@@ -598,7 +611,7 @@ summary, the parity table, artifact paths, and `summaries.manifest`. That is
 deliberate — scenarios have to be told apart — so name files by workload shape,
 never after anything sensitive.
 
-Two operational limits worth knowing before capturing. `corpus_parity.py` guards at
+Two operational limits worth knowing before capturing. `corpus-parity.cs` guards at
 10,000 records by default — raise it deliberately with `max_corpus_records` when the
 runner has the memory, since the replay holds every record's params at once. And the k6
 fixture scales with record count (~142 MB for 497 records, since `eth_call` records with
@@ -636,7 +649,7 @@ silently dropping it would still produce timings, and they would not be measurin
 call. If a capture uses block overrides, only the `debug_traceCall` mode can replay it faithfully.
 
 The rewrite is not per request. It happens once per run, in the two places the corpus is read:
-`prepare-eth-call-corpus.py` when the k6 fixture is built, and `corpus_parity.load_corpus` for
+`prepare-eth-call-corpus.cs` when the k6 fixture is built, and `CorpusParity.LoadCorpus` for
 the parity and timings replays. k6 therefore sends bodies that are already rewritten, and a trace
 cell costs exactly what an eth_call cell costs to set up. The corpus file on disk is never
 modified.
@@ -674,19 +687,19 @@ constant-arrival-rate executor holds the rate. `corpus_passes: 5` on a 50k corpu
 seeded generator (`seed`, default 1): every arm and every rate replays the same sequence,
 but coverage is still `N x (1 - (1 - 1/N)^requests)`, not a guarantee every record is visited.
 
-**Selector classes.** `prepare-eth-call-corpus.py` splits the corpus by the 4-byte selector of
+**Selector classes.** `prepare-eth-call-corpus.cs` splits the corpus by the 4-byte selector of
 `params[0].data` into `class_1..N` fixtures (ranked by record count; records without calldata
 form their own class) and renders one weighted json-bench call per class, so k6 emits a
 per-class sub-metric. The published `summary.json` carries them under `metrics.classes`; the
 selector-to-class mapping exists only in the fixture files on the runner.
 
 **Per-record timings.** The k6 cells cannot attribute a latency to a corpus record. The sweep's
-`timings_passes` replay (`corpus_parity.py timings`) walks the corpus in order N times per arm
+`timings_passes` replay (`corpus-parity.cs timings`) walks the corpus in order N times per arm
 — unpaced by default, i.e. a closed loop at `timings_concurrency` — and the PR comment pairs
 the two arms record by record. To get the same matrix by hand against a running node:
 
 ```bash
-python3 scripts/rpc-bench/corpus_parity.py timings \
+dotnet run --file scripts/rpc-bench/corpus-parity.cs -- timings \
   --corpus "/data/expb-data/rpc-bench/eth-call-corpus-<label>.jsonl.gz" \
   --rpc-url http://localhost:8545 \
   --out timings.csv --passes 5 --rps 100 --concurrency 16
@@ -730,7 +743,7 @@ time; it is a floor, so a run measuring a higher rate warms at that rate instead
 that k6 parses whole, so a long warm-up ahead of a high-rate cell would exceed what the fixture
 can hold): a k6 cell
 when `rps_list` is non-empty (seeded with `seed + 1000`, so a measured cell never replays exactly
-the sequence the warm-up just ran), otherwise a paced `corpus_parity.py timings` replay so the
+the sequence the warm-up just ran), otherwise a paced `corpus-parity.cs timings` replay so the
 fixture-free mode stays fixture-free.
 
 The request count is the point, and the rate is a request for one, not a guarantee of one — so
@@ -747,7 +760,7 @@ Cold nodes fail ~2% of calls and read ~60% higher p99, so every measured number 
 this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
-then one full-corpus replay via `corpus_parity.py` while the node is still up.
+then one full-corpus replay via `corpus-parity.cs` while the node is still up.
 The **first client in `clients` is the parity baseline** (or, with `corpus_baseline: use`, the
 responses the last master-baseline run saved on the runner); every later client's
 responses are compared byte-for-byte against it, and any defect or mismatch
@@ -764,11 +777,11 @@ a cold node at low rps are indicative, not steady-state.
 **How contents stay off GitHub:** the json-bench container's output goes to a
 VM-scratch file instead of the job log; per-call k6 outputs, deep-check, and
 HTML reports are disabled or left in scratch; the published `summary.json` is
-rewritten by `corpus_results.py sanitize` to a fixed numeric schema; parity
+rewritten by `corpus-results.cs sanitize` to a fixed numeric schema; parity
 reports contain counters and client labels only; node logs are scanned for the
 usual Exception / invalid-block / shutdown gates but print **counts only** and
 are deleted (sweep) or excluded from upload; the artifact is assembled by
-`corpus_results.py stage`, which copies nothing but files on its allowlist, each
+`corpus-results.cs stage`, which copies nothing but files on its allowlist, each
 behind an exact-schema validator (`jsonbench-summary.md` is the one exception — it
 is generated strictly downstream of the sanitized schema; `summaries.manifest` is
 validated line-by-line with its paths rewritten artifact-relative — and being an index of
@@ -813,16 +826,16 @@ Line-by-line is not offered: it needs PDBs the Docker images do not ship.
    `dottrace start --framework=NetCore --profiling-type=<Mode> --save-to=... --propagate-exit-code -- /nethermind/nethermind …`.
    With a `jsonbench` warm-up (`corpus_warmup_duration`) the wrapper is launched with
    `--collect-data-from-start=off --service-output=on --service-input=/dottrace-output/control.svc`;
-   after the warm-up `start-profilers.sh` appends `##dotTrace["start"]` to that file and
+   after the warm-up `start-profilers.cs` appends `##dotTrace["start"]` to that file and
    waits for the launcher's `##dotTrace["started"]` in the container log, failing loudly if it
    never comes (a profiler that never collected has no snapshot to save on SIGINT). The
    `start` wrapper is kept rather than `attach` because attach cannot do `tracing`.
-2. `stop-node.sh` stops the container with **SIGINT**, letting dotTrace finalize
+2. `stop-node.cs` stops the container with **SIGINT**, letting dotTrace finalize
    the snapshot into the mounted diag dir (`.dtp`, or `.dtt` for `timeline`).
 3. The `generate-dottrace-reports` job (Windows) runs `Reporter.exe` to convert
    each `.dtp` to XML — identical to the EXPB workflow. It is skipped for
    `timeline`, whose snapshots Reporter.exe cannot post-process.
-4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
+4. The `dottrace-summary` job runs [`scripts/dottrace-report.cs`](../dottrace-report.cs)
    `top` over each XML and writes the hot functions into the job summary.
 
 For the runtime events a CPU profile cannot show (GC pauses, lock contention, exception
@@ -837,8 +850,8 @@ run on its own yields the `.dtt` snapshot only, for the dotTrace UI.
 Download the `dottrace-reports` artifact and inspect locally:
 
 ```bash
-scripts/dottrace-report.sh top   reports/<name>-report.xml 30
-scripts/dottrace-report.sh compare reports/before.xml reports/after.xml 30
+dotnet run --file scripts/dottrace-report.cs -- top   reports/<name>-report.xml 30
+dotnet run --file scripts/dottrace-report.cs -- compare reports/before.xml reports/after.xml 30
 ```
 
 ## Linux perf flow
@@ -859,12 +872,42 @@ Shutdown folds the recording into `perf.folded`; collection fails when it has
 no managed-symbol leaf/self samples, including all-native or all-unknown
 profiles. The `perf-rpcbench` artifact contains `perf.folded` and recorder logs
 but excludes raw `perf.data`. Analyze the folded profile with
-[`scripts/perf-report.sh`](../perf-report.sh):
+[`scripts/perf-report.cs`](../perf-report.cs):
 
 ```bash
-scripts/perf-report.sh top perf.folded 30
-scripts/perf-report.sh compare before.folded after.folded 30
+dotnet run --file scripts/perf-report.cs -- top perf.folded 30
+dotnet run --file scripts/perf-report.cs -- compare before.folded after.folded 30
 ```
+
+Small optimized methods (a leaf, or a method with one call) can have no RBP
+frame, so frame-pointer stacks skip their caller. `DOTNET_JitFramed=1` does not
+change this on .NET 10: Tier1 code keeps its RSP-based frames.
+
+### Annotated assembly (manual)
+
+The CI flow gives stacks only. To find the hot instructions in a method, run
+the node on a Linux host outside Docker. The runtime then writes its jitdump to
+a path that host `perf inject` can open.
+
+```bash
+export DOTNET_PerfMapEnabled=1 DOTNET_EnableWriteXorExecute=0
+./nethermind <flags> &
+# Wait for the warm-up to complete, then record the steady state.
+perf record -k 1 -g -F 3999 -p "$!" -o perf.data -- sleep 30
+perf inject --input perf.data --jit --output perfjit.data
+perf report --input perfjit.data --no-children --percent-limit 1 --stdio > perf_report.txt
+perf annotate --stdio2 -i perfjit.data --percent-limit 1 -M intel > perf.asm
+```
+
+- `-k 1` sets the monotonic clock. `perf inject --jit` needs it to match the
+  samples with the jitdump records.
+- `-M intel` is for x64 only. Remove it on arm64.
+- If `perf inject` writes no `/tmp/jitted-<pid>-*.so`, the runtime wrote an
+  incomplete jitdump, and `perf annotate` has no JIT code. Runtime 10.0.12 has
+  this problem. Runtime 10.0.14 (the node image's runtime) works.
+- Samples often land one or two instructions after the instruction that stalls
+  (skid). Examine the instructions before the hot one, for example a slow load
+  or a division.
 
 ## dotnet-trace sidecar
 
@@ -885,17 +928,17 @@ lock-owner attribution is the point.
 
 The collector is the framework-dependent `dotnet-trace` global tool installed on the host
 on demand (`dotnet tool install --version <pinned> --tool-path /opt/dotnet-trace dotnet-trace`,
-pinned by `DOTNET_TRACE_VERSION` in `start-node.sh`), bind-mounted
+pinned by `DOTNET_TRACE_VERSION` in `start-node.cs`), bind-mounted
 read-only into the container and started **inside it** with `docker exec` against the
 runtime's default diagnostics IPC socket (`dotnet-trace collect -p <container pid>`), with
 `DOTNET_ROOT` resolved from the container's own `dotnet --list-runtimes` and
 `DOTNET_ROLL_FORWARD=Major`. Attaching from inside, late, is what excludes the warm-up:
 expb's alternative — a diagnostic port the runtime connects to at start — has to listen
-before the runtime starts and records everything from launch. `start-profilers.sh` attaches
-it after the `jsonbench` warm-up (`start-node.sh` starts perf and dotTrace at RPC-ready when
+before the runtime starts and records everything from launch. `start-profilers.cs` attaches
+it after the `jsonbench` warm-up (`start-node.cs` starts perf and dotTrace at RPC-ready when
 there is none, but `dotnet_trace` never runs without one), fails
 loudly if the collector exits within a second (the apphost's ".NET location: Not found" is
-otherwise a silent 400-byte log), and `stop-node.sh` sends it SIGINT inside the container
+otherwise a silent 400-byte log), and `stop-node.cs` sends it SIGINT inside the container
 and waits for the `.nettrace` to finalize **before** the node is stopped. With a plain
 `tool_config.duration` the session is also capped (`--duration`) at that duration plus ten
 minutes, counted from the attach the warm-up keeps immediately ahead of the cell — so a hung
@@ -923,7 +966,7 @@ sampled CPU stacks.
 
 Set `dotnet_dump: true` (Nethermind, any single-node shape; `jsonbench-sweep` is rejected because
 it starts and stops its own nodes per cell) to see what the node's heap holds once the load is
-over. `stop-node.sh` writes a heap dump with `docker exec` while the node is still up: after the
+over. `stop-node.cs` writes a heap dump with `docker exec` while the node is still up: after the
 measured cell, so the pause costs the numbers nothing, and after the dotnet-trace collector stops,
 so the pause is not in the trace either. It then stops the node and analyzes the dump in a
 throwaway container of the node image, the one place sure to carry the DAC that matches the dump.
@@ -940,7 +983,7 @@ Each report is its own `analyze` session, because a failing command ends the ses
 
 A large dead share is garbage the next GC reclaims, not a leak; compare the live report between
 builds for retention. The tool is the `dotnet-dump` global tool, installed on the host on demand
-(`--tool-path /opt/dotnet-dump`, pinned by `DOTNET_DUMP_VERSION` in `start-node.sh`) and
+(`--tool-path /opt/dotnet-dump`, pinned by `DOTNET_DUMP_VERSION` in `start-node.cs`) and
 bind-mounted read-only into the container, like dotnet-trace. The `dotnet-dump-rpcbench` artifact
 holds the reports only: the dump itself runs to several GB and is deleted after the analysis,
 unless `DOTNET_DUMP_KEEP=true` leaves it under `<diag dir>/dotnet-dump/` on the runner. A failed
@@ -968,21 +1011,23 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 
 ## Files
 
+Run the C# entry points from the repository with .NET 10: `dotnet run --file scripts/rpc-bench/start-node.cs -- arguments`. Workflow jobs install the SDK before invoking them. Included `*.helpers.cs` files are shared implementation, not standalone commands.
+
 | File | Role |
 |---|---|
-| `lib.sh` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
-| `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC → start profilers (unless `PROFILE_AFTER_WARMUP=true`). |
-| `start-profilers.sh` | Start perf, deferred dotTrace collection and the dotnet-trace sidecar after the warm-up (`lib.sh` `start_profilers`); refuses to run twice. |
-| `stop-node.sh` | Stop dotnet-trace and fold perf → heap dump (`dotnet_dump`) → graceful stop → collect logs + dotTrace, analyze the dump → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
-| `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
-| `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
-| `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
-| `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema, stage only validated aggregate files, render the PR comment (pooled repeats, A/A spread, paired timings, classes). |
-| `prepare-eth-call-corpus.py` | Split a JSONL(.gz) corpus into per-selector-class JSON-array fixtures for json-bench. |
+| `benchmark-*.helpers.cs` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
+| `start-node.cs` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC → start profilers (unless `PROFILE_AFTER_WARMUP=true`). |
+| `start-profilers.cs` | Start perf, deferred dotTrace collection and the dotnet-trace sidecar after the warm-up (`benchmark-profiling.helpers.cs`); refuses to run twice. |
+| `stop-node.cs` | Stop dotnet-trace and fold perf → heap dump (`dotnet_dump`) → graceful stop → collect logs + dotTrace, analyze the dump → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
+| `run-flood.cs` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
+| `run-eth-call-chaos.cs` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
+| `corpus-parity.cs` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
+| `corpus-results.cs` | Sanitize k6 summaries to a fixed numeric schema, stage only validated aggregate files, render the PR comment (pooled repeats, A/A spread, paired timings, classes). |
+| `prepare-eth-call-corpus.cs` | Split a JSONL(.gz) corpus into per-selector-class JSON-array fixtures for json-bench. |
 | `../nettrace-report.cs` | Summarize a sidecar `.nettrace`: GC pauses per generation, contention percentiles, exceptions (`dotnet run scripts/nettrace-report.cs -- <file>`). |
-| `run-jsonbench.sh` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
-| `run-rpc-sweep.sh` | One node per `clients` entry `ctype[@image][#K=V[,K=V]][+flag[;flag]]` (times `rounds`, ABBA; each type on its own snapshot set; the env suffix is passed as `docker -e` and the flags as node flags to that arm's node only, both folded into its label, so one sweep can compare config values or flags of one image — see [Per-arm options](#per-arm-options)), cells per rps, corpus warm-up/parity/timings, step summary. |
-| `cpu-stabilize.sh` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
-| `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI, memory). `memory_avg_bytes`/`memory_peak_bytes` read `memory.current`, which includes the page cache (mostly state DB pages, moved by whatever ran before); `memory_anon_*` is the node's own memory (GC heap and native) and `memory_file_avg_bytes` the page cache, both from `memory.stat` (null when the kernel does not provide it). |
-| `percat-matrix.py`, `deep-check-compare.py` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
-| `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
+| `run-json-bench.cs` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
+| `run-rpc-sweep.cs` | One node per `clients` entry `ctype[@image][#K=V[,K=V]][+flag[;flag]]` (times `rounds`, ABBA; each type on its own snapshot set; the env suffix is passed as `docker -e` and the flags as node flags to that arm's node only, both folded into its label, so one sweep can compare config values or flags of one image — see [Per-arm options](#per-arm-options)), cells per rps, corpus warm-up/parity/timings, step summary. |
+| `cpu-stabilize.cs` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
+| `sample-resources.cs` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI, memory). `memory_avg_bytes`/`memory_peak_bytes` read `memory.current`, which includes the page cache (mostly state DB pages, moved by whatever ran before); `memory_anon_*` is the node's own memory (GC heap and native) and `memory_file_avg_bytes` the page cache, both from `memory.stat` (null when the kernel does not provide it). |
+| `per-category-matrix.cs`, `deep-check-compare.cs` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
+| `cleanup.cs` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |

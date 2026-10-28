@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
     <ProjectReference Include="..\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,8 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\Nethermind.Stateless.Guest\substitutions.xml" Link="Guest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Nethermind.Stateless.ZiskGuest\substitutions.xml" Link="ZiskGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Nethermind.Stateless.Sp1Guest\substitutions.xml" Link="Sp1Guest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Nethermind.Stateless.OpenVMGuest\substitutions.xml" Link="OpenVMGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">

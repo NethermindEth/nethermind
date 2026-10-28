@@ -9,10 +9,12 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Utils;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
@@ -183,6 +185,54 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
+        }
+
+        private protected void HandleCorrelatedResponse<TRequest, TResponse, TData>(
+            MessageDictionary<TRequest, TData> requests,
+            IByteBuffer content,
+            int size,
+            Func<TResponse, int, TData> selectData,
+            Action<IByteBuffer, TRequest>? validate = null)
+            where TRequest : P2PMessage, IEth66Message
+            where TResponse : P2PMessage, IEth66Message
+        {
+            bool lateResponse = false;
+            long lateResponseId = 0;
+            using (MessageDictionary<TRequest, TData>.ResponseScope response = requests.BeginResponse(content))
+            {
+                if (response.IsExpired)
+                {
+                    lateResponse = true;
+                    lateResponseId = response.RequestId;
+                }
+                else
+                {
+                    validate?.Invoke(content, response.Message);
+                    TResponse responseMessage = Deserialize<TResponse>(content);
+                    bool dataSelected = false;
+                    try
+                    {
+                        ReportIn(responseMessage, size);
+                        TData data = selectData(responseMessage, size);
+                        dataSelected = true;
+                        response.Complete(responseMessage.RequestId, data, size);
+                    }
+                    catch
+                    {
+                        if (!dataSelected)
+                        {
+                            responseMessage.TryDispose();
+                        }
+
+                        throw;
+                    }
+                }
+            }
+
+            if (lateResponse)
+            {
+                requests.TraceLateResponse(lateResponseId);
+            }
         }
 
         /// <summary>

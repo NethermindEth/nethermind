@@ -62,6 +62,10 @@ public static class Metrics
     public static long PrewarmHandoffs { get; set; }
 
     [CounterMetric]
+    [Description("Mempool pre-warm sessions a block stopped between passes, without waiting for them to end")]
+    public static long PrewarmSpeculativeStopsWithoutWaiting { get; set; }
+
+    [CounterMetric]
     [Description("Transactions executed because state their pre-warm run read had changed")]
     public static long PrewarmHandoffsRejected { get; set; }
 
@@ -96,6 +100,30 @@ public static class Metrics
     [CounterMetric]
     [Description("Transactions block processing took over from a refreshed pre-warm run")]
     public static long PrewarmRefreshesTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
+    public static long PrewarmMempoolRunsStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
+    public static long PrewarmMempoolRunsTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions whose reads past the pre-block caches started a storage discovery while block processing executed them")]
+    public static long PrewarmInFlightStarted { get; set; }
+
+    [CounterMetric]
+    [Description("Discovery rounds run for transactions block processing was executing")]
+    public static long PrewarmInFlightRounds;
+
+    [CounterMetric]
+    [Description("Storage cells discovered and read for transactions block processing was executing")]
+    public static long PrewarmInFlightCells;
+
+    [CounterMetric]
+    [Description("Reads past the pre-block caches block processing made in a transaction after its in-flight discovery started")]
+    public static long PrewarmInFlightLateMisses { get; set; }
 
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
@@ -140,6 +168,10 @@ public static class Metrics
     [GaugeMetric]
     [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
     public static long BadBlocksByNethermindNodes;
+
+    [CounterMetric]
+    [Description("Number of blocks rejected for their block access list by parallel validation.")]
+    public static long ParallelBlockAccessListRejections;
 
     [GaugeMetric]
     [Description("State root calculation time")]

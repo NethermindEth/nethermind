@@ -7,17 +7,22 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,8 +69,14 @@ public class JsonRpcProcessorTests
     private JsonRpcProcessor CreateFixtureProcessor(IJsonRpcConfig? config = null, bool returnErrors = false) =>
         CreateProcessor(CreateService(request => returnErrors ? new JsonRpcErrorResponse { Id = request.Id } : new JsonRpcSuccessResponse { Id = request.Id }, _errorResponse), config);
 
-    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null) =>
-        new(service, config ?? new JsonRpcConfig(), fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource);
+    private static JsonRpcProcessor CreateProcessor(IJsonRpcService service, IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IProcessExitSource? processExitSource = null)
+    {
+        config ??= new JsonRpcConfig();
+        return new(service, config, fileSystem ?? Substitute.For<IFileSystem>(), LimboLogs.Instance, processExitSource, BatchConcurrencyStrategies(config));
+    }
+
+    private static IBatchConcurrencyStrategy[] BatchConcurrencyStrategies(IJsonRpcConfig config) =>
+        [new EthCallBatchConcurrency(), new DebugTraceCallBatchConcurrency(config)];
 
     private static JsonRpcContext CreateHttpContext() => new(RpcEndpoint.Http);
 
@@ -73,7 +84,7 @@ public class JsonRpcProcessorTests
         new(RpcEndpoint.Http, url: new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, isAuthenticated: true, [ModuleType.Engine]));
 
     private static JsonRpcProcessor CreateProcessorWithLogger(IJsonRpcService service, TestLogger logger) =>
-        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null);
+        new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), new OneLoggerLogManager(new(logger)), null, BatchConcurrencyStrategies(new JsonRpcConfig()));
 
     // #13156: the JSON-RPC 2.0 request-error codes (-32700..-32600 and -32601/-32602) are the caller's fault and are
     // triggered by one unauthenticated request each, so they must not reach WARN; server-side codes keep their level.
@@ -131,10 +142,7 @@ public class JsonRpcProcessorTests
         string request = CreateRequest("1", "engine_newPayloadV4", "[]");
 
         TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
-        using (JsonRpcContext engineContext = CreateEngineContext())
-        {
-            await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, engineContext);
-        }
+        await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, CreateEngineContext());
 
         Assert.That(warnLogger.LogList.Where(l => l.Contains($"Code: {errorCode} Message: test message")), Is.Not.Empty,
             $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
@@ -155,7 +163,7 @@ public class JsonRpcProcessorTests
         TestLogger debugLogger = new();
         foreach (TestLogger logger in (TestLogger[])[warnLogger, debugLogger])
         {
-            using JsonRpcContext context = isAuthenticated ? CreateEngineContext() : CreateHttpContext();
+            JsonRpcContext context = isAuthenticated ? CreateEngineContext() : CreateHttpContext();
             using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessorWithLogger(service, logger), request, context);
             Assert.That(((JsonRpcErrorResponse)AssertSingleResponse(result).Response!).Error!.Code, Is.EqualTo(ErrorCodes.ParseError));
         }
@@ -166,6 +174,36 @@ public class JsonRpcProcessorTests
                 $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
             Assert.That(debugLogger.LogList.Where(l => l.Contains(fragment)), Is.Not.Empty,
                 "the detail must stay recoverable at Debug");
+        }
+    }
+
+    [TestCase("203.0.113.7", null, " from 203.0.113.7")]
+    [TestCase("203.0.113.7", "198.51.100.1, 192.0.2.4", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1, 192.0.2.4)")]
+    [TestCase(null, null, "", TestName = "No remote address keeps the existing format")]
+    [TestCase(null, "198.51.100.1", "", TestName = "Forwarded header without a remote address keeps the existing format")]
+    public async Task Debug_logs_include_remote_address(string? remoteAddress, string? forwardedFor, string expectedSuffix)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "test message" }
+        });
+        TestLogger logger = new();
+        JsonRpcProcessor processor = CreateProcessorWithLogger(service, logger);
+        JsonRpcContext context = new(RpcEndpoint.Http) { RemoteAddress = remoteAddress is null ? null : IPAddress.Parse(remoteAddress), ForwardedFor = forwardedFor };
+        await ProcessAsync(processor, CreateRequest("1", "eth_chainId"), context);
+        await ProcessAsync(processor, "{", context);
+        await ProcessAsync(processor, $"[{CreateRequest("2", "eth_chainId")}]", context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Is.SupersetOf(new[]
+            {
+                $"JSON RPC request eth_chainId{expectedSuffix}",
+                $"Error response handling JsonRpc Id:1 Method:eth_chainId | Code: {ErrorCodes.MethodNotFound} Message: test message{expectedSuffix}",
+                $"1 JSON RPC requests{expectedSuffix}"
+            }), string.Join(" | ", logger.LogList));
+            Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)} Data"));
         }
     }
 
@@ -387,6 +425,177 @@ public class JsonRpcProcessorTests
     }
 
     [Test]
+    public async Task Batch_executes_consecutive_calls_concurrently_and_answers_in_order()
+    {
+        List<string> events = [];
+        TaskCompletionSource firstRunStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int firstRunStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is "1" or "2" or "3")
+            {
+                if (Interlocked.Increment(ref firstRunStartedCount) == 3) firstRunStarted.SetResult();
+                await firstRunStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "eth_call"), CreateRequest("2", "eth_estimateGas"), CreateRequest("3", "eth_createAccessList"),
+                CreateRequest("4", "eth_sendRawTransaction"),
+                CreateRequest("5", "eth_call"), CreateRequest("6", "eth_call")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 6).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5", "6" }));
+            Assert.That(events.IndexOf("start 4"), Is.GreaterThan(new[] { "end 1", "end 2", "end 3" }.Max(events.IndexOf)));
+            Assert.That(new[] { "start 5", "start 6" }.Min(events.IndexOf), Is.GreaterThan(events.IndexOf("end 4")));
+        }
+    }
+
+    [Test]
+    public async Task Batch_executes_trace_calls_concurrently_only_with_a_native_tracer()
+    {
+        List<string> events = [];
+        TaskCompletionSource bothNativeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int nativeStartedCount = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            string id = request.Id.ToString();
+            lock (events) events.Add($"start {id}");
+            if (id is "1" or "2")
+            {
+                if (Interlocked.Increment(ref nativeStartedCount) == 2) bothNativeStarted.SetResult();
+                await bothNativeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            lock (events) events.Add($"end {id}");
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("2", "debug_traceCall", """[{},"latest",{"tracer":"callTracer"}]"""),
+                CreateRequest("3", "debug_traceCall", """[{},"latest"]"""),
+                CreateRequest("4", "debug_traceCall", """[{},"latest",{"tracer":"{result:function(){return 1},fault:function(){}}"}]"""),
+                CreateRequest("5", "debug_traceCall", """[{},"latest",{"tracer":"prestateTracer"}]"""),
+                CreateRequest("6", "debug_traceCall", """[{},"latest",{"tracer":"\uD800"}]""")),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertBatchResponse(responses, 6).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5", "6" }));
+            Assert.That(events.IndexOf("start 2"), Is.LessThan(events.IndexOf("end 1")), "native traced calls overlap");
+            Assert.That(events.IndexOf("start 3"), Is.GreaterThan(new[] { "end 1", "end 2" }.Max(events.IndexOf)), "a struct log trace may stream, so it runs alone");
+            Assert.That(events.IndexOf("start 4"), Is.GreaterThan(events.IndexOf("end 3")), "a JavaScript tracer runs alone");
+            Assert.That(events.IndexOf("start 5"), Is.GreaterThan(events.IndexOf("end 4")));
+            Assert.That(events.IndexOf("start 6"), Is.GreaterThan(events.IndexOf("end 5")), "a tracer name that cannot be read runs alone");
+        }
+    }
+
+    [Test]
+    public async Task Batch_keeps_answering_after_a_trace_call_with_an_unreadable_option_name()
+    {
+        IJsonRpcService service = CreateEchoService();
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4, DebugModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(
+                CreateRequest("1", "debug_traceCall", """[{},"latest",{"tracer":"callTracer","\uD800":null}]"""),
+                CreateRequest("2", "eth_call")),
+            CreateHttpContext());
+
+        Assert.That(AssertBatchResponse(responses, 2).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2" }));
+        await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
+    public async Task Batch_answers_concurrent_calls_after_stop_with_limit_error()
+    {
+        IJsonRpcService service = CreateEchoService();
+        CollectingJsonRpcResponseSink sink = new() { StopAfterBatchItems = 1 };
+
+        await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
+            CreateBatchRequest(CreateRequest("1", "eth_call"), CreateRequest("2", "eth_call"), CreateRequest("3", "eth_call"), CreateRequest("4", "eth_call"), CreateRequest("5", "eth_call")),
+            CreateHttpContext(),
+            sink);
+
+        List<JsonRpcResponse> batchItems = sink.Responses[0].BatchItems!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchItems.Select(static r => r.Id.ToString()), Is.EqualTo(new[] { "1", "2", "3", "4", "5" }));
+            Assert.That(batchItems[0], Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(batchItems.Skip(1), Is.All.TypeOf<JsonRpcErrorResponse>());
+        }
+        // Items 2-4 were already executing when the sink stopped; the fifth never started.
+        await service.Received(4).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>());
+    }
+
+    [Test]
+    public async Task Batch_waits_for_started_calls_when_writing_fails()
+    {
+        int completed = 0;
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            if (request.Id.ToString() != "1") await Task.Delay(50);
+            _ = request.Params.ValueKind;
+            Interlocked.Increment(ref completed);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        CollectingJsonRpcResponseSink sink = new() { OnBatchItemWrite = static _ => throw new InvalidOperationException("write failed") };
+
+        Assert.That(async () => await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 }),
+                CreateBatchRequest(CreateRequest("1", "eth_call", "[1]"), CreateRequest("2", "eth_call", "[2]"), CreateRequest("3", "eth_call", "[3]")),
+                CreateHttpContext(),
+                sink),
+            Throws.InvalidOperationException);
+        Assert.That(completed, Is.EqualTo(3));
+    }
+
+    [TestCase(4, 4, false, 4, TestName = "Batch window fills up to its concurrency")]
+    [TestCase(4, 2, false, 2, TestName = "Batch window is capped at the override environment pool")]
+    [TestCase(1, 4, false, 1, TestName = "Batch concurrency of 1 executes sequentially")]
+    [TestCase(4, 4, true, 2, TestName = "Batch window refills after an undecodable item")]
+    public async Task Batch_bounds_concurrent_calls(int batchConcurrency, int ethModuleConcurrentInstances, bool undecodableItemInMiddle, int expectedMaxInFlight)
+    {
+        int inFlight = 0;
+        int maxInFlight = 0;
+        TaskCompletionSource expectedOverlapReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IJsonRpcService service = CreateAsyncService(async request =>
+        {
+            int current = Interlocked.Increment(ref inFlight);
+            InterlockedEx.Max(ref maxInFlight, current);
+            if (current == expectedMaxInFlight) expectedOverlapReached.TrySetResult();
+            // The barrier makes reaching the expected overlap independent of thread pool timing; the delay keeps it open for calls beyond the bound.
+            await expectedOverlapReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.Delay(100);
+            Interlocked.Decrement(ref inFlight);
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        string[] items = undecodableItemInMiddle
+            ? [CreateRequest("1", "eth_call"), CreateRequest("2", "eth_call"), "42", CreateRequest("3", "eth_call"), CreateRequest("4", "eth_call")]
+            : [CreateRequest("1", "eth_call"), CreateRequest("2", "eth_call"), CreateRequest("3", "eth_call"), CreateRequest("4", "eth_call")];
+        string[] expectedIds = undecodableItemInMiddle ? ["1", "2", "<missing>", "3", "4"] : ["1", "2", "3", "4"];
+
+        using CollectedJsonRpcResponses responses = await ProcessAsync(
+            CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = batchConcurrency, EthModuleConcurrentInstances = ethModuleConcurrentInstances }),
+            CreateBatchRequest(items),
+            CreateHttpContext());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(AssertOnlyResult(responses).BatchItems!.Select(static r => r.Id.ToString()), Is.EqualTo(expectedIds));
+            Assert.That(maxInFlight, Is.EqualTo(expectedMaxInFlight));
+        }
+    }
+
+    [Test]
     public async Task Sink_processor_entry_point_writes_to_sink()
     {
         CollectingJsonRpcResponseSink sink = new();
@@ -395,26 +604,6 @@ public class JsonRpcProcessorTests
         await ProcessAsync(processor, CreateTransactionCountRequest("67", paramsJson: "[]"), CreateHttpContext(), sink);
 
         Assert.That(AssertSingleResponse(sink.Responses).Response!.Id, Is.EqualTo(new JsonRpcId(67)));
-    }
-
-    [TestCase(RpcEndpoint.IPC, true)]
-    [TestCase(RpcEndpoint.Ws, false)]
-    public async Task ProcessAsync_makes_the_request_context_current_for_the_handler(RpcEndpoint endpoint, bool expectedAuthenticated)
-    {
-        bool? seenAuthenticated = null;
-        IJsonRpcService service = CreateService(request =>
-        {
-            seenAuthenticated = JsonRpcContext.Current.Value?.IsAuthenticated;
-            return new JsonRpcSuccessResponse { Id = request.Id };
-        });
-        JsonRpcProcessor processor = CreateProcessor(service);
-
-        JsonRpcContext context = new(endpoint);
-        JsonRpcContext.Current.Value = null;
-
-        using CollectedJsonRpcResponses result = await ProcessAsync(processor, CreateRequest("1", "eth_blockNumber"), context);
-
-        Assert.That(seenAuthenticated, Is.EqualTo(expectedAuthenticated));
     }
 
     [Test]
@@ -674,6 +863,14 @@ public class JsonRpcProcessorTests
         Assert.That(disposed, Is.True);
     }
 
+    private static IJsonRpcService CreateAsyncService(Func<JsonRpcRequest, Task<JsonRpcResponse>> responseFactory)
+    {
+        IJsonRpcService service = CreateEchoService();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(callInfo => new ValueTask<JsonRpcResponse>(responseFactory(callInfo.Arg<JsonRpcRequest>())));
+        return service;
+    }
+
     private static IJsonRpcService CreateService(Func<JsonRpcRequest, JsonRpcResponse> responseFactory, JsonRpcErrorResponse? errorResponse = null)
     {
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
@@ -891,7 +1088,7 @@ public class JsonRpcProcessorTests
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service);
-        using JsonRpcContext context = isAuthenticated
+        JsonRpcContext context = isAuthenticated
             ? new JsonRpcContext(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []))
             : CreateHttpContext();
 
@@ -965,11 +1162,14 @@ public class JsonRpcProcessorTests
 
         (string Outcome, bool AllParamsRaw) fromMemory = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsPipe);
         (string Outcome, bool AllParamsRaw) incremental = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsSegmentedPipe);
+        (string Outcome, bool AllParamsRaw) socket = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsMemory);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fromMemory.Outcome, Is.EqualTo(incremental.Outcome));
             Assert.That(fromMemory.AllParamsRaw, Is.True, "a complete message must not be parsed into a document");
+            Assert.That(socket.Outcome, Is.EqualTo(incremental.Outcome), "the socket entry point must answer as the incremental parser does");
+            Assert.That(socket.AllParamsRaw, Is.True, "a socket message is complete, so it must not be parsed into a document");
         }
     }
 
@@ -989,10 +1189,13 @@ public class JsonRpcProcessorTests
 
         (string fromMemory, int memoryTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsPipe);
         (string incremental, int incrementalTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsSegmentedPipe);
+        (string socket, int socketTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsMemory);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fromMemory, Is.EqualTo(incremental));
+            Assert.That(socket, Is.EqualTo(incremental), "the socket entry point must answer every request of the message");
+            Assert.That(socketTimeoutReturns, Is.Zero, "a complete socket message must not rent a read timeout");
             Assert.That(fromMemory, Does.Contain("dispatched: eth_blockNumber #1 | eth_chainId #2 | net_version #3; thrown: nothing"));
             // An expired source cannot be reset, so returning it disposes it: that proves the request used the planted one.
             Assert.That(memoryTimeoutReturns, Is.EqualTo(isAuthenticated ? 0 : 1));
@@ -1042,7 +1245,7 @@ public class JsonRpcProcessorTests
         });
 
         CollectingJsonRpcResponseSink sink = new();
-        using JsonRpcContext context = CreateContext(transport, isAuthenticated);
+        JsonRpcContext context = CreateContext(transport, isAuthenticated);
         string thrown = "nothing";
         try
         {
@@ -1077,7 +1280,7 @@ public class JsonRpcProcessorTests
     {
         IJsonRpcService service = CreateEchoService();
         JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = maxBatchSize });
-        using JsonRpcContext context = CreateContext(transport, isAuthenticated);
+        JsonRpcContext context = CreateContext(transport, isAuthenticated);
         string request = CreateTransactionCountBatchRequest(TransactionCountNestedArrayParamsJson, TransactionCountNestedArrayParamsJson);
 
         using CollectedJsonRpcResponses result = await ProcessAsync(
@@ -1145,7 +1348,10 @@ public class JsonRpcProcessorTests
         WsPipe,
 
         /// <summary>A WS message split into one-byte segments, which keeps all of it on the incremental parser.</summary>
-        WsSegmentedPipe
+        WsSegmentedPipe,
+
+        /// <summary>A WS message handed to the processor as bytes, as <c>JsonRpcSocketsClient</c> does, with no pipe in between.</summary>
+        WsMemory
     }
 
     private static readonly byte[] _methodPrefixUtf8 = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_");
@@ -1309,14 +1515,14 @@ public class JsonRpcProcessorTests
     /// errors, which is why the guards sit inside the decode helpers rather than around request execution.
     /// </remarks>
     [TestCaseSource(nameof(ServerSideDecodeLookalikeExceptionCases))]
-    public void Server_side_exception_after_a_request_decodes_is_not_reported_as_a_parse_error(Func<Exception> factory, RequestTransport transport)
+    public async Task Server_side_exception_after_a_request_decodes_is_not_reported_as_a_parse_error(Func<Exception> factory, RequestTransport transport)
     {
         Exception expected = factory();
         IJsonRpcService service = CreateService(_ => throw expected);
         JsonRpcProcessor processor = CreateProcessor(service);
         byte[] request = """{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray();
 
-        Exception? thrown = Assert.CatchAsync(async () =>
+        Exception? thrown = await Assert.CatchAsync(async () =>
         {
             using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, request, transport);
         });
@@ -1334,7 +1540,7 @@ public class JsonRpcProcessorTests
     }
 
     private static bool IsMultipleDocuments(RequestTransport transport) =>
-        transport is RequestTransport.WsPipe or RequestTransport.WsSegmentedPipe;
+        transport is RequestTransport.WsPipe or RequestTransport.WsSegmentedPipe or RequestTransport.WsMemory;
 
     private static PipeReader CreateReader(byte[] request, RequestTransport transport) =>
         PipeReader.Create(transport == RequestTransport.WsSegmentedPipe
@@ -1372,7 +1578,7 @@ public class JsonRpcProcessorTests
             ? JsonRpcInputMode.MultipleDocuments
             : JsonRpcInputMode.SingleDocument);
 
-        if (transport == RequestTransport.HttpMemory)
+        if (transport is RequestTransport.HttpMemory or RequestTransport.WsMemory)
         {
             await processor.ProcessAsync(request.AsMemory(), context, sink, options);
         }
@@ -1451,14 +1657,14 @@ public class JsonRpcProcessorTests
     /// loop ends either way, and reporting examined-only would ask a reader with nothing left to give for another read.
     /// </remarks>
     [Test]
-    public void Complete_body_is_reported_consumed_when_dispatch_throws()
+    public async Task Complete_body_is_reported_consumed_when_dispatch_throws()
     {
         Exception expected = new InvalidOperationException("module went away");
         IJsonRpcService service = CreateService(_ => throw expected);
         JsonRpcProcessor processor = CreateProcessor(service);
         AdvanceRecordingPipeReader reader = new("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray());
 
-        Exception? thrown = Assert.CatchAsync(async () =>
+        Exception? thrown = await Assert.CatchAsync(async () =>
         {
             using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, reader, CreateHttpContext());
         });
@@ -1487,13 +1693,13 @@ public class JsonRpcProcessorTests
         string request = CreateRequest("1", "eth_blockNumber");
         if (batch) request = "[" + request + "]";
         byte[] body = Encoding.UTF8.GetBytes(request);
-        using JsonRpcContext context = CreateContext(transport);
+        JsonRpcContext context = CreateContext(transport);
         JsonRpcProcessingOptions options = new(IsMultipleDocuments(transport)
             ? JsonRpcInputMode.MultipleDocuments : JsonRpcInputMode.SingleDocument);
 
-        Exception? thrown = Assert.CatchAsync(async () =>
+        Exception? thrown = await Assert.CatchAsync(async () =>
         {
-            if (transport == RequestTransport.HttpMemory)
+            if (transport is RequestTransport.HttpMemory or RequestTransport.WsMemory)
                 await processor.ProcessAsync(body.AsMemory(), context, sink, options);
             else
                 await processor.ProcessAsync(CreateReader(body, transport), context, sink, options);
@@ -1726,6 +1932,7 @@ public class JsonRpcProcessorTests
         public CollectedJsonRpcResponses Responses { get; } = new();
         public Action<JsonRpcResponse, RpcReport>? OnSingleWrite { get; init; }
         public Action? OnEndBatch { get; init; }
+        public Action<JsonRpcResponse>? OnBatchItemWrite { get; init; }
         public int StopAfterBatchItems { get; init; } = int.MaxValue;
         public long BytesWritten { get; private set; }
         public bool StopRequested { get; private set; }
@@ -1748,6 +1955,7 @@ public class JsonRpcProcessorTests
 
         public ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
+            OnBatchItemWrite?.Invoke(response);
             _currentBatch!.AddBatchItem(response);
             _batchItemCount++;
             BytesWritten++;

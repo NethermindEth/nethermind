@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
@@ -314,6 +315,429 @@ public class GCKeeperTests
         }
     }
 
+    [Test]
+    public async Task Decommit_recommits_the_region_budget_off_the_payload_path([Values] bool decommit)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(decommit ? 0 : -1);
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Has.Count.EqualTo(1));
+            Assert.That(runtime.Operations, Is.EqualTo(decommit ? new[] { "collect", "start", "end" } : new[] { "collect" }));
+            Assert.That(runtime.IsActive, Is.False);
+        }
+    }
+
+    public enum RecommitSkip { Cancelled, Shutdown, RegionHeld, Disallowed }
+
+    [Test]
+    public async Task Recommit_is_skipped_when_called_off_or_not_needed([Values] RecommitSkip reason)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(0);
+        GCKeeper? keeper = null;
+        IDisposable? held = null;
+        RegionRuntime runtime = new()
+        {
+            BeforeCollect = () =>
+            {
+                switch (reason)
+                {
+                    case RecommitSkip.Cancelled: keeper!.CancelPendingGC(); break;
+                    case RecommitSkip.Shutdown: keeper!.Dispose(); break;
+                    case RecommitSkip.RegionHeld: held = keeper!.TryStartNoGCRegion(); break;
+                    case RecommitSkip.Disallowed: strategy.CanStartNoGCRegion().Returns(false); break;
+                }
+            }
+        };
+        List<IThreadPoolWorkItem> queued = [];
+        using (keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true)))
+        {
+            await keeper.ScheduleGCInternal(throttle: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(runtime.Collections, Has.Count.EqualTo(1), "the decommit itself is claimed before the payload arrives");
+                Assert.That(runtime.Starts, Is.Zero);
+            }
+
+            strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+            held?.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Payload_entry_waits_for_a_running_recommit()
+    {
+        using ManualResetEventSlim recommitting = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        int starts = 0;
+        RegionRuntime runtime = new()
+        {
+            BeforeStart = () =>
+            {
+                if (Interlocked.Increment(ref starts) != 1) return;
+                recommitting.Set();
+                proceed.Wait();
+            }
+        };
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(0);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+
+        Task collection = Task.Run(() => keeper.ScheduleGCInternal(throttle: false));
+        Thread? entry = null;
+        IDisposable? lease = null;
+        try
+        {
+            try
+            {
+                Assert.That(recommitting.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+                lease = keeper.TryStartNoGCRegion();
+                Assert.That(queued, Has.Count.EqualTo(1), "the re-commit holds no slot, so the payload is admitted");
+                entry = new Thread(queued[0].Execute) { IsBackground = true };
+                entry.Start();
+                // Seen blocked, not merely not started yet: the entry waits on nothing before the runtime lock, so a
+                // WaitSleepJoin state means it waits there; without that lock it would run to the end instead.
+                Assert.That(SpinWait.SpinUntil(() => !entry.IsAlive || (entry.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(5)), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(entry.IsAlive, Is.True, "the entry waits for the throwaway region to end");
+                    Assert.That(Volatile.Read(ref starts), Is.EqualTo(1), "the entry has not reached the runtime yet");
+                }
+            }
+            finally
+            {
+                proceed.Set();
+                await collection.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(entry?.Join(TimeSpan.FromSeconds(5)) ?? true, Is.True, "the entry finishes once the throwaway region has ended");
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(runtime.Operations, Is.EqualTo(new[] { "collect", "start", "end", "start" }));
+                Assert.That(runtime.IsActive, Is.True, "the payload's region is not ended by the re-commit");
+            }
+        }
+        finally
+        {
+            lease?.Dispose();
+        }
+    }
+
+    private static readonly (GcLevel, GCCollectionMode, GcCompaction) Decommit = (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full);
+    private static readonly (GcLevel, GCCollectionMode, GcCompaction) Ordinary = (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No);
+
+    private static IGCStrategy CreatePressureStrategy(int interval, int loadPercent, int unconditional)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(interval);
+        strategy.DecommitMemoryLoadPercent.Returns(loadPercent);
+        strategy.CollectionsPerUnconditionalDecommit.Returns(unconditional);
+        return strategy;
+    }
+
+    /// <summary>Counts payloads and runs each one's post-block collection; returns the 1-based payloads that decommitted.</summary>
+    private static async Task<List<int>> RunPayloads(GCKeeper keeper, IGCStrategy strategy, RegionRuntime runtime, int payloads, Func<int, long>? memoryLoad = null)
+    {
+        List<int> decommits = [];
+        for (int i = 1; i <= payloads; i++)
+        {
+            if (memoryLoad is not null) runtime.MemoryLoadBytes = memoryLoad(i);
+            CountPayload(keeper, strategy);
+            int before = runtime.Collections.Count;
+            await keeper.ScheduleGCInternal(throttle: false);
+            Assert.That(runtime.Collections, Has.Count.EqualTo(before + 1), $"Payload {i}");
+            if (runtime.Collections[^1] == Decommit) decommits.Add(i);
+        }
+        return decommits;
+    }
+
+    [Test]
+    public async Task Due_decommit_runs_only_under_memory_pressure([Values(30, 69, 70, 95)] long memoryLoadPercent)
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 25, loadPercent: 70, unconditional: 300);
+        RegionRuntime runtime = new() { MemoryLoadBytes = memoryLoadPercent, TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        List<int> decommits = await RunPayloads(keeper, strategy, runtime, 100);
+
+        bool pressure = memoryLoadPercent >= 70;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decommits, Is.EqualTo(pressure ? new[] { 25, 50, 75, 100 } : Array.Empty<int>()));
+            Assert.That(runtime.MemoryReads, Is.EqualTo(pressure ? 4 : 76), "memory is read only once a decommit is due, then after every payload until it runs");
+        }
+    }
+
+    [Test]
+    public async Task Skipped_decommit_stays_due_and_runs_once_pressure_appears()
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 25, loadPercent: 70, unconditional: 300);
+        RegionRuntime runtime = new() { TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        // Pressure only at payload 41: the decommit due since 25 runs there, and the next is due 25 payloads later.
+        List<int> decommits = await RunPayloads(keeper, strategy, runtime, 90, i => i == 41 || i >= 66 ? 80 : 20);
+
+        Assert.That(decommits, Is.EqualTo(new[] { 41, 66 }));
+    }
+
+    [Test]
+    public async Task Safety_net_decommits_without_pressure([Values(-1, 20, 3)] int unconditional)
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 5, loadPercent: 70, unconditional: unconditional);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 10, TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        List<int> decommits = await RunPayloads(keeper, strategy, runtime, 60);
+
+        // -1 waits for pressure forever; a count below the interval cannot defer a due decommit.
+        Assert.That(decommits, Is.EqualTo(unconditional switch
+        {
+            -1 => Array.Empty<int>(),
+            20 => new[] { 20, 40, 60 },
+            _ => Enumerable.Range(1, 12).Select(static i => i * 5).ToArray()
+        }));
+    }
+
+    [Test]
+    public async Task Disabled_decommit_never_runs_nor_reads_memory()
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: -1, loadPercent: 70, unconditional: 1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 100, TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        List<int> decommits = await RunPayloads(keeper, strategy, runtime, 50);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decommits, Is.Empty);
+            Assert.That(runtime.MemoryReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Without_threshold_or_known_memory_a_due_decommit_runs([Values] bool unknownMemory)
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 25, loadPercent: unknownMemory ? 70 : 0, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 0, TotalMemoryBytes = unknownMemory ? 0 : 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        List<int> decommits = await RunPayloads(keeper, strategy, runtime, 50);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decommits, Is.EqualTo(new[] { 25, 50 }));
+            Assert.That(runtime.MemoryReads, Is.EqualTo(unknownMemory ? 2 : 0));
+        }
+    }
+
+    [Test]
+    public async Task Recommit_follows_only_a_decommit_that_runs([Values] bool pressure)
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = pressure ? 90 : 10, TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { pressure ? Decommit : Ordinary }));
+            Assert.That(runtime.Operations, Is.EqualTo(pressure ? new[] { "collect", "start", "end" } : new[] { "collect" }));
+            Assert.That(runtime.IsActive, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Skipped_decommit_does_not_wait_for_an_idle_gap()
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        strategy.PostBlockDelayMs.Returns(1500);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 10, TotalMemoryBytes = 100 };
+        List<int> delays = [];
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, (milliseconds, _) =>
+        {
+            delays.Add(milliseconds);
+            return Task.FromResult(true);
+        });
+
+        await keeper.ScheduleGCInternal(throttle: false);
+        runtime.MemoryLoadBytes = 90;
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delays, Is.EqualTo(new[] { 1500, 1500, 1500 }), "the second, decommitting collection waits for the idle gap");
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }));
+        }
+    }
+
+    private static ILogManager CreateInfoLogManager(List<string> infos)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.When(static l => l.Info(Arg.Any<string>())).Do(call => infos.Add(call.Arg<string>()));
+        return new OneLoggerLogManager(new ILogger(logger));
+    }
+
+    [Test]
+    public async Task Decision_is_logged_when_it_changes_not_after_every_payload()
+    {
+        List<string> infos = [];
+        IGCStrategy strategy = CreatePressureStrategy(interval: 5, loadPercent: 70, unconditional: 15);
+        RegionRuntime runtime = new() { TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        // No pressure up to 40: skips at 5-14, safety net at 15, skips at 20-29, safety net at 30; pressure from 41 on.
+        List<int> decommits = await RunPayloads(keeper, strategy, runtime, 50, static i => i > 40 ? 90 : 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decommits, Is.EqualTo(new[] { 15, 30, 41, 46 }));
+            Assert.That(infos, Has.Count.EqualTo(6), string.Join(Environment.NewLine, infos));
+            Assert.That(infos.Select(static m => m.Split(':')[0]), Is.EqualTo(new[]
+            {
+                "GC decommit deferred", "GC decommit", "GC decommit deferred", "GC decommit", "GC decommit deferred", "GC decommit"
+            }));
+            Assert.That(infos[^1], Does.Contain("at or above 70%"));
+        }
+    }
+
+    [Test]
+    public async Task Decommit_cancelled_in_its_idle_wait_is_not_logged_as_a_release()
+    {
+        List<string> infos = [];
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 90, TotalMemoryBytes = 100 };
+        bool cancelIdleWait = true;
+        using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, (_, _) => Task.FromResult(!cancelIdleWait));
+
+        // A new payload cancels the idle wait of a decommit already decided under pressure.
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.Empty);
+            Assert.That(infos, Is.Empty, "nothing was released");
+        }
+
+        // The retry, under the same decision, releases memory and only then logs it, once.
+        cancelIdleWait = false;
+        await keeper.ScheduleGCInternal(throttle: false);
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit, Decommit }));
+            Assert.That(infos, Has.Count.EqualTo(1), string.Join(Environment.NewLine, infos));
+            Assert.That(infos[0], Does.StartWith("GC decommit: memory load 90% of").And.Contain("releasing memory"));
+        }
+    }
+
+    [Test]
+    public async Task Decommit_whose_collection_is_declined_is_not_logged_until_one_runs()
+    {
+        List<string> infos = [];
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 90, TotalMemoryBytes = 100, CollectionSucceeds = false };
+        using GCKeeper keeper = new(strategy, CreateInfoLogManager(infos), runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        // The scheduler declines the collection (a payload paused it): nothing was released.
+        await keeper.ScheduleGCInternal(throttle: false);
+        Assert.That(infos, Is.Empty, "nothing was released");
+
+        runtime.CollectionSucceeds = true;
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit, Decommit }));
+            Assert.That(infos, Has.Count.EqualTo(1), string.Join(Environment.NewLine, infos));
+        }
+    }
+
+    // A host with 67,416,633,344 bytes: the runtime records a 70% load as (ulong)(0.70 * total) bytes and reports the
+    // 90% high memory load threshold as (ulong)(0.90 * total) bytes (gc.cpp GCHeap::GetMemoryInfo). The total derived
+    // from them is one byte short, so an exact byte comparison would read the recorded 70% as just below 70%.
+    [Test]
+    public async Task Load_recorded_at_exactly_the_threshold_percent_decommits()
+    {
+        GcMemoryLoad load = GcMemoryLoad.FromRecorded(47_191_643_340, 60_674_970_009, new Dictionary<string, object> { ["GCHighMemPercent"] = 90L });
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = load.MemoryLoadBytes, TotalMemoryBytes = load.TotalMemoryBytes };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        Assert.That(runtime.Collections, Is.EqualTo(new[] { Decommit }), $"total {load.TotalMemoryBytes}");
+    }
+
+    [Test]
+    public async Task Load_just_below_the_threshold_percent_does_not_decommit()
+    {
+        IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
+        RegionRuntime runtime = new() { MemoryLoadBytes = 696, TotalMemoryBytes = 1000 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        Assert.That(runtime.Collections, Does.Not.Contain(Decommit));
+    }
+
+    /// <summary>A strategy written against <see cref="IGCStrategy"/> before it had the memory-pressure members.</summary>
+    private sealed class CadenceOnlyStrategy(int collectionsPerDecommit) : IGCStrategy
+    {
+        public (GcLevel Generation, GcCompaction Compacting) ForcedGCParams { get; set; } = (GcLevel.Gen1, GcCompaction.No);
+        public int CollectionsPerDecommit => collectionsPerDecommit;
+        public int PostBlockDelayMs => 0;
+        public bool CanStartNoGCRegion() => true;
+        public (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams() => ForcedGCParams;
+    }
+
+    [Test]
+    public async Task Strategy_without_the_pressure_members_decommits_whenever_due([Values(10, 95)] long memoryLoadPercent)
+    {
+        CadenceOnlyStrategy strategy = new(collectionsPerDecommit: 5);
+        RegionRuntime runtime = new() { MemoryLoadBytes = memoryLoadPercent, TotalMemoryBytes = 100 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        List<int> decommits = [];
+        for (int i = 1; i <= 20; i++)
+        {
+            strategy.ForcedGCParams = (GcLevel.NoGC, GcCompaction.No);
+            using (keeper.TryStartNoGCRegion()) { }
+            strategy.ForcedGCParams = (GcLevel.Gen1, GcCompaction.No);
+            await keeper.ScheduleGCInternal(throttle: false);
+            if (runtime.Collections[^1] == Decommit) decommits.Add(i);
+        }
+
+        IGCStrategy defaults = strategy;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(defaults.DecommitMemoryLoadPercent, Is.Zero);
+            Assert.That(defaults.CollectionsPerUnconditionalDecommit, Is.EqualTo(-1));
+            Assert.That(decommits, Is.EqualTo(new[] { 5, 10, 15, 20 }));
+            Assert.That(runtime.MemoryReads, Is.Zero);
+        }
+    }
+
     private static void CountPayload(GCKeeper keeper, IGCStrategy strategy)
     {
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
@@ -474,12 +898,14 @@ public class GCKeeperTests
     private sealed class RegionRuntime : IGcRegionRuntime
     {
         public List<(GcLevel, GCCollectionMode, GcCompaction)> Collections { get; } = [];
+        public List<string> Operations { get; } = [];
         public bool CollectionSucceeds { get; set; } = true;
         public Action? BeforeCollect { get; init; }
         public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting)
         {
             BeforeCollect?.Invoke();
             Collections.Add((generation, mode, compacting));
+            Operations.Add("collect");
             return CollectionSucceeds;
         }
         public Exception? EndFailure { get; init; }
@@ -494,6 +920,7 @@ public class GCKeeperTests
         {
             BeforeStart?.Invoke();
             Starts++;
+            Operations.Add("start");
             if (Throw) throw new InvalidOperationException("Another no-GC region is active.");
             return IsActive = !Refuse;
         }
@@ -501,8 +928,17 @@ public class GCKeeperTests
         {
             BeforeEnd?.Invoke();
             Ends++;
+            Operations.Add("end");
             IsActive = false;
             if (EndFailure is not null) throw EndFailure;
+        }
+        public long MemoryLoadBytes { get; set; }
+        public long TotalMemoryBytes { get; set; } = 100;
+        public int MemoryReads { get; private set; }
+        public GcMemoryLoad GetMemoryLoad()
+        {
+            MemoryReads++;
+            return new(MemoryLoadBytes, TotalMemoryBytes);
         }
     }
 

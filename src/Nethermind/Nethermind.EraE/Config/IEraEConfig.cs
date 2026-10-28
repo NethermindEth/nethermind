@@ -7,10 +7,10 @@ namespace Nethermind.EraE.Config;
 
 public interface IEraEConfig : IConfig
 {
-    [ConfigItem(Description = "Directory of EraE archives to be imported.", DefaultValue = "", IsSensitiveWhenMasked = true)]
+    [ConfigItem(Description = "Directory of EraE archives to be imported.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ImportDirectory { get; set; }
 
-    [ConfigItem(Description = "Directory for EraE archive export.", DefaultValue = "", IsSensitiveWhenMasked = true)]
+    [ConfigItem(Description = "Directory for EraE archive export.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Block number to import/export from.", DefaultValue = "0")]

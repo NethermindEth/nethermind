@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -23,6 +24,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 {
     private IBalHealing _healing = null!;
     private ISnapSyncRunner _snapSyncRunner = null!;
+    private ISnapTrieFactory _snapTrieFactory = null!;
     private IStateSyncPivot _pivot = null!;
 
     [Test]
@@ -50,7 +52,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     }
 
     [Test]
-    public void Keeps_retrying_while_no_peer_serves_the_bals()
+    public async Task Keeps_retrying_while_no_peer_serves_the_bals()
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
@@ -72,7 +74,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         });
         _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => runner.RunBalHealing(firstPivot, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => runner.RunBalHealing(firstPivot, cts.Token));
 
         // Reaching the second round is the retry: the first fetch failure was swallowed, not surfaced.
         Assert.That(rounds, Is.EqualTo(2));
@@ -104,9 +106,36 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.Received(1).FinalizeSync(lastPivot);
     }
 
+    [Test]
+    public async Task Finalizes_only_once_missing_code_is_recovered()
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+
+        BlockHeader firstPivot = blockTree.FindHeader(10)!;
+        BlockHeader lastPivot = blockTree.FindHeader(11)!;
+        SeedBals(container, lastPivot);
+
+        _pivot.GetPivotHeader().Returns(lastPivot);
+        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
+        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, lastPivot.StateRoot));
+        // No peer serves the missing bytecode on the first attempt, so finalizing must wait for the second.
+        _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(false, true);
+
+        await runner.RunBalHealing(firstPivot, default);
+
+        Received.InOrder(() =>
+        {
+            _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>());
+            _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>());
+            _healing.FinalizeSync(lastPivot);
+        });
+    }
+
     [TestCase(false, TestName = "Does_not_finalize_when_the_healed_root_does_not_match_the_pivot")]
     [TestCase(true, TestName = "Does_not_finalize_when_the_range_is_lost")]
-    public void Does_not_finalize_when_healing_cannot_reach_the_pivot(bool rangeLost)
+    public async Task Does_not_finalize_when_healing_cannot_reach_the_pivot(bool rangeLost)
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
@@ -121,7 +150,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         Hash256? healedRoot = rangeLost ? null : TestItem.KeccakF;
         _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, healedRoot));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunBalHealing(firstPivot, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunBalHealing(firstPivot, default));
 
         _healing.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
@@ -147,10 +176,51 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.Received(1).FinalizeSync(canonical);
     }
 
+    // Healing with block access lists replays from the first pivot, so a resumed sync has to keep the one its downloaded
+    // ranges started from - unless that block left the canonical chain, which leaves nothing to resume, or the node was
+    // offline for so long that healing the kept ranges would cost more than downloading them again. A static pivot
+    // never moves, so its anchor is resumed however old it is.
+    [TestCase(true, 24, false, true, TestName = "Resumes_from_the_checkpoint_anchor")]
+    [TestCase(false, 0, false, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_not_canonical")]
+    [TestCase(true, 25, false, false, TestName = "Starts_over_when_the_checkpoint_anchor_is_too_old")]
+    [TestCase(true, 240, true, true, TestName = "Resumes_from_an_old_checkpoint_anchor_at_a_static_pivot")]
+    public void Takes_the_first_pivot_from_the_checkpoint_anchor(bool canonical, int anchorAgeHours, bool staticPivot, bool resumes)
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        BlockHeader anchor = canonical
+            ? blockTree.FindHeader(10)!
+            : Build.A.BlockHeader.WithNumber(10).TestObject;
+        if (staticPivot)
+        {
+            container.Resolve<ISyncConfig>().StaticSnapPivot = true;
+            blockTree.SyncPivot = (anchor.Number, anchor.Hash!);
+        }
+
+        ((ManualTimestamper)container.Resolve<ITimestamper>()).Set(DateTimeOffset.FromUnixTimeSeconds((long)anchor.Timestamp).UtcDateTime.AddHours(anchorAgeHours));
+        _snapTrieFactory.LoadCheckpoint().Returns(new SnapCheckpoint
+        {
+            AnchorNumber = anchor.Number,
+            AnchorHash = anchor.Hash!,
+            Partitions = [],
+            StoragesToRetrieve = [],
+            StorageRanges = [],
+            AccountsToRefresh = [],
+            CodesToRetrieve = [],
+            UpdatedStorages = [],
+        });
+
+        Assert.That(runner.GetResumedAnchor()?.Hash, Is.EqualTo(resumes ? anchor.Hash : null));
+        _snapTrieFactory.Received(resumes ? 0 : 1).SaveCheckpoint(null);
+    }
+
     private IContainer BuildRunnerContainer()
     {
         _healing = Substitute.For<IBalHealing>();
+        _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(true);
         _snapSyncRunner = Substitute.For<ISnapSyncRunner>();
+        _snapTrieFactory = Substitute.For<ISnapTrieFactory>();
 
         _pivot = Substitute.For<IStateSyncPivot>();
         _pivot.UpdatedStorages.Returns([]);
@@ -160,6 +230,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         return PrepareDownloader(new RemoteDbContext(_logManager), syncDispatcherAllocateTimeoutMs: 0, configureBuilder: builder => builder
             .AddSingleton<IBalHealing>(_healing)
             .AddSingleton<ISnapSyncRunner>(_snapSyncRunner)
+            .AddSingleton<ISnapTrieFactory>(_snapTrieFactory)
             .AddSingleton<IStateSyncPivot>(_pivot));
     }
 

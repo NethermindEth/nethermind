@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging;
 
-#pragma warning disable NETH003 // Build variant: only one of ILogger.std.cs / ILogger.zkevm.cs is compiled per build
 /// <summary>zkEVM no-op <see cref="ILogger"/>: all flags literal <c>false</c>, all log methods empty + inlined.</summary>
 public readonly struct ILogger(InterfaceLogger logger) : IEquatable<ILogger>
 {

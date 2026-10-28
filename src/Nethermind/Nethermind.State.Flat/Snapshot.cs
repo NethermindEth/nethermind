@@ -172,19 +172,32 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
     public readonly AddressStorageNodeDictionary StorageNodes = new();
 
+    /// <summary>Accounts the block only read, cached for its later reads.</summary>
+    /// <remarks>
+    /// Kept apart from <see cref="Accounts"/>, so a snapshot never exports them: persisting them would rewrite
+    /// unchanged values and evict them from the carry-forward cache.
+    /// </remarks>
+    public readonly ConcurrentDictionary<HashedKey<Address>, Account?> ReadAccounts = new();
+
     public void Reset()
     {
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
+        // Enumerating even an empty StorageNodes walks its whole bucket table; read-only scopes rarely write any.
+        bool hasStorageNodes = StorageNodes.MayHaveAddresses;
+        if (hasStorageNodes)
+        {
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
+        }
 
         // Reset runs at a quiescent pool-return boundary (final snapshot lease released, or the
         // bundle returning its current content on disposal), so no writer can hold a stripe;
         // the lock-free clear skips ~thousands of inflated Monitor acquisitions per return.
         Accounts.NoLockClear();
+        ReadAccounts.NoLockClear();
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateNodes.Clear();
-        StorageNodes.NoLockClear();
+        if (hasStorageNodes) StorageNodes.NoLockClear();
     }
 
     /// <summary>

@@ -121,6 +121,53 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <remarks>Set when a write to the stream starts: a write that fails may already have written part of its data.</remarks>
     public bool MayHaveWrittenToStream { get; private set; }
 
+    internal bool IsCompleted => _isCompleted;
+
+    /// <summary>Discards unflushed data and restarts counting at <paramref name="writtenCount"/> so the writer can be reused.</summary>
+    internal void Reset(long writtenCount)
+    {
+        FlushInternal(writeToStream: false);
+        lock (_lockObject)
+        {
+            // A cancellation that raced the previous flush must not cancel the next one.
+            if (_internalTokenSource?.TryReset() == false)
+            {
+                _internalTokenSource.Dispose();
+                _internalTokenSource = null;
+            }
+        }
+
+        WrittenCount = writtenCount;
+        MayHaveWrittenToStream = false;
+    }
+
+    /// <summary>Writes all buffered data to the stream except the last segment, which is returned and stays buffered.</summary>
+    /// <remarks>The returned memory remains valid until the writer is written to, flushed or reset.</remarks>
+    internal async ValueTask<ReadOnlyMemory<byte>> FlushAllButLastSegmentAsync(CancellationToken cancellationToken)
+    {
+        if (_tailBytesBuffered > 0)
+        {
+            _tail!.End += _tailBytesBuffered;
+            _tailBytesBuffered = 0;
+        }
+
+        while (_head is not null && _head != _tail)
+        {
+            BufferSegment segment = _head;
+            if (segment.Length > 0)
+            {
+                MayHaveWrittenToStream = true;
+                await InnerStream.WriteAsync(segment.Memory, cancellationToken).ConfigureAwait(false);
+            }
+
+            _bytesBuffered -= segment.Length;
+            _head = segment.NextSegment;
+            ReturnSegmentUnsynchronized(segment);
+        }
+
+        return _head?.Memory ?? ReadOnlyMemory<byte>.Empty;
+    }
+
     /// <inheritdoc />
     public override void Advance(int bytes)
     {

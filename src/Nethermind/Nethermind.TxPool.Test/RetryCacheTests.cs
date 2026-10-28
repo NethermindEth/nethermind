@@ -1783,6 +1783,8 @@ public class RetryCacheTests
     }
 
     [Test]
+    // GC pause accounting is process-wide and other tests force collections.
+    [NonParallelizable]
     public async Task OverflowStorage_ReusesBoundedCapacityAcrossRepeatedBursts(
         [Values(1024, 8192, 32768)] int resourceCount, [Values(2, 6)] int idlePeriods)
     {
@@ -1921,7 +1923,7 @@ public class RetryCacheTests
         await Task.WhenAll(firstDisposal, concurrentDisposal).WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
 
         Assert.DoesNotThrow(() => cache.Received(1));
-        Assert.DoesNotThrowAsync(async () => await cache.DisposeAsync());
+        await Assert.DoesNotThrowAsync(async () => await cache.DisposeAsync());
     }
 
     [Test]

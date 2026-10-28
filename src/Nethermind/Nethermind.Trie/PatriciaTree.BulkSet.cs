@@ -58,9 +58,7 @@ public partial class PatriciaTree
     {
         if (entries.Count == 0)
             return;
-#if ZK_EVM
-        flags |= Flags.DoNotParallelize;
-#endif
+        AdjustBulkSetFlags(ref flags);
 
         using ParallelUnbalancedWork.WorkerScope? workers = !Core.Cpu.RuntimeInformation.IsSingleProcessor
             && entries.Count >= MinEntriesToParallelizeThreshold && (flags & Flags.DoNotParallelize) == 0
@@ -123,6 +121,9 @@ public partial class PatriciaTree
         ReturnTraverseStack(traverseStack);
     }
 
+    /// <summary>Lets the build adjust the flags of a bulk set; the guest never parallelizes one.</summary>
+    partial void AdjustBulkSetFlags(ref Flags flags);
+
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
 
     private void BulkSetParallelJobs(
@@ -179,8 +180,16 @@ public partial class PatriciaTree
 
                 return workerTraverseStack;
             },
-            ReturnTraverseStack
+            ReturnJobTraverseStack
         );
+    }
+
+    /// <summary>Returns a job's stack to its thread empty, also when the job threw part way through a walk.</summary>
+    /// <remarks>The loop runs this after an exception too, and the next write on the thread takes the stack as it finds it.</remarks>
+    private static void ReturnJobTraverseStack(TraverseStack stack)
+    {
+        stack.Clear();
+        ReturnTraverseStack(stack);
     }
 
     /// <param name="ctx">Just to reduce the param count</param>

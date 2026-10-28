@@ -17,6 +17,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -31,7 +32,7 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxHost : IRlpxHost, ISessionActivityObserver
+    public class RlpxHost : IRlpxHost, ISessionActivityObserver, IStoppableService
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup? _bossGroup;
@@ -60,6 +61,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
         private CancellationTokenSource? _shutdownCts = new();
+        private readonly Lock _dialLock = new();
 
         public RlpxHost(
             IMessageSerializationService serializationService,
@@ -299,7 +301,16 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new OutboundChannelInitializer(this, node, attempt));
 
-            Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
+            Task<IChannel> connectTask;
+            // Stoppables stop in parallel, so the peer manager can still dial during Shutdown. ConnectAsync queues the
+            // channel registration synchronously, so under the lock a dial either reaches the worker group before
+            // Shutdown starts closing it or is skipped.
+            lock (_dialLock)
+            {
+                if (_shutdownCts is null) return false;
+                connectTask = clientBootstrap.ConnectAsync(node.Address);
+            }
+
             using CancellationTokenSource delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
@@ -557,9 +568,16 @@ namespace Nethermind.Network.Rlpx
             session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
         }
 
+        Task IStoppableService.StopAsync() => Shutdown();
+
+        string IStoppableService.Description => "rlpx host";
+
         public async Task Shutdown()
         {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+            lock (_dialLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+            }
 
             // Close channels first so Disconnected handlers fire while subscriptions are still active
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>

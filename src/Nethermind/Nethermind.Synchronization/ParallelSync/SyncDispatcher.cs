@@ -10,6 +10,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -236,6 +237,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 catch (OperationCanceledException)
                 {
                     if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
+                }
+                catch (SubprotocolException e)
+                {
+                    // A peer fault, not a node fault: the feed handles the missing response below and re-requests the data.
+                    if (Logger.IsDebug) Logger.Debug($"{request} - invalid response: {e.Message}. Peer: {allocatedPeer}");
                 }
                 catch (Exception e)
                 {

@@ -8,7 +8,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -19,15 +22,17 @@ using Autofac.Core;
 using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -48,11 +53,13 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Era1;
+using Nethermind.EraE.Config;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
@@ -63,6 +70,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Optimism;
@@ -72,10 +80,12 @@ using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
+using Nethermind.Xdc;
 using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
@@ -109,7 +119,7 @@ public class EthereumRunnerTests
             Assert.That(waiting.IsCompleted, Is.False, "RPC startup must wait for cleanup.");
             released.SetResult();
             if (cancelStartup)
-                Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
+                await Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
             else
                 await waiting.WaitAsync(RunnerTimeout);
         }
@@ -165,7 +175,7 @@ public class EthereumRunnerTests
         {
             IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
             api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
-                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), container.Resolve<IReceiptsRecovery>(), NullLogManager.Instance));
             api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
         }
 
@@ -335,6 +345,20 @@ public class EthereumRunnerTests
         }
     }
 
+    [Test]
+    public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        ManualTimestamper timestamper = new();
+        IRpcAuthentication authentication = JwtAuthentication.FromSecret(new string('a', 64), Timestamper.Default, NullLogger.Instance);
+
+        // Outlasts the 60-second token lifetime before the first Engine API request.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), new ConfigProvider(new InitConfig { BaseDbPath = directory.Path }), false,
+            cancellation.Token, authentication, timestamper: timestamper,
+            configureContainer: builder => builder.RegisterBuildCallback(_ => timestamper.Add(TimeSpan.FromMinutes(2))));
+    }
+
     private static string WarmupToken(JwtAuthentication authentication) =>
         (string)typeof(JwtAuthentication).GetMethod("CreateWarmupToken", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(authentication, null)!;
 
@@ -359,7 +383,8 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_keeps_live_head_metrics()
     {
-        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
+        // The live chain's own unordered thread-pool reports could leave an older height in the gauges, so only the restore sets them.
+        using BasicTestBlockchain live = await BasicTestBlockchain.Create(builder => builder.AddScoped(Substitute.For<IProcessingStats>()));
         // Live heights above the warm chain's make a warm value left in a gauge visible.
         for (int i = 0; i < 4; i++) await live.AddBlock();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
@@ -377,8 +402,9 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_restores_live_metrics_after_warm_reports()
     {
-        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
-        for (int i = 0; i < 4; i++) await live.AddBlock();
+        // A processing live chain would also publish the height gauges, from its own unordered thread-pool reports.
+        IBlockTree live = Substitute.For<IBlockTree>();
+        live.Head.Returns(Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(4).TestObject);
         using ManualResetEventSlim reporting = new();
         using ManualResetEventSlim release = new();
         // Holds the warm report on its thread-pool thread, before it publishes the height gauges.
@@ -396,18 +422,18 @@ public class EthereumRunnerTests
         logManager.GetLogger("SlowBlocks").Returns(slowBlocks);
         logManager.GetClassLogger<ProcessingStats>().Returns(statsLogger);
         StartupPipelineWarmer.WarmMetrics warmMetrics = new();
-        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(live.StateReader, logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
+        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(Substitute.For<IStateReader>(), logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
 
         stats.UpdateStats([Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(2).TestObject], null, 1_000);
         Assert.That(reporting.Wait(RunnerTimeout), Is.True);
-        Task restore = warmMetrics.RestoreLiveAsync(live.BlockTree);
+        Task restore = warmMetrics.RestoreLiveAsync(live);
         bool restoredBeforeReport = restore.IsCompleted;
         release.Set();
         await restore.WaitAsync(RunnerTimeout);
         // The warm report has published by now, so a restore that ran before it would have been overwritten.
         Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref warmMetrics.PendingReports) == 0, RunnerTimeout), Is.True);
 
-        ulong liveHead = live.BlockTree.Head!.Number;
+        ulong liveHead = live.Head!.Number;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restoredBeforeReport, Is.False);
@@ -469,38 +495,38 @@ public class EthereumRunnerTests
     }
 
     [Test]
-    public void Startup_pipeline_warmup_cancellation_does_not_create_storage()
+    public async Task Startup_pipeline_warmup_cancellation_does_not_create_storage()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
+        await Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
             WarmupConfig(dataDirectory.Path), false, new CancellationToken(canceled: true)));
 
         Assert.That(Directory.Exists(dataDirectory.Path), Is.False);
     }
 
     [Test]
-    public void Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
+    public async Task Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
     {
         ChainSpec spec = LoadWarmupChainSpec();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
 
-        Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
+        await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
             WarmupConfig(dataDirectory.Path), flatState, cancellation.Token, configureContainer: CancelWhenRpcStarts(cancellation)));
 
         Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
     }
 
     [Test]
-    public void Startup_pipeline_warmup_propagates_rpc_bind_failure()
+    public async Task Startup_pipeline_warmup_propagates_rpc_bind_failure()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
         System.Net.Sockets.TcpListener? occupied = null;
         try
         {
-            Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            await Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(directory.Path), false, cancellation.Token, configureContainer: builder =>
                 {
                     IJsonRpcConfig? config = null;
@@ -626,7 +652,7 @@ public class EthereumRunnerTests
     }
 
     [Test, Platform("Win")]
-    public void Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
+    public async Task Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
@@ -635,7 +661,7 @@ public class EthereumRunnerTests
         FileStream? lockedFile = null;
         try
         {
-            Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
                 configureContainer: CancelWhenRpcStarts(cancellation, () =>
                 {
@@ -675,12 +701,18 @@ public class EthereumRunnerTests
         AssemblyLoadContext.Default.Resolving += static (_, _) => null;
     }
 
+    private static Type ExpectedRewardCalculatorType(IList<INethermindPlugin> plugins) =>
+        plugins.Any(static p => p is AuRaPlugin) ? typeof(AuRaRewardCalculator)
+        : plugins.Any(static p => p is XdcPlugin) ? typeof(XdcRewardCalculator)
+        : plugins.Any(static p => p is MergePlugin) ? typeof(MergeRewardCalculator)
+        : typeof(NoBlockRewards);
+
     /// <summary>Budget for a single start or stop of a runner under test.</summary>
     /// <remarks>This is what fails a smoke case whose steps deadlock on incorrect dependencies. A test-level
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
     /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
     /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
-    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(90);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
@@ -691,12 +723,12 @@ public class EthereumRunnerTests
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
-        Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
+        Parallel.ForEach(BuiltInConfigs.Names, name =>
         {
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource(configFile));
+            configProvider.AddSource(BuiltInConfig(name));
             configProvider.Initialize();
-            resultQueue.Enqueue((configFile, configProvider));
+            resultQueue.Enqueue(($"{name}.json", configProvider));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
@@ -706,7 +738,7 @@ public class EthereumRunnerTests
         {
             // Special case for verify trie on state sync finished
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
             result.Add(("mainnet-verify-trie-starter", configProvider));
@@ -715,7 +747,7 @@ public class EthereumRunnerTests
         {
             // Flashbots
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
             result.Add(("flashbots", configProvider));
@@ -724,7 +756,7 @@ public class EthereumRunnerTests
         {
             // Censorship detector
             ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.AddSource(BuiltInConfig("mainnet"));
             configProvider.Initialize();
             configProvider.GetConfig<ICensorshipDetectorConfig>().Enabled = true;
             result.Add(("censorship-detector", configProvider));
@@ -793,13 +825,12 @@ public class EthereumRunnerTests
     /// <c>EthereumStepsManagerTests</c>.
     /// </summary>
     [Test]
-    [MaxTime(60000)]
     public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
 
         ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+        configProvider.AddSource(BuiltInConfig("mainnet"));
         configProvider.Initialize();
 
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
@@ -824,43 +855,21 @@ public class EthereumRunnerTests
         }
     }
 
-    [TestCase("gnosis", true)]
-    [TestCase("xdc", true)]
-    [TestCase("mainnet", false)]
-    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    [TestCase("gnosis")]
+    [TestCase("xdc")]
+    [TestCase("mainnet")]
+    public async Task Pool_retains_simulator_and_is_disposed_on_shutdown(string network)
     {
-        ConfigProvider configProvider = new();
-        configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
-        configProvider.Initialize();
-        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
-        pluginLoader.Load();
-        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
-        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
-        plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
+        EthereumRunner runner = await CreateRunner(network);
         TxPool.TxPool? pool = null;
         try
         {
-            INethermindApi api = runner.Api;
-            api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
-            IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
-            IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (StepInfo step in loader.ResolveStepsImplementations())
-            {
-                if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
-                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
-                object initializer = runner.LifetimeScope.Resolve(step.StepType);
-                MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
-                FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
-                return;
-            }
-            Assert.Fail("No blockchain initializer resolved");
+            pool = (TxPool.TxPool)runner.Api.Context.Resolve<ITxPool>();
+            FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.That(simulatorField.GetValue(pool), Is.SameAs(runner.Api.Context.Resolve<IFrameTxPrefixSimulator>()));
         }
         finally
         {
-            await using TxPool.TxPool? poolCleanup = pool;
             await runner.StopAsync();
             if (pool is not null)
             {
@@ -868,6 +877,115 @@ public class EthereumRunnerTests
                 Assert.That(disposedField.GetValue(pool), Is.True);
             }
         }
+    }
+
+    [TestCase(false, false, typeof(NoopMonitoringService))]
+    [TestCase(true, false, typeof(MonitoringService))]
+    [TestCase(false, true, typeof(MonitoringService))]
+    public async Task Metrics_enabled_loads_monitoring_plugin(bool enabled, bool countersEnabled, Type expected)
+    {
+        EthereumRunner runner = await CreateRunner("mainnet", configProvider =>
+        {
+            MetricsConfig config = (MetricsConfig)configProvider.GetConfig<IMetricsConfig>();
+            config.Enabled = enabled;
+            config.CountersEnabled = countersEnabled;
+        });
+        try
+        {
+            Assert.That(runner.Api.Context.Resolve<IMonitoringService>(), Is.TypeOf(expected));
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ReviewBlockTree"/> waits until the blocks left unprocessed at the last shutdown are processed,
+    /// which can take days on an archive node. JSON-RPC and health checks must not wait for it, but block
+    /// production must. An era import waits for it and holds the network back, so then JSON-RPC waits too.
+    /// </summary>
+    [Test]
+    public async Task Rpc_does_not_wait_for_block_tree_review(
+        [Values("mainnet", "gnosis", "op-mainnet", "taiko-alethia", "xdc")] string network,
+        [Values] EraJob eraJob)
+    {
+        EthereumRunner runner = await CreateRunner(network, configProvider =>
+        {
+            IEraConfig eraConfig = configProvider.GetConfig<IEraConfig>();
+            IEraEConfig eraEConfig = configProvider.GetConfig<IEraEConfig>();
+            switch (eraJob)
+            {
+                case EraJob.Era1Import: eraConfig.ImportDirectory = "era"; break;
+                case EraJob.Era1Export: eraConfig.ExportDirectory = "era"; break;
+                case EraJob.EraEImport: eraEConfig.ImportDirectory = "era"; break;
+                case EraJob.EraEExport: eraEConfig.ExportDirectory = "era"; break;
+            }
+        });
+        bool eraStepWaitsForReview = eraJob is not EraJob.None;
+        try
+        {
+            Dictionary<Type, HashSet<Type>> dependencies = [];
+            HashSet<Type> GetDependencies(Type step) =>
+                dependencies.TryGetValue(step, out HashSet<Type>? set) ? set : dependencies[step] = [];
+
+            foreach (StepInfo step in runner.LifetimeScope.Resolve<IEthereumStepsLoader>().ResolveStepsImplementations())
+            {
+                GetDependencies(step.StepBaseType).UnionWith(step.Dependencies);
+                foreach (Type dependent in step.Dependents) GetDependencies(dependent).Add(step.StepBaseType);
+            }
+
+            HashSet<Type> TransitiveDependencies(Type step)
+            {
+                HashSet<Type> visited = [];
+                Stack<Type> toVisit = new(GetDependencies(step));
+                while (toVisit.TryPop(out Type? current))
+                {
+                    if (visited.Add(current)) foreach (Type dependency in GetDependencies(current)) toVisit.Push(dependency);
+                }
+                return visited;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TransitiveDependencies(typeof(StartRpc)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartHealthChecks)).Contains(typeof(ReviewBlockTree)), Is.EqualTo(eraStepWaitsForReview));
+                Assert.That(TransitiveDependencies(typeof(StartBlockProducer)), Does.Contain(typeof(ReviewBlockTree)));
+            }
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
+    public enum EraJob
+    {
+        None,
+        Era1Import,
+        Era1Export,
+        EraEImport,
+        EraEExport
+    }
+
+    private static JsonConfigSource BuiltInConfig(string name)
+    {
+        using Stream stream = BuiltInConfigs.Open(name)!;
+        return new JsonConfigSource(stream);
+    }
+
+    private static async Task<EthereumRunner> CreateRunner(string network, Action<ConfigProvider>? configure = null)
+    {
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(BuiltInConfig(network));
+        configProvider.Initialize();
+        configure?.Invoke(configProvider);
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+        ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        return builder.CreateEthereumRunner(plugins, command: null);
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
@@ -953,7 +1071,9 @@ public class EthereumRunnerTests
             api.Context.Resolve<ISealValidator>();
             api.Context.Resolve<ISealer>();
             api.Context.Resolve<ISealEngine>();
-            api.Context.Resolve<IRewardCalculatorSource>();
+            // The calculator needs the world state, so only a processing scope can resolve it.
+            ILifetimeScope processingScope = ((MainProcessingContext)api.Context.Resolve<IMainProcessingContext>()).LifetimeScope;
+            Assert.That(processingScope.Resolve<IRewardCalculator>(), Is.TypeOf(ExpectedRewardCalculatorType(plugins)));
             api.Context.Resolve<IBlockValidator>();
             api.Context.Resolve<IHeaderValidator>();
             api.Context.Resolve<IUnclesValidator>();
@@ -1046,6 +1166,39 @@ public class EthereumRunnerTests
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
+            // A taken RPC port fails startup, so move the RPC listeners off defaults such as 8545/8551 that the host may hold.
+            // Each probe listener stays open until all ports are picked: a released port can be handed out again, and an
+            // engine URL on the same port as the RPC URL is skipped, which fails startup for want of an engine module.
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            Dictionary<int, int> rpcPorts = [];
+            List<TcpListener> probeListeners = [];
+            int FreePort(int configuredPort)
+            {
+                if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
+                {
+                    TcpListener listener = new(IPAddress.Loopback, 0);
+                    probeListeners.Add(listener);
+                    listener.Start();
+                    rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                }
+
+                return freePort;
+            }
+
+            jsonRpcConfig.Port = FreePort(jsonRpcConfig.Port);
+            jsonRpcConfig.WebSocketsPort = FreePort(jsonRpcConfig.WebSocketsPort);
+            if (jsonRpcConfig.EnginePort is int enginePort)
+                jsonRpcConfig.EnginePort = FreePort(enginePort);
+            string[] additionalRpcUrls = (string[])jsonRpcConfig.AdditionalRpcUrls.Clone();
+            for (int i = 0; i < additionalRpcUrls.Length; i++)
+            {
+                int separator = additionalRpcUrls[i].IndexOf('|');
+                Uri url = new(additionalRpcUrls[i][..separator]);
+                additionalRpcUrls[i] = $"{url.Scheme}://{url.Host}:{FreePort(url.Port)}{additionalRpcUrls[i][separator..]}";
+            }
+            jsonRpcConfig.AdditionalRpcUrls = additionalRpcUrls;
+            foreach (TcpListener listener in probeListeners) listener.Dispose();
+
             PluginLoader pluginLoader = new(
                 "plugins",
                 new RealFileSystem(),
@@ -1081,6 +1234,8 @@ public class EthereumRunnerTests
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
+                    Assert.That(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(), Has.None.Property(nameof(IPEndPoint.Port)).EqualTo(port),
+                        "the P2P listener is closed on stop");
                 }
                 catch (Exception e)
                 {

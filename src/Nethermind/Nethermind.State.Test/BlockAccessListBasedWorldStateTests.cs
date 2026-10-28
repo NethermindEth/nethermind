@@ -770,6 +770,56 @@ public class BlockAccessListBasedWorldStateTests
         static byte[]? Read(ReadOnlyMemory<byte> code) => code.IsNull() ? null : code.ToArray();
     }
 
+    // EIP-8298: an adopted change declares only a hash, whose bytecode is declared at a lower index or is pre-block.
+    [Test]
+    public void GetCode_ResolvesAdoptedCodeByHash([Values] bool declaredInBlock)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredInBlock ? [new CodeChange(1, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal, ws =>
+        {
+            if (declaredInBlock) return;
+            ws.CreateAccount(TestItem.AddressB, 1);
+            ws.InsertCode(TestItem.AddressB, hash, code, Spec);
+        });
+        using (scope)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetCodeHash(TestItem.AddressA), Is.EqualTo(hash), "code hash");
+                Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(code), "code");
+                Assert.That(bws.TryGetAccount(TestItem.AddressA, out AccountStruct account), Is.True, "exists");
+                Assert.That(account.CodeHash, Is.EqualTo(hash), "account code hash");
+            }
+        }
+    }
+
+    // A suggested BAL adopting a hash with no source bytecode is malformed: the parallel path retries sequentially
+    // only on InvalidBlockLevelAccessListException, so the code database's InvalidOperationException must not escape.
+    [Test]
+    public void GetCode_AdoptedHashWithoutSourceBytecode_ThrowsInvalidBlockLevelAccessList([Values] bool declaredAtSameIndex)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredAtSameIndex ? [new CodeChange(3, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal);
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetCode(TestItem.AddressA));
+        }
+    }
+
     [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {

@@ -91,6 +91,24 @@ public class FrameTxPrefixSimulatorTests
         }
     }
 
+    // Admission reads this to defer before verifying signatures, so it must flip with the budget itself.
+    [Test]
+    public void IsHeadBudgetSpent_FollowsTheHeadBudget()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _, budgetPerHeadMs: 1);
+        bool spentBefore = simulator.IsHeadBudgetSpent;
+
+        // The first simulation overruns the 1 ms budget.
+        simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spentBefore, Is.False);
+            Assert.That(simulator.IsHeadBudgetSpent, Is.True);
+        }
+    }
+
     [Test]
     public void Simulate_LocalSubmission_IsExemptFromTheExhaustedHeadBudget()
     {
@@ -524,10 +542,12 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
     }
 
-    [TestCase(0ul, Eip8141Constants.MaxVerifyGas)]
-    [TestCase(100_000ul, Eip8141Constants.MaxVerifyGas)]
+    [TestCase(0ul, 300_000ul)]
+    [TestCase(1ul, 100_000ul)]
+    [TestCase(100_000ul, 100_000ul)]
+    [TestCase(300_000ul, 300_000ul)]
     [TestCase(500_000ul, 500_000ul)]
-    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheDefault(ulong configured, ulong expected)
+    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheSharedFloor(ulong configured, ulong expected)
     {
         using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, maxVerifyGas: configured);
 

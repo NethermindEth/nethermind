@@ -138,6 +138,8 @@ namespace Nethermind.Synchronization.SnapSync
             bool isRangeResult = true;
             bool responseHandled = false;
 
+            // Held until the request is released below, so that a checkpoint never sees the response half handled.
+            using IDisposable? responseScope = _snapProvider.BeginResponse();
             try
             {
                 if (batch.AccountRangeResponse is not null)

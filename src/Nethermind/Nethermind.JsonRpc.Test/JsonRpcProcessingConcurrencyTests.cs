@@ -29,5 +29,5 @@ public class JsonRpcProcessingConcurrencyTests
     [TestCase(new[] { ModuleType.Eth, ModuleType.Net }, Configured, TestName = "ForModules_EngineDisabled_UsesTheConfiguredConcurrency")]
     public void ForModules_FollowsTheEnabledModules(string[] enabledModules, int expected) =>
         Assert.That(JsonRpcProcessingConcurrency.ForModules(enabledModules, Configured), Is.EqualTo(expected),
-            "a connection without a URL, such as IPC, serves the globally enabled modules, and the engine API needs order");
+            "the engine API needs ordered requests whenever it is enabled for the connection");
 }

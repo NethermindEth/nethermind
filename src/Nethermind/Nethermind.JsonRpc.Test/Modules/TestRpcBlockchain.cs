@@ -63,6 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
         public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
+        public SyncMode SyncMode { get; private set; } = SyncMode.All;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; private set; } =
@@ -149,6 +150,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithSyncMode(SyncMode syncMode)
+            {
+                _blockchain.SyncMode = syncMode;
+                return this;
+            }
+
             public Builder<T> WithEthRpcModule(Func<TestRpcBlockchain, IEthRpcModule> builder)
             {
                 _blockchain._ethRpcModuleBuilder = builder;
@@ -178,7 +185,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 // Can't set globally as that would cause block production to fail with invalid stateroot
                 // as the reward is being applied.
                 // TODO: Double check if block production have the same reward calculator
-                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculatorSource, RewardCalculator>());
+                builder.UpdateSingleton<IRpcModuleFactory<ITraceRpcModule>>(builder => builder.AddSingleton<IRewardCalculator, RewardCalculator>());
 
                 if (_blockFinderOverride is not null) builder.AddSingleton(_blockFinderOverride);
                 if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
@@ -193,7 +200,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.Bridge,
             @this.BlockFinder,
             @this.BlockTree,
-            @this.ReceiptFinder,
+            @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
             @this.StateReader,
             @this.TxPool,
             @this.TxSender,
@@ -202,7 +209,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.SpecProvider,
             @this.GasPriceOracle,
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
+            new StaticSelector(@this.SyncMode), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,
@@ -217,7 +224,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
-            @this.Container.ResolveOptional<HashesOnlyBlockReader>());
+            @this.Container.ResolveOptional<HashesOnlyBlockReader>(),
+            @this.ReceiptFinder);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
@@ -277,7 +285,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
-                SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
             _currentBlockchainProcessor = newProcessor;
             newProcessor.Start();
         }

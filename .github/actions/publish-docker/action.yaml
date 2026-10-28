@@ -17,11 +17,11 @@ inputs:
     description: "Build configuration (release or debug)"
     required: true
     default: "release"
-  docker-hub-username:
-    description: "Docker Hub username"
+  docker-hub-organization:
+    description: "Docker Hub organization to log in as"
     required: true
-  docker-hub-password:
-    description: "Docker Hub password or token"
+  docker-hub-oidc-connection-id:
+    description: "Docker Hub OIDC connection ID; the calling job needs id-token: write"
     required: true
   platforms:
     description: "Comma-separated list of platforms (e.g., linux/amd64,linux/arm64)"
@@ -40,6 +40,9 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v6
+
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v4
 
@@ -48,9 +51,12 @@ runs:
 
     - name: Log in to Docker Hub
       uses: docker/login-action@v4
+      env:
+        DOCKERHUB_OIDC_CONNECTIONID: ${{ inputs.docker-hub-oidc-connection-id }}
+        # The token must outlive the multi-platform build, as buildx only pushes at the end
+        DOCKERHUB_OIDC_EXPIREIN: 3600
       with:
-        username: ${{ inputs.docker-hub-username }}
-        password: ${{ inputs.docker-hub-password }}
+        username: ${{ inputs.docker-hub-organization }}
 
     - name: Build and push image to Docker Hub
       id: build-image
@@ -79,6 +85,12 @@ runs:
           tag=$(echo "$TAG" | sed 's/\//-/g') # replace '/' with '-'
         fi
 
+        # Benchmarks and nightly consumers treat these tags as master builds, so other refs must not overwrite them
+        if [[ "$GITHUB_REF" != "refs/heads/master" && "$tag" =~ ^(master|master-.*|nightly)$ ]]; then
+          echo "::error::Tag '${tag}' is reserved for builds from master"
+          exit 1
+        fi
+
         # Set the image label output
         image_label="${full_image_name}:${tag}"
         echo "image-label=${image_label}" >> $GITHUB_OUTPUT
@@ -95,10 +107,9 @@ runs:
           echo "Also tagging as: $master_tag"
         fi
 
-        # The OCI version label. release.yml reads the same properties with xmlstarlet, which is
-        # not on the runner image and has to be installed first; version.sh needs no dependencies
-        # and validates what it read, so an unusable version fails here instead of being published.
-        if ! version=$(scripts/version.sh src/Nethermind/Directory.Build.props); then
+        # Validate captured CLI output before it enters the evaluated Docker command.
+        if ! version=$(dotnet run --file scripts/version.cs -- src/Nethermind/Directory.Build.props) ||
+          [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
           echo "::error::Could not determine the version for the image labels"
           exit 1
         fi

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -21,15 +22,20 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -66,7 +72,7 @@ public class OptimismEthRpcModuleTest
         return rf;
     }
 
-    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder) =>
+    private static Task<TestRpcBlockchain> BuildOptimismRpc(IBlockFinder blockFinder, IReceiptFinder receiptFinder, ISpecProvider? specProvider = null) =>
         TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockFinder(blockFinder)
@@ -77,7 +83,7 @@ public class OptimismEthRpcModuleTest
                 ecdsa: Substitute.For<IEthereumEcdsa>(),
                 sealer: Substitute.For<ITxSealer>(),
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
-            .Build();
+            .Build(specProvider);
 
     private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
     {
@@ -93,7 +99,7 @@ public class OptimismEthRpcModuleTest
         public Address? RecoverAddress(Signature signature, in ValueHash256 message) => null;
     }
 
-    private sealed class NullSenderTransactionForRpc(Transaction transaction) : SignableTransactionForRpc
+    private sealed class NullSenderTransactionForRpc(Transaction transaction) : LegacyTransactionForRpc
     {
         public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         {
@@ -256,6 +262,45 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
+    public async Task Send_transaction_without_gas_and_fees_fills_them_before_forwarding()
+    {
+        UInt256 suggestedFee = 1_000_000_000;
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetMaxPriorityGasFeeEstimate().Returns(suggestedFee);
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        sealer.TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(true);
+        IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
+        byte[]? forwarded = null;
+        sequencer.Post("eth_sendRawTransaction", Arg.Do<object?[]>(parameters => forwarded = (byte[])parameters[0]!))
+            .Returns($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""");
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithGasPriceOracle(oracle)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: sequencer,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build(new TestSpecProvider(London.Instance));
+        object? request = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressC}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","value":"0x1","nonce":"0x0"}""");
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", request);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+        Transaction sent = TxDecoder.Instance.DecodeCompleteNotNull(forwarded, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
+        BlockHeader head = rpcBlockchain.BlockTree.Head!.Header;
+        UInt256 nextBaseFee = BaseFeeCalculator.Calculate(head, rpcBlockchain.SpecProvider.GetSpecFor1559(head.Number + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sent.GasLimit, Is.EqualTo((ulong)GasCostOf.Transaction), "gas must be estimated");
+            Assert.That(sent.MaxPriorityFeePerGas, Is.EqualTo(suggestedFee), "the tip must come from the gas price oracle");
+            Assert.That(sent.MaxFeePerGas, Is.EqualTo(2 * nextBaseFee + suggestedFee), "the fee cap must be twice the next base fee plus the tip");
+        }
+    }
+
+    [Test]
     public async Task GetTransactionByHash_ReturnsCorrectTransactionType()
     {
         Transaction tx = Build.A.Transaction
@@ -408,7 +453,6 @@ public class OptimismEthRpcModuleTest
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Legacy)
             .WithHash(TestItem.KeccakA)
-            .WithSenderAddress(TestItem.AddressA)
             .TestObject;
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
@@ -423,6 +467,7 @@ public class OptimismEthRpcModuleTest
             BlockNumber = block.Number,
             Index = 0x20,
             DepositReceiptVersion = 0x30,
+            Sender = TestItem.AddressA,
         };
 
         TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
@@ -432,7 +477,7 @@ public class OptimismEthRpcModuleTest
                             "jsonrpc":"2.0",
                             "result": {
                                 "type": "0x0",
-                                "from": "{{tx.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                "from": "{{TestItem.AddressA.Bytes.ToHexString(withZeroX: true)}}",
                                 "to": "0x0000000000000000000000000000000000000000",
                                 "value": "0x1",
                                 "gas": "0x5208",
@@ -593,6 +638,31 @@ public class OptimismEthRpcModuleTest
             Assert.That(firstTx["depositReceiptVersion"]!.Value<string>(), Is.EqualTo(expectedDepositVersion));
         Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
         Assert.That(secondTx["depositReceiptVersion"], Is.Null);
+    }
+
+    [Test]
+    public async Task GetBlockReceipts_logIndex_follows_eip8116([Values] bool eip8116Enabled)
+    {
+        Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithHash(TestItem.KeccakA).WithSenderAddress(TestItem.AddressA).TestObject;
+        Transaction regularTx = Build.A.Transaction.WithType(TxType.EIP1559).WithHash(TestItem.KeccakB).WithSenderAddress(TestItem.AddressA).TestObject;
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakC).TestObject)
+            .WithTransactions(depositTx, regularTx)
+            .TestObject;
+        LogEntry[] logs = [Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject];
+        OptimismTxReceipt depositReceipt = new() { Sender = TestItem.AddressA, TxType = depositTx.Type, TxHash = depositTx.Hash!, BlockHash = block.Hash, BlockNumber = 1, Index = 0, Logs = logs };
+        TxReceipt regularReceipt = new() { Sender = TestItem.AddressA, TxType = regularTx.Type, TxHash = regularTx.Hash!, BlockHash = block.Hash, BlockNumber = 1, Index = 1, Logs = logs };
+        IReleaseSpec spec = eip8116Enabled ? new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = true } : Bogota.Instance;
+
+        using TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, depositReceipt, regularReceipt), new TestSpecProvider(spec));
+
+        JToken result = JToken.Parse(await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number)))["result"]!;
+        string[] secondReceiptLogIndexes = eip8116Enabled ? ["0x0", "0x1"] : ["0x2", "0x3"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result[0]!["logs"]!.Select(static l => (string)l["logIndex"]!), Is.EqualTo(new[] { "0x0", "0x1" }));
+            Assert.That(result[1]!["logs"]!.Select(static l => (string)l["logIndex"]!), Is.EqualTo(secondReceiptLogIndexes));
+        }
     }
 
     [Test]

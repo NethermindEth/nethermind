@@ -154,15 +154,16 @@ public class DiscoveryHandler(
         shouldForward = false;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
-        if (!_globalInboundMessageLimiter.TryAcquire())
-        {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address:hide}");
-            return false;
-        }
-
+        // Per-IP first, so a single flooding host cannot spend the global budget that everyone shares.
         if (!TryAcceptInbound(address))
         {
             if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {address:hide}");
+            return false;
+        }
+
+        if (!_globalInboundMessageLimiter.TryAcquire())
+        {
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address}");
             return false;
         }
 

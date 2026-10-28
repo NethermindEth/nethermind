@@ -349,6 +349,26 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
+    public async Task Listener_SurfacesUnassignedAddress()
+    {
+        // RFC 5737 documentation address, never assigned to a local interface.
+        const string unassignedIp = "192.0.2.1";
+        await using IContainer container = CreateListenerContainer(unassignedIp, IPAddress.Parse(unassignedIp), GetAvailablePort());
+        RlpxHost host = container.Resolve<RlpxHost>();
+        NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
+        try
+        {
+            Assert.That(async () => await host.Init(),
+                Throws.TypeOf<ListenerBindException>().With.InnerException.TypeOf<SocketException>());
+            Assert.That(listenerState.RlpxAddress, Is.Null);
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
     public async Task ListenerStateSubscriberFailure_DoesNotAffectBindOrShutdown()
     {
         int port = GetAvailablePort();
@@ -441,7 +461,8 @@ public class RlpxHostIntegrationTests
         using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
         ipv6Listener.Start();
         int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
-        int refusedPort = GetAvailablePort();
+        using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
+        int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
         await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
         RlpxHost host = container.Resolve<RlpxHost>();
         TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -497,7 +518,8 @@ public class RlpxHostIntegrationTests
         using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
         ipv6Listener.Start();
         int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
-        int refusedPort = GetAvailablePort();
+        using Socket refused = ReserveRefusedPort(IPAddress.Loopback);
+        int refusedPort = ((IPEndPoint)refused.LocalEndPoint!).Port;
         await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
         RlpxHost host = container.Resolve<RlpxHost>();
 
@@ -524,6 +546,8 @@ public class RlpxHostIntegrationTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
+        using Socket refusedIpv4 = ReserveRefusedPort(IPAddress.Loopback);
+        using Socket refusedIpv6 = ReserveRefusedPort(IPAddress.IPv6Loopback);
         await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
         RlpxHost host = container.Resolve<RlpxHost>();
 
@@ -531,7 +555,7 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
 
-            Assert.That(await host.ConnectAsync(CreateDualStackNode(GetAvailablePort(), GetAvailablePort())), Is.False);
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(((IPEndPoint)refusedIpv4.LocalEndPoint!).Port, ((IPEndPoint)refusedIpv6.LocalEndPoint!).Port)), Is.False);
             Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True,
                 "a failed speculative fallback must not suppress inbound peers from the same filter bucket");
         }
@@ -1071,6 +1095,21 @@ public class RlpxHostIntegrationTests
         public void Agree(EncryptionHandshake handshake, Packet ack)
         {
         }
+    }
+
+    /// <summary>
+    /// A port that refuses connections for as long as the returned socket lives: it is bound but never listens.
+    /// </summary>
+    /// <remarks>
+    /// A port from <see cref="GetAvailablePort"/> is free again once returned, so a later pick, such as the host's own
+    /// listener port, can be the same one and turn the dial that should be refused into a connection. Exclusive, so no
+    /// address-reusing bind can share it either.
+    /// </remarks>
+    private static Socket ReserveRefusedPort(IPAddress address)
+    {
+        Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { ExclusiveAddressUse = true };
+        socket.Bind(new IPEndPoint(address, 0));
+        return socket;
     }
 
     private static int GetAvailablePort()
