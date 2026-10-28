@@ -146,7 +146,7 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(plain.Kind, Is.EqualTo(JsonTypeInfoKind.Object));
             Assert.That(wire.Kind, Is.EqualTo(JsonTypeInfoKind.Object));
         }
-        Dictionary<string, JsonPropertyInfo> wireProperties = new();
+        Dictionary<string, JsonPropertyInfo> wireProperties = [];
         foreach (JsonPropertyInfo property in wire.Properties) wireProperties.Add(property.Name, property);
         Assert.That(wireProperties.Count, Is.EqualTo(plain.Properties.Count));
         foreach (JsonPropertyInfo property in plain.Properties)
