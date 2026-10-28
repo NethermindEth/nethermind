@@ -507,6 +507,7 @@ public class TransportMemoryPoolTests
         TimeSpan budget = TimeSpan.FromSeconds(20);
         long start = Stopwatch.GetTimestamp();
         bool stop = false;
+        int roundsRun = 0;
         CountingTimeProvider time = new();
         TransportMemoryPoolFactory factory = new(time);
         MemoryPool<byte>[] held = new MemoryPool<byte>[workers];
@@ -536,6 +537,7 @@ public class TransportMemoryPoolTests
             }
 
             int completed = round + 1;
+            roundsRun = completed;
             stop = completed >= maxRounds || completed >= minRounds && Stopwatch.GetElapsedTime(start) > budget;
         });
 
@@ -571,6 +573,7 @@ public class TransportMemoryPoolTests
         heldFrom[0] = factory;
         foreach (Thread thread in threads) thread.Start();
         foreach (Thread thread in threads) thread.Join();
+        if (roundsRun < maxRounds) TestContext.Out.WriteLine($"{TestContext.CurrentContext.Test.Name}: time budget hit after {roundsRun} of {maxRounds} rounds");
         foreach (MemoryPool<byte> pool in held) pool?.Dispose();
         factory.Dispose();
 
