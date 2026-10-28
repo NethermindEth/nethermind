@@ -139,6 +139,42 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>
+    /// Geth's struct logger only sees the execution dimension of an EIP-8037 cost, so the state charge a step could
+    /// not pay never shows up in its <c>gasCost</c>.
+    /// </remarks>
+    [TestCaseSource(nameof(AmsterdamOutOfGasOperations))]
+    public void Out_of_gas_operation_reports_its_execution_cost_on_Amsterdam(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        ForkActivation activation = MainnetSpecProvider.AmsterdamActivation;
+        (_, Transaction sizing) = PrepareTx(activation, 0, code);
+        ulong intrinsicGas = IntrinsicGasCalculator.Calculate(sizing, SpecProvider.GetSpec(activation)).MinimalGas;
+        (Block block, Transaction transaction) = PrepareTx(activation, intrinsicGas + gasAfterIntrinsic, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(trace.Entries[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
+    private static TestCaseData[] AmsterdamOutOfGasOperations()
+    {
+        byte[] sstore = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done;
+        byte[] create = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Done;
+        return
+        [
+            new TestCaseData(sstore, 3000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE execution"),
+            new TestCaseData(sstore, 14000UL, Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE state"),
+            new TestCaseData(create, 1000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE execution"),
+            new TestCaseData(create, 20000UL, Eip8038Constants.CreateAccess).SetArgDisplayNames("CREATE state"),
+        ];
+    }
+
     internal static TestCaseData[] OutOfGasOperations() =>
     [
         new TestCaseData(Prepare.EvmCode.PushData(1).Done, 2UL, GasCostOf.VeryLow).SetArgDisplayNames("PUSH1"),
