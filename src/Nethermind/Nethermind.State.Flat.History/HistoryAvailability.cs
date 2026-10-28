@@ -65,6 +65,13 @@ public sealed class HistoryAvailability
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
 
+    // A whole-block trace checks the same (block, root) once per transaction. Only a match at or below the observed
+    // watermark is kept, where no capture walk rewrites the marker; every other marker write or removal bumps the
+    // generation once visible, which voids every slot stamped before. Generation 0 marks an empty slot.
+    private const int MatchedRootSlots = 16;
+    private readonly MatchedRoot[] _matchedRoots = new MatchedRoot[MatchedRootSlots];
+    private long _matchedRootsGeneration = 1;
+
     internal long CaptureGeneration => Volatile.Read(ref _captureGeneration);
 
     // Bumped when every record is removed to restart the history, so answers resolved against the old rows go too.
@@ -174,6 +181,22 @@ public sealed class HistoryAvailability
     /// <summary>Whether <paramref name="block"/>'s captured marker equals <paramref name="stateRoot"/> —
     /// independent of coverage.</summary>
     public bool RootMatches(ulong block, in ValueHash256 stateRoot)
+    {
+        ref MatchedRoot slot = ref _matchedRoots[(int)(block & (MatchedRootSlots - 1))];
+        long generation = Volatile.Read(ref _matchedRootsGeneration);
+        if (slot.Matches(block, stateRoot, generation)) return true;
+
+        long observedWatermark = Volatile.Read(ref _observedWatermark);
+        if (!ReadRootMatches(block, stateRoot)) return false;
+
+        if (observedWatermark >= 0 && block <= (ulong)observedWatermark) slot.Publish(block, stateRoot, generation);
+        return true;
+    }
+
+    /// <summary>Voids every remembered root match. Call once a marker removal or overwrite is visible.</summary>
+    internal void ForgetMatchedRoots() => Interlocked.Increment(ref _matchedRootsGeneration);
+
+    private bool ReadRootMatches(ulong block, in ValueHash256 stateRoot)
     {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
@@ -290,6 +313,7 @@ public sealed class HistoryAvailability
         Volatile.Write(ref _observedWatermark, -1);
         Volatile.Write(ref _observedFloor, -1);
         Volatile.Write(ref _cachedScopes, null);
+        ForgetMatchedRoots();
     }
 
     /// <summary>The block an unwindowed history recorded its snap-pivot image at; false when it started at genesis.</summary>
@@ -546,5 +570,36 @@ public sealed class HistoryAvailability
         BinaryPrimitives.WriteUInt64BigEndian(value, watermark);
         _availableBlocks.PutSpan(WatermarkKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
+    }
+
+    /// <summary>A sequence lock: odd while a writer fills the slot, so a reader that sees the same even sequence on
+    /// both sides of its field reads saw no torn root.</summary>
+    private struct MatchedRoot
+    {
+        private int _sequence;
+        private long _generation;
+        private ulong _block;
+        private ValueHash256 _root;
+
+        public bool Matches(ulong block, in ValueHash256 root, long generation)
+        {
+            int sequence = Volatile.Read(ref _sequence);
+            if ((sequence & 1) != 0) return false;
+
+            bool matches = _generation == generation && _block == block && _root == root;
+            Interlocked.MemoryBarrier();
+            return matches && Volatile.Read(ref _sequence) == sequence;
+        }
+
+        public void Publish(ulong block, in ValueHash256 root, long generation)
+        {
+            int sequence = Volatile.Read(ref _sequence);
+            if ((sequence & 1) != 0 || Interlocked.CompareExchange(ref _sequence, sequence + 1, sequence) != sequence) return;
+
+            _generation = generation;
+            _block = block;
+            _root = root;
+            Volatile.Write(ref _sequence, sequence + 2);
+        }
     }
 }

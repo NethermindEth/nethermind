@@ -84,4 +84,103 @@ public class HistoryAvailabilityTests
             Assert.That(_availability.RootMatches(MarkedBlock + 3, Keccak.Zero), Is.False, "a marker shorter than a root");
         }
     }
+
+    [Test]
+    public void IsCoveredAndRootMatches_RepeatedForACoveredBlock_ReadsTheMarkerOnce()
+    {
+        (TestMemDb db, HistoryAvailability availability) = CoveredInMemory();
+
+        bool matched = true;
+        for (int i = 0; i < 10; i++) matched &= availability.IsCoveredAndRootMatches(MarkedBlock, TestItem.KeccakA);
+
+        Assert.That(matched, Is.True);
+        db.KeyWasRead(BlockKey(MarkedBlock), 1);
+    }
+
+    [Test]
+    public void RootMatches_ForAnotherRootOrAboveTheWatermark_ReadsTheMarkerEveryTime()
+    {
+        (TestMemDb db, HistoryAvailability availability) = CoveredInMemory();
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(batch, MarkedBlock + 1, TestItem.KeccakA, HistoryAvailability.FormatVersion);
+        }
+
+        Assert.That(availability.IsCovered(MarkedBlock), Is.True, "precondition: the watermark is observed");
+        for (int i = 0; i < 3; i++)
+        {
+            Assert.That(availability.RootMatches(MarkedBlock, TestItem.KeccakB), Is.False);
+            Assert.That(availability.RootMatches(MarkedBlock + 1, TestItem.KeccakA), Is.True);
+        }
+
+        db.KeyWasRead(BlockKey(MarkedBlock), 3);
+        db.KeyWasRead(BlockKey(MarkedBlock + 1), 3);
+    }
+
+    [TestCase(false, TestName = "RootMatches_AfterTheMarkerIsRemoved_FailsOnceMatchedRootsAreForgotten")]
+    [TestCase(true, TestName = "RootMatches_AfterTheMarkerIsRemoved_FailsOnceObservedRecordsAreForgotten")]
+    public void RootMatches_AfterTheMarkerIsRemoved_FailsOnceForgotten(bool forgetObservedRecords)
+    {
+        (TestMemDb db, HistoryAvailability availability) = CoveredInMemory();
+        Assert.That(availability.IsCoveredAndRootMatches(MarkedBlock, TestItem.KeccakA), Is.True, "precondition: the match is remembered");
+
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            HistoryAvailability.UnmarkBlock(batch, MarkedBlock);
+        }
+
+        if (forgetObservedRecords) availability.ForgetObservedRecords();
+        else availability.ForgetMatchedRoots();
+
+        Assert.That(availability.RootMatches(MarkedBlock, TestItem.KeccakA), Is.False);
+    }
+
+    [Test]
+    public void RootMatches_AfterTheMarkerIsOverwritten_MatchesOnlyTheNewRootOnceForgotten()
+    {
+        (TestMemDb db, HistoryAvailability availability) = CoveredInMemory();
+        Assert.That(availability.IsCoveredAndRootMatches(MarkedBlock, TestItem.KeccakA), Is.True, "precondition: the match is remembered");
+
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(batch, MarkedBlock, TestItem.KeccakB, HistoryAvailability.FormatVersion);
+        }
+
+        availability.ForgetMatchedRoots();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.RootMatches(MarkedBlock, TestItem.KeccakA), Is.False, "the replaced root");
+            Assert.That(availability.RootMatches(MarkedBlock, TestItem.KeccakB), Is.True);
+        }
+    }
+
+    [Test]
+    public void RootMatches_ForAnEmptySlotsBlockAndRoot_ReadsTheMarker()
+    {
+        (TestMemDb db, HistoryAvailability availability) = CoveredInMemory();
+
+        Assert.That(availability.RootMatches(0, Keccak.Zero), Is.False, "a slot never written must not match block 0 with a zero root");
+        db.KeyWasRead(BlockKey(0), 1);
+    }
+
+    private static (TestMemDb Db, HistoryAvailability Availability) CoveredInMemory()
+    {
+        TestMemDb db = new();
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(batch, MarkedBlock, TestItem.KeccakA, HistoryAvailability.FormatVersion);
+        }
+
+        HistoryAvailability availability = new(db);
+        availability.PublishWatermark(MarkedBlock, HistoryAvailability.FormatVersion);
+        return (db, availability);
+    }
+
+    private static byte[] BlockKey(ulong block)
+    {
+        byte[] key = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return key;
+    }
 }
