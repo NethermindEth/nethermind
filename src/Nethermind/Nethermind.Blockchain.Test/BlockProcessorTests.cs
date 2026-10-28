@@ -1057,6 +1057,77 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public async Task ParallelBlockTracer_WhileATraceIsBeingWritten_KeepsTracingTheNextTransactions()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction[] transactions = new Transaction[5];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must contain the complete test sequence");
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
+
+        using ManualResetEventSlim secondWriting = new(false);
+        using ManualResetEventSlim releaseWrite = new(false);
+        using ManualResetEventSlim fourthFinished = new(false);
+        List<ParityLikeTxTrace> streamed = [];
+        Task<bool> run = Task.Run(() => parallel.TryStream(block, parent,
+            (_, txHash) =>
+            {
+                int transaction = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
+                // The third transaction finishes only once the second is being written, so its worker always meets
+                // the write in progress.
+                if (transaction == 2) secondWriting.Wait(TimeSpan.FromSeconds(10));
+                return new CompletionTracer<ParityLikeTxTrace>(new ParityLikeBlockTracer(txHash, types),
+                    () => { if (transaction == 3) fourthFinished.Set(); });
+            },
+            afterTransactions: null,
+            batch =>
+            {
+                bool second = batch.Any(trace => trace.TransactionHash == block.Transactions[1].Hash);
+                lock (streamed) streamed.AddRange(batch);
+                if (second)
+                {
+                    secondWriting.Set();
+                    releaseWrite.Wait();
+                }
+            },
+            CancellationToken.None));
+        bool traced;
+        try
+        {
+            Assert.That(secondWriting.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(fourthFinished.Wait(TimeSpan.FromSeconds(10)), Is.True, "a worker that finds the response being written goes on to the next transaction instead of waiting for the write");
+        }
+        finally
+        {
+            releaseWrite.Set();
+            traced = await run;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True);
+            Assert.That(streamed.Select(static trace => trace.TransactionHash), Is.EqualTo(block.Transactions.Select(static tx => tx.Hash)).AsCollection,
+                "every trace is written once, in block order");
+            Assert.That(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(streamed)),
+                Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types))))),
+                "streaming a block transaction by transaction says what replaying it says");
+        }
+    }
+
+    [Test]
     public async Task ParallelBlockTracer_Disposal_WaitsForTheRunAlreadyUnderWay()
     {
         IReleaseSpec spec = Prague.Instance;

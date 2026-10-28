@@ -111,7 +111,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
             Transaction[] transactions = block.Transactions;
             IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
-            Emitter<TTrace> emitter = new(results, emit);
+            Emitter<TTrace> emitter = new(results, emit, slots.Degree);
             int workers;
             try
             {
@@ -151,7 +151,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 if (afterTransactions is not null && Volatile.Read(ref _rewardCalculator)?.MayReward(block.Header) != false)
                 {
                     results[transactions.Length] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
-                    emitter.Publish();
+                    emitter.Publish(transactions.Length);
                 }
 
                 covered.Complete();
@@ -300,7 +300,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         // response, which a client that stops reading can hold indefinitely. A worker that waits there must not be
         // holding one of the node's processing environments while it does, or one unread response stops every trace
         // on the node rather than its own.
-        emitter.Publish();
+        emitter.Publish(index);
         return true;
     }
 
@@ -482,25 +482,51 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>Hands finished traces on in block order: a worker that finishes out of turn leaves its result for
     /// the transaction before it, and whoever closes the gap passes the run on. Under the lock, so the sink is
     /// written by one thread at a time, and a trace already handed on is released.</summary>
-    private sealed class Emitter<TTrace>(IReadOnlyCollection<TTrace>?[] results, Action<IReadOnlyCollection<TTrace>>? emit)
+    /// <remarks>A worker that finds the sink being written raises <c>_pending</c> and goes back to tracing: the writer
+    /// looks for results again once it lets go of the lock, so the result is written all the same. Only a worker
+    /// <c>lag</c> or more transactions ahead of the writer waits for it, so a client that reads slowly still holds
+    /// the tracing back instead of letting finished traces pile up.</remarks>
+    private sealed class Emitter<TTrace>(IReadOnlyCollection<TTrace>?[] results, Action<IReadOnlyCollection<TTrace>>? emit, int lag)
     {
         private readonly Lock _lock = new();
         private int _next;
+        private int _pending;
 
-        public void Publish()
+        public void Publish(int finished)
         {
             if (emit is null) return;
 
-            lock (_lock)
+            Interlocked.Exchange(ref _pending, 1);
+            if (finished - Volatile.Read(ref _next) >= lag)
             {
-                while (_next < results.Length && results[_next] is { } ready)
+                lock (_lock) Drain(emit);
+            }
+
+            while (Volatile.Read(ref _pending) != 0 && _lock.TryEnter())
+            {
+                try
                 {
-                    // Taken before it is written: a write that fails leaves a doomed response either way, and losing
-                    // the trace is better than a sibling finding the slot still armed and writing it twice.
-                    results[_next] = null;
-                    _next++;
-                    emit(ready);
+                    Drain(emit);
                 }
+                finally
+                {
+                    _lock.Exit();
+                }
+            }
+        }
+
+        private void Drain(Action<IReadOnlyCollection<TTrace>> write)
+        {
+            // Lowered before the slots are read: a result stored after this raises it again, and is found on the
+            // next pass instead of being missed by this one.
+            Interlocked.Exchange(ref _pending, 0);
+            while (_next < results.Length && results[_next] is { } ready)
+            {
+                // Taken before it is written: a write that fails leaves a doomed response either way, and losing
+                // the trace is better than a sibling finding the slot still armed and writing it twice.
+                results[_next] = null;
+                Volatile.Write(ref _next, _next + 1);
+                write(ready);
             }
         }
     }
