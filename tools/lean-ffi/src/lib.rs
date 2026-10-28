@@ -360,7 +360,6 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     }
     let discards: HashSet<_> = r.deps()?.into_iter().collect();
     r.end()?;
-    // EIP-8288: every discard must occur in the input union, matched by its full triple.
     let union: HashSet<_> = all.iter().copied().collect();
     if !discards.is_subset(&union) {
         return Err(());

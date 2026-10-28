@@ -114,12 +114,14 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         return ProverThread.Run(() => ProveNative(hash, vk, witness));
     }
 
-    /// <summary>The managed thread that ran the most recent native proof.</summary>
-    internal static int LastProverThreadId { get; private set; }
+    private static int _lastProverThreadId;
+
+    /// <summary>The managed thread that ran the most recent native proof; a test seam.</summary>
+    internal static int LastProverThreadId => Volatile.Read(ref _lastProverThreadId);
 
     private static byte[] ProveNative(in ValueHash256 depsHash, byte[] aggregatedVk, byte[] witness)
     {
-        LastProverThreadId = Environment.CurrentManagedThreadId;
+        Volatile.Write(ref _lastProverThreadId, Environment.CurrentManagedThreadId);
         byte* proof = null;
         nuint length = 0;
         try
@@ -141,10 +143,14 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     /// <summary>Runs every native proof on one long-lived thread.</summary>
     /// <remarks>leanVM's proving arena gives each thread that allocates during a proof its own slab and never returns a slab's
     /// touched pages, so proofs called from changing thread-pool threads each leave another proof's peak resident (about
-    /// 1.5 GB for four witnesses) until the process runs out of memory. The native prover lock serializes proofs anyway.</remarks>
+    /// 1.5 GB for four witnesses) until the process runs out of memory. The native prover lock serializes proofs anyway.
+    /// The queue is bounded, so callers that bypass the managed proving gate are refused rather than pile up behind the prover,
+    /// and it is completed at process exit. A caller that must stop waiting runs the call on a task of its own, as
+    /// <c>ProductionProofCache</c> does.</remarks>
     private static class ProverThread
     {
-        private static readonly BlockingCollection<Action> Queue = [];
+        private const int MaxQueued = 4;
+        private static readonly BlockingCollection<Action> Queue = new(MaxQueued);
         private static readonly Thread Worker = Start();
 
         private static Thread Start()
@@ -155,6 +161,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             })
             { IsBackground = true, Name = "Lean prover" };
             thread.Start();
+            AppDomain.CurrentDomain.ProcessExit += static (_, _) => Queue.CompleteAdding();
             return thread;
         }
 
@@ -164,12 +171,18 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             byte[]? result = null;
             ExceptionDispatchInfo? failure = null;
             using ManualResetEventSlim done = new();
-            Queue.Add(() =>
+            bool queued;
+            try
             {
-                try { result = prove(); }
-                catch (Exception exception) { failure = ExceptionDispatchInfo.Capture(exception); }
-                finally { done.Set(); }
-            });
+                queued = Queue.TryAdd(() =>
+                {
+                    try { result = prove(); }
+                    catch (Exception exception) { failure = ExceptionDispatchInfo.Capture(exception); }
+                    finally { done.Set(); }
+                });
+            }
+            catch (InvalidOperationException) { queued = false; }
+            if (!queued) throw new InvalidOperationException("The Lean prover is busy or shutting down; retry later.");
             done.Wait();
             failure?.Throw();
             return result!;

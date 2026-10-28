@@ -175,7 +175,8 @@ public static class Eip8288Dependencies
     }
 
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
-    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || verification_key_hash</c> entries.</summary>
+    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where the key is the raw leanSPHINCS
+    /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
     /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses BLAKE2s-256, the hash the pinned aggregation circuit uses for its
     /// dependency digest. The digest omits the scheme, so it is defined only for leanSPHINCS lists (see
     /// <see cref="IsAcceptedScheme"/>).</remarks>
