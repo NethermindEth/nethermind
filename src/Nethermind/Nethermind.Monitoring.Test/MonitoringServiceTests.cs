@@ -69,14 +69,15 @@ public class MonitoringServiceTests
     {
         using TcpListener pushGateway = new(IPAddress.Loopback, 0);
         pushGateway.Start();
-        int exposePort = GetFreePort();
+        using TcpListener exposeListener = new(IPAddress.Loopback, 0);
+        exposeListener.Start();
         MetricsConfig config = new()
         {
             Enabled = false,
             CountersEnabled = true,
             IntervalSeconds = 1,
             ExposeHost = "127.0.0.1",
-            ExposePort = exposePort,
+            ExposePort = ((IPEndPoint)exposeListener.LocalEndpoint).Port,
             PushGatewayUrl = $"http://127.0.0.1:{((IPEndPoint)pushGateway.LocalEndpoint).Port}/metrics",
             InitializeStaticLabels = false
         };
@@ -86,16 +87,14 @@ public class MonitoringServiceTests
         monitoringService.AddMetricsUpdateAction(() => updated.TrySetResult());
         StartMonitoring step = new(monitoringService, LimboLogs.Instance, config);
 
-        await step.Execute(CancellationToken.None);
+        await Assert.ThatAsync(() => step.Execute(CancellationToken.None), Throws.Nothing,
+            "metrics server tried to bind the expose port");
 
         Assert.That(await Task.WhenAny(updated.Task, Task.Delay(TimeSpan.FromSeconds(5))), Is.SameAs(updated.Task),
             "metrics update actions never ran");
-        using TcpListener exposeListener = new(IPAddress.Loopback, exposePort);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.DoesNotThrow(() => exposeListener.Start(), "metrics server bound the expose port");
-            Assert.That(pushGateway.Pending(), Is.False, "metrics were pushed to the Pushgateway");
-        }
+        bool pushed = pushGateway.Pending();
+        pushGateway.Stop();
+        Assert.That(pushed, Is.False, "metrics were pushed to the Pushgateway");
     }
 
     private static int GetFreePort()
