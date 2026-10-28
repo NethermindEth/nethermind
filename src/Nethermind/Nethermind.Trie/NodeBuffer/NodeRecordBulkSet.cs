@@ -159,6 +159,15 @@ internal static class NodeRecordBulkSet
             return value.ToArray();
         }
 
+        /// <summary>Whether the leaf's value is <paramref name="value"/>, compared in place.</summary>
+        public bool LeafValueEquals(ReadOnlySpan<byte> value)
+        {
+            if (Kind == SourceKind.Record) return Record.LeafValue.Span.SequenceEqual(value);
+
+            ReadInlineLeaf(out ReadOnlySpan<byte> leafValue);
+            return leafValue.SequenceEqual(value);
+        }
+
         private ReadOnlySpan<byte> ReadInlineLeaf(out ReadOnlySpan<byte> value)
         {
             RlpReader reader = new(Inline.Bytes[..InlineLength]);
@@ -508,7 +517,7 @@ internal static class NodeRecordBulkSet
                     if (matched == keyLength)
                     {
                         result = isDelete ? Updated.To(-1)
-                            : current.LeafValue().Span.SequenceEqual(value) ? Updated.Unchanged
+                            : current.LeafValueEquals(value) ? Updated.Unchanged
                             : Updated.To(_workingState.AddPendingLeaf(key[..keyLength], value!));
                     }
                     else

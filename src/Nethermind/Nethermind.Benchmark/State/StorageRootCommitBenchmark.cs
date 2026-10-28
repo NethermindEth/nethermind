@@ -10,7 +10,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
@@ -31,14 +30,6 @@ namespace Nethermind.Benchmarks.State;
 [MinIterationCount(40)]
 public class StorageRootCommitBenchmark
 {
-    // Below this count, TrieStoreScopeProvider.StorageTreeBulkWriteBatch writes each slot straight
-    // into the storage trie (no buffering); above it, entries are buffered and flushed as one
-    // BulkSet call. IndividualSetEstimate below is chosen to always stay under it regardless of
-    // ChangedSlots, and BulkSetEstimate to always clear it, so the two benchmark methods exercise
-    // the two code paths deliberately rather than incidentally by ChangedSlots' own magnitude.
-    private const int BulkThreshold = TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH;
-    private const int IndividualSetEstimate = 0;
-
     private const int SlotCount = 10_000;
     private const ulong BaseBlockNumber = 1;
 
@@ -55,8 +46,7 @@ public class StorageRootCommitBenchmark
     [Params(1, 8, 100, 1000)]
     public int ChangedSlots { get; set; }
 
-    [GlobalSetup]
-    public void GlobalSetup()
+    private void SetupBaseState()
     {
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
@@ -105,17 +95,11 @@ public class StorageRootCommitBenchmark
         _baseStateId = new StateId(BaseBlockNumber, scope.RootHash);
     }
 
-    [GlobalCleanup]
-    public void GlobalCleanup()
-    {
-        IterationCleanup();
-        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
-        _nodeRecordBuffer.Dispose();
-    }
-
+    // The base snapshots pin every later generation of the buffer, so each iteration gets its own buffer to free what it writes.
     [IterationSetup]
     public void IterationSetup()
     {
+        SetupBaseState();
         SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
         foreach (FlatSnapshot s in _baseSnapshots)
         {
@@ -146,32 +130,17 @@ public class StorageRootCommitBenchmark
         _scope = null!;
         _commitTarget?.LastSnapshot?.Dispose();
         _commitTarget = null!;
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [Benchmark]
-    public Hash256 CommitIndividualSets()
+    public Hash256 CommitWriteBatch()
     {
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = _scope.StartWriteBatch(1))
         {
             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
-                batch.CreateStorageWriteBatch(_address, estimatedEntries: IndividualSetEstimate);
-            for (int s = 0; s < ChangedSlots; s++)
-            {
-                storageBatch.Set((UInt256)(ulong)(s + 1), MutatedSlotValue(s));
-            }
-        }
-
-        _scope.Commit(blockNumber: BaseBlockNumber + 1);
-        return _scope.RootHash;
-    }
-
-    [Benchmark]
-    public Hash256 CommitBulkWriteBatch()
-    {
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = _scope.StartWriteBatch(1))
-        {
-            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
-                batch.CreateStorageWriteBatch(_address, estimatedEntries: Math.Max(ChangedSlots, BulkThreshold + 1));
+                batch.CreateStorageWriteBatch(_address, estimatedEntries: ChangedSlots);
             for (int s = 0; s < ChangedSlots; s++)
             {
                 storageBatch.Set((UInt256)(ulong)(s + 1), MutatedSlotValue(s));

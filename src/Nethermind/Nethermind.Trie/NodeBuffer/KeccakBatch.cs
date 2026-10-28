@@ -30,6 +30,7 @@ internal static class KeccakBatch
     /// <param name="buffer">Holds every message.</param>
     /// <param name="messages">Where each message lies in <paramref name="buffer"/>.</param>
     /// <param name="hashes">Receives the hash of each message, in the order of <paramref name="messages"/>.</param>
+    [SkipLocalsInit]
     public static void Hash(ReadOnlySpan<byte> buffer, ReadOnlySpan<(int Start, int Length)> messages, Span<ValueHash256> hashes)
     {
         if (!Avx2.IsSupported || messages.Length < MinimumBatchCount)

@@ -211,12 +211,15 @@ public class SnapshotCompactorTests
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
         // Flat changes merge; trie nodes are reachable from the final roots.
-        Assert.That(compacted.AccountsCount, Is.EqualTo(2));
-        Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
-        Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
-        Assert.That((snapshot1.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.GreaterThan((snapshot0.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
-        Assert.That((compacted.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((snapshot0.BufferPin.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.AccountsCount, Is.EqualTo(2));
+            Assert.That(compacted.StoragesCount, Is.EqualTo(2));
+            Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
+            Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
+            Assert.That((snapshot1.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.GreaterThan((snapshot0.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+            Assert.That((compacted.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((snapshot0.BufferPin.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+        }
         Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
         Assert.That(stateNode1!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
     }
@@ -397,10 +400,10 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 
+        Assert.That(compacted.TryGetStateNode(finalPath, out TrieNode? node), Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.TryGetStateNode(oldPath, out _), Is.False);
-            Assert.That(compacted.TryGetStateNode(finalPath, out TrieNode? node), Is.True);
             Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
             Assert.That(compacted.StateNodes.Select(node => node.Pointer), Is.EqualTo(final.StateNodes.Select(node => node.Pointer)));
         }

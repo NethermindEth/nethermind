@@ -44,8 +44,7 @@ public class WriteBatchBenchmark
     [Params(100, 1000, 3000)]
     public int StorageSlotsPerAccount { get; set; }
 
-    [GlobalSetup]
-    public void GlobalSetup()
+    private void SetupBaseState()
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
@@ -139,17 +138,11 @@ public class WriteBatchBenchmark
         });
     }
 
-    [GlobalCleanup]
-    public void GlobalCleanup()
-    {
-        IterationCleanup();
-        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
-        _nodeRecordBuffer.Dispose();
-    }
-
+    // The base snapshots pin every later generation of the buffer, so each iteration gets its own buffer to free what it writes.
     [IterationSetup]
     public void IterationSetup()
     {
+        SetupBaseState();
         SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
         foreach (FlatSnapshot s in _baseSnapshots)
         {
@@ -178,6 +171,8 @@ public class WriteBatchBenchmark
     {
         _scope?.Dispose();
         _scope = null!;
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [Benchmark]

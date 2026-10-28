@@ -10,9 +10,13 @@ using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
@@ -129,6 +133,21 @@ public class NodeRecordBufferTests
             Assert.That(IsLocatable(buffer, pointer), Is.False, "its records are not kept");
             Assert.That(buffer.FindRoot(null, Root(1), ulong.MaxValue), Is.Zero, "nor its root keys");
         }
+    }
+
+    [Test]
+    public void Flat_module_compacts_only_within_a_budget_and_without_the_trie_node_log([Values] bool trieNodeLog, [Values(0UL, 1UL << 20)] ulong budget)
+    {
+        FlatDbConfig config = new() { TrieNodeLogEnabled = trieNodeLog, CompressedNodeRecordBufferMemoryBudget = budget };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(config))
+            .AddSingleton<IFlatDbConfig>(config)
+            .Build();
+        NodeRecordBuffer buffer = (NodeRecordBuffer)container.Resolve<INodeRecordBuffer>();
+        using IDisposable pin = buffer.PinAll();
+
+        // Generations keep a bloom exactly when they are compacted once dropped.
+        Assert.That(buffer.FindBloom(buffer.Reserve(0, out _, out _)), trieNodeLog || budget == 0 ? Is.Null : Is.Not.Null);
     }
 
     [Test]
@@ -542,6 +561,8 @@ public class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(compressedBudget, GenerationBytes);
         List<(ulong Pointer, byte[] Rlp)> unique = [];
         AppendUniqueUntil(scenarioGeneration);
+        // Moving to the next generation drops the scenario one, so it stays pinned until the rewrite is in the newer bloom.
+        NodeRecordBufferPin hold = buffer.PinHead();
         (ulong Pointer, byte[] Rlp) superseded = AppendRecord(TestItem.KeccakA, Leaf(-1, 8));
         (ulong Pointer, byte[] Rlp) kept = AppendRecord(TestItem.KeccakA, Leaf(-2, 8));
         (ulong Pointer, byte[] Rlp) rewritten = AppendRecord(TestItem.KeccakB, Leaf(-3, 8));
@@ -549,6 +570,7 @@ public class NodeRecordBufferTests
         AppendUniqueUntil(scenarioGeneration + 1);
         (ulong Pointer, byte[] Rlp) rewrite = AppendRecord(TestItem.KeccakB, Leaf(-4, 8));
         buffer.AddToBlooms(rewrite.Pointer, rewrite.Pointer);
+        hold.Dispose();
         AppendUniqueUntil(scenarioGeneration + LiveGenerations);
 
         bool keeps = compressedBudget > 0;
