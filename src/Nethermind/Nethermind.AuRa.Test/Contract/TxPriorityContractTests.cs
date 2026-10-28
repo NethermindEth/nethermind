@@ -62,8 +62,11 @@ public class TxPriorityContractTests
         IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
         IEnumerable<Address> whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
         object[] expected = { TestItem.AddressA, TestItem.AddressC };
-        Assert.That(whiteList, Is.EquivalentTo(expected));
-        Assert.That(whiteListInContract, Is.EquivalentTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whiteList, Is.EquivalentTo(expected));
+            Assert.That(whiteListInContract, Is.EquivalentTo(expected));
+        }
     }
 
     [Test]
@@ -79,10 +82,13 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature2, 4, TxPriorityContract.DestinationSource.Contract, 1),
         };
 
-        Assert.That(priorities, Is.EquivalentTo(expected)
-            .UsingPropertiesComparer<TxPriorityContract.Destination>(
-                static options => options.Excluding(static destination => destination.BlockNumber)));
-        Assert.That(prioritiesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(priorities, Is.EquivalentTo(expected)
+                .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                    static options => options.Excluding(static destination => destination.BlockNumber)));
+            Assert.That(prioritiesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        }
     }
 
     [Test]
@@ -97,11 +103,14 @@ public class TxPriorityContractTests
             new(TestItem.AddressB, FnSignature, 2, TxPriorityContract.DestinationSource.Contract, 2),
         };
 
-        Assert.That(minGasPrices, Is.EquivalentTo(expected)
-            .UsingPropertiesComparer<TxPriorityContract.Destination>(
-                static options => options.Excluding(static destination => destination.BlockNumber)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(minGasPrices, Is.EquivalentTo(expected)
+                .UsingPropertiesComparer<TxPriorityContract.Destination>(
+                    static options => options.Excluding(static destination => destination.BlockNumber)));
 
-        Assert.That(minGasPricesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+            Assert.That(minGasPricesInContract, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        }
     }
 
     [Test]

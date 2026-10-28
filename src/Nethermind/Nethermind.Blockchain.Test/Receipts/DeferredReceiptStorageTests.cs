@@ -105,7 +105,9 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(_storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(iterator.TryGetNext(out _), Is.True);
     }
 
@@ -234,14 +236,20 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(blockB));
 
         // The lazy scan must resolve every tx of every pending block to its own block, not just the first.
-        Assert.That(_storage.FindBlockHash(blockA.Transactions[0].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 0");
-        Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 1");
-        Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "pending scan, block B tx 0");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindBlockHash(blockA.Transactions[0].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 0");
+            Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "pending scan, block A tx 1");
+            Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "pending scan, block B tx 0");
+        }
 
         _writer.Pump();
 
-        Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "durable index, block A tx 1");
-        Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "durable index, block B tx 0");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindBlockHash(blockA.Transactions[1].Hash!), Is.EqualTo(blockA.Hash), "durable index, block A tx 1");
+            Assert.That(_storage.FindBlockHash(blockB.Transactions[0].Hash!), Is.EqualTo(blockB.Hash), "durable index, block B tx 0");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -472,7 +480,10 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _writer.Pump();
 
         _storage.ClearCache();
-        Assert.That(_storage.Get(block), Is.Empty);
-        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.Get(block), Is.Empty);
+            Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.False);
+        }
     }
 }
