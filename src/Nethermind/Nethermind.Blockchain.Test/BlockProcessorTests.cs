@@ -484,6 +484,28 @@ public partial class BlockProcessorTests
         }
     }
 
+    [Test]
+    public async Task TransactionTraceBoundary_TheOpeningSystemCalls_ReadThroughTheBlockCache()
+    {
+        BlockReadCache cache = new();
+        CachingFirstTransactionSeeds seeds = new(cache);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        Hash256 target = block.Transactions[0].Hash!;
+        GethTraceOptions options = new() { TxHash = target, Tracer = "prestateTracer" };
+
+        string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds: null, new ExecutionCounter()));
+        string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds, new ExecutionCounter()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGetAccount(Eip2935Constants.BlockHashHistoryAddress, out Account? history) && history is not null, Is.True,
+                "the EIP-2935 update reads its contract through the cache, once for every transaction environment of the block");
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+    }
+
     /// <summary>Seeds only the first transaction, whose prefix is empty, with a cache the test reads afterwards.</summary>
     private sealed class CachingFirstTransactionSeeds(BlockReadCache cache) : IPrefixStateSeedSource
     {
