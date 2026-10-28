@@ -62,38 +62,38 @@ public partial class RollupXGenesisTests
     [Test]
     [NonParallelizable]
     public async Task NativeFollower_RecordedHistoryChoice_DerivesAndExecutesThroughProductionScopes([Values] bool import,
-        [Values] bool proxyHistory)
+        [Values(4, 6, 7)] int version)
     {
+        NativeSystemTxFormat format = (NativeSystemTxFormat)version;
         using NativeHistoryTestSource source = CreateHistorySource();
-        NativeSystemTxFormat format = proxyHistory ? NativeSystemTxFormat.ContractV6 : NativeSystemTxFormat.ContractV4;
         EezChainRules rules = FollowerRules(source, format);
         using IContainer container = NativeFollowerContainer(source, rules);
         BlockHeader parent = NativeFollowerParent(container, source, rules);
-        NativeHistoryEnvelope envelope = format == NativeSystemTxFormat.ContractV6
-            ? NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)])
-            : NativeHistoryEnvelope.Create(1, [source.Headers[1].Hash!.ValueHash256]);
-        ReadOnlyMemory<byte>[] ordinary = import ? [envelope.Encode()] : [];
-        byte[] operations = OperationsPayload.Encode([
-            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, ordinary),
-            new OperationsRun(5, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
-        DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
-        L1Anchor settling = source.Anchor(2) with { ParentHash = source.Headers[2].ParentHash };
-        DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
-            new DerivationInputs(0, parent.MixHash!, parent, settling, false) { ExecutionParent = parent }, CancellationToken.None);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(derived.Length, Is.EqualTo(6));
-            foreach (DerivedBlock block in derived)
-                if (proxyHistory)
-                    Assert.That(block.NativeOriginFromParent, Is.True, "upgradeable history is read from each actual parent during execution");
-                else
-                    Assert.That(block.PrevRandao, Is.EqualTo(source.Headers[import ? 1UL : 0UL].MixHash),
-                        "the follower must retain the recorded optional import instead of recomputing producer choice");
-            Assert.That(container.Resolve<IDerivedBlockExecutor>(), Is.TypeOf<NativeDerivedBlockExecutor>());
-        }
         TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(format));
         try
         {
+            NativeHistoryEnvelope envelope = format.UsesProxyHistory()
+                ? NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)])
+                : NativeHistoryEnvelope.Create(1, [source.Headers[1].Hash!.ValueHash256]);
+            ReadOnlyMemory<byte>[] ordinary = import ? [envelope.Encode()] : [];
+            byte[] operations = OperationsPayload.Encode([
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, ordinary),
+                new OperationsRun(5, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
+            DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
+            L1Anchor settling = source.Anchor(2) with { ParentHash = source.Headers[2].ParentHash };
+            DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
+                new DerivationInputs(0, parent.MixHash!, parent, settling, false) { ExecutionParent = parent }, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(derived.Length, Is.EqualTo(6));
+                foreach (DerivedBlock block in derived)
+                    if (format.UsesProxyHistory())
+                        Assert.That(block.NativeOriginFromParent, Is.True, "upgradeable history is read from each actual parent during execution");
+                    else
+                        Assert.That(block.PrevRandao, Is.EqualTo(source.Headers[import ? 1UL : 0UL].MixHash),
+                            "the follower must retain the recorded optional import instead of recomputing producer choice");
+                Assert.That(container.Resolve<IDerivedBlockExecutor>(), Is.TypeOf<NativeDerivedBlockExecutor>());
+            }
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
             Block executed = await session.ExecuteAsync(parent, derived[0]);
             using (Assert.EnterMultipleScope())
@@ -111,33 +111,35 @@ public partial class RollupXGenesisTests
 
     [Test]
     [NonParallelizable]
-    public async Task NativeFollower_UpgradedHistoryDoesNotStoreImport_NextBlockReadsActualParent()
+    public async Task NativeFollower_UpgradedHistoryDoesNotStoreImport_NextBlockReadsActualParent(
+        [Values(6, 7)] int version)
     {
+        NativeSystemTxFormat format = (NativeSystemTxFormat)version;
         using NativeHistoryTestSource source = CreateHistorySource();
-        EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV6);
+        EezChainRules rules = FollowerRules(source, format);
         using IContainer container = NativeFollowerContainer(source, rules);
         BlockHeader parent = NativeFollowerParent(container, source, rules, implementation: "no-op", number: 6);
-        Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000).WithValue(0)
-            .WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[] history = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]).Encode();
-        byte[] appBytes = TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes;
-        byte[] operations = OperationsPayload.Encode([
-            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { history }),
-            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { appBytes }),
-            new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
-        DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
-        DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
-            new DerivationInputs(0, parent.MixHash!, parent, source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash }, false)
-            { ExecutionParent = parent }, CancellationToken.None);
-        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(NativeSystemTxFormat.ContractV6));
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(format));
         try
         {
+            Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithGasLimit(100_000).WithValue(0)
+                .WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            byte[] history = NativeHistoryEnvelope.CreateBlocks(1, [new(1, source.Headers[1].Hash!.ValueHash256)]).Encode();
+            byte[] appBytes = TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes;
+            byte[] operations = OperationsPayload.Encode([
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { history }),
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { appBytes }),
+                new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
+            DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
+            DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
+                new DerivationInputs(0, parent.MixHash!, parent, source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash }, false)
+                { ExecutionParent = parent }, CancellationToken.None);
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
             Block first = await session.ExecuteAsync(parent, derived[0]);
             Assert.That(first.MixHash, Is.EqualTo(source.Headers[1].MixHash), "the recorded import selects this block's origin even when storage stays empty");
             PersistFollowerBlock(container, parent, first);
             container.Resolve<IStateReader>().GetStorage(first.Header, EezConstants.L1HistoryAddress, (UInt256)1, out UInt256 endpoint);
-            Assert.That(endpoint, Is.Zero, "precondition: the upgraded implementation did not publish the requested endpoint");
+            Assert.That(endpoint, Is.EqualTo(UInt256.Zero), "precondition: the upgraded implementation did not publish the requested endpoint");
             Block second = await session.ExecuteAsync(first.Header, derived[1]);
             UInt256 observed = PersistFollowerBlock(container, first.Header, second);
             using (Assert.EnterMultipleScope())
@@ -151,33 +153,35 @@ public partial class RollupXGenesisTests
 
     [Test]
     [NonParallelizable]
-    public async Task NativeFollower_UpgradeResetsHistoryBeforeRetainedRange_ExpandsEvidenceBeforeNextExecution()
+    public async Task NativeFollower_UpgradeResetsHistoryBeforeRetainedRange_ExpandsEvidenceBeforeNextExecution(
+        [Values(6, 7)] int version)
     {
+        NativeSystemTxFormat format = (NativeSystemTxFormat)version;
         using NativeHistoryTestSource source = CreateHistorySource();
-        EezChainRules rules = FollowerRules(source, NativeSystemTxFormat.ContractV6);
+        EezChainRules rules = FollowerRules(source, format);
         using IContainer container = NativeFollowerContainer(source, rules);
         BlockHeader parent = NativeFollowerParent(container, source, rules, implementation: "reset", importedEndpoint: 1, number: 6);
-        Transaction reset = Build.A.Transaction.WithChainId(1).WithTo(EezConstants.L1HistoryAddress).WithNonce(0).WithValue(0)
-            .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithNonce(1).WithValue(0)
-            .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[] operations = OperationsPayload.Encode([
-            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(reset, RlpBehaviors.SkipTypedWrapping).Bytes }),
-            new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes }),
-            new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
-        DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
-        L1Anchor anchor = source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash };
-        DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
-            new DerivationInputs(0, parent.MixHash!, parent, anchor, false) { ExecutionParent = parent }, CancellationToken.None);
-        NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
-        await history.Prepare(1, source.Anchor(5), CancellationToken.None);
-        NativeL1HeaderChain borrowed = history.Read();
-        List<ulong> reads = [];
-        source.OnRead = reads.Add;
-        Assert.That(borrowed.FirstNumber, Is.EqualTo(1UL), "precondition: genesis history is outside the retained range");
-        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(NativeSystemTxFormat.ContractV6));
+        TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(format));
         try
         {
+            Transaction reset = Build.A.Transaction.WithChainId(1).WithTo(EezConstants.L1HistoryAddress).WithNonce(0).WithValue(0)
+                .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction app = Build.A.Transaction.WithChainId(1).WithTo(TestItem.AddressB).WithNonce(1).WithValue(0)
+                .WithGasLimit(100_000).WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            byte[] operations = OperationsPayload.Encode([
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(reset, RlpBehaviors.SkipTypedWrapping).Bytes }),
+                new OperationsRun(1, Address.Zero, ReadOnlyMemory<byte>.Empty, new ReadOnlyMemory<byte>[] { TxDecoder.Instance.Encode(app, RlpBehaviors.SkipTypedWrapping).Bytes }),
+                new OperationsRun(4, Address.Zero, ReadOnlyMemory<byte>.Empty, [])]);
+            DecodedBatch batch = container.Resolve<IBatchDerivation>().Decode(NativeStream.Encode(1, operations, []));
+            L1Anchor anchor = source.Anchor(3) with { ParentHash = source.Headers[3].ParentHash };
+            DerivedBlock[] derived = await batch.DeriveAsync(new ProducingSlice(0, 0),
+                new DerivationInputs(0, parent.MixHash!, parent, anchor, false) { ExecutionParent = parent }, CancellationToken.None);
+            NativeCanonicalHistory history = container.Resolve<NativeCanonicalHistory>();
+            await history.Prepare(1, source.Anchor(5), CancellationToken.None);
+            NativeL1HeaderChain borrowed = history.Read();
+            List<ulong> reads = [];
+            source.OnRead = reads.Add;
+            Assert.That(borrowed.FirstNumber, Is.EqualTo(1UL), "precondition: genesis history is outside the retained range");
             using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
             Block first = await session.ExecuteAsync(parent, derived[0]);
             Assert.That(first.MixHash, Is.EqualTo(source.Headers[1].MixHash));
@@ -362,7 +366,7 @@ public partial class RollupXGenesisTests
         using (state.BeginScope(IWorldState.PreGenesis))
         {
             state.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
-            if (rules.NativeFormat == NativeSystemTxFormat.ContractV6)
+            if (rules.NativeFormat.UsesProxyHistory())
             {
                 NativeHistoryFixtures.InstallProxy(state);
                 if (implementation is not null)

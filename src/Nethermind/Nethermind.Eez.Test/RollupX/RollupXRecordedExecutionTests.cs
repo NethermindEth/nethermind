@@ -398,13 +398,13 @@ public class RollupXExecutionDataTests
         Assert.That(RollupXRecordedExecutionTests.SelectedBlockCount(new Begin { AnchorNumber = anchor }, new Finalize { FromBlock = from, ToBlock = to }),
             Is.EqualTo(expected), "updated recordings need no fixed 100/115-block counts in the adapter");
 
-    [TestCase(5UL, 7UL, 9UL, TestName = "SelectedBlockCount_GapAfterAnchor_Rejects")]
-    [TestCase(5UL, 6UL, 5UL, TestName = "SelectedBlockCount_ReversedRange_Rejects")]
-    [TestCase(5UL, 6UL, 4102UL, TestName = "SelectedBlockCount_OverlargeRange_Rejects")]
-    [TestCase(ulong.MaxValue, 0UL, 1UL, TestName = "SelectedBlockCount_AnchorOverflow_Rejects")]
-    public void SelectedBlockCount_InvalidRange_RejectsBeforeExecution(ulong anchor, ulong from, ulong to) =>
+    [TestCase(5UL, 7UL, 9UL, typeof(MultipleAssertException), TestName = "SelectedBlockCount_GapAfterAnchor_Rejects")]
+    [TestCase(5UL, 6UL, 5UL, typeof(MultipleAssertException), TestName = "SelectedBlockCount_ReversedRange_Rejects")]
+    [TestCase(5UL, 6UL, 4102UL, typeof(AssertionException), TestName = "SelectedBlockCount_OverlargeRange_Rejects")]
+    [TestCase(ulong.MaxValue, 0UL, 1UL, typeof(MultipleAssertException), TestName = "SelectedBlockCount_AnchorOverflow_Rejects")]
+    public void SelectedBlockCount_InvalidRange_RejectsBeforeExecution(ulong anchor, ulong from, ulong to, Type error) =>
         Assert.That(() => RollupXRecordedExecutionTests.SelectedBlockCount(new Begin { AnchorNumber = anchor }, new Finalize { FromBlock = from, ToBlock = to }),
-            Throws.TypeOf<MultipleAssertException>(), "malformed baseline ranges cannot change or expand execution coverage");
+            Throws.TypeOf(error), "malformed baseline ranges cannot change or expand execution coverage");
 
     [TestCase("../other.json", TestName = "ReadSelected_ParentPath_Rejects")]
     [TestCase("sub/other.json", TestName = "ReadSelected_Subdirectory_Rejects")]

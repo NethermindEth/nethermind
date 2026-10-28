@@ -51,7 +51,7 @@ public partial class EezL2SystemCallsTests
                 if (selection == "sparse")
                 {
                     state.Get(new StorageCell(EezConstants.L1HistoryAddress, NativeHistoryBlockExecutor.HashSlot(100)), out UInt256 omittedHash);
-                    Assert.That(omittedHash, Is.Zero, "the ancestry bridge is authenticated but is not automatically published");
+                    Assert.That(omittedHash, Is.EqualTo(UInt256.Zero), "the ancestry bridge is authenticated but is not automatically published");
                 }
             }
         });
@@ -62,7 +62,7 @@ public partial class EezL2SystemCallsTests
         {
             Address replacement = TestItem.AddressC;
             JsonElement alloc = StatelessFixtures.ReadJson("rollupx/native-profile-v6", "genesis.json").GetProperty("alloc");
-            byte[] runtime = Bytes.FromHexString(alloc.GetProperty(NativeProxyHistory.ImplementationAddress.ToString(false, false)).GetProperty("code").GetString()!);
+            byte[] runtime = Bytes.FromHexString(alloc.GetProperty(NativeProxyHistory.ImplementationAddress.ToString()).GetProperty("code").GetString()!);
             state.CreateAccount(replacement, 0, 1);
             state.InsertCode(replacement, runtime, Osaka.Instance);
             state.Set(new StorageCell(EezConstants.L1HistoryAddress, NativeProxyHistory.ImplementationSlot), new UInt256(replacement.Bytes, isBigEndian: true));
