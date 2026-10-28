@@ -21,7 +21,7 @@ public interface IBaseFeeCalculator
 /// <remarks>
 /// Under EIP-8198 the maximum per-block change is <c>seconds_elapsed / (BaseFeeMaxChangeDenominator × 12 × slots_elapsed)</c>,
 /// the slot duration read from the spacing of the child and its parent over 96: 1/8 at 12 s slots and 5/48 at 10 s slots,
-/// capped at the whole base fee (execution-specs#3873). The multiplication comes before the division.
+/// capped at the EIP-1559 maximum change (EIP-8198). The multiplication comes before the division.
 /// </remarks>
 public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 {
@@ -40,8 +40,9 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             UInt256 maxChangeDenominator = specFor1559.BaseFeeMaxChangeDenominator;
             if (specFor1559.IsEip8198Enabled && TryGetSlotSpacing(parent, timestamp, slotNumber, out ulong secondsElapsed, out ulong slotsElapsed))
             {
-                maxChangeDenominator *= (UInt256)Eip8198Constants.BaseFeeReferenceSlotSeconds * slotsElapsed;
-                maxChangeNumerator = UInt256.Min(secondsElapsed, maxChangeDenominator);
+                UInt256 referenceSeconds = (UInt256)Eip8198Constants.BaseFeeReferenceSlotSeconds * slotsElapsed;
+                maxChangeDenominator *= referenceSeconds;
+                maxChangeNumerator = UInt256.Min(secondsElapsed, referenceSeconds);
             }
 
             if (parent.GasUsed == parentGasTarget)

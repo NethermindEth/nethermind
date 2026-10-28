@@ -10,6 +10,6 @@ public class Constants
     public const string DEFAULT_ARCHIVE_NAME = "fixtures.tar.gz";
 
     // Heze EIP-7805 and EIP-8198 fixtures ship separately from the default release.
-    public const string FOCIL_ARCHIVE_VERSION = "tests-heze-devnet@v2.0.0";
+    public const string FOCIL_ARCHIVE_VERSION = "tests-heze-devnet@v3.0.0";
     public const string FOCIL_ARCHIVE_NAME = "fixtures_heze-devnet.tar.gz";
 }

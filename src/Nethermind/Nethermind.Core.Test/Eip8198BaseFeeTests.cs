@@ -14,7 +14,7 @@ namespace Nethermind.Core.Test;
 
 /// <summary>
 /// EIP-8198 derives the maximum per-block base fee change from the spacing of a block and its parent:
-/// <c>seconds_elapsed / (8 × 12 × slots_elapsed)</c>, capped at the whole base fee.
+/// <c>seconds_elapsed / (8 × 12 × slots_elapsed)</c>, capped at the EIP-1559 maximum change.
 /// </summary>
 [TestFixture]
 public class Eip8198BaseFeeTests
@@ -128,6 +128,7 @@ public class Eip8198BaseFeeTests
         {
             Assert.That(Calculate(spec, 1_200_000_000, BlockGasLimit, 12, 1), Is.EqualTo((UInt256)1_224_000_000));
             Assert.That(Calculate(spec, 1_200_000_000, BlockGasLimit, 10, 1), Is.EqualTo((UInt256)1_220_000_000));
+            Assert.That(Calculate(spec, 1_200_000_000, BlockGasLimit, 120, 1), Is.EqualTo((UInt256)1_224_000_000));
         }
     }
 
@@ -166,19 +167,13 @@ public class Eip8198BaseFeeTests
         }
     }
 
-    // At more than 96 s per slot the change is capped at the whole base fee (execution-specs#3873).
-    [TestCase(0UL, 0UL, TestName = "Empty parent falls to zero")]
-    [TestCase(BlockGasLimit, 2_000_000_000UL, TestName = "Full parent doubles")]
-    [TestCase(GasTarget / 2, 500_000_000UL, TestName = "Quarter-full parent halves")]
-    public void Spacing_beyond_96s_per_slot_is_capped_at_the_whole_base_fee(ulong gasUsed, ulong expected)
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Calculate(Enabled, 1_000_000_000, gasUsed, 96, 1), Is.EqualTo((UInt256)expected), "96s");
-            Assert.That(Calculate(Enabled, 1_000_000_000, gasUsed, 200, 1), Is.EqualTo((UInt256)expected), "200s");
-            Assert.That(Calculate(Enabled, 1_000_000_000, gasUsed, 1_000_000, 2), Is.EqualTo((UInt256)expected), "500 000s per slot");
-        }
-    }
+    [Test]
+    public void Spacing_at_or_above_12s_per_slot_keeps_the_eip1559_cap(
+        [Values(0UL, BlockGasLimit, GasTarget / 2)] ulong gasUsed,
+        [Values(12UL, 13UL, 96UL, 200UL)] ulong slotSeconds,
+        [Values(1UL, 2UL)] ulong slotsElapsed) =>
+        Assert.That(Calculate(Enabled, 1_000_000_000, gasUsed, slotSeconds * slotsElapsed, slotsElapsed),
+            Is.EqualTo(Reference(1_000_000_000, gasUsed, 1, 8)));
 
     [Test]
     public void Multiplication_does_not_overflow_256_bits()
