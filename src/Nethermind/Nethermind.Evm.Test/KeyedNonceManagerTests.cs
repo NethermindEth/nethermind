@@ -176,10 +176,13 @@ public class KeyedNonceManagerTests
     {
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: ulong.MaxValue);
 
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue));
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)9), Is.EqualTo(ulong.MaxValue));
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)9], nonceSeq: ulong.MaxValue - 1), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue));
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)9), Is.EqualTo(ulong.MaxValue));
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)9], nonceSeq: ulong.MaxValue - 1), Is.False);
+        }
     }
 
     [Test]
@@ -265,8 +268,11 @@ public class KeyedNonceManagerTests
     {
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: 0);
 
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)7, (UInt256)9], nonceSeq: ulong.MaxValue), Is.True);
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: ulong.MaxValue), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)7, (UInt256)9], nonceSeq: ulong.MaxValue), Is.True);
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: ulong.MaxValue), Is.False);
+        }
     }
 
     [Test]
