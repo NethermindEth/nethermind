@@ -280,8 +280,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: false);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.LessThanOrEqualTo(batch[0].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                        }
                     }
                 });
 
@@ -292,8 +295,11 @@ namespace Nethermind.Db.Test.LogIndex
                         BlockReceipts[] batch = batches[i];
                         await AddReceiptsAsync(setStorage, [batch], isBackwardsSync: true);
 
-                        Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
-                        Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(setStorage.MinBlockNumber, Is.EqualTo(batch[^1].BlockNumber));
+                            Assert.That(setStorage.MaxBlockNumber, Is.GreaterThanOrEqualTo(batch[0].BlockNumber));
+                        }
                     }
                 });
 

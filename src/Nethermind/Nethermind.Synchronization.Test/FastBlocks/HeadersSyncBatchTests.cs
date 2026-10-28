@@ -17,7 +17,10 @@ public class HeadersSyncBatchTests
             RequestSize = 20,
         };
 
-        Assert.That(batch.EndNumber, Is.EqualTo(29));
-        Assert.That(batch.MinNumber, Is.EqualTo(29));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.EndNumber, Is.EqualTo(29));
+            Assert.That(batch.MinNumber, Is.EqualTo(29));
+        }
     }
 }

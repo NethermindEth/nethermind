@@ -70,8 +70,11 @@ namespace Nethermind.Merge.Plugin.Test
             MergeRewardCalculator calculator = new(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher);
             BlockReward[] rewards = calculator.CalculateRewards(block);
 
-            Assert.That(rewards.Length, Is.EqualTo(1));
-            Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rewards.Length, Is.EqualTo(1));
+                Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
+            }
 
             rewards = calculator.CalculateRewards(block2);
             Assert.That(rewards.Length, Is.EqualTo(0));

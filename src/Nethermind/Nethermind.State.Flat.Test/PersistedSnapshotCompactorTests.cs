@@ -109,8 +109,11 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
+            }
 
             for (int i = 1; i <= n; i++)
             {
@@ -118,15 +121,20 @@ public class PersistedSnapshotCompactorTests
                     $"Account from block {i} missing");
             }
 
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
             Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
 
             for (int i = 1; i <= n; i++)
             {
-                Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, out UInt256? slot), Is.True,
-                    $"Slot {i} must survive merge");
-                Assert.That(slot, Is.EqualTo((UInt256)((byte)i) << 248),
-                    $"Slot {i} value mismatch");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, out UInt256? slot), Is.True,
+                        $"Slot {i} must survive merge");
+                    Assert.That(slot, Is.EqualTo((UInt256)((byte)i) << 248),
+                        $"Slot {i} value mismatch");
+                }
             }
         }
         finally { compacted!.Dispose(); }
@@ -186,7 +194,7 @@ public class PersistedSnapshotCompactorTests
             ValueHash256 addrHash = ValueKeccak.Compute(TestItem.AddressA.Bytes);
             ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(TestItem.AddressA);
 
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(bloom.MightContain(addrKey), Is.True, "Address key");
                 Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotIndex)), Is.True, "Slot key");
@@ -196,7 +204,7 @@ public class PersistedSnapshotCompactorTests
                     "Storage-trie compact");
                 Assert.That(bloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(in addrHash, in fallbackPath)), Is.True,
                     "Storage-trie fallback");
-            });
+            }
         }
     }
 
@@ -251,7 +259,9 @@ public class PersistedSnapshotCompactorTests
             using WholeReadSession session = compacted!.BeginWholeReadSession();
             WholeReadSessionReader reader = session.CreateReader();
             ushort[]? mergedIds = TestFixtureHelpers.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
             Assert.That(mergedIds, Is.Not.Null);
+#pragma warning restore NUnit2045
             Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
                 "Compacted ref_ids must equal the union of source base blob-arena ids");
         }
@@ -269,7 +279,9 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200));
                 }))
                 .SetName("Merge_AccountOverride");
@@ -289,10 +301,13 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStateNodeRlp(pathA, out byte[]? rlpA), Is.True);
-                    Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC0 }), "State node only in older source must survive");
-                    Assert.That(s.TryLoadStateNodeRlp(pathB, out byte[]? rlpB), Is.True);
-                    Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Overlapping state node — newer RLP must win");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStateNodeRlp(pathA, out byte[]? rlpA), Is.True);
+                        Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC0 }), "State node only in older source must survive");
+                        Assert.That(s.TryLoadStateNodeRlp(pathB, out byte[]? rlpB), Is.True);
+                        Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Overlapping state node — newer RLP must win");
+                    }
                 }))
                 .SetName("Merge_AdvanceOrder_StateTopNodes");
         }
@@ -311,10 +326,13 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathA, out byte[]? rlpA), Is.True);
-                    Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Storage node only in older source must survive");
-                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathB, out byte[]? rlpB), Is.True);
-                    Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Overlapping storage node — newer RLP must win");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathA, out byte[]? rlpA), Is.True);
+                        Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Storage node only in older source must survive");
+                        Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathB, out byte[]? rlpB), Is.True);
+                        Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Overlapping storage node — newer RLP must win");
+                    }
                 }))
                 .SetName("Merge_AdvanceOrder_StorageNodes");
         }
@@ -339,12 +357,15 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, topPath, out byte[]? topRlp), Is.True);
-                    Assert.That(topRlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Top sub-tag (active==1) must survive");
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, compactPath, out byte[]? compactRlp), Is.True);
-                    Assert.That(compactRlp, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Compact sub-tag (active==2) — newer wins");
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, fallbackPath, out byte[]? fallbackRlp), Is.True);
-                    Assert.That(fallbackRlp, Is.EqualTo(new byte[] { 0xC1, 0x82 }), "Fallback sub-tag (active==1) must survive");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, topPath, out byte[]? topRlp), Is.True);
+                        Assert.That(topRlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Top sub-tag (active==1) must survive");
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, compactPath, out byte[]? compactRlp), Is.True);
+                        Assert.That(compactRlp, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Compact sub-tag (active==2) — newer wins");
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, fallbackPath, out byte[]? fallbackRlp), Is.True);
+                        Assert.That(fallbackRlp, Is.EqualTo(new byte[] { 0xC1, 0x82 }), "Fallback sub-tag (active==1) must survive");
+                    }
                 }))
                 .SetName("Merge_SingleSourceSubTag_AllTiers");
         }
@@ -369,7 +390,9 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
 
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
@@ -403,7 +426,9 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryLoadStateNodeRlp(path, out byte[]? rlp), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Newer state-node RLP wins");
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100));
@@ -425,10 +450,13 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStateNodeRlp(p1, out byte[]? r1), Is.True);
-                    Assert.That(r1, Is.EqualTo(new byte[] { 0xC0 }));
-                    Assert.That(s.TryLoadStateNodeRlp(p2, out byte[]? r2), Is.True);
-                    Assert.That(r2, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStateNodeRlp(p1, out byte[]? r1), Is.True);
+                        Assert.That(r1, Is.EqualTo(new byte[] { 0xC0 }));
+                        Assert.That(s.TryLoadStateNodeRlp(p2, out byte[]? r2), Is.True);
+                        Assert.That(r2, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                    }
                 }))
                 .SetName("Merge_PreservesNonOverlapping");
         }
@@ -444,10 +472,13 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.False, "Older slot must be cleared by newer destruct");
-                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
-                    Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
-                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slot1), Is.False, "Older slot must be cleared by newer destruct");
+                        Assert.That(s.TryGetSlot(TestItem.AddressA, 2, out UInt256? slot2), Is.True);
+                        Assert.That(slot2, Is.EqualTo((UInt256)(0x99) << 248));
+                        Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
+                    }
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");
         }
@@ -480,9 +511,12 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, storagePath, out byte[]? rlp), Is.True,
-                        "Storage trie node must survive self-destruct of the account");
-                    Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, storagePath, out byte[]? rlp), Is.True,
+                            "Storage trie node must survive self-destruct of the account");
+                        Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                    }
                 }))
                 .SetName("Merge_SelfDestruct_StorageNodesKept");
         }
@@ -501,7 +535,9 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
+#pragma warning restore NUnit2045
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100), "Account-only EOA copied verbatim");
                     Assert.That(s.TryGetSlot(TestItem.AddressA, 1, out UInt256? slotA), Is.False, "EOA has no slots");
 
@@ -612,8 +648,10 @@ public class PersistedSnapshotCompactorTests
         }
         else
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True,
                 "Expected a compacted snapshot");
+#pragma warning restore NUnit2045
             Assert.That(compacted!.From.BlockNumber, Is.EqualTo(expectedFromBlock));
             Assert.That(compacted.To.BlockNumber, Is.EqualTo(expectedToBlock));
             compacted.Dispose();
@@ -670,11 +708,14 @@ public class PersistedSnapshotCompactorTests
             "Expected a large-compacted snapshot at block 16");
         using (compacted)
         {
-            Assert.That(compacted!.To.BlockNumber, Is.EqualTo(16));
-            Assert.That(compacted.From.BlockNumber, Is.EqualTo(expectedFromBlock),
-                persistedBlock == 0
-                    ? "Unclamped: the walk follows the [0,8] large-compacted edge down to From=0"
-                    : "Clamped: the below-P [0,8] edge is rejected and the walk wins at From=P");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.To.BlockNumber, Is.EqualTo(16));
+                Assert.That(compacted.From.BlockNumber, Is.EqualTo(expectedFromBlock),
+                    persistedBlock == 0
+                        ? "Unclamped: the walk follows the [0,8] large-compacted edge down to From=0"
+                        : "Clamped: the below-P [0,8] edge is rejected and the walk wins at From=P");
+            }
         }
     }
 
@@ -744,21 +785,24 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(prev, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
         using (compacted)
         {
-            Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
-            Assert.That(sharedResult, Is.EqualTo(newStateRlp),
-                "Overlapping state-node path must resolve to newest writer's RLP");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
+                Assert.That(sharedResult, Is.EqualTo(newStateRlp),
+                    "Overlapping state-node path must resolve to newest writer's RLP");
 
-            Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
-            Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
-                "State node only in the oldest source must survive the merge with its original RLP");
+                Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
+                Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
+                    "State node only in the oldest source must survive the merge with its original RLP");
 
-            Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
-            Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
-                "State node only in the newest source must survive the merge with its original RLP");
+                Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
+                Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
+                    "State node only in the newest source must survive the merge with its original RLP");
 
-            Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
-            Assert.That(storageResult, Is.EqualTo(newStorageRlp),
-                "Overlapping storage-node path must resolve to newest writer's RLP");
+                Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
+                Assert.That(storageResult, Is.EqualTo(newStorageRlp),
+                    "Overlapping storage-node path must resolve to newest writer's RLP");
+            }
         }
     }
 
@@ -808,7 +852,7 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(s2, SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? compacted), Is.True);
         using (compacted)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < accountCount; i++)
                 {
@@ -823,7 +867,7 @@ public class PersistedSnapshotCompactorTests
                             $"Self-destruct flag for account {i} must survive the staged DenseByteIndex merge");
                     }
                 }
-            });
+            }
         }
     }
 
@@ -871,9 +915,12 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True);
         try
         {
-            Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
-                "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
-            Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(29),
+                    "startingBlockNumber must be (blockNumber - alignment) — the left edge of the window the offset-shifted alignment trigger selects");
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(45));
+            }
             Assert.That(compacted.To.BlockNumber - compacted.From.BlockNumber, Is.EqualTo(16),
                 "compacted span must equal alignment, not (blockNumber mod alignment)");
         }
@@ -977,8 +1024,11 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(tip, SnapshotTier.PersistedCompactSized, out PersistedSnapshot? compactSized), Is.True);
         try
         {
-            Assert.That(compactSized!.From.BlockNumber, Is.EqualTo(0));
-            Assert.That(compactSized.To.BlockNumber, Is.EqualTo(4));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(compactSized!.From.BlockNumber, Is.EqualTo(0));
+                Assert.That(compactSized.To.BlockNumber, Is.EqualTo(4));
+            }
             for (int i = 1; i <= 4; i++)
                 Assert.That(compactSized.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True, $"account from block {i} missing");
         }
@@ -1044,7 +1094,7 @@ public class PersistedSnapshotCompactorTests
         compactor.DoCompactSnapshot(states[2]); // sub-CompactSize intermediate
         compactor.DoCompactSnapshot(states[8]); // >CompactSize large-boundary merge
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? compacted), Is.True,
                 "sub-CompactSize window must be a PersistedSmallCompacted snapshot");
@@ -1059,7 +1109,7 @@ public class PersistedSnapshotCompactorTests
 
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedSmallCompacted, out _), Is.False,
                 "PersistedLargeCompacted must not resolve from the compacted bucket");
-        });
+        }
     }
 
     /// <summary>
@@ -1094,7 +1144,7 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(states[2], SnapshotTier.PersistedSmallCompacted, out PersistedSnapshot? intermediate), Is.True);
         using (intermediate)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 // Minimal (capacity-1) bloom, but still populated by the merge (Count > 0), not the
                 // Count==0 AlwaysTrue sentinel and not a capacity-sized filter.
@@ -1104,7 +1154,7 @@ public class PersistedSnapshotCompactorTests
                 Assert.That(a1!.Balance, Is.EqualTo((UInt256)100));
                 Assert.That(intermediate.TryGetAccount(TestItem.Addresses[1], out Account? a2), Is.True);
                 Assert.That(a2!.Balance, Is.EqualTo((UInt256)200));
-            });
+            }
         }
     }
 
@@ -1154,7 +1204,9 @@ public class PersistedSnapshotCompactorTests
                 Assert.That(repo.TryLeasePersistedState(states[i], SnapshotTier.PersistedBase, out PersistedSnapshot? baseSnap), Is.True);
                 using (baseSnap)
                 {
+#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
                     Assert.That(ReferenceEquals(baseSnap!.Bloom, shared), Is.True, $"base {i} should share the big merge's bloom");
+#pragma warning restore NUnit2045
                     Assert.That(baseSnap.TryGetAccount(TestItem.Addresses[i - 1], out Account? a), Is.True, $"account from block {i} must still resolve");
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)(i * 100)));
                 }
@@ -1205,7 +1257,9 @@ public class PersistedSnapshotCompactorTests
         Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
         using (big)
         {
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
             Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the big merge is clamped to From=4");
+#pragma warning restore NUnit2045
             Assert.That(repo.TryLeasePersistedState(states[8], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? below), Is.True);
             using (below)
                 Assert.That(ReferenceEquals(below!.Bloom, big.Bloom), Is.False,
@@ -1264,17 +1318,23 @@ public class PersistedSnapshotCompactorTests
                 if (distinct.Add(src.Bloom)) dedupedSum += src.Bloom.Count;
             }
         }
-        Assert.That(distinct.Count, Is.LessThan(12), "precondition: bases [5,8] must share one bloom, so fewer than 12 distinct filters");
-        Assert.That(dedupedSum, Is.LessThan(naiveSum), "precondition: the shared bloom is double-counted by a naive per-source sum");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(distinct.Count, Is.LessThan(12), "precondition: bases [5,8] must share one bloom, so fewer than 12 distinct filters");
+            Assert.That(dedupedSum, Is.LessThan(naiveSum), "precondition: the shared bloom is double-counted by a naive per-source sum");
+        }
 
         compactor.DoCompactSnapshot(states[16], persistedBlockNumber: 4);
 
         Assert.That(repo.TryLeasePersistedState(states[16], SnapshotTier.PersistedLargeCompacted, out PersistedSnapshot? big), Is.True);
         using (big)
         {
-            Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the merge is clamped to From=4");
-            Assert.That(big.Bloom.Capacity, Is.EqualTo(dedupedSum),
-                "merged bloom capacity must count the shared source bloom once, not once per sharer");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(big!.From.BlockNumber, Is.EqualTo(4), "precondition: the merge is clamped to From=4");
+                Assert.That(big.Bloom.Capacity, Is.EqualTo(dedupedSum),
+                    "merged bloom capacity must count the shared source bloom once, not once per sharer");
+            }
         }
     }
 }

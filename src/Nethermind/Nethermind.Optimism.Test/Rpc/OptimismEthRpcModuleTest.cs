@@ -636,8 +636,11 @@ public class OptimismEthRpcModuleTest
             Assert.That(firstTx["depositReceiptVersion"], Is.Null);
         else
             Assert.That(firstTx["depositReceiptVersion"]!.Value<string>(), Is.EqualTo(expectedDepositVersion));
-        Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
-        Assert.That(secondTx["depositReceiptVersion"], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondTx["hash"]!.Value<string>(), Is.EqualTo(regularTx.Hash!.Bytes.ToHexString(withZeroX: true)));
+            Assert.That(secondTx["depositReceiptVersion"], Is.Null);
+        }
     }
 
     [Test]

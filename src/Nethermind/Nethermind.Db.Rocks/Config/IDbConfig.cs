@@ -10,8 +10,8 @@ namespace Nethermind.Db.Rocks.Config;
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
 public interface IDbConfig : IConfig
 {
+    [ConfigItem(Description = "The size of the block cache shared by the databases that have no block cache of their own, in bytes. The flat state account and storage columns use `FlatDb.BlockCacheSizeBudget` instead.", DefaultValue = "536870912")]
     ulong SharedBlockCacheSize { get; set; }
-    public bool SkipMemoryHintSetting { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
