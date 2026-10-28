@@ -9,6 +9,7 @@
 #:include node-configuration.helpers.cs
 #:include rpc-json.helpers.cs
 #:include resource-sampling.helpers.cs
+#:include transaction-lookup-workload.helpers.cs
 
 using System.Globalization;
 #if !SCRIPT_TEST
@@ -44,7 +45,9 @@ try
     var mode = Get("JB_MODE", reference.Length > 0 ? "compare" : "benchmark");
     if (mode is not ("benchmark" or "compare")) throw new ArgumentException($"unknown JB_MODE '{mode}' (expected benchmark | compare)");
     if (mode == "compare" && reference.Length == 0) throw new ArgumentException("JB_MODE=compare needs a reference node");
+    var lookup = Get("JB_BENCHMARK_CONFIG") == TransactionLookupWorkload.Name;
     var corpus = Get("JB_ETH_CALL_CORPUS", "false");
+    if (lookup && (corpus == "true" || mode != "benchmark")) throw new ArgumentException("Snapshot lookups require benchmark mode without an eth_call corpus");
     if (corpus is not ("true" or "false")) throw new ArgumentException("JB_ETH_CALL_CORPUS must be true or false");
     var seed = Get("JB_SEED", "1"); if (!SeedRegex().IsMatch(seed)) throw new ArgumentException($"JB_SEED must be a non-negative integer, got '{seed}'");
     var method = Get("CORPUS_METHOD", "eth_call");
@@ -66,17 +69,18 @@ try
     }
     Directory.CreateDirectory(output);
     scratch = await BenchmarkPaths.CanonicalAsync(scratch, false, cancellation.Token); BenchmarkPaths.AssertSane(scratch, "SCRATCH_ROOT");
-    var work = Path.Combine(scratch, "jsonbench"); var source = Path.Combine(work, "src"); var io = Path.Combine(work, "io");
+    var work = lookup ? Path.Combine(scratch, "jsonbench", TransactionLookupWorkload.Version) : Path.Combine(scratch, "jsonbench"); var source = Path.Combine(work, "src"); var io = Path.Combine(work, "io");
     var repository = Get("JB_REPO", "https://github.com/NethermindEth/json-bench.git"); var revision = Get("JB_REF", "de1bcfadea47258ccacae2f420141032a82a9ded");
     var tag = UnsafeTagRegex().Replace(revision, "-"); tag = "jsonbench-runner:" + tag[..Math.Min(24, tag.Length)];
-    var fixtures = Path.Combine(source, "rpc-calls", "corpus"); var marker = Path.Combine(work, "prepared");
+    if (lookup) tag += "-" + TransactionLookupWorkload.Version;
+    var fixtures = Path.Combine(source, "rpc-calls", "corpus"); var marker = Path.Combine(work, lookup ? "prepared-" + TransactionLookupWorkload.Version : "prepared");
     var reuse = Get("JB_REUSE_PREPARED", "false") == "true"; var prepared = false; var preparationId = "";
     Environment.SetEnvironmentVariable("GIT_TERMINAL_PROMPT", "0");
     if (reuse)
     {
         var resolved = await Required("git", ["ls-remote", repository, revision]);
         var commit = resolved.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? revision;
-        preparationId = repository + "@" + commit;
+        preparationId = repository + "@" + commit + (lookup ? " " + TransactionLookupWorkload.Version : "");
         if (corpus == "true")
         {
             var canonical = await BenchmarkPaths.CanonicalAsync(corpusPath, true, cancellation.Token);
@@ -109,7 +113,21 @@ try
         }
         var dockerfile = Path.Combine(source, "runner", "Dockerfile");
         if (!File.Exists(dockerfile)) throw new IOException($"json-bench runner Dockerfile not found at {dockerfile}");
+        if (lookup) PatchLookupRunner();
         await Required("docker", ["build", "-q", "-f", dockerfile, "-t", tag, source]);
+    }
+    if (lookup) PatchLookupRunner();
+    using var lookupHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+    var lookupPath = Get("RPC_BENCH_TRANSACTION_LOOKUP_MANIFEST", Path.Combine(output, "transaction-lookup-workload.json"));
+    JsonObject? lookupManifest = null;
+    var lookupHash = "";
+    if (lookup)
+    {
+        lookupManifest = await TransactionLookupWorkload.PrepareAsync(lookupPath, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), cancellation.Token);
+        lookupHash = TransactionLookupWorkload.Hash(lookupPath);
+        var exported = Path.Combine(output, "transaction-lookup-workload.json");
+        if (Path.GetFullPath(exported) != Path.GetFullPath(lookupPath)) File.Copy(lookupPath, exported, overwrite: true);
+        await File.WriteAllTextAsync(Path.Combine(output, "transaction-lookup-workload.sha256"), lookupHash + "\n", cancellation.Token);
     }
     var clients = new YamlSequenceNode { new YamlMappingNode { { "name", label }, { "type", clientType }, { "url", url }, { "timeout", "60s" }, { "max_retries", "3" } } };
     if (reference.Length > 0) clients.Add(new YamlMappingNode { { "name", referenceLabel }, { "type", referenceType }, { "url", reference }, { "timeout", "60s" }, { "max_retries", "3" } });
@@ -117,10 +135,11 @@ try
     var benchmarkName = Get("JB_BENCHMARK_CONFIG"); YamlMappingNode? benchmark = null;
     if (mode == "benchmark")
     {
-        var configPath = benchmarkName.Length == 0 ? "" : Path.IsPathRooted(benchmarkName) ? benchmarkName : benchmarkName.Contains('/') ? Path.Combine(source, benchmarkName) : Path.Combine(source, "config", "benchmark", benchmarkName + ".yaml");
+        var configPath = lookup || benchmarkName.Length == 0 ? "" : Path.IsPathRooted(benchmarkName) ? benchmarkName : benchmarkName.Contains('/') ? Path.Combine(source, benchmarkName) : Path.Combine(source, "config", "benchmark", benchmarkName + ".yaml");
         if (configPath.Length > 0 && !File.Exists(configPath)) throw new IOException($"benchmark_config '{benchmarkName}' not found (looked at {configPath})");
         if (corpus == "true" && !prepared) { Directory.CreateDirectory(fixtures); await Script("prepare-eth-call-corpus.cs", [corpusPath, fixtures]); }
         benchmark = Render(configPath, label, reference.Length > 0 ? referenceLabel : "", corpus == "true" ? Path.Combine(fixtures, "classes.json") : "", method, name => Get(name));
+        if (lookup) TransactionLookupWorkload.Fixtures(lookupManifest!, source, benchmark);
         Save(Path.Combine(io, "benchmark.yaml"), benchmark);
     }
     if (reuse) await File.WriteAllTextAsync(marker, preparationId + "\n", cancellation.Token);
@@ -146,12 +165,14 @@ try
     docker.AddRange(NodeConfiguration.SplitFlags(Get("JB_EXTRA_ARGS")));
     var toolLog = corpus == "true" ? Path.Combine(work, "jsonbench-tool.log") : Path.Combine(output, "jsonbench.log");
     int toolCode;
+    if (lookup) await ValidateLookups("before");
     await using (var sampler = new ResourceSamplerSession(Get("RESOURCE_SAMPLER_CONTAINER"), Get("RESOURCE_SAMPLER_OUT")))
     {
         containerOwned = true;
         toolCode = await BenchmarkFiles.RunCombinedToFileAsync("docker", docker, toolLog, cancellation.Token, echo: corpus != "true");
         containerOwned = false;
     }
+    if (lookup) await ValidateLookups("after");
     if (corpus == "true")
     {
         if (!reuse) Directory.Delete(fixtures, recursive: true);
@@ -210,12 +231,23 @@ try
     {
         if (!Nonempty(Path.Combine(output, "summary.json")) && !Nonempty(Path.Combine(output, "results.csv"))) throw new IOException("json-bench benchmark produced no summary.json or results.csv");
         if (parseFailed) throw new IOException("summary.json exists but could not be parsed");
+        if (lookup) TransactionLookupWorkload.CheckSummary(JsonNode.Parse(File.ReadAllText(Path.Combine(output, "summary.json"))) as JsonObject ?? throw new IOException("Missing lookup summary"));
         if (failPercent > double.Parse(Get("JB_MAX_FAIL_RATE_PCT", "1"), CultureInfo.InvariantCulture)) throw new IOException($"http fail rate {failPercent:F4}% exceeds max_fail_rate_pct={Get("JB_MAX_FAIL_RATE_PCT", "1")}%");
     }
     else if (differences is null || parseFailed) throw new IOException("json-bench compare produced no parseable results");
     else if (Get("JB_FAIL_ON_DIFF", "false") == "true" && differences > 0) throw new IOException($"json-bench compare found {differences} response difference(s) and fail_on_diff is enabled");
     return 0;
 
+    void PatchLookupRunner()
+    {
+        var path = Path.Combine(source, "runner", "generator", "scripts", "k6-script.js");
+        File.WriteAllText(path, TransactionLookupWorkload.Patch(File.ReadAllText(path)));
+    }
+    async Task ValidateLookups(string phase)
+    {
+        foreach (var (endpoint, name) in new[] { (url, "primary"), (reference, "reference") }.Where(pair => pair.Item1.Length > 0))
+            await TransactionLookupWorkload.ValidateAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, endpoint, method, parameters, cancellation.Token), Path.Combine(output, $"transaction-lookup-validation-{phase}-{name}.json"), lookupHash, cancellation.Token);
+    }
     async Task<string> Required(string executable, IEnumerable<string> arguments)
     {
         var result = await BenchmarkProcess.RunAsync(executable, arguments, cancellation.Token);
@@ -236,7 +268,7 @@ try
     }
 }
 catch (OperationCanceledException) { Console.Error.WriteLine("json-bench cancelled."); return 1; }
-catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or FormatException or JsonException or YamlDotNet.Core.YamlException or System.ComponentModel.Win32Exception)
+catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or FormatException or JsonException or HttpRequestException or YamlDotNet.Core.YamlException or System.ComponentModel.Win32Exception)
 { Console.Error.WriteLine($"ERROR: {exception.Message}"); return 1; }
 finally
 {

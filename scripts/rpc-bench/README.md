@@ -1031,3 +1031,30 @@ Run the C# entry points from the repository with .NET 10: `dotnet run --file scr
 | `sample-resources.cs` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI, memory). `memory_avg_bytes`/`memory_peak_bytes` read `memory.current`, which includes the page cache (mostly state DB pages, moved by whatever ran before); `memory_anon_*` is the node's own memory (GC heap and native) and `memory_file_avg_bytes` the page cache, both from `memory.stat` (null when the kernel does not provide it). |
 | `per-category-matrix.cs`, `deep-check-compare.cs` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
 | `cleanup.cs` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
+
+
+## Snapshot-validated transaction lookup workload
+
+For a transaction/receipt lookup A/B, set `benchmark_tool=jsonbench-sweep` and
+`tool_config.benchmark_config=transaction-lookups-snapshot`, with explicit pinned
+baseline/candidate images. This opt-in workload selects 256 distinct nonempty
+blocks starting 64 blocks behind the actual RPC head, rotating first/middle/last
+transaction selection. Selection scans at most 2,048 blocks and fails if either
+lookup is unavailable or inconsistent; it does not use Flood's external samples.
+
+The first arm saves the ordered targets and full reference results under the
+sweep output root. Every subsequent arm/round reuses them and must match the same
+head, canonical block/index/hash and complete transaction/receipt JSON, before
+and after each measured cell. The manifest, SHA-256 and validation reports are
+exported with results. Both endpoints have equal weight and separate metrics.
+
+The pinned json-bench k6 template is patched only for this workload, in a
+versioned runner image, to reject null/error/nonobject/wrong-hash results. The
+cell fails on missing metrics, any HTTP/check failure, incomplete check counts,
+or missing/inconsistent per-method request counts. This does not change other
+workloads' response checks.
+
+Generation and validation run outside the timed load but warm caches. Repeated
+targets and mixed endpoint calls therefore measure warm/steady-state behavior,
+not isolated first-use or cold storage. Non-null results alone do not establish
+receipt encoding or that a particular selective/cache/fallback path executed.
