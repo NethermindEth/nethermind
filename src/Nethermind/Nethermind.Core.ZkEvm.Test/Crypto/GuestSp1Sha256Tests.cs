@@ -40,10 +40,12 @@ public class GuestSp1Sha256Tests
         Assert.That(schedule, Is.EqualTo(Merkle.Sp1Sha256PaddingSchedule.ToArray()));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(0x5a)]
-    public unsafe void Pair_hash_matches_sha256(int seed)
+    [Test]
+    public void Zero_hash_words_are_the_zero_hashes_in_word_order([Range(0, 63)] int level) =>
+        Assert.That(Merkle.Sp1Sha256ZeroHashWords(level), Is.EqualTo(Merkle.SwapBytesInWords(Merkle.ZeroHash(level))));
+
+    [Test]
+    public unsafe void Pair_hash_matches_sha256([Values(0, 1, 0x5a)] int seed, [Values] bool inWordOrder)
     {
         byte[] message = new byte[64];
         if (seed != 0)
@@ -56,11 +58,15 @@ public class GuestSp1Sha256Tests
         UInt256 digest;
         fixed (ulong* w = schedule, h = state)
         {
-            Merkle.LoadSp1Sha256Block(in left, in right, w, h);
+            if (inWordOrder)
+                Merkle.LoadSp1Sha256WordBlock(Merkle.SwapBytesInWords(left), Merkle.SwapBytesInWords(right), w, h);
+            else
+                Merkle.LoadSp1Sha256Block(in left, in right, w, h);
+
             Extend(schedule);
             Compress(schedule, state);
             Compress(Merkle.Sp1Sha256PaddingSchedule.ToArray(), state);
-            digest = Merkle.ReadSp1Sha256Digest(h);
+            digest = inWordOrder ? Merkle.SwapBytesInWords(Merkle.PackSp1Sha256State(h)) : Merkle.ReadSp1Sha256Digest(h);
         }
 
         byte[] actual = new byte[32];

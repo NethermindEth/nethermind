@@ -3,8 +3,7 @@
 
 using System;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -24,6 +23,10 @@ namespace Nethermind.Network.Rlpx.Handshake
         private static readonly int MacBytesSize = MacBitsSize / 8;
 
         private const int EciesOverhead = 65 + 16 + 32; // ephemeral public key + IV + MAC
+
+        // EIP-8 allows arbitrary padding after the auth body; add 100-300 random bytes, as Geth does.
+        private const int Eip8MinPadding = 100;
+        private const int Eip8MaxPadding = 300;
 
         // EIP-8 size prefixes can start with 0x04 and resemble an ECIES public key.
         // Exact legacy lengths avoid an extra ECDH before the EIP-8 attempt.
@@ -85,18 +88,9 @@ namespace Nethermind.Network.Rlpx.Handshake
                     EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
                 };
 
-                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
-                try
-                {
-                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), []);
-                    handshake.AuthPacket = new Packet(packetData);
-                    return handshake.AuthPacket;
-                }
-                finally
-                {
-                    authData.SafeRelease();
-                }
-
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, Serialize(authMessage), []);
+                handshake.AuthPacket = new Packet(packetData);
+                return handshake.AuthPacket;
             }
             else
             {
@@ -107,20 +101,12 @@ namespace Nethermind.Network.Rlpx.Handshake
                     Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new ValueHash256(forSigning))
                 };
 
-                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
-                try
-                {
-                    int size = authData.ReadableBytes + EciesOverhead;
-                    byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), sizeBytes);
-                    handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-                    return handshake.AuthPacket;
-                }
-                finally
-                {
-                    authData.SafeRelease();
-                }
-
+                byte[] authData = Serialize(authMessage, Eip8MinPadding + _cryptoRandom.NextInt(Eip8MaxPadding - Eip8MinPadding + 1));
+                int size = authData.Length + EciesOverhead;
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData, sizeBytes);
+                handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+                return handshake.AuthPacket;
             }
         }
 
@@ -189,15 +175,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                     Nonce = handshake.RecipientNonce
                 };
 
-                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
-                try
-                {
-                    data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), []);
-                }
-                finally
-                {
-                    ackData.SafeRelease();
-                }
+                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, Serialize(ackMessage), []);
             }
             else
             {
@@ -207,17 +185,10 @@ namespace Nethermind.Network.Rlpx.Handshake
                     EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey,
                     Nonce = handshake.RecipientNonce
                 };
-                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
-                try
-                {
-                    int size = ackData.ReadableBytes + EciesOverhead;
-                    byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                    data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), sizeBytes));
-                }
-                finally
-                {
-                    ackData.SafeRelease();
-                }
+                byte[] ackData = Serialize(ackMessage);
+                int size = ackData.Length + EciesOverhead;
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes));
             }
 
             handshake.AckPacket = new Packet(data);
@@ -281,6 +252,22 @@ namespace Nethermind.Network.Rlpx.Handshake
                 _logger.Trace($"{handshake.RemoteNodeId:hide} handshake secrets established (auth: {handshake.AuthPacket.Data.Length} bytes, ack: {handshake.AckPacket.Data.Length} bytes)");
             }
 #endif
+        }
+
+        /// <summary>
+        /// Serializes a handshake message into the plaintext to encrypt, followed by <paramref name="paddingLength"/> random bytes.
+        /// </summary>
+        private byte[] Serialize<T>(T message, int paddingLength = 0) where T : MessageBase
+        {
+            using ArrayPoolSpan<byte> body = _messageSerializationService.Serialize(message);
+            byte[] plainText = new byte[body.Length + paddingLength];
+            ((ReadOnlySpan<byte>)body).CopyTo(plainText);
+            if (paddingLength > 0)
+            {
+                _cryptoRandom.GenerateRandomBytes(plainText.AsSpan(body.Length));
+            }
+
+            return plainText;
         }
 
         public static void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)

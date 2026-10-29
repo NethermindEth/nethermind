@@ -73,9 +73,12 @@ public class NethermindNodeTests
     }
 
     [Test]
-    public async Task Nethermind_ShouldFail_WhenNoConfigProvided()
+    public async Task Nethermind_ShouldFail_WhenNoConfigProvided([Values] bool maskSensitiveData)
     {
-        string[] commandWithoutConfig = new[] { "--config", "nonexistent.json" };
+        const string privatePath = "private-plugin-path-74031";
+        string[] commandWithoutConfig = maskSensitiveData
+            ? ["--config", "nonexistent.json", "--Init.MaskSensitiveData", "true", "--plugins-dir", privatePath]
+            : ["--config", "nonexistent.json"];
 
         await StartContainerAsync(commandWithoutConfig, waitForInit: false, suppressStartFailures: true);
 
@@ -89,9 +92,17 @@ public class NethermindNodeTests
         string cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
 
         string combinedLogs = cleanStdout + cleanStderr;
-        Assert.That(combinedLogs, Does.Contain("Configuration file not found.")
-            .And.Contain("Built-in configurations:")
-            .And.Not.Contain("nonexistent.json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combinedLogs, Does.Contain("Configuration file not found.")
+                .And.Contain("Built-in configurations:")
+                .And.Not.Contain("nonexistent.json"));
+            if (maskSensitiveData)
+            {
+                Assert.That(combinedLogs, Does.Contain("Plugin assemblies folder [redacted] was not found."));
+                Assert.That(combinedLogs, Does.Not.Contain(privatePath));
+            }
+        }
     }
 
     [Test]

@@ -27,7 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class P2PProtocolHandlerTests
     {
@@ -347,7 +347,6 @@ namespace Nethermind.Network.Test.P2P
         [TestCase(false, true)]
         [TestCase(true, false)]
         [TestCase(true, true)]
-        [NonParallelizable]
         public void Hello_diagnostics_mask_peer_identity(bool isOutbound, bool mismatchedIdentity)
         {
             bool previous = SensitiveLogMasking.Enabled;

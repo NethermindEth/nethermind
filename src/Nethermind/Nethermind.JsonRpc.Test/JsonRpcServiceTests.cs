@@ -51,7 +51,7 @@ using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[NonParallelizable]
 [TestFixture]
 public class JsonRpcServiceTests
 {

@@ -87,9 +87,6 @@ namespace Ethereum.Test.Base
             // run, and a fire-and-forget background convert from one test can race another test's files. Long
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
             flatDbConfig.EnableLongFinality = false;
-            // Every test builds its own container, so the default budget allocates a production-sized trie node
-            // cache on the large object heap per test.
-            flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             // Some registered services (e.g. the main processing context) are IAsyncDisposable only;
             // disposing the container synchronously makes Autofac block on them and trace a warning per test.

@@ -58,6 +58,7 @@ ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 string unhandledError = "A critical error has occurred";
 int maskingConfigLoaded = 0;
+SensitiveLogMasking.Enabled = true;
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -426,6 +427,9 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
+
+    foreach (string warning in configProvider.GetObsoleteSettingWarnings())
+        logger.Warn(warning);
 
     return (configProvider, configFile);
 }

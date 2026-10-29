@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using System.ComponentModel;
@@ -71,6 +72,10 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "", IsSensitive = true)]
     string RpcDbUrl { get; set; }
+
+    [Obsolete("Has no effect. Set Db.SharedBlockCacheSize to set the database cache size.")]
+    [ConfigItem(Description = "Deprecated. Has no effect. Use `Db.SharedBlockCacheSize` to set the database cache size.", DefaultValue = "null", HiddenFromDocs = true)]
+    ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
