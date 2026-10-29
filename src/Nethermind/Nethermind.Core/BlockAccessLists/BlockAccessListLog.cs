@@ -30,6 +30,7 @@ public sealed class BlockAccessListLog : IResettable
     private readonly List<int> _sortedEntries = [];
     private readonly List<Item> _items = [];
     private readonly Comparison<int> _compareEntries;
+    private int _sealed;
 
     public BlockAccessListLog() => _compareEntries = CompareEntries;
 
@@ -82,6 +83,13 @@ public sealed class BlockAccessListLog : IResettable
 
         ReadOnlySpan<Item> entries = CollectionsMarshal.AsSpan(_entries);
         foreach (int position in sorted) _items.Add(entries[position]);
+    }
+
+    /// <summary>Seals the log unless a caller already did since it was cleared.</summary>
+    /// <remarks>Threads may race to seal a log; only one seals it, so read <see cref="Items"/> only once they all returned.</remarks>
+    public void SealOnce()
+    {
+        if (Interlocked.Exchange(ref _sealed, 1) == 0) Seal();
     }
 
     /// <summary>The code change a sealed <see cref="Section.Code"/> item refers to.</summary>
@@ -216,6 +224,7 @@ public sealed class BlockAccessListLog : IResettable
         _codeChanges.ClearAndTrim();
         _sortedEntries.ClearAndTrim();
         _items.ClearAndTrim();
+        _sealed = 0;
     }
 
     public void Reset() => Clear();

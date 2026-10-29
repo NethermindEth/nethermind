@@ -28,7 +28,10 @@ namespace Nethermind.Consensus.Processing;
 ///   * <see cref="ParallelTxProcessorWithWorldStateManager"/> rents/returns processors per
 ///     tx index from a bounded pool. Each processor records the indexes it runs into one
 ///     <see cref="BlockAccessListLog"/> for the block, so the block's list merges one log per
-///     processor rather than one per transaction. Each processor keeps a pooled
+///     processor rather than one per transaction. Once the last tx slot is rented, each worker seals
+///     the log of the processor it returns and helps seal those of idle processors, so the logs seal
+///     in parallel while the last transactions run; the post-execution index records into a log of
+///     its own, and the post-execution merge seals whatever is left. Each processor keeps a pooled
 ///     <see cref="ParentReaderLease"/> for the whole block — a snapshot of the parent-state
 ///     world from which the BAL-backed world state reads any value the suggested BAL doesn't
 ///     carry at the current index. The lease is attached per tx. Once the last tx slot is rented,
@@ -168,7 +171,8 @@ public partial class BlockAccessListManager
             {
                 BlockHeader header = _currentBlock.Header;
                 parentReader = processor.GetParentReader(header) ?? RentParentReader(header);
-                if (processor.LogGeneration != _blockGeneration)
+                // The post-execution index runs after the processors sealed their logs, so it records into a log of its own.
+                if (idx == _lastBalIndex || processor.LogGeneration != _blockGeneration)
                 {
                     processor.Recorder.Log = RentLog();
                     processor.LogGeneration = _blockGeneration;
@@ -207,14 +211,42 @@ public partial class BlockAccessListManager
             // No later transaction of the block rents a processor, so this is its last use in the block: release the
             // reader here, on the worker, in parallel with the other workers.
             bool lastUse = idx == _lastBalIndex || (IsTransactionSlot(idx) && Volatile.Read(ref _txRentsLeft) <= 0);
-            if (lastUse) processor.ReleaseParentReader();
+            if (lastUse)
+            {
+                processor.ReleaseParentReader();
+                processor.Recorder.Log.SealOnce();
+            }
             ReturnProcessor(processor);
-            if (lastUse && IsTransactionSlot(idx) && Interlocked.Exchange(ref _keptReadersReleased, 1) == 0) ReleaseKeptParentReaders();
+            if (lastUse && IsTransactionSlot(idx))
+            {
+                if (Interlocked.Exchange(ref _keptReadersReleased, 1) == 0) ReleaseKeptParentReaders();
+                SealIdleLogs();
+            }
+        }
+
+        /// <summary>Seals the logs of idle processors that ran an index of the block.</summary>
+        /// <remarks>
+        /// Runs once no transaction rents a processor, so an idle processor records nothing more in the block. Every
+        /// worker returning its last processor helps, taking other processors off the queue, and
+        /// <see cref="BlockAccessListLog.SealOnce"/> keeps a log from being sealed twice. A processor that ran no index of
+        /// the block still points at a log an earlier block released, which may now be another processor's.
+        /// </remarks>
+        private void SealIdleLogs()
+        {
+            int pooled = Volatile.Read(ref _processorCount);
+            for (int i = 0; i < pooled && _processors.TryDequeue(out TxProcessorWithWorldState? processor); i++)
+            {
+                if (processor.LogGeneration == _blockGeneration) processor.Recorder.Log.SealOnce();
+                _processors.Enqueue(processor);
+            }
         }
 
         private bool IsTransactionSlot(int idx) => idx > 0 && idx < _lastBalIndex;
 
-        /// <remarks>Runs once every index has executed, so no worker still writes a log.</remarks>
+        /// <remarks>
+        /// Runs once every index has executed, so no worker still writes or seals a log. The workers normally sealed all
+        /// but the post-execution log, which returning its processor seals, and the pre-execution one.
+        /// </remarks>
         public ReadOnlySpan<BlockAccessListLog> SealLogs()
         {
             Return(0u);
@@ -225,7 +257,7 @@ public partial class BlockAccessListManager
 
             ParallelUnbalancedWork.For(0, _blockLogs.Count, _blockLogs, static (i, logs) =>
             {
-                logs[i].Seal();
+                logs[i].SealOnce();
                 return logs;
             });
             return CollectionsMarshal.AsSpan(_blockLogs);
