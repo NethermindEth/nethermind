@@ -23,7 +23,7 @@ public class Eth73MessagesTests
         public override string ToString() => $"mode {Mode}, {Size} bytes";
     }
 
-    // ethereum/EIPs#12423 at 19389608, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
+    // ethereum/EIPs#12423 at 3562c912bd, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
     private static IEnumerable<AnnouncementVector> AnnouncementVectors() =>
     [
         new(0, 1, "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a",
@@ -63,7 +63,7 @@ public class Eth73MessagesTests
         "a9627cc76ad0b92ebe067018f96cf3acc2d3411fea2c23441c019c780a88e39a"
     ];
 
-    // ethereum/EIPs#12423 at 19389608, assets/eip-8437/wrapper-vectors.json: full-envelope mode-0 and mode-1 wrappers.
+    // ethereum/EIPs#12423 at 3562c912bd, assets/eip-8437/wrapper-vectors.json: full-envelope mode-0 and mode-1 wrappers.
     [TestCase(Mode0Body, 0, "12d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455",
         "e58082016ba012d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455",
         "f9019307f9018ff9018ca012d976e1d5cc5599f04fc56041652594d399e7a9b62ed268e7df3d01306cc455")]

@@ -246,7 +246,7 @@ mode-0 witnesses. Two bounded local verdict caches hold direct-witness verdicts 
 operation it would run. When the head reaches a target fork whose verifier differs, every held
 aggregate proof and mode-1 wrapper is dropped, mode-0 witnesses are kept only if they re-validate,
 pending transactions left without coverage are evicted, and nothing validated under the previous
-verifier is announced or served. Development chains schedule such a fork with the chainspec
+verifier is announced, served or used to suppress announcements. Development chains schedule such a fork with the chainspec
 parameters `eip8288AggregatedVkTransitionTimestamp` / `eip8288AggregatedVk`, or the geth genesis
 keys `eip8288AggregatedVkTimestamp` / `eip8288AggregatedVk`; the pinned backend verifies only its
 own key, so proofs under any other key fail. These options are devnet-only: EIP-8288 treats
