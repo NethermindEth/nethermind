@@ -152,7 +152,15 @@ public sealed partial class WitnessCode
     /// <summary>Wraps <paramref name="code"/> as it is.</summary>
     internal WitnessCode(ReadOnlyMemory<byte> code) => Code = code;
 
-    public ReadOnlyMemory<byte> Code { get; private set; }
+    public ReadOnlyMemory<byte> Code
+    {
+        get;
+        private set
+        {
+            field = value;
+            _hash = null;
+        }
+    }
 
     public ReadOnlySpan<byte> AsSpan() => Code.Span;
 
