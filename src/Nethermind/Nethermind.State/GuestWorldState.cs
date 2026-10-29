@@ -98,6 +98,8 @@ public sealed partial class GuestWorldState : IWorldState
     private int _lastClearEpoch;
 
     private Dictionary<ValueHash256, byte[]>? _insertedCode;
+    // The code hashes the journal's code entries added to _insertedCode, in journal order.
+    private readonly List<ValueHash256> _codeInserts = [];
     private Dictionary<ValueHash256, byte[]>? _transientCode;
 
     // The code the last bytecode access checked: code resolution checks an account's code and then
@@ -110,14 +112,18 @@ public sealed partial class GuestWorldState : IWorldState
 
     private bool _needsStateRootUpdate;
 
+    /// <summary>Creates a world state that reads and writes through <paramref name="scopeProvider"/>.</summary>
+    /// <param name="scopeProvider">The provider of the state scopes to read and flush through.</param>
     public GuestWorldState(IWorldStateScopeProvider scopeProvider)
     {
         ScopeProvider = scopeProvider;
         _onAccountUpdated = (_, updated) => OnAccountUpdated(updated.Address, updated.Account);
     }
 
+    /// <inheritdoc/>
     public IWorldStateScopeProvider ScopeProvider { get; }
 
+    /// <inheritdoc/>
     public bool IsInScope => _scope is not null;
 
     private IWorldStateScopeProvider.IScope Scope => _scope ?? ThrowOutOfScope();
@@ -126,6 +132,7 @@ public sealed partial class GuestWorldState : IWorldState
     private static IWorldStateScopeProvider.IScope ThrowOutOfScope() =>
         throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
 
+    /// <inheritdoc/>
     public Hash256 StateRoot
     {
         get
@@ -138,11 +145,11 @@ public sealed partial class GuestWorldState : IWorldState
         }
     }
 
-    #region Scope
-
+    /// <inheritdoc/>
     public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser) =>
         TryBeginScope(baseBlock, atTarget: false, out scopeCloser);
 
+    /// <inheritdoc/>
     public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
     {
         ArgumentNullException.ThrowIfNull(targetBlock);
@@ -199,23 +206,22 @@ public sealed partial class GuestWorldState : IWorldState
         }
     }
 
+    /// <inheritdoc/>
     public bool HasStateForBlock(BlockHeader? baseBlock) => ScopeProvider.HasRoot(baseBlock);
 
+    /// <inheritdoc/>
     public bool HasStateForTargetBlock(BlockHeader targetBlock)
     {
         ArgumentNullException.ThrowIfNull(targetBlock);
         return ScopeProvider.HasStateForTargetBlock(targetBlock);
     }
 
+    /// <inheritdoc/>
     public Task HintBal(ReadOnlyBlockAccessList bal) => Scope.HintBal(bal);
 
     /// <summary>Not supported: a Block Access List is applied only by parallel execution, which this state does not serve.</summary>
     public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException($"{nameof(GuestWorldState)} executes blocks sequentially.");
-
-    #endregion
-
-    #region Accounts
 
     /// <summary>Finds the entry of <paramref name="address"/>, loading the account from the trie on first use.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -345,8 +351,10 @@ public sealed partial class GuestWorldState : IWorldState
         _needsStateRootUpdate = true;
     }
 
+    /// <inheritdoc/>
     public Account GetAccount(Address address) => Read(address) ?? Account.TotallyEmpty;
 
+    /// <inheritdoc/>
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
         Account stateAccount = GetAccount(address);
@@ -355,14 +363,19 @@ public sealed partial class GuestWorldState : IWorldState
         return !account.IsTotallyEmpty;
     }
 
+    /// <inheritdoc/>
     public bool IsContract(Address address) => Read(address)?.IsContract ?? false;
 
+    /// <inheritdoc/>
     public bool HasCode(Address address) => Read(address)?.HasCode ?? false;
 
+    /// <inheritdoc/>
     public bool AccountExists(Address address) => Read(address) is not null;
 
+    /// <inheritdoc/>
     public bool IsDeadAccount(Address address) => Read(address)?.IsEmpty ?? true;
 
+    /// <inheritdoc/>
     public bool IsNonZeroAccount(Address address, out bool accountExists)
     {
         Account? account = Read(address);
@@ -370,20 +383,24 @@ public sealed partial class GuestWorldState : IWorldState
         return account is not null && (account.IsContract || account.Nonce != 0);
     }
 
+    /// <inheritdoc/>
     public ulong GetNonce(Address address) => Read(address)?.Nonce ?? 0;
 
+    /// <inheritdoc/>
     public ref readonly UInt256 GetBalance(Address address)
     {
         Account? account = Read(address);
         return ref account is not null ? ref account.Balance : ref _zero;
     }
 
+    /// <inheritdoc/>
     public ref readonly ValueHash256 GetCodeHash(Address address)
     {
         Account? account = Read(address);
         return ref account is not null ? ref account.CodeHash.ValueHash256 : ref Keccak.OfAnEmptyString.ValueHash256;
     }
 
+    /// <inheritdoc/>
     public UInt256 GetOriginalBalance(Address address)
     {
         int index = AccountOf(address);
@@ -392,19 +409,23 @@ public sealed partial class GuestWorldState : IWorldState
         return original?.Balance ?? UInt256.Zero;
     }
 
+    /// <inheritdoc/>
     public void DeleteAccount(Address address) => Change(AccountOf(address), null, HeadDelete);
 
+    /// <inheritdoc/>
     public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         Account account = balance.IsZero && nonce == 0 ? Account.TotallyEmpty : new Account(nonce, balance);
         Change(AccountOf(address), account, HeadNew);
     }
 
+    /// <inheritdoc/>
     public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         if (!AccountExists(address)) CreateAccount(address, balance, nonce);
     }
 
+    /// <inheritdoc/>
     public void CreateEmptyAccountIfDeleted(Address address)
     {
         int index = AccountOf(address);
@@ -416,12 +437,15 @@ public sealed partial class GuestWorldState : IWorldState
             Change(index, Account.TotallyEmpty, HeadRecreateEmpty);
     }
 
+    /// <inheritdoc/>
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) =>
         SetNewBalance(address, in balanceChange, spec, isSubtracting: false, out oldBalance);
 
+    /// <inheritdoc/>
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) =>
         SetNewBalance(address, in balanceChange, spec, isSubtracting: true, out oldBalance);
 
+    /// <inheritdoc/>
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         if (AccountExists(address))
@@ -473,6 +497,7 @@ public sealed partial class GuestWorldState : IWorldState
         Change(index, _accounts[index].Current, HeadTouch);
     }
 
+    /// <inheritdoc/>
     public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         int index = AccountOf(address);
@@ -481,6 +506,7 @@ public sealed partial class GuestWorldState : IWorldState
         Change(index, account.WithChangedNonce(oldNonce + delta), HeadUpdate);
     }
 
+    /// <inheritdoc/>
     public void DecrementNonce(Address address, ulong delta)
     {
         int index = AccountOf(address);
@@ -488,6 +514,7 @@ public sealed partial class GuestWorldState : IWorldState
         Change(index, account.WithChangedNonce(account.Nonce - delta), HeadUpdate);
     }
 
+    /// <inheritdoc/>
     public void SetNonce(Address address, in ulong nonce)
     {
         int index = AccountOf(address);
@@ -495,6 +522,7 @@ public sealed partial class GuestWorldState : IWorldState
         Change(index, account.WithChangedNonce(nonce), HeadUpdate);
     }
 
+    /// <inheritdoc/>
     public void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
     {
         if (balanceChange.IsZero)
@@ -514,19 +542,24 @@ public sealed partial class GuestWorldState : IWorldState
     private static Account ThrowNullAccount(Address address) =>
         throw new InvalidOperationException($"Account {address} is null when updating nonce");
 
-    #endregion
-
-    #region Code
-
+    /// <inheritdoc/>
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         int index = AccountOf(address);
         Account account = Read(index) ?? ThrowNullCodeAccount(address);
         bool inserted = (_insertedCode ??= []).TryAdd(codeHash, code.AsArray());
+        if (inserted)
+        {
+            // Only a first insertion is journaled, so reverting a repeat keeps the code of a creation that stands.
+            PushUndo(UndoKind.Code, _codeInserts.Count);
+            _codeInserts.Add(codeHash);
+        }
+
         SetCodeHash(index, address, account, in codeHash, spec, isGenesis);
         return inserted;
     }
 
+    /// <inheritdoc/>
     public void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
     {
         int index = AccountOf(address);
@@ -535,6 +568,7 @@ public sealed partial class GuestWorldState : IWorldState
         SetCodeHash(index, address, account, in codeHash, spec, isGenesis: false);
     }
 
+    /// <inheritdoc/>
     public void DiscardTransientCode() => _transientCode?.Clear();
 
     private void SetCodeHash(int index, Address address, Account account, in ValueHash256 codeHash, IReleaseSpec spec, bool isGenesis)
@@ -553,6 +587,7 @@ public sealed partial class GuestWorldState : IWorldState
     private static Account ThrowNullCodeAccount(Address address) =>
         throw new InvalidOperationException($"Account {address} is null when updating code hash");
 
+    /// <inheritdoc/>
     public ReadOnlyMemory<byte> GetCode(Address address)
     {
         Account? account = Read(address);
@@ -589,10 +624,6 @@ public sealed partial class GuestWorldState : IWorldState
         _checkedCode = LoadCode(in codeHash);
         _checkedCodeHash = codeHash;
     }
-
-    #endregion
-
-    #region Storage
 
     /// <summary>Finds the entry of <paramref name="cell"/>, loading the slot on first use.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -720,6 +751,7 @@ public sealed partial class GuestWorldState : IWorldState
         return ref slot.Current;
     }
 
+    /// <inheritdoc/>
     public void Get(in StorageCell storageCell, out UInt256 value)
     {
         int index = SlotOf(in storageCell);
@@ -727,6 +759,7 @@ public sealed partial class GuestWorldState : IWorldState
         value = ReadSlot(index);
     }
 
+    /// <inheritdoc/>
     public void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
         int index = SlotOf(in storageCell);
@@ -736,6 +769,7 @@ public sealed partial class GuestWorldState : IWorldState
         else value = ReadSlot(index);
     }
 
+    /// <inheritdoc/>
     public void Set(in StorageCell storageCell, in UInt256 newValue) => SetSlot(SlotOf(in storageCell), in newValue);
 
     private void SetSlot(int index, in UInt256 newValue)
@@ -763,6 +797,7 @@ public sealed partial class GuestWorldState : IWorldState
         _needsStateRootUpdate = true;
     }
 
+    /// <inheritdoc/>
     public void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) => Set(in storageCell, in newValue);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -773,6 +808,7 @@ public sealed partial class GuestWorldState : IWorldState
         _storageToFlush.Add(account);
     }
 
+    /// <inheritdoc/>
     public void ClearStorage(Address address)
     {
         ClearTransientStorage(address);
@@ -840,6 +876,7 @@ public sealed partial class GuestWorldState : IWorldState
     /// <remarks>Only valid where no revert follows, so the revertible clear serves it as well.</remarks>
     public void MarkStorageDestroyed(Address address) => ClearStorage(address);
 
+    /// <inheritdoc/>
     public bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
     {
         int account = AccountOf(storageCell.Address);
@@ -868,10 +905,7 @@ public sealed partial class GuestWorldState : IWorldState
         return true;
     }
 
-    #endregion
-
-    #region Transient storage
-
+    /// <inheritdoc/>
     public void GetTransientState(in StorageCell storageCell, out UInt256 value)
     {
         if (_transientCount != 0 && _transientIndex.TryGetValue(storageCell, out int index))
@@ -883,6 +917,7 @@ public sealed partial class GuestWorldState : IWorldState
         value = default;
     }
 
+    /// <inheritdoc/>
     public void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
     {
         if (newValue.IsZero)
@@ -926,6 +961,7 @@ public sealed partial class GuestWorldState : IWorldState
         }
     }
 
+    /// <inheritdoc/>
     public void ResetTransient()
     {
         _transientIndex.Clear();
@@ -933,10 +969,6 @@ public sealed partial class GuestWorldState : IWorldState
         // Journal entries of the dropped storage no longer have entries to restore.
         _transientGeneration++;
     }
-
-    #endregion
-
-    #region Journal
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref Undo PushUndo(UndoKind kind, int index)
@@ -950,6 +982,7 @@ public sealed partial class GuestWorldState : IWorldState
         return ref undo;
     }
 
+    /// <inheritdoc/>
     public Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
         int position = _journalCount - 1;
@@ -962,6 +995,7 @@ public sealed partial class GuestWorldState : IWorldState
         return new Snapshot(new Snapshot.Storage(position, position), position);
     }
 
+    /// <inheritdoc/>
     public void Restore(Snapshot snapshot) => Restore(snapshot.StateSnapshot);
 
     private void Restore(int position)
@@ -1014,6 +1048,14 @@ public sealed partial class GuestWorldState : IWorldState
                 case UndoKind.Transient:
                     if (undo.Stamp == _transientGeneration) _transients[undo.Index].Value = undo.Value;
                     break;
+                case UndoKind.Code:
+                    {
+                        ValueHash256 codeHash = _codeInserts[undo.Index];
+                        _codeInserts.RemoveAt(undo.Index);
+                        _insertedCode!.Remove(codeHash);
+                        if (_checkedCodeHash == codeHash) _checkedCode = default;
+                        break;
+                    }
             }
 
             undo.Account = null;
@@ -1032,14 +1074,12 @@ public sealed partial class GuestWorldState : IWorldState
     private void ClearJournal()
     {
         _journalCount = 0;
+        _codeInserts.Clear();
         _transactionStarts.Clear();
         _txId = ++_lastTxId;
     }
 
-    #endregion
-
-    #region Commit
-
+    /// <inheritdoc/>
     public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {
         if (tracer.IsTracingState || tracer.IsTracingStorage)
@@ -1198,12 +1238,14 @@ public sealed partial class GuestWorldState : IWorldState
         entry.Flushed = account;
     }
 
+    /// <inheritdoc/>
     public void RecalculateStateRoot()
     {
         Scope.UpdateRootHash();
         _needsStateRootUpdate = false;
     }
 
+    /// <inheritdoc/>
     public void CommitTree(ulong blockNumber)
     {
         IWorldStateScopeProvider.IScope scope = Scope;
@@ -1211,6 +1253,7 @@ public sealed partial class GuestWorldState : IWorldState
         scope.Commit(blockNumber);
     }
 
+    /// <inheritdoc/>
     public void Reset(bool resetBlockChanges = true)
     {
         Restore(Snapshot.EmptyPosition);
@@ -1242,17 +1285,14 @@ public sealed partial class GuestWorldState : IWorldState
         _checkedCode = default;
     }
 
-    #endregion
-
-    #region Hints
-
+    /// <inheritdoc/>
     public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default) { }
 
+    /// <inheritdoc/>
     public void WarmUp(Address address) { }
 
+    /// <inheritdoc/>
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => null;
-
-    #endregion
 
     private enum UndoKind : byte
     {
@@ -1260,6 +1300,7 @@ public sealed partial class GuestWorldState : IWorldState
         Slot,
         Clear,
         Transient,
+        Code,
     }
 
     /// <summary>A journal entry: what one change overwrote.</summary>

@@ -48,6 +48,8 @@ public class GuestDispatchDifferentialTests
     /// <remarks>The guest installs its handlers on every spec, so a fork that gates or reprices one of them has to be here.</remarks>
     private static readonly IReleaseSpec[] Forks = [Byzantium.Instance, Constantinople.Instance, Shanghai.Instance, ReleaseSpec, Amsterdam.Instance];
     private static readonly IReleaseSpec[] StorageLoadForks = [ReleaseSpec, Amsterdam.Instance];
+    // Both sides of EIP-3529, which changed the refunds the guest SSTORE handler grants.
+    private static readonly IReleaseSpec[] StorageWriteForks = [Berlin.Instance, ReleaseSpec];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
@@ -584,9 +586,8 @@ public class GuestDispatchDifferentialTests
     /// In a static frame the first write faults instead. The guest handler serves forks before EIP-8038 only.
     /// </remarks>
     [Test]
-    public void Storage_writes_match_the_shared_handlers([Values] bool isStatic)
+    public void Storage_writes_match_the_shared_handlers([ValueSource(nameof(StorageWriteForks))] IReleaseSpec spec, [Values] bool isStatic)
     {
-        IReleaseSpec spec = ReleaseSpec;
         (int Key, UInt256 Value)[] writes =
         [
             (5, StorageValueAt(5)), (6, 0), (6, StorageValueAt(6)), (FirstEmptyKey, 1), (FirstEmptyKey, 0), (7, 9), (7, 0),

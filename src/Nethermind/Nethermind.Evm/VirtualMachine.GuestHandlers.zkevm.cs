@@ -1857,8 +1857,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// The shared handler copies both words off the stack and reads the fork's costs through the spec on every write.
         /// The costs and refunds are those of <see cref="EvmInstructions.InstructionSStoreMetered{TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929, Eip8279}"/>
-        /// for the same flags. A static frame, a short stack, gas at or below the stipend sentry and traced refunds or
-        /// storage run the shared handler instead, which faults or reports as it does.
+        /// for the same flags. A static frame, a short stack, gas at or below the stipend sentry and traced refunds, storage
+        /// or accesses run the shared handler instead, which faults or reports as it does.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1874,7 +1874,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             VirtualMachine<TGasPolicy> vm = state.Vm;
             VmState<TGasPolicy> frame = vm.VmState;
-            if (head >= 2 && Covers(gas, GasCostOf.CallStipend + 1) && !frame.IsStatic && !vm.IsTracingRefunds && !vm.IsTracingOpLevelStorage)
+            if (head >= 2 && Covers(gas, GasCostOf.CallStipend + 1) && !frame.IsStatic && !vm.IsTracingRefunds && !vm.IsTracingOpLevelStorage && !vm.IsTracingAccess)
             {
                 vm.MetricsCounters.IncrementSStore();
                 ref UInt256 key = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
