@@ -37,7 +37,7 @@ class PreparedTests(unittest.TestCase):
         p.budget(latest, finish)
         with self.assertRaises(RuntimeError):
             p.budget(latest + 0.001, finish)
-        args = SimpleNamespace(finish='2026-10-29T11:00:00Z')
+        args = SimpleNamespace(action='prepare', finish='2026-10-29T11:00:00Z')
         with patch.object(p.time, 'time', return_value=latest), patch.object(Path, 'mkdir', side_effect=RuntimeError('allocation reached')):
             with self.assertRaisesRegex(RuntimeError, '^allocation reached$'):
                 p.prepare(args)
@@ -104,6 +104,71 @@ class PreparedTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory, self.subTest(state=state, text=text), patch.object(p, 'run'), patch.object(p, 'inspect', return_value={'State': state}), patch.object(p, 'logs', return_value=text), self.assertRaises(RuntimeError):
                 p.stop('owned', Path(directory))
 
+    def test_recovery_requires_budget_and_never_falls_back_to_prepare(self):
+        p.budget(0, 7800, gate=3600)
+        with self.assertRaises(RuntimeError):
+            p.budget(0, 7799, gate=3600)
+        args = SimpleNamespace(action='recover', finish='2026-10-30T00:06:04Z', root=p.PARENT / 'getlogs-40815701914')
+        with patch.object(p.time, 'time', return_value=0), patch.object(Path, 'mkdir'), patch.object(Path, 'is_dir', return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'quarantine is missing'):
+                p.prepare(args)
+
+    def test_recovery_rejects_foreign_host_ready_or_unpinned_evidence(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(p, 'guard'):
+            parent = Path(directory)
+            root = parent / 'getlogs-40815701914'
+            root.mkdir()
+            evidence = parent / 'evidence'
+            evidence.mkdir()
+            with patch.object(p, 'PARENT', parent):
+                with patch.object(p.socket, 'gethostname', return_value='wrong'), self.assertRaisesRegex(RuntimeError, 'root/host'):
+                    p.recovery_preflight(root, evidence, parent / 'oracle')
+                with patch.object(p.socket, 'gethostname', return_value='core-ethereum-mainnet-snapshots-0'):
+                    with self.assertRaisesRegex(RuntimeError, 'artifact contents'):
+                        p.recovery_preflight(root, evidence, parent / 'oracle')
+                    (root / 'ready.json').write_text('{}')
+                    with self.assertRaisesRegex(RuntimeError, 'overwrite'):
+                        p.recovery_preflight(root, evidence, parent / 'oracle')
+
+    def test_stop_and_stopped_gate_share_normal_shutdown_predicate(self):
+        observed = {'State': {'Running': False, 'OOMKilled': False, 'Error': '', 'ExitCode': 130},
+                    'Config': {'Image': p.BASELINE, 'Cmd': p.FLAGS, 'StopSignal': 'SIGINT'}}
+        with tempfile.TemporaryDirectory() as directory, patch.object(p, 'inspect', return_value=observed), patch.object(p, 'logs', return_value='All DBs closed\nNethermind is shut down'), patch.object(p, 'run'), patch.object(p, 'normal_shutdown', wraps=p.normal_shutdown) as shutdown:
+            p.stop('owned', Path(directory))
+            args = SimpleNamespace(root=Path('/fixture'), manifest_sha256='pin', output=directory, container='owned', image=p.BASELINE, action='stopped')
+            with patch.object(p, 'verify', return_value={'allowed_images': [p.BASELINE]}):
+                p.gate(args)
+            self.assertEqual(shutdown.call_count, 2)
+
+    def test_normal_shutdown_accepts_only_closed_clean_exit_or_configured_sigint(self):
+        # State and signal from preparation 40815701914, artifact 12881330426.
+        observed = {'State': {'Running': False, 'OOMKilled': False, 'Error': '', 'ExitCode': 130},
+                    'Config': {'StopSignal': 'SIGINT'}}
+        text = 'All DBs closed\nNethermind is shut down'
+        for code, signal, running, oom, error, log, accepted in [
+            (130, 'SIGINT', False, False, '', text, True),
+            (0, '', False, False, '', text, True),
+            (137, 'SIGINT', False, False, '', text, False),
+            (143, 'SIGINT', False, False, '', text, False),
+            (130, 'SIGTERM', False, False, '', text, False),
+            (130, '', False, False, '', text, False),
+            (130, 'SIGINT', True, False, '', text, False),
+            (130, 'SIGINT', False, True, '', text, False),
+            (130, 'SIGINT', False, False, 'failure', text, False),
+            (130, 'SIGINT', False, False, '', 'All DBs closed', False),
+            (130, 'SIGINT', False, False, '', 'Nethermind is shut down', False),
+            (130, 'SIGINT', False, False, '', '', False),
+            *[(130, 'SIGINT', False, False, '', text + bad, False) for bad in ('Exception', 'Fatal', 'Invalid Block')],
+        ]:
+            observed['State'].update(ExitCode=code, Running=running, OOMKilled=oom, Error=error)
+            observed['Config']['StopSignal'] = signal
+            with self.subTest(code=code, signal=signal, running=running, oom=oom, error=error, log=log):
+                if accepted:
+                    p.normal_shutdown(observed, log)
+                else:
+                    with self.assertRaises(RuntimeError):
+                        p.normal_shutdown(observed, log)
+
     def test_oracle_has_100_cases_and_92_positive(self):
         oracle = json.loads(Path(__file__).with_name('prepared-snapshot-oracle.json').read_text())
         self.assertEqual(len(oracle['cases']), 100)
@@ -124,8 +189,8 @@ class PreparedTests(unittest.TestCase):
     def test_running_gate_does_not_warm_measured_process_but_qualification_checks_100(self):
         for action in ('running', 'gate'):
             with tempfile.TemporaryDirectory() as directory:
-                root = Path(directory) / 'fixture'
-                child = Path(directory) / 'child'
+                root = Path(directory).resolve() / 'fixture'
+                child = Path(directory).resolve() / 'child'
                 args = SimpleNamespace(root=root, manifest_sha256='pin', output=directory, container='owned', image=p.BASELINE,
                                        action=action, child_source=str(child), oracle=str(Path(__file__).with_name('prepared-snapshot-oracle.json')))
                 manifest = {'allowed_images': [p.BASELINE, p.CANDIDATE], 'oracle_sha256': p.digest(Path(args.oracle).read_bytes())}

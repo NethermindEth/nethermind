@@ -1,6 +1,6 @@
 # Opt-in prepared receipt-migration fixture
 
-This diagnostic harness does not modify either immutable image, receipt flags, security policy, or the protected snapshot. Default RPC workflows are unchanged. `prepare_snapshot=true` on `run-rpc-benchmarks.yml` selects **only** the new baseline preparation job; resolve/benchmark/private corpus jobs are skipped. User extended this work through 2026-10-29T12:00:00Z; the final hour beginning11:00UTC is cleanup/report only. Preparation uses the existing `--finish` bound, now11:00UTC. Latest start is derived as finish minus10800s migration,600s health and3600s reserve:06:50UTC for this authorization. The former6b1bc849e preparation run40797353683 was canceled while queued/unassigned; no prepared dataset was created. Its source/request/history remain immutable. This mode is not a primary benchmark.
+This diagnostic harness does not modify either immutable image, receipt flags, security policy, or the protected snapshot. Default RPC workflows are unchanged. `prepare_snapshot=true` on `run-rpc-benchmarks.yml` selects **only** the new baseline preparation job; resolve/benchmark/private corpus jobs are skipped. Current authorization ends 2026-10-30T01:06:04Z; the final hour beginning00:06:04UTC is cleanup/report only. Preparation uses the existing `--finish` bound, now2026-10-30T00:06:04Z. Latest fresh start is derived as finish minus10800s migration,600s health and3600s reserve:2026-10-29T19:56:04Z. Recovery replaces the10800s gate with3600s, retaining600s health and3600s reserve: latest21:56:04Z. The former6b1bc849e preparation run40797353683 was canceled while queued/unassigned; no prepared dataset was created. Its source/request/history remain immutable. This mode is not a primary benchmark.
 
 ## Storage and safety contract
 
@@ -10,7 +10,7 @@ Before touching dataset overlay data, record filesystem/kernel/mount evidence an
 
 Require512GiB initially free (observed ~303GiB host availability decrease +128GiB reserve +margin), continuously retain128GiB scratch/2GiB root and100,000free inodes. A watchdog checks every10seconds through preparation, validation and sealing. These are floor checks, not a reservation against unrelated host writers. Migration gets10800seconds, health600seconds, plus3600seconds planned reserve. Deadline-aware refusal occurs before allocation; a later pressure/cutoff failure aborts and preserves evidence.
 
-Readiness is not migration completion. Require ordered fresh positive start/completion messages, correct chain1/head25490000/hash, all100frozen ordered-response hashes/counts, exit0/noOOM, `All DBs closed`, sync, read-only remount and unchanged original tripwire. The pinned migration writes its completion byte before its success log. This is the user-approved completion provenance, **not native raw-marker rereading**. `ready.json` is atomically fsynced only after all checks. Physical preparation/sealing is separate from both-image benchmark qualification.
+Readiness is not migration completion. Require ordered fresh positive start/completion messages, correct chain1/head25490000/hash, all100frozen ordered-response hashes/counts, exit0 or exit130 only with configured `SIGINT`, noOOM/error/running state, both `All DBs closed` and `Nethermind is shut down`, no exception/invalid/fatal logs, sync, read-only remount and unchanged original tripwire. The pinned migration writes its completion byte before its success log. This is the user-approved completion provenance, **not native raw-marker rereading**. `ready.json` is atomically fsynced only after all checks. Physical preparation/sealing is separate from both-image benchmark qualification.
 
 Fingerprints cover recursive path/type/size/mtime/mode/owner/symlink metadata plus CURRENT/IDENTITY/MANIFEST/OPTIONS content hashes, **not full DB contents or a TB-scale checksum**. The sealed manifest records the exact host/path/mount/options/config/image/source/oracle and evidence hashes. Metadata-only tripwires are not protection against an adversary able to rewrite arbitrary host files. Original/derived trees must not be independently written.
 
@@ -59,14 +59,24 @@ Required workflow knobs, in addition to the ordinary immutable public anchor con
   "state_layout": "flat",
   "db_isolation_all": "overlay",
   "receipt_hashes_migration_timeout": 0,
-  "migration_latest_start_utc": "2026-10-29T08:00:00Z",
-  "migration_finish_by_utc": "2026-10-29T11:00:00Z"
+  "migration_latest_start_utc": "2026-10-29T20:00:00Z",
+  "migration_finish_by_utc": "2026-10-30T00:06:04Z"
 }
 ```
 
 `node_config.scratch_root` must be a **new uniquely owned** `/mnt/sda/expb-data/rpc-prepared-benchmark-EXPERIMENTID`, outside the persistent generation and original. Use both exact pinned image entries in `clients`, each suffixed with `+--LogIndex.Enabled=false;--Receipt.StoreReceipts=true;--Receipt.CompactReceiptStore=true;--Receipt.StoreTxHashes=true;--Receipt.DeriveFromState=false`. Preserve corpus ref/config/seed/CPU/memory/resources; explicitly budget both extra qualification startups before the planned complete primary batch. UTC cutoffs above illustrate this authorization only, not proof any batch fits. No measured arm may start without at least the existing1hour teardown reserve plus its health budget; the workflow retains TERM/KILL/artifact grace. Parent must reject a batch that cannot fit in full, rather than treat partial cycles as the planned experiment.
 
 This integration does not solve native backend observability or authorize an IO-equality claim. The parent must separately resolve/approve that outstanding experimental limitation before any primary dispatch. Both-image compatibility artifacts are bound to the same externally pinned fixture; no valid ready fixture is destroyed if an image fails.
+
+## Explicit reviewed quarantine recovery (untimed)
+
+Only run40815701914 on `core-ethereum-mainnet-snapshots-0` is eligible. Its82904byte artifact12881330426 has zip SHA256`9e220699c61df86cbdb83968d0c71208bb1a8ccf1f709f52794ed79d21e9afe9`. It completed migration and100oracle queries, then cleanly closed DBs and shut down with configuredSIGINT/exit130; the old harness incorrectly required exit0. This is not proof of present readiness.
+
+Dispatch the existing preparation workflow with `prepare_snapshot=true` and `node_config={"prepared_snapshot_recover":true}`. This selects recovery only, never a fallback fresh migration. `actions/download-artifact` retrieves the exact producer artifact/run with an actions-read token. The CLI independently pins the canonical filename→SHA256 map of all extracted artifact files (`cdbed476f6180334e8d4f32eb56921936626fd15a05922202f7f1f84a2c4dac8`). Preserve original failure/artifact/owner permanently.
+
+`recover --root /mnt/sda/expb-data/rpc-prepared/getlogs-40815701914 --recovery-evidence EXTRACTED_OLD_ARTIFACT` rejects foreign host/root/owner, an existing ready manifest, missing or changed source, missing/nonreadonly/different overlay mount/options, old configuration/runtime/oracle drift, missing positive old migration/clean shutdown, running containers, child mounts and busy processes. It never recreates mounts or promotes absence of migration logs by itself. The original source remains a lower only, never remounted writable.
+
+After all provenance checks and the tiny real-kernel probe (including in-placeRO→RW→RO and independent child isolation), remount only the owned generation writable. A fresh pinned baseline process must show the identical runtime identity, no new migration,100exact oracle results and genuine clean shutdown. Sync and remount readonly, recheck source metadata/control tripwire, then publish a new ready seal with new run/source and old producer/artifact lineage. Any failure remains quarantined; no force/lazy remount or new migration fallback. Recovery retains128GiB scratch/2GiB root/100kinodes continuously, not the fresh512GiB initial guard: the~300GiB migrated upper already exists. Record disk planning, stop work within1h or finish-minus30minutes (whichever is earlier), leaving bounded180s shutdown and reserve. Both-image fresh-child qualification remains mandatory and separate before timing. No timing is authorized by recovery.
 
 ## Retention, reboot and deletion
 

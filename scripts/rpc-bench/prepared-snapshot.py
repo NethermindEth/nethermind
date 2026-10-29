@@ -143,6 +143,14 @@ def toy(root):
         mounted(merged, True)
         if (merged / 'deleted').exists() or (merged / 'directory' / 'hidden').exists() or (merged / 'replaced').read_text() != 'new':
             raise RuntimeError('overlay persistence/whiteout/opaque-dir semantics failed')
+        run('mount', '-o', 'remount,rw', merged, root=True)
+        mounted(merged, False)
+        run('sh', '-c', 'printf recovered > "$1"', 'sh', merged / 'replaced', root=True)
+        run('sync', '-f', merged, root=True)
+        run('mount', '-o', 'remount,ro', merged, root=True)
+        mounted(merged, True)
+        if (merged / 'replaced').read_text() != 'recovered':
+            raise RuntimeError('in-place recovery remount lost replacement')
         before = fingerprint(merged)
         overlay(merged, child)
         try:
@@ -213,15 +221,22 @@ def inspect(container):
     return json.loads(run('docker', 'inspect', container))[0]
 
 
+def normal_shutdown(observed, text):
+    check_logs(text)
+    state = observed['State']
+    exit_ok = state['ExitCode'] == 0 or (state['ExitCode'] == 130 and observed.get('Config', {}).get('StopSignal') == 'SIGINT')
+    if (state['Running'] or state['OOMKilled'] or state.get('Error', '') or not exit_ok
+            or 'All DBs closed' not in text or 'Nethermind is shut down' not in text):
+        raise RuntimeError('no genuine normal shutdown: refusing publication')
+
+
 def stop(container, output):
     run('docker', 'stop', '-t', '180', container, timeout=210)
-    state = inspect(container)['State']
+    observed = inspect(container)
     text = logs(container)
     (output / 'node.log').write_text(text)
-    atomic(output / 'container-final.json', inspect(container))
-    check_logs(text)
-    if state['Running'] or state['OOMKilled'] or state['ExitCode'] != 0 or 'All DBs closed' not in text:
-        raise RuntimeError('no genuine normal shutdown: refusing publication')
+    atomic(output / 'container-final.json', observed)
+    normal_shutdown(observed, text)
     run('docker', 'rm', container)
     return text
 
@@ -256,28 +271,104 @@ def start_watchdog(check, output):
     return monitoring, watcher
 
 
-def prepare(args):
-    finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
-    budget(time.time(), finish)
-    PARENT.mkdir(exist_ok=True)
-    root = PARENT / ('getlogs-' + os.environ['GITHUB_RUN_ID'])
+def recovery_preflight(root, evidence, oracle):
+    """Only the independently reviewed failed producer is recoverable; no inferred provenance."""
     guard(root)
-    root.mkdir()  # Never reopen/overwrite an existing generation.
+    if root != PARENT / 'getlogs-40815701914' or socket.gethostname() != 'core-ethereum-mainnet-snapshots-0':
+        raise RuntimeError('recovery root/host is not the reviewed quarantine')
+    if (root / 'ready.json').exists() or root.is_symlink():
+        raise RuntimeError('recovery cannot overwrite a ready generation')
+    files = {p.name: digest(p.read_bytes()) for p in evidence.iterdir() if p.is_file()}
+    if digest(encoded(files)) != 'cdbed476f6180334e8d4f32eb56921936626fd15a05922202f7f1f84a2c4dac8':
+        raise RuntimeError('old artifact contents do not match reviewed artifact 12881330426')
+    load = lambda name: json.loads((evidence / name).read_text())
+    expected_owner = {'run': '40815701914', 'root': str(root), 'container': 'prepared-getlogs-40815701914',
+                      'host': socket.gethostname(), 'source': str(SOURCE), 'status': 'incomplete'}
+    if json.loads((root / 'owner.json').read_text()) != expected_owner:
+        raise RuntimeError('quarantine ownership changed')
+    observed = load('container-final.json')
+    text = (evidence / 'node.log').read_text()
+    normal_shutdown(observed, text)
+    if not completion(text) or not completion((evidence / 'migration.log').read_text()):
+        raise RuntimeError('old fresh positive migration completion missing')
+    request = load('request.json')
+    if request['root'] != str(root) or request['image'] != BASELINE or request['flags'] != FLAGS:
+        raise RuntimeError('old request differs from recovery configuration')
+    if observed['Config']['Image'] != BASELINE or observed['Config']['Cmd'] != FLAGS:
+        raise RuntimeError('old effective configuration mismatch')
+    binds = [m for m in observed['Mounts'] if m['Destination'] == '/execution-data']
+    if len(binds) != 1 or binds[0]['Source'] != str(root / 'merged') or not binds[0]['RW']:
+        raise RuntimeError('old bind mismatch')
+    cases = json.loads(oracle.read_text())['cases']
+    expected_responses = [{'name': c['call']['name'], 'count': c['expectation']['exact_count'],
+                           'sha256': c['expectation']['ordered_result_sha256']} for c in cases]
+    if len(cases) != 100 or load('responses.json') != expected_responses:
+        raise RuntimeError('old oracle results mismatch')
+    old_identity = load('runtime-identity.json')
+    if old_identity != {'chain_id': '0x1', 'number': hex(25490000),
+                        'hash': '0x1bcc8cd8ce5471e5c25f9a4b5c711ce11d37445eb24be3e0b7ee57b048000933',
+                        'client': 'Nethermind/v2.3.0-preview+14f76051-f/linux-x64/dotnet10.0.14'}:
+        raise RuntimeError('old runtime identity mismatch')
+    before = load('source-before.json')
+    if before != load('source-after.json') or fingerprint(SOURCE) != before:
+        raise RuntimeError('protected source differs from old producer tripwire')
+    mount = mounted(root / 'merged', True)
+    required = {f'lowerdir={SOURCE}', f'upperdir={root}/upper', f'workdir={root}/work', *OPTIONS.split(',')}
+    if not required.issubset(set(mount['options'].split(','))):
+        raise RuntimeError('quarantine mount lineage/options mismatch; never recreate missing mounts')
+    for name in ('upper', 'work', 'merged', 'owner.json'):
+        if (root / name).is_symlink():
+            raise RuntimeError('quarantine contains a symlinked control path')
+    all_mounts = run('findmnt', '-rn', '-o', 'TARGET,OPTIONS')
+    if any(str(root / 'merged') in line and not line.startswith(str(root / 'merged') + ' ') for line in all_mounts.splitlines()):
+        raise RuntimeError('quarantine has child mounts/busy lowers')
+    busy = subprocess.run(['sudo', '-n', 'fuser', '-m', str(root / 'merged')], capture_output=True, timeout=30)
+    if busy.returncode != 1:
+        raise RuntimeError('quarantine has busy processes or cannot establish quiescence')
+    return {'producer_run': '40815701914', 'artifact_id': '12881330426',
+            'artifact_zip_sha256': '9e220699c61df86cbdb83968d0c71208bb1a8ccf1f709f52794ed79d21e9afe9',
+            'artifact_contents_sha256': digest(encoded(files)), 'old_runtime': old_identity,
+            'old_source_tripwire': before, 'old_mount': mount}
+
+
+def prepare(args):
+    recovering = args.action == 'recover'
+    finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
+    budget(time.time(), finish, gate=3600 if recovering else 10800)
+    PARENT.mkdir(exist_ok=True)
+    root = args.root if recovering else PARENT / ('getlogs-' + os.environ['GITHUB_RUN_ID'])
+    guard(root)
+    if not recovering:
+        root.mkdir()  # Never reopen/overwrite an existing generation.
+    elif not root.is_dir():
+        raise RuntimeError('quarantine is missing; fresh preparation requires separate authorization')
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     container = 'prepared-getlogs-' + os.environ['GITHUB_RUN_ID']
-    atomic(root / 'owner.json', {'run': os.environ['GITHUB_RUN_ID'], 'root': str(root), 'container': container, 'host': socket.gethostname(), 'source': str(SOURCE), 'status': 'incomplete'})
+    if not recovering:
+        atomic(root / 'owner.json', {'run': os.environ['GITHUB_RUN_ID'], 'root': str(root), 'container': container, 'host': socket.gethostname(), 'source': str(SOURCE), 'status': 'incomplete'})
+    recovery = recovery_preflight(root, Path(args.recovery_evidence), Path(args.oracle)) if recovering else None
+    if recovery:
+        record = dict(recovery, run=os.environ['GITHUB_RUN_ID'], source_sha=os.environ['GITHUB_SHA'], container=container,
+                      root=str(root), host=socket.gethostname(), status='incomplete')
+        atomic(output / 'RECOVERY.json', record)
+        atomic(root / ('recovery-' + os.environ['GITHUB_RUN_ID'] + '.json'), record)
     atomic(output / 'request.json', {'root': str(root), 'image': BASELINE, 'flags': FLAGS, 'finish': args.finish})
     # Evidence is read-only before choosing/creating any dataset overlay.
     (output / 'filesystem.txt').write_text(run('findmnt', '-T', SOURCE) + run('findmnt', '-T', PARENT) + run('uname', '-a') + run('df', '-B1', SOURCE, '/', PARENT))
     samples = []
+    cutoff = min(finish - 1800, time.time() + 3600) if recovering else finish - 1800
+    atomic(output / 'disk-plan.json', {'mode': 'recovery' if recovering else 'fresh', 'initial_scratch_min_gib': 128 if recovering else 512,
+                                     'continuous_scratch_min_gib': 128, 'root_min_gib': 2, 'min_free_inodes': 100000,
+                                     'work_cutoff_utc': dt.datetime.fromtimestamp(cutoff, dt.timezone.utc).isoformat(),
+                                     'shutdown_seconds': 180, 'reserve_seconds': 3600})
     def pressure():
         samples.append({'utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'scratch': space(PARENT), 'root': space(Path('/'))})
         atomic(output / 'disk.json', samples)
-        if time.time() > finish - 1800:
+        if time.time() > cutoff:
             raise RuntimeError('preparation cutoff reached; reserving shutdown/evidence time')
     pressure()
-    if os.statvfs(PARENT).f_bavail * os.statvfs(PARENT).f_frsize < 512 * 2**30:
+    if not recovering and os.statvfs(PARENT).f_bavail * os.statvfs(PARENT).f_frsize < 512 * 2**30:
         raise RuntimeError('preparation requires 512GiB initially free: observed ~303GiB host growth plus 128GiB floor and margin')
     containers = run('docker', 'ps', '--no-trunc')
     (output / 'occupancy.txt').write_text(containers)
@@ -290,18 +381,26 @@ def prepare(args):
     print('Kernel whiteout/opaque/remount/nested-child probe passed; fingerprinting protected source', flush=True)
     source_before = fingerprint(SOURCE)
     atomic(output / 'source-before.json', source_before)
-    overlay(SOURCE, root)
+    if not recovering:
+        overlay(SOURCE, root)
     running = False
     monitoring, watcher = start_watchdog(pressure, output)
     try:
+        if recovering:
+            run('mount', '-o', 'remount,rw', root / 'merged', root=True)
+            mounted(root / 'merged', False)
         run('docker', 'pull', BASELINE, timeout=600)
         running = True  # Ownership is persisted before container creation, including interrupted docker run.
         run('docker', 'run', '-d', '--name', container, '--restart', 'no', '--stop-signal', 'SIGINT',
             '-p', '127.0.0.1:18545:8545', '-v', f'{root}/merged:/execution-data:rw', BASELINE, *FLAGS)
-        atomic(output / 'container-start.json', inspect(container))
+        observed = inspect(container)
+        atomic(output / 'container-start.json', observed)
+        if observed['Config']['Image'] != BASELINE or observed['Config']['Cmd'] != FLAGS or observed['Config'].get('StopSignal') != 'SIGINT':
+            raise RuntimeError('fresh effective configuration mismatch')
         print(f'Owned baseline container started: {container}; readiness timeout600s', flush=True)
         health_end = time.monotonic() + 600
         while True:
+            check_logs(logs(container), reused=recovering)
             if not inspect(container)['State']['Running']:
                 raise RuntimeError('node exited during startup')
             try:
@@ -312,9 +411,9 @@ def prepare(args):
             if time.monotonic() >= health_end:
                 raise RuntimeError('health timeout')
             time.sleep(10)
-        print('RPC ready; waiting for fresh positive receipt migration completion, timeout10800s', flush=True)
+        print('Recovery: migration forbidden' if recovering else 'Waiting for fresh positive migration completion, timeout10800s', flush=True)
         end = time.monotonic() + 10800
-        while True:
+        while not recovering:
             text = logs(container)
             (output / 'migration.log').write_text(text)
             check_logs(text)
@@ -325,12 +424,17 @@ def prepare(args):
             if time.monotonic() >= end:
                 raise RuntimeError('10800s migration timeout')
             time.sleep(10)
-        print('Positive receipt migration completion observed; checking identity and100case exact oracle', flush=True)
-        atomic(output / 'runtime-identity.json', identity())
+        print('Checking runtime identity and100case exact oracle', flush=True)
+        current_identity = identity()
+        atomic(output / 'runtime-identity.json', current_identity)
+        if recovering and current_identity != recovery['old_runtime']:
+            raise RuntimeError('recovery runtime differs from verified old baseline')
         validate_responses(json.loads(Path(args.oracle).read_text()), output / 'responses.json')
         final_logs = stop(container, output)
         running = False
-        if not completion(final_logs):
+        if recovering:
+            check_logs(final_logs, reused=True)
+        elif not completion(final_logs):
             raise RuntimeError('completion evidence absent at shutdown')
         print('Normal DB shutdown verified; syncing and sealing read-only fixture', flush=True)
         run('sync', '-f', root / 'merged', root=True, timeout=600)
@@ -345,13 +449,16 @@ def prepare(args):
                     'flags': FLAGS, 'options': OPTIONS, 'mount': mount, 'source_tripwire': source_after,
                     'prepared_tripwire': fingerprint(root / 'merged'), 'tripwire_scope': 'metadata plus CURRENT/IDENTITY/MANIFEST/OPTIONS hashes; NOT full content hash',
                     'oracle_sha256': digest(Path(args.oracle).read_bytes()), 'evidence_sha256': {p.name: digest(p.read_bytes()) for p in output.iterdir() if p.is_file()},
-                    'completion': 'fresh positive ordered log markers; pinned completion write precedes success log; normal exit0/All DBs closed/noOOM',
+                    'completion': 'fresh positive ordered log markers; pinned completion write precedes success log; clean exit0 or configured SIGINT exit130; All DBs closed and Nethermind is shut down; noOOM/error',
                     'retention': 'user-authorized persistent fixture; manual retirement only; do not auto-delete at deadline'}
+        if recovering:
+            manifest['recovery'] = recovery
+            manifest['completion'] = 'pinned old fresh positive completion and clean shutdown; new baseline no-migration startup, exact100case oracle and clean shutdown'
         manifest['upper_allocated_bytes'] = int(run('du', '-sx', '-B1', root / 'upper', timeout=300).split()[0])
         monitoring.set()
         watcher.join(timeout=30)
         pressure()
-        shutil.copytree(output, root / 'evidence')
+        shutil.copytree(output, root / ('recovery-evidence-' + os.environ['GITHUB_RUN_ID'] if recovering else 'evidence'))
         atomic(root / 'ready.json', manifest)
         atomic(output / 'READY.json', {'root': str(root), 'manifest_sha256': digest((root / 'ready.json').read_bytes()), 'manifest': manifest})
         print((output / 'READY.json').read_text(), flush=True)
@@ -460,8 +567,7 @@ def gate(args):
     check_logs(text, reused=True)
     if args.action == 'stopped':
         state = observed['State']
-        if state['Running'] or state['OOMKilled'] or state['ExitCode'] != 0 or 'All DBs closed' not in text:
-            raise RuntimeError('prepared arm did not shut down normally')
+        normal_shutdown(observed, text)
         atomic(output / 'prepared-stopped.json', {'manifest_sha256': args.manifest_sha256, 'image': args.image, 'state': state})
         return
     if not observed['State']['Running']:
@@ -489,21 +595,22 @@ def gate(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'verify', 'qualify', 'gate', 'running', 'stopped'])
+    parser.add_argument('action', choices=['prepare', 'recover', 'verify', 'qualify', 'gate', 'running', 'stopped'])
     parser.add_argument('--root', type=Path)
     parser.add_argument('--manifest-sha256')
     parser.add_argument('--image', default=BASELINE)
     parser.add_argument('--container')
     parser.add_argument('--child-source')
     parser.add_argument('--rpc-port', type=int, default=18545)
-    parser.add_argument('--finish', default='2026-10-29T11:00:00Z')
+    parser.add_argument('--finish', default='2026-10-30T00:06:04Z')
+    parser.add_argument('--recovery-evidence', type=Path)
     parser.add_argument('--output', default='prepared-results')
     parser.add_argument('--oracle', default=str(Path(__file__).with_name('prepared-snapshot-oracle.json')))
     args = parser.parse_args()
     global RPC_PORT
     RPC_PORT = args.rpc_port
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(RuntimeError('termination requested')))
-    if args.action == 'prepare':
+    if args.action in ('prepare', 'recover'):
         prepare(args)
     elif args.action == 'qualify':
         qualify(args)

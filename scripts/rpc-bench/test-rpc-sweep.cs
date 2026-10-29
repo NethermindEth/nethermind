@@ -163,8 +163,8 @@ try
         values["SNAPSHOT_BLOCK"] = "25490000";
         values["CLIENTS"] = string.Join(' ', SweepConfiguration.PreparedImages.Select(image => "nethermind@" + image + "+" + SweepConfiguration.PreparedFlags.Replace(' ', ';')));
         values["DB_ISOLATION_ALL"] = "overlay";
-        values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T10:00:00Z";
-        values["MIGRATION_FINISH_BY_UTC"] = "2026-10-29T11:00:00Z";
+        values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T23:00:00Z";
+        values["MIGRATION_FINISH_BY_UTC"] = "2026-10-30T00:06:04Z";
         values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
         values["RPS_LIST"] = "1";
         var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
@@ -223,7 +223,7 @@ try
             Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
         }
     });
-    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_FINISH_BY_UTC", "2026-10-30T05:47:34Z"), ("SNAPSHOT_BLOCK", "1"), ("NETWORK", "other") })
+    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_FINISH_BY_UTC", "2026-10-30T00:06:05Z"), ("SNAPSHOT_BLOCK", "1"), ("NETWORK", "other") })
         tests.Case("prepared mode rejects incompatible " + name + value, () =>
         {
             var values = PreparedConfiguration().Values;

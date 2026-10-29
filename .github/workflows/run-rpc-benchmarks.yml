@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       prepare_snapshot:
-        description: 'Opt-in baseline-only durable migration preparation; no benchmark or private corpus. Fixed 2026-10-29 cutoff.'
+        description: 'Opt-in baseline-only durable migration preparation; no benchmark or private corpus. Fixed 2026-10-30 00:06:04 UTC cutoff; reviewed quarantine recovery via node_config.'
         required: false
         type: boolean
         default: false
@@ -222,16 +222,36 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.prepare_snapshot }}
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 270
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
           path: prepared-snapshot-${{ github.run_id }}
           sparse-checkout: scripts/rpc-bench
+      - name: Download reviewed quarantined producer evidence
+        if: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_recover == true }}
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 12881330426
+          run-id: 40815701914
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prepared-old-${{ github.run_id }}
+          merge-multiple: true
       - name: Guarded baseline preparation only
         env:
           PREPARED_OUTPUT: ${{ runner.temp }}/prepared-results-${{ github.run_id }}
+          OLD_EVIDENCE: ${{ runner.temp }}/prepared-old-${{ github.run_id }}
+          RECOVER: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_recover == true }}
         run: |
-          python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py prepare --output "$PREPARED_OUTPUT" --finish 2026-10-29T11:00:00Z
+          action=prepare
+          extra=()
+          if [[ "$RECOVER" == true ]]; then
+            action=recover
+            extra=(--root /mnt/sda/expb-data/rpc-prepared/getlogs-40815701914 --recovery-evidence "$OLD_EVIDENCE")
+          fi
+          python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py "$action" "${extra[@]}" --output "$PREPARED_OUTPUT" --finish 2026-10-30T00:06:04Z
       - name: Preserve preparation evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4

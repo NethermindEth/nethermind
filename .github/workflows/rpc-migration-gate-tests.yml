@@ -2,7 +2,7 @@ name: RPC migration gate script tests
 
 on:
   push:
-    branches: [perf/getlogs-migration-gate-20261028, perf/getlogs-night3-phases-20261028, perf/getlogs-prepared-snapshot-20261029]
+    branches: [perf/getlogs-migration-gate-20261028, perf/getlogs-night3-phases-20261028, perf/getlogs-prepared-snapshot-20261029, perf/getlogs-night4-evidence-20261029]
     paths:
       - scripts/rpc-bench/**
       - .github/workflows/rpc-migration-gate-tests.yml

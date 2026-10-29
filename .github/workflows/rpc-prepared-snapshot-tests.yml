@@ -1,7 +1,7 @@
 name: RPC prepared snapshot tests
 on:
   push:
-    branches: [perf/getlogs-prepared-snapshot-20261029]
+    branches: [perf/getlogs-prepared-snapshot-20261029, perf/getlogs-night4-evidence-20261029]
     paths:
       - scripts/rpc-bench/prepared-snapshot.py
       - scripts/rpc-bench/test-prepared-snapshot.py
