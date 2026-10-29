@@ -735,6 +735,46 @@ public class FrameTxDecoderTests
         Assert.That(() => DecodeConsensusPayload(payload), Throws.InstanceOf<RlpException>().With.Message.Contains("payload is incomplete"));
     }
 
+    [TestCaseSource(nameof(TruncatedPayloadCases))]
+    public void Decode_InputEndingBeforeThePayloadDoes_ThrowsTruncated(byte[] payload) =>
+        Assert.That(() => DecodeConsensusPayload(payload),
+            Throws.InstanceOf<RlpException>().With.Message.EqualTo("RLP data is truncated: frame transaction payload is incomplete."));
+
+    /// <summary>Inputs that stop before the payload is complete, every header declaring only the bytes present.
+    /// Without the decoder's end-of-input checks each one reads past the end of the buffer, and the index exception
+    /// surfaces as <c>Cannot decode stream of</c>.</summary>
+    private static IEnumerable<TestCaseData> TruncatedPayloadCases()
+    {
+        Rlp chainId = Rlp.Encode(TestBlockchainIds.ChainId);
+        Rlp nonce = Rlp.Encode(0L);
+        Rlp sender = Rlp.Encode(TestItem.AddressA.Bytes);
+
+        yield return new TestCaseData(new[] { (byte)TxType.FrameTx }).SetName("Decode_TypeByteAlone_ThrowsTruncated");
+        yield return new TestCaseData(new[] { (byte)TxType.FrameTx, Rlp.EmptyListByte })
+            .SetName("Decode_EmptyPayloadList_ThrowsTruncated");
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([
+                chainId, nonce, sender,
+                Rlp.Encode(Array.Empty<Rlp>()),                     // frames
+                Rlp.Encode(Array.Empty<Rlp>()),                     // signatures
+                Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L))])))      // fees; no blob_versioned_hashes
+            .SetName("Decode_PayloadWithoutItsLastField_ThrowsTruncated");
+
+        // The execution gas limit declares eight bytes and one follows it, so the input ends inside the frame.
+        Rlp frameEndingInItsGasLimit = Rlp.Encode([
+            Rlp.Encode((byte)FrameMode.Default),
+            Rlp.Encode((byte)FrameFlags.None),
+            Rlp.Encode(TestItem.AddressB.Bytes),
+            Rlp.Encode([new Rlp([0x88, 0x01])])]);          // limits
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([chainId, nonce, sender, Rlp.Encode([frameEndingInItsGasLimit])])))
+            .SetName("Decode_InputEndingInsideAFrame_ThrowsTruncated");
+
+        // The signer declares 20 bytes and two follow it, so the input ends inside the signature entry.
+        Rlp signatureEndingInItsSigner = Rlp.Encode([Rlp.Encode(TxFrameSignature.SchemeArbitrary), new Rlp([0x94, 0x01, 0x02])]);
+        yield return new TestCaseData(TypedPayload(Rlp.Encode([
+                chainId, nonce, sender, Rlp.Encode(Array.Empty<Rlp>()), Rlp.Encode([signatureEndingInItsSigner])])))
+            .SetName("Decode_InputEndingInsideASignature_ThrowsTruncated");
+    }
+
     /// <summary>An RLP list of <paramref name="count"/> single-byte items, without materialising the items.</summary>
     private static Rlp PlaceholderList(int count)
     {

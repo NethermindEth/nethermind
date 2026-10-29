@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -30,12 +31,17 @@ public sealed class TxFrameSignatureDecoder : RlpDecoder<TxFrameSignature>
 
     protected override TxFrameSignature DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
 
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         byte scheme = decoderContext.DecodeByte();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         Address? signer = decoderContext.DecodeAddressOrNull();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         ReadOnlyMemory<byte> msg = decoderContext.DecodeByteArrayMemory(_msgRlpLimit);
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         ReadOnlyMemory<byte> signature = decoderContext.DecodeByteArrayMemory(SignatureRlpLimit);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

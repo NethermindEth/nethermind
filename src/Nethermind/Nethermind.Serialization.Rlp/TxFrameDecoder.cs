@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -23,20 +24,29 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
 
     protected override TxFrame DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
 
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         byte mode = decoderContext.DecodeByte();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         byte flags = decoderContext.DecodeByte();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         Address? target = decoderContext.DecodeAddressOrNull();
 
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         int limitsLength = decoderContext.ReadSequenceLength();
         int limitsCheck = limitsLength + decoderContext.Position;
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         ulong executionGasLimit = decoderContext.DecodeULong();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         ulong stateGasLimit = decoderContext.DecodeULong();
         decoderContext.Check(limitsCheck);
 
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         UInt256 value = decoderContext.DecodeUInt256();
+        FrameTxDecoder.ThrowIfNextItemTruncated(ref decoderContext);
         ReadOnlyMemory<byte> data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))

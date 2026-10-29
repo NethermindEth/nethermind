@@ -38,6 +38,23 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
     }
 
     [Test]
+    public void PayloadWithoutItsLastFieldIsTooFewElements()
+    {
+        Rlp payload = Rlp.Encode(
+            Rlp.Encode(1L),                                 // chain_id
+            Rlp.Encode(0L),                                 // nonce
+            Rlp.Encode(TestItem.AddressA.Bytes),            // sender
+            Rlp.Encode(Array.Empty<Rlp>()),                 // frames
+            Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L)));    // fees; no blob_versioned_hashes
+        string txBytes = Bytes.Concat((byte)TxType.FrameTx, payload.Bytes).ToHexString(true);
+
+        Result result = RunTest(TestFor(txBytes, "TransactionException.RLP_TOO_FEW_ELEMENTS"));
+
+        Assert.That((bool)result, Is.True, result.Error);
+    }
+
+    [Test]
     public void NonceWiderThan64BitsIsNonceOverflow()
     {
         Result result = RunTest(TestFor(TxBytes(nonce: NonceOf2Pow64), "TransactionException.NONCE_OVERFLOW"));
@@ -68,6 +85,20 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
         Result result = RunTest(TestFor("0x06", "TransactionException.TYPE_6_INVALID_SIGNATURE"));
 
         Assert.That((bool)result, Is.False);
+    }
+
+    /// <summary>The truncation labels take only a decoder's explicit truncation report.</summary>
+    /// <remarks>The EIP-1559 decoder has no end-of-input check, so <c>0x02c0</c> reads past the end of the input and
+    /// <c>RlpDecoder</c> reports the index exception as <c>Cannot decode stream of Transaction</c>, the same text a
+    /// decoder indexing bug produces.</remarks>
+    [Test]
+    public void ReadPastTheEndOfTheInputIsNotTakenAsTruncation()
+    {
+        const string labels = "TransactionException.RLP_ERROR_EOF|TransactionException.RLP_TOO_FEW_ELEMENTS";
+
+        Result result = RunTest(TestFor("0x02c0", labels));
+
+        Assert.That(result.Error, Is.EqualTo($"Expected '{labels}' but got 'Cannot decode stream of Transaction'."));
     }
 
     /// <summary>A frame transaction with no frames, varying only the fields the caller supplies.</summary>

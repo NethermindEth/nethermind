@@ -178,8 +178,7 @@ public abstract class TransactionTestBase
         ["TransactionException.ADDRESS_TOO_SHORT"] = ["Unexpected RLP prefix"],
         ["TransactionException.INVALID_CHAINID"] = ["InvalidTxChainId", "InvalidTxSignature"],
         ["TransactionException.INVALID_SIGNATURE_VRS"] = ["VRS is 0 length", "InvalidTxSignature"],
-        // RlpDecoder reports a read past the end of the input as "Cannot decode stream of <type>".
-        ["TransactionException.RLP_ERROR_EOF"] = ["RLP data is truncated", "Cannot decode stream of"],
+        ["TransactionException.RLP_ERROR_EOF"] = ["RLP data is truncated"],
         ["TransactionException.RLP_ERROR_SIZE"] = ["Data checkpoint failed"],
         ["TransactionException.RLP_ERROR_SIZE_LEADING_ZEROS"] = ["Length starts with 0"],
         ["TransactionException.RLP_INVALID_DATA"] = ["sequence prefix"],
@@ -200,7 +199,7 @@ public abstract class TransactionTestBase
         ["TransactionException.RLP_LEADING_ZEROS_S"] = ["Collection count"],
         ["TransactionException.RLP_LEADING_ZEROS_V"] = ["Non-canonical integer"],
         ["TransactionException.RLP_LEADING_ZEROS_VALUE"] = ["Non-canonical integer"],
-        ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["RLP data is truncated", "Unexpected length of integer value", "Cannot decode stream of"],
+        ["TransactionException.RLP_TOO_FEW_ELEMENTS"] = ["RLP data is truncated", "Unexpected length of integer value"],
         ["TransactionException.RLP_TOO_MANY_ELEMENTS"] = ["Data checkpoint failed"],
         ["TransactionException.VALUE_OVERFLOW"] = ["Collection count"],
         // Not s_rlpDecodeFragments: its "Invalid signature" fragment also matches the frame
