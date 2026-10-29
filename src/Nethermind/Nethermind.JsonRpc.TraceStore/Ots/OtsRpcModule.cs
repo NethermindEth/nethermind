@@ -105,6 +105,9 @@ public sealed class OtsRpcModule(
             previous = block;
             if (highestScanned is null || block.Number > highestScanned.Number) highestScanned = block;
 
+            if (specProvider.GetSpec(block.Header).IsPrecompile(address))
+                return ResultWrapper<OtsSearchResult>.Fail("Stored traces cannot certify complete precompile history.", ErrorCodes.ResourceUnavailable);
+
             bool indexed = indexedHash is not null;
             if (indexed && block.Transactions.Length == 0)
                 return ResultWrapper<OtsSearchResult>.Fail("Trace address index references an empty block; reset the index.", ErrorCodes.ResourceUnavailable);
@@ -148,11 +151,14 @@ public sealed class OtsRpcModule(
             || (candidates is not null && !addressIndex!.IsCanonical(candidates.Coverage)))
             return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
 
+        Hash256? checkedBlock = null;
         foreach (TransactionForRpc transaction in result.Txs)
         {
             ct.ThrowIfCancellationRequested();
+            if (transaction.BlockHash == checkedBlock) continue;
             if (blockFinder.FindBlockHash(transaction.BlockNumber!.Value) != transaction.BlockHash)
                 return ResultWrapper<OtsSearchResult>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            checkedBlock = transaction.BlockHash;
         }
         if (!backwards)
         {
@@ -169,18 +175,19 @@ public sealed class OtsRpcModule(
         if (OtsTraceReader.Validate(block, traces, ct) is { } error)
             return new(error, ErrorCodes.ResourceUnavailable);
         bool[] matches = new bool[block.Transactions.Length];
+        Stack<ParityTraceAction> actions = new();
         foreach (ParityLikeTxTrace trace in traces)
         {
             ct.ThrowIfCancellationRequested();
             if (trace.TransactionHash is null) continue; // Block rewards are not transactions.
             int position = trace.TransactionPosition!.Value;
-            Stack<ParityTraceAction> actions = new();
+            actions.Clear();
             actions.Push(trace.Action!);
             while (actions.TryPop(out ParityTraceAction? action))
             {
                 ct.ThrowIfCancellationRequested();
                 // Search is call involvement, including zero-value/reverted calls, not committed value transfers.
-                if (action.From == address || action.To == address || action.Result?.Address == address)
+                if (action.From == address || GetDestination(action, trace.Action!, block.Transactions[position]) == address)
                 {
                     matches[position] = true;
                     break;
@@ -262,10 +269,12 @@ public sealed class OtsRpcModule(
                 ParityTraceAction action = frame.Action;
                 if (!action.IsPrecompiled)
                 {
-                    Address? to = action.To ?? action.Result?.Address;
-                    if (to is null && frame.Depth == 0 && action.CallType == "init" && action.From is not null
-                        && !block.Transactions[index].IsMessageCall)
-                        to = ContractAddress.From(action.From, block.Transactions[index].Nonce);
+                    Address? to = GetDestination(action, trace.Action, block.Transactions[index]);
+                    // Balance/depth prechecks reject nested creations before a destination exists.
+                    if (to is null && frame.Depth > 0 && action.Type == "create" && action.From is not null
+                        && action.Result is null && action.Subtraces.Count == 0
+                        && action.Error is "Insufficient balance for transfer" or "Max call depth exceeded")
+                        continue;
                     if (action.From is null || to is null)
                         return ResultWrapper<List<OtsTraceEntry>>.Fail("Stored trace lacks a call's sender or destination.", ErrorCodes.ResourceUnavailable);
 
@@ -299,6 +308,11 @@ public sealed class OtsRpcModule(
         }
         return ResultWrapper<List<OtsTraceEntry>>.Fail($"Stored trace for {transactionHash} is unavailable.", ErrorCodes.ResourceUnavailable);
     }
+
+    private static Address? GetDestination(ParityTraceAction action, ParityTraceAction root, Transaction transaction) =>
+        action.To ?? action.Result?.Address
+        ?? (ReferenceEquals(action, root) && action.CallType == "init" && action.From is not null && !transaction.IsMessageCall
+            ? ContractAddress.From(action.From, transaction.Nonce) : null);
 
     private SearchResult<List<ParityLikeTxTrace>> ReadTraces(BlockHeader header) =>
         OtsTraceReader.Read(traceStore, serializer, traceStoreConfig, header);
