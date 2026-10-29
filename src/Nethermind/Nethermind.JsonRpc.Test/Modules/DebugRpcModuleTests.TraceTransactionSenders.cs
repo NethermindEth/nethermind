@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -188,6 +189,33 @@ public partial class DebugRpcModuleTests
                 Assert.That(tracedAuthorization.Authority, Is.EqualTo(TestItem.AddressC));
             }
             Assert.That(JToken.DeepEquals(single, fromBlock), Is.True, $"{single}{Environment.NewLine}{fromBlock}");
+        }
+    }
+
+    /// <remarks>Forced BAL construction runs the whole block, so the executor recovers every sender before it runs.</remarks>
+    [Test]
+    public async Task Single_transaction_trace_with_forced_block_access_list_recovers_every_sender(
+        [Values("debug_traceTransaction", "trace_transaction")] string method)
+    {
+        RecoveryCount recoveries = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddDecorator<IBlockProcessor, ForcedBlockAccessListBlockProcessor>()
+                .AddDecorator<IEthereumEcdsa>((_, inner) => new RecoveryCountingEcdsa(inner, recoveries)));
+        Block block = await chain.AddBlock(LegacyTransfers(chain, SenderTestTransactions));
+        Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
+
+        Transaction[] traced = ClearSenders(chain, block);
+        recoveries.Reset();
+        await TraceSingle(chain, method, block.Transactions[0].Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recoveries.Count, Is.EqualTo(SenderTestTransactions));
+            for (int i = 0; i < traced.Length; i++)
+            {
+                Assert.That(traced[i].SenderAddress, Is.EqualTo(TestItem.AddressB), $"sender of transaction {i}");
+            }
         }
     }
 
