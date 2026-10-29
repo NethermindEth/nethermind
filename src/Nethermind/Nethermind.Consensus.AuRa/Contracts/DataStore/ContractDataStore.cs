@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                                                        $"On {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}. " +
                                                        $"From {new StackTrace()}");
                 }
-                catch (AbiException e)
+                catch (ContractException e)
                 {
                     if (_logger.IsError) _logger.Error($"Failed to update data from contract on block {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}.", e);
                 }

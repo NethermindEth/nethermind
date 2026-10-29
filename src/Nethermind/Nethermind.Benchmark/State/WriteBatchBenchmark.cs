@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -30,6 +31,7 @@ public class WriteBatchBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _currentStateId;
     private Address[] _addresses = null!;
@@ -42,11 +44,11 @@ public class WriteBatchBenchmark
     [Params(100, 1000, 3000)]
     public int StorageSlotsPerAccount { get; set; }
 
-    [GlobalSetup]
-    public void GlobalSetup()
+    private void SetupBaseState()
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);
         _currentStateId = new StateId(0, Keccak.EmptyTreeHash);
 
@@ -67,12 +69,11 @@ public class WriteBatchBenchmark
 
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-                PersistedSnapshotStack.Empty());
-            NullTrieNodeCache cache = new();
+                PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
             SnapshotBundle bundle = new(
-                readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
-            FlatWorldStateScope scope = new(
+            using FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -119,7 +120,7 @@ public class WriteBatchBenchmark
 
             scope.Commit(blockNumber: block + 1);
 
-            FlatSnapshot snapshot = commitTarget.LastSnapshot
+            using FlatSnapshot snapshot = commitTarget.LastSnapshot
                 ?? throw new InvalidOperationException(
                     $"Block {block + 1}: Commit produced no snapshot");
             snapshot.TryAcquire();
@@ -137,9 +138,11 @@ public class WriteBatchBenchmark
         });
     }
 
+    // The base snapshots pin every later generation of the buffer, so each iteration gets its own buffer to free what it writes.
     [IterationSetup]
     public void IterationSetup()
     {
+        SetupBaseState();
         SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
         foreach (FlatSnapshot s in _baseSnapshots)
         {
@@ -149,10 +152,9 @@ public class WriteBatchBenchmark
 
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
-        NullTrieNodeCache cache = new();
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _currentStateId,
@@ -169,6 +171,8 @@ public class WriteBatchBenchmark
     {
         _scope?.Dispose();
         _scope = null!;
+        foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [Benchmark]

@@ -572,11 +572,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
                     // Charged in the carried gas: a separate copy would take a callee-saved register.
-                    ref byte destination = ref state.Memory.TryPrepareWordOverwrite(offset, ref gas);
+                    ref byte destination = ref AlignedMemory(ref state).TryPrepareWordOverwrite(offset, ref gas);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
+                        StoreBigEndian(ref destination, ref offset);
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
@@ -623,7 +623,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
-                    ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
+                    ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(slot);
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         LoadBigEndian(ref slot, ref source);
@@ -658,7 +658,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (head < EvmStack.MaxStackSize - 1 && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
             {
-                ref byte source = ref state.Memory.GetActiveInitializedWord(Unsafe.Add(ref ip, 1));
+                ref byte source = ref AlignedMemory(ref state).GetActiveInitializedWord(Unsafe.Add(ref ip, 1));
                 if (!Unsafe.IsNullRef(ref source))
                 {
                     LoadBigEndian(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref source);
@@ -694,12 +694,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
             {
                 // Charged in the carried gas: a separate copy would take a callee-saved register.
-                ref byte destination = ref state.Memory.TryPrepareWordOverwrite(Unsafe.Add(ref ip, 1), ref gas);
+                ref byte destination = ref AlignedMemory(ref state).TryPrepareWordOverwrite(Unsafe.Add(ref ip, 1), ref gas);
                 if (!Unsafe.IsNullRef(ref destination))
                 {
-                    // Memory holds the word big-endian.
-                    ref ulong value = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                    StoreBigEndian(ref destination, Unsafe.Add(ref value, 3), Unsafe.Add(ref value, 2), Unsafe.Add(ref value, 1), value);
+                    // The value is the top word, which ends at the head; memory holds it big-endian.
+                    StoreBigEndian(ref destination, ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)));
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 3);
@@ -879,6 +878,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return inLimb >= 64 ? ulong.MaxValue : inLimb <= 0 ? 0 : (1UL << inLimb) - 1;
         }
 
+        /// <summary>Whether the <c>TOpCount.Count</c> bytes at <paramref name="immediates"/> are all 0xff.</summary>
+        /// <remarks>
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the bytes are ANDed one at a time: a misaligned wide read would
+        /// assemble them from bytes behind an alignment test anyway.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsOnesMask<TOpCount>(ref byte immediates) where TOpCount : struct, EvmInstructions.IOpCount
+        {
+            if (StrictAlignmentFlag.IsActive)
+            {
+                uint bits = byte.MaxValue;
+                for (int i = 0; i < TOpCount.Count; i++)
+                    bits &= Unsafe.Add(ref immediates, i);
+                return bits == byte.MaxValue;
+            }
+
+            return TOpCount.Count == 4
+                ? Unsafe.ReadUnaligned<uint>(ref immediates) == uint.MaxValue
+                : (Unsafe.ReadUnaligned<ulong>(ref immediates) & Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref immediates, 8))) == ulong.MaxValue &&
+                    Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref immediates, 16)) == uint.MaxValue;
+        }
+
         /// <summary>Installs <see cref="ExecuteOnesMask{TOpCount}"/> for <paramref name="push"/> where its first immediate is 0xff.</summary>
         private static void FuseOnesMask<TOpCount>(ReadOnlySpan<nint> handlers, nint[] paired, Instruction push)
             where TOpCount : struct, EvmInstructions.IOpCount
@@ -913,11 +934,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             if ((nuint)(head - 1) < (nuint)(EvmStack.MaxStackSize - 2) && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost))
             {
                 ref byte immediates = ref Unsafe.Add(ref ip, 1);
-                bool ones = TOpCount.Count == 4
-                    ? Unsafe.ReadUnaligned<uint>(ref immediates) == uint.MaxValue
-                    : (Unsafe.ReadUnaligned<ulong>(ref immediates) & Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref immediates, 8))) == ulong.MaxValue &&
-                        Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref immediates, 16)) == uint.MaxValue;
-                if (ones && Unsafe.Add(ref immediates, TOpCount.Count) == (byte)Instruction.AND)
+                // The AND first: the mask is often pushed for another use, and it is the cheaper test.
+                if (Unsafe.Add(ref immediates, TOpCount.Count) == (byte)Instruction.AND && IsOnesMask<TOpCount>(ref immediates))
                 {
                     ref ulong word = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                     if (TOpCount.Count == 4)
