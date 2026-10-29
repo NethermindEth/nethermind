@@ -36,6 +36,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal bool IsExecutionRequired { get; set; }
     internal bool HasExecuted { get; set; }
     private bool CompletesBeforeTransactions { get; init; }
+    private int KnownIndex { get; init; } = -1;
 
     /// <summary>No transaction is traced: a seed can replace the whole block, or a refused seed can replay it
     /// silently before tracing rewards.</summary>
@@ -49,6 +50,12 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
 
+    /// <summary><see cref="Wrap"/> for a target whose position in the block the caller already knows.</summary>
+    /// <param name="index">The target's index in the block. An index that does not hold the target falls back to the
+    /// lookup by hash.</param>
+    internal static IBlockTracer WrapAt(IBlockTracer tracer, Hash256? transactionHash, int index, IPrefixStateSeedSource? seeds = null) =>
+        transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds) { KnownIndex = index };
+
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
     /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
@@ -61,15 +68,24 @@ public sealed class TransactionTraceBoundary : IBlockTracer
             ? new(tracer, null, null) { CompletesBeforeTransactions = true }
             : new(tracer, block.Transactions[index - 1].Hash, null);
 
+    internal int IndexOf(Block block)
+    {
+        Transaction[] transactions = block.Transactions;
+        if (_transactionHash is null) return transactions.Length;
+        int known = KnownIndex;
+        return (uint)known < (uint)transactions.Length && transactions[known].Hash == _transactionHash
+            ? known
+            : IndexOf(transactions, _transactionHash);
+    }
+
+    /// <summary>The index of the transaction with <paramref name="hash"/>, or -1.</summary>
     /// <remarks>
     /// Senders are recovered after this lookup, so the transactions are not hashed yet. The first
     /// <see cref="SerialLookupLength"/> are hashed on this thread; each window after that is twice as long and is
     /// hashed in parallel first, so a late target in a large block does not hash its prefix on one thread.
     /// </remarks>
-    internal int IndexOf(Block block)
+    internal static int IndexOf(Transaction[] transactions, Hash256 hash)
     {
-        Transaction[] transactions = block.Transactions;
-        if (_transactionHash is null) return transactions.Length;
         int start = 0;
         int end = Math.Min(transactions.Length, SerialLookupLength);
         while (start < end)
@@ -77,7 +93,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
             if (start > 0) HashInParallel(transactions, start, end);
             for (int i = start; i < end; i++)
             {
-                if (transactions[i].Hash == _transactionHash) return i;
+                if (transactions[i].Hash == hash) return i;
             }
 
             start = end;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
@@ -43,6 +44,52 @@ public class TransactionTraceBoundaryTests
             Assert.That(Boundary(TestItem.KeccakA).IndexOf(block), Is.EqualTo(-1));
             Assert.That(transactions[BlockLength - 1].Hash, Is.Not.Null);
         }
+    }
+
+    [Test]
+    public void IndexOf_hashes_no_transaction_past_the_window_that_holds_the_target()
+    {
+        Transaction[] transactions = Decode();
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        Hash256 hash = Rlp.Decode<Transaction>(Encoded[65], RlpBehaviors.SkipTypedWrapping).Hash!;
+
+        Assert.That(Boundary(hash).IndexOf(block), Is.EqualTo(65));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactions[127].IsHashCalculated, Is.True, "the window [64, 128) is hashed together");
+            Assert.That(transactions[128].IsHashCalculated, Is.False, "the next window is not reached");
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(150)]
+    [TestCase(BlockLength - 1)]
+    public void IndexOf_with_a_known_index_hashes_only_the_target(int target)
+    {
+        Transaction[] transactions = Decode();
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        Hash256 hash = Rlp.Decode<Transaction>(Encoded[target], RlpBehaviors.SkipTypedWrapping).Hash!;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.WrapAt(NullBlockTracer.Instance, hash, target);
+
+        int found = boundary.IndexOf(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(target));
+            Assert.That(transactions.Count(static tx => tx.IsHashCalculated), Is.EqualTo(1));
+        }
+    }
+
+    [TestCase(-1)]
+    [TestCase(3)]
+    [TestCase(BlockLength)]
+    public void IndexOf_with_a_wrong_known_index_falls_back_to_the_lookup(int index)
+    {
+        const int target = 150;
+        Block block = Build.A.Block.WithTransactions(Decode()).TestObject;
+        Hash256 hash = Rlp.Decode<Transaction>(Encoded[target], RlpBehaviors.SkipTypedWrapping).Hash!;
+
+        Assert.That(((TransactionTraceBoundary)TransactionTraceBoundary.WrapAt(NullBlockTracer.Instance, hash, index)).IndexOf(block), Is.EqualTo(target));
     }
 
     private static TransactionTraceBoundary Boundary(Hash256 hash) =>

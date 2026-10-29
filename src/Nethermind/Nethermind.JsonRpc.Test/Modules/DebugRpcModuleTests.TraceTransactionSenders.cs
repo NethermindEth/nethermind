@@ -6,6 +6,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,6 +16,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.History.Changesets;
@@ -90,6 +94,50 @@ public partial class DebugRpcModuleTests
             }
             Assert.That(JToken.DeepEquals(seeded, replayed), Is.True, $"{seeded}{Environment.NewLine}{replayed}");
         }
+    }
+
+    /// <remarks>
+    /// The first transaction is made to hash like the target. A lookup by hash stops there and traces it; the index the
+    /// request names does not. The transfers carry different values, so the two traces differ.
+    /// </remarks>
+    [Test]
+    public async Task Trace_by_block_and_index_uses_the_index_instead_of_a_hash_lookup()
+    {
+        const int target = 2;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(new ChangesetPrefixStateSeedSource(index)));
+        ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressB);
+        Transaction[] transfers = new Transaction[SenderTestTransactions];
+        for (int i = 0; i < transfers.Length; i++)
+        {
+            transfers[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i).WithValue((UInt256)(i + 1))
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(transfers);
+        Assert.That(block.Transactions, Has.Length.EqualTo(SenderTestTransactions), "precondition: every transaction is included");
+        GethTraceOptions callTracer = new() { Tracer = NativeCallTracer.CallTracer };
+
+        JToken expected = await TraceByIndex(chain, block, target, callTracer);
+        IndexThroughTheCapture(chain, index, block, parent);
+        Transaction[] stored = chain.BlockTree.FindBlock(block.Hash!)!.Transactions;
+        stored[0].SetPreHash(Rlp.Encode(stored[target], RlpBehaviors.SkipTypedWrapping).Bytes);
+        Assert.That(stored[0].Hash, Is.EqualTo(stored[target].Hash), "precondition: the first transaction hashes like the target");
+        JToken seeded = await TraceByIndex(chain, block, target, callTracer);
+
+        Assert.That(JToken.DeepEquals(seeded, expected), Is.True, $"{seeded}{Environment.NewLine}{expected}");
+    }
+
+    private static async Task<JToken> TraceByIndex(TestRpcBlockchain chain, Block block, int index, GethTraceOptions options)
+    {
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", block.Hash!, index, options);
+        JToken result = JToken.Parse(response)["result"]!;
+        Assert.That(result.Type, Is.Not.EqualTo(JTokenType.Null), response);
+        return result;
     }
 
     [Test]
