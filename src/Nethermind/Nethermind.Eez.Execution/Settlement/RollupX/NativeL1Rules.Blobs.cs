@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
 
@@ -15,9 +17,10 @@ internal sealed partial class NativeL1Rules
 {
     private static JsonObject BlobRules(GethGenesisConfigJson config, SortedSet<ulong> times, ChainSpec spec, out ulong maximum)
     {
-        BlobParameters cancun = Blob(config, "cancun", Cancun.Instance);
-        BlobParameters prague = Blob(config, "prague", Prague.Instance);
-        BlobParameters osaka = Blob(config, "osaka", Osaka.Instance);
+        bool chiado = config.ChainId == BlockchainIds.Chiado;
+        BlobParameters cancun = Blob(config, "cancun", chiado ? CancunGnosis.Instance : Cancun.Instance);
+        BlobParameters prague = Blob(config, "prague", chiado ? PragueGnosis.Instance : Prague.Instance);
+        BlobParameters osaka = Blob(config, "osaka", chiado ? OsakaGnosis.Instance : Osaka.Instance);
         maximum = Math.Max(cancun.Allowance, Math.Max(prague.Allowance, osaka.Allowance));
         List<(ulong At, BlobParameters Value)> scheduled = new(6);
         foreach ((string key, ulong? at) in BlobUpdates(config))

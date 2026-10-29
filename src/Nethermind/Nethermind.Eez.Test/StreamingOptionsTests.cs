@@ -82,18 +82,18 @@ public class StreamingOptionsTests
     }
 
     [Test]
-    public void Load_RollupX_ResolvesTrustedProfileInputs()
+    public void Load_RollupX_ResolvesTrustedProfileInputs([Values("l1.json", "chiado")] string source)
     {
         JsonObject json = Valid();
         json["profile"] = "rollupx-native";
-        json["l1ChainConfigPath"] = "l1.json";
+        json["l1ChainConfigPath"] = source;
         json["l2GenesisHash"] = TestItem.KeccakA.ToString();
         using TempPath file = Config(json);
         StreamingOptions options = StreamingOptions.Load(file.Path, Attester());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(options.Profile, Is.EqualTo(StreamingSettlementProfile.RollupXNative));
-            Assert.That(options.L1ChainConfigPath, Is.EqualTo(Path.GetFullPath("l1.json", Path.GetDirectoryName(file.Path)!)));
+            Assert.That(options.L1ChainConfigPath, Is.EqualTo(source == "chiado" ? source : Path.GetFullPath(source, Path.GetDirectoryName(file.Path)!)));
             Assert.That(options.L2GenesisHash, Is.EqualTo(TestItem.KeccakA));
         }
     }

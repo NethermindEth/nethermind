@@ -28,7 +28,7 @@ public interface IEezConfig : IConfig
     [ConfigItem(Description = "The chain ID the L1 execution client must report. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "0")]
     ulong L1ChainId { get; set; }
 
-    [ConfigItem(Description = "The complete local L1 genesis file used to check native RollupX header layouts and chain identity.", DefaultValue = "null")]
+    [ConfigItem(Description = "The complete local Ethereum L1 genesis file or the chiado preset used to check native RollupX header layouts and chain identity.", DefaultValue = "null")]
     string? L1ChainConfigPath { get; set; }
 
     [ConfigItem(Description = "The most L2 blocks a native RollupX follower materializes from one settled batch. Larger batches require raising this resource limit.", DefaultValue = "16384")]

@@ -68,7 +68,7 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Ur
                 pins, registryLimits, sessionLimits, transportLimits)
             {
                 Profile = profile,
-                L1ChainConfigPath = settings.Profile == "rollupx-native" ? Path.GetFullPath(Required(settings.L1ChainConfigPath), directory) : null,
+                L1ChainConfigPath = settings.Profile == "rollupx-native" ? L1Source(settings.L1ChainConfigPath, directory) : null,
                 L2GenesisHash = settings.Profile == "rollupx-native" ? GenesisHash(settings.L2GenesisHash) : null,
             };
         }
@@ -92,6 +92,9 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri? L1Rpc, Ur
         if (length > maxBytes) throw Invalid();
         return bytes.AsSpan(0, length).ToArray();
     }
+
+    private static string L1Source(string? value, string directory) =>
+        value == "chiado" ? value : Path.GetFullPath(Required(value), directory);
 
     private static Hash256 GenesisHash(string? value)
     {

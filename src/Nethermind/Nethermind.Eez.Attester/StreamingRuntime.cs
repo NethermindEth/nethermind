@@ -87,7 +87,7 @@ internal sealed class StreamingRuntime : IDisposable
             if (chainRules?.NativeFormat is NativeSystemTxFormat.ContractV4 or NativeSystemTxFormat.ContractV6 or NativeSystemTxFormat.ContractV7)
             {
                 NativeGenesisSnapshot genesis = NativeGenesisSnapshot.Load(StreamingOptions.ReadFile(options.ChainConfigPath, 8 * 1024 * 1024), chainRules.NativeFormat);
-                NativeL1Rules l1Rules = NativeL1Rules.LoadEthereum(StreamingOptions.ReadFile(settings.L1ChainConfigPath!, 8 * 1024 * 1024));
+                NativeL1Rules l1Rules = NativeL1Rules.Load(settings.L1ChainConfigPath!);
                 nativeProfile = new NativeStreamingProfile(genesis, l1Rules);
                 if (genesis.Specs.ChainId != specs.ChainId || l1Rules.Specs.ChainId != settings.L1ChainId ||
                     settings.L2GenesisHash?.ValueHash256 != genesis.GenesisHash) throw StreamingOptions.Invalid();

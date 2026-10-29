@@ -41,11 +41,13 @@ internal sealed partial class NativeL1Rules
             forks[name] = new JsonObject { ["timestamp"] = timestamp };
             times.Add(timestamp);
         }
+        if (config.ChainId == BlockchainIds.Chiado) forks.Remove("Frontier");
         return forks;
     }
 
     private static ulong MergeActivation(GethGenesisConfigJson config, in UInt256 difficulty)
     {
+        if (config.ChainId == BlockchainIds.Chiado) return ChiadoMergeBlock;
         if (config.MergeNetsplitBlock is { } block) return block;
         if (config.ChainId == BlockchainIds.Mainnet && difficulty == MainnetSpecProvider.Instance.TerminalTotalDifficulty)
             return MainnetSpecProvider.ParisBlockNumber + 1;

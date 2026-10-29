@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -23,7 +22,7 @@ public partial class EezModule
     private void LoadNativeFollower(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<NativeL1Rules>(_ => NativeL1Rules.LoadEthereum(File.ReadAllBytes(config.L1ChainConfigPath!)))
+            .AddSingleton<NativeL1Rules>(_ => NativeL1Rules.Load(config.L1ChainConfigPath!))
             .AddKeyedSingleton<HttpClient>(NativeL1ClientKey, _ => NativeL1Client(config.L1RpcUrl!))
             .AddSingleton<NativeCanonicalHistory>()
             .Bind<IEezL1History, NativeCanonicalHistory>()
