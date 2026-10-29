@@ -91,7 +91,9 @@ public class BlockAccessListItemLimitTests
         Action process = () => chain.BlockProcessor.ProcessOne(
             suggested, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(header), CancellationToken.None);
 
-        Assert.That(process, Throws.InstanceOf<InvalidBlockException>().With.Message.Contains("exceeds allowed range"));
+        // The parallel path rejects from the workers' logs without merging them to name the difference.
+        Assert.That(process, Throws.InstanceOf<InvalidBlockException>()
+            .With.Message.Contains(parallelExecution ? "does not match the generated one" : "exceeds allowed range"));
     }
 
     private static async Task<(Block, ReadOnlyBlockAccessList)> ProduceBlock(BasicTestBlockchain chain)

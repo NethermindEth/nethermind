@@ -36,17 +36,7 @@ public class BalReadStoragePlanTests
             workers[i % workerCount].TryMark(cell);
         }
 
-        BlockAccessIndexRecorder covered = new();
-        covered.Begin(0);
-        plan.RecordCoveredReads(covered);
-        covered.Log.Seal();
-        GeneratedBlockAccessList merged = GeneratedBlockAccessList.Merge([covered.Log]);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
-            Assert.That(merged.AccountCount == 0 ? [] : merged.GetAccount(0).StorageReads.ToArray(), Is.EquivalentTo(slots[..marked]));
-        }
+        Assert.That(plan.TryFindUncovered(out _), Is.EqualTo(omitLast && count > 0));
     }
 
     [Test]

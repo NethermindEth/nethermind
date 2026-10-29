@@ -3161,7 +3161,7 @@ public partial class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+        GasValidationResult[] gasResults = BuildGasResults(block,
             (65_000, 0, null),
             (21_000, 0, null));
 
@@ -3197,7 +3197,7 @@ public partial class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+        GasValidationResult[] gasResults = BuildGasResults(block,
             (80_000, 0, null),
             (21_000, 0, null));
 
@@ -3236,7 +3236,7 @@ public partial class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+        GasValidationResult[] gasResults = BuildGasResults(block,
             (0, 60_000, null),
             (50_000, GasCostOf.CreateState, null));
 
@@ -3355,15 +3355,7 @@ public partial class BlockProcessorTests
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         ParallelTestBlockAccessListManager balManager = new(new ReceiptMetadataTransactionProcessorAdapter(gasConsumed))
         {
-            IncrementalValidationAction = (b, gasResults) =>
-            {
-                for (int i = 0; i < b.Transactions.Length; i++)
-                {
-                    gasResults[i].GetResult();
-                }
-
-                throw new InvalidBlockException(b, "diagnostic harvest");
-            },
+            IncrementalValidationAction = (b, _) => throw new InvalidBlockException(b, "diagnostic harvest"),
         };
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
@@ -3415,7 +3407,7 @@ public partial class BlockProcessorTests
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
         InvalidBlockException workerException = new(block, "worker-original-cause");
-        GasValidationResultSlot[] gasResults = BuildGasResults(block, (0, 0, workerException));
+        GasValidationResult[] gasResults = BuildGasResults(block, (0, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, CancellationToken.None));
@@ -3458,7 +3450,7 @@ public partial class BlockProcessorTests
 
         InvalidBlockException workerException = new(block, "worker-original-cause");
         // tx1 row uses legacy buggy shape: charges tx.GasLimit on rejection. Cumulative 80k+50k > 100k limit.
-        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+        GasValidationResult[] gasResults = BuildGasResults(block,
             (80_000, 0, null),
             (50_000, 0, workerException));
 
@@ -3689,52 +3681,6 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_stops_executing_tail_once_inclusion_check_rejects()
-    {
-        const int txCount = 2048;
-        // 3 * cap is spent and under one cap remains, so tx 3 provably cannot fit.
-        const int rejectIndex = 3;
-        ulong txGasLimit = Eip7825Constants.DefaultTxGasLimitCap;
-        ulong blockGasLimit = (ulong)(rejectIndex + 1) * txGasLimit - 1;
-
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithGasLimit(blockGasLimit)
-            .WithTransactions(CreateParallelValidationTransactions(txCount, txGasLimit))
-            .WithBlockAccessList(new ReadOnlyBlockAccessList())
-            .TestObject;
-
-        using ManualResetEventSlim validationFinished = new(false);
-        GatedTailTransactionProcessorAdapter transactionProcessor = new(rejectIndex, txGasLimit, validationFinished);
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
-            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            new ParallelTestBlockAccessListManager(transactionProcessor)
-            {
-                IncrementalValidationAction = (b, gasResults) => ReplayInclusionChecks(b, gasResults, validationFinished)
-            },
-            LimboLogs.Instance);
-
-        InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() => executor.ProcessTransactions(
-            block,
-            ProcessingOptions.None,
-            new BlockReceiptsTracer(),
-            CancellationToken.None));
-
-        // The decisive prefix has to run. The upper bound stays well clear of the in-flight window
-        // so it asserts that the tail stopped without depending on how fast cancellation propagates.
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
-            Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
-        }
-    }
-
-    [Test]
     public void Bal_validation_stops_executing_once_cancelled([Values] bool sequential)
     {
         const int txCount = 4096;
@@ -3786,8 +3732,7 @@ public partial class BlockProcessorTests
         const int heavyCountUnderLimit = 64;
         int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
 
-        using ManualResetEventSlim validationFinished = new(true);
-        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, stateGas);
         InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, (ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed, transactionProcessor);
 
         using (Assert.EnterMultipleScope())
@@ -3810,8 +3755,7 @@ public partial class BlockProcessorTests
         // last, so its earlier canonical slot is filled with a copied failure, which must name the tx that failed.
         bool leadExecuted = false;
         ConcurrentDictionary<int, InvalidBlockException?> failures = new();
-        using ManualResetEventSlim validationFinished = new(true);
-        GatedTailTransactionProcessorAdapter transactionProcessor = new(lead, gasUsed, validationFinished, outcome: tx =>
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(lead, gasUsed, outcome: tx =>
         {
             int index = (int)tx.Nonce;
             if (index == lead) Volatile.Write(ref leadExecuted, true);
@@ -3847,7 +3791,7 @@ public partial class BlockProcessorTests
         }
     }
 
-    public enum BalRejectionCause { None, TxFailure, ValidatorFailure, GasLimit }
+    public enum BalRejectionCause { None, TxFailure, GasLimit }
     public enum BalRejectionPoint { DuringWarmup, DuringApply }
 
     [Test]
@@ -3859,20 +3803,15 @@ public partial class BlockProcessorTests
 
         bool rejected = cause != BalRejectionCause.None;
         BlockProcessor.ParallelBlockValidationTransactionsExecutor? executor = null;
-        // Set only once every slot is filled, by which point the workers have recorded any failure or gas overrun.
-        using ManualResetEventSlim slotsFilled = new();
         void HoldUntilRejected(BalRejectionPoint point)
         {
             if (!rejected || rejectedAt != point) return;
-            // The executor sees a validator failure only once the exception has left the validator.
-            if (cause == BalRejectionCause.ValidatorFailure) SpinWait.SpinUntil(() => HasValidationFailed(executor!), TimeSpan.FromSeconds(10));
-            else slotsFilled.Wait(TimeSpan.FromSeconds(10));
+            // The workers reject the block once they record the failure or the gas overrun.
+            SpinWait.SpinUntil(() => IsBlockRejected(executor!), TimeSpan.FromSeconds(10));
         }
 
-        void RejectOnceAllSlotsAreFilled(Block b, GasValidationResultSlot[] gasResults)
+        void Reject(Block b, GasValidationResult[] _)
         {
-            for (int i = 0; i < b.Transactions.Length; i++) gasResults[i].GetResult();
-            slotsFilled.Set();
             if (rejected) throw new InvalidBlockException(b, "invalid block access list");
         }
 
@@ -3887,8 +3826,7 @@ public partial class BlockProcessorTests
             applying.Set();
             HoldUntilRejected(BalRejectionPoint.DuringApply);
         });
-        using ManualResetEventSlim validationFinished = new(true);
-        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, cause == BalRejectionCause.GasLimit ? 1_500_000ul : 21_000ul, validationFinished, outcome: _ =>
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, cause == BalRejectionCause.GasLimit ? 1_500_000ul : 21_000ul, outcome: _ =>
         {
             if (rejectedAt == BalRejectionPoint.DuringApply) applying.Wait(TimeSpan.FromSeconds(10));
             return rejected && cause == BalRejectionCause.TxFailure ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
@@ -3896,7 +3834,7 @@ public partial class BlockProcessorTests
         ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
         {
             BalWarmupAction = () => HoldUntilRejected(BalRejectionPoint.DuringWarmup),
-            IncrementalValidationAction = rejected ? RejectOnceAllSlotsAreFilled : null,
+            IncrementalValidationAction = rejected ? Reject : null,
         };
         executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
@@ -3935,16 +3873,13 @@ public partial class BlockProcessorTests
         }
     }
 
-    private static bool HasValidationFailed(BlockProcessor.ParallelBlockValidationTransactionsExecutor executor)
-    {
-        object? validation = typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
-            .GetField("_incrementalValidationWorkItem", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(executor);
-        return validation is not null && (bool)validation.GetType().GetProperty("HasFailed")!.GetValue(validation)!;
-    }
+    private static bool IsBlockRejected(BlockProcessor.ParallelBlockValidationTransactionsExecutor executor) =>
+        ((CancellationTokenSource)typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
+            .GetField("_rejection", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(executor)!).IsCancellationRequested;
 
-    /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last to hold the in-order validator, then a
-    /// heavy tail, and returns the block rejection.</summary>
+    /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last, then a heavy tail, and returns the block
+    /// rejection.</summary>
     private static InvalidBlockException ExecuteHeavyTail(int lead, ulong gasUsed, ulong blockGasLimit, ITransactionProcessorAdapter transactionProcessor)
     {
         const int heavyCount = 4096;
@@ -3973,18 +3908,6 @@ public partial class BlockProcessorTests
             ProcessingOptions.None,
             new BlockReceiptsTracer(),
             CancellationToken.None))!;
-    }
-
-    [Test]
-    public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
-    {
-        GasValidationResultSlot[] gasResults = ResultsForCount(2);
-        gasResults[0].TrySetResult(new GasValidationResult(1, 2, null));
-
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
-
-        Assert.That(gasResults[0].GetResult().BlockGasUsed, Is.EqualTo(1));
-        Assert.Throws<TaskCanceledException>(() => gasResults[1].GetResult());
     }
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
@@ -4023,35 +3946,15 @@ public partial class BlockProcessorTests
         Assert.That(balManager.ParallelExecutionEnabled, Is.True);
     }
 
-    /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering: wait for
-    /// each worker's gas result, then run the production EIP-8037 inclusion check.</summary>
-    private static void ReplayInclusionChecks(Block block, GasValidationResultSlot[] gasResults, ManualResetEventSlim validationFinished)
-    {
-        try
-        {
-            ulong totalExecutionGas = 0;
-            for (int i = 0; i < block.Transactions.Length; i++)
-            {
-                GasValidationResult gasResult = gasResults[i].GetResult();
-                BlockAccessListManager.CheckPerTxInclusion(block, i, block.Transactions[i], Amsterdam.Instance, totalExecutionGas, 0);
-                totalExecutionGas += gasResult.BlockGasUsed;
-            }
-        }
-        finally
-        {
-            validationFinished.Set();
-        }
-    }
-
     /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s in-order worker-failure
     /// and cumulative block gas checks.</summary>
-    private static void ReplayGasLimitChecks(Block block, GasValidationResultSlot[] gasResults)
+    private static void ReplayGasLimitChecks(Block block, GasValidationResult[] gasResults)
     {
         ulong totalExecutionGas = 0;
         ulong totalStateGas = 0;
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            GasValidationResult gasResult = gasResults[i].GetResult();
+            GasValidationResult gasResult = gasResults[i];
             if (gasResult.Exception is not null) throw new BlockAccessListManager.ParallelExecutionException(gasResult.Exception);
             totalExecutionGas += gasResult.BlockGasUsed;
             totalStateGas += gasResult.BlockStateGasUsed;
@@ -4066,7 +3969,7 @@ public partial class BlockProcessorTests
     /// real manager's own metadata contract.</summary>
     private static void ReplayProcessedEvents(
         Block block,
-        GasValidationResultSlot[] gasResults,
+        GasValidationResult[] gasResults,
         BlockReceiptsTracer[] receiptsTracers,
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
     {
@@ -4074,7 +3977,7 @@ public partial class BlockProcessorTests
         ulong cumulativeStateGas = 0;
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            GasValidationResult gasResult = gasResults[i].GetResult();
+            GasValidationResult gasResult = gasResults[i];
             cumulativeExecutionGas += gasResult.BlockGasUsed;
             cumulativeStateGas += gasResult.BlockStateGasUsed;
             transactionProcessedEventHandler?.OnTransactionProcessed(
@@ -4083,17 +3986,6 @@ public partial class BlockProcessorTests
                     HeaderGasUsed = Math.Max(cumulativeExecutionGas, cumulativeStateGas),
                 });
         }
-    }
-
-    private static GasValidationResultSlot[] ResultsForCount(int count)
-    {
-        GasValidationResultSlot[] results = new GasValidationResultSlot[count];
-        for (int i = 0; i < results.Length; i++)
-        {
-            results[i] = new();
-        }
-
-        return results;
     }
 
     private static GasValidationResult
@@ -4143,28 +4035,28 @@ public partial class BlockProcessorTests
         balManager.Setup(block);
     }
 
-    private static GasValidationResultSlot[] BuildGasResults(Block block, params (ulong Gas, ulong StateGas, InvalidBlockException? Exception)[] rows)
+    private static GasValidationResult[] BuildGasResults(Block block, params (ulong Gas, ulong StateGas, InvalidBlockException? Exception)[] rows)
     {
-        GasValidationResultSlot[] slots = ResultsForCount(rows.Length);
+        GasValidationResult[] results = new GasValidationResult[rows.Length];
         for (int i = 0; i < rows.Length; i++)
         {
-            slots[i].TrySetResult(GasResult(block, i, rows[i].Gas, rows[i].StateGas, rows[i].Exception));
+            results[i] = GasResult(block, i, rows[i].Gas, rows[i].StateGas, rows[i].Exception);
         }
-        return slots;
+        return results;
     }
 
-    private static GasValidationResultSlot[] BuildGasResults(GasConsumed[] gasConsumed)
+    private static GasValidationResult[] BuildGasResults(GasConsumed[] gasConsumed)
     {
-        GasValidationResultSlot[] slots = ResultsForCount(gasConsumed.Length);
+        GasValidationResult[] results = new GasValidationResult[gasConsumed.Length];
         for (int i = 0; i < gasConsumed.Length; i++)
         {
-            slots[i].TrySetResult(new GasValidationResult(
+            results[i] = new GasValidationResult(
                 gasConsumed[i].EffectiveBlockGas,
                 gasConsumed[i].BlockStateGas,
-                null));
+                null);
         }
 
-        return slots;
+        return results;
     }
 
     private static BlockReceiptsTracer[] BuildParallelReceiptTracers(Block block, GasConsumed[] gasConsumed)
@@ -4515,7 +4407,7 @@ public partial class BlockProcessorTests
         {
         }
 
-        public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+        public Action<Block, GasValidationResult[]>? IncrementalValidationAction { get; init; }
         public Action? BalWarmupAction { get; init; }
         public bool FailFirstSetBlockAccessList { get; init; }
         public int ProcessingAttempts { get; private set; }
@@ -4561,7 +4453,7 @@ public partial class BlockProcessorTests
         {
         }
 
-        public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+        public void IncrementalValidation(Block block, GasValidationResult[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
         {
             if (IncrementalValidationAction is not null)
             {
@@ -4683,12 +4575,11 @@ public partial class BlockProcessorTests
         }
     }
 
-    /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until
-    /// validation finishes so the count reflects cancellation, not scheduling.</summary>
+    /// <summary>Counts executed transactions, slowing everything after <c>decisiveIndex</c> so the count
+    /// reflects cancellation, not scheduling.</summary>
     private sealed class GatedTailTransactionProcessorAdapter(
         int decisiveIndex,
         ulong gasUsed,
-        ManualResetEventSlim validationFinished,
         bool stateGas = false,
         Func<Transaction, TransactionResult>? outcome = null) : ITransactionProcessorAdapter
     {
@@ -4700,9 +4591,7 @@ public partial class BlockProcessorTests
         {
             if ((int)transaction.Nonce > decisiveIndex)
             {
-                // Bounded so a regression fails the assertion instead of wedging the run; the spin
-                // then outlasts the gap between validation failing and the workers observing it.
-                validationFinished.Wait(TimeSpan.FromSeconds(10));
+                // Outlasts the gap between the block being rejected and the workers observing it.
                 Thread.SpinWait(50_000);
             }
 

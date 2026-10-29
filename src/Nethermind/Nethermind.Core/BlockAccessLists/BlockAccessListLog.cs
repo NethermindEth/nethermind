@@ -134,9 +134,19 @@ public sealed class BlockAccessListLog : IResettable
                     if (!entry.Reverted && IsWrite(entry.Key.Kind)) latest = sorted[indexEnd];
                 }
 
-                if (latest < 0 || !TryGetChange(in entries[latest], out Item change)) continue;
+                if (latest < 0) continue;
+                ref readonly Entry write = ref entries[latest];
+                bool isChange = section switch
+                {
+                    Section.Balance => write.Value != GetPreTxValue(write.PreTxValuePosition),
+                    Section.Code => write.HasValue && IsCodeChanged(in GetCodeWrite((int)write.Value.u0)),
+                    Section.Nonce => write.HasValue,
+                    _ => write.HasValue && write.Value != GetPreTxValue(write.PreTxValuePosition),
+                };
+
+                if (!isChange) continue;
                 changed = true;
-                _items.Add(change);
+                _items.Add(new Item(address, section, in key.Cell.Index, in write.Value, index, isChange: true));
             }
 
             if (section == Section.Storage && !changed)
@@ -146,23 +156,6 @@ public sealed class BlockAccessListLog : IResettable
         }
 
         if (address is not null) SetAccountItem(accountItem, address, firstIndex);
-    }
-
-    /// <summary>Gets the change <paramref name="write"/> makes, as the final write of its key at its index.</summary>
-    /// <remarks>A write is a change only when the value differs from the value before the index, except a nonce, which only moves forward.</remarks>
-    internal bool TryGetChange(in Entry write, out Item change)
-    {
-        Section section = SectionOf(write.Key.Kind);
-        bool isChange = section switch
-        {
-            Section.Balance => write.Value != GetPreTxValue(write.PreTxValuePosition),
-            Section.Code => write.HasValue && IsCodeChanged(in GetCodeWrite((int)write.Value.u0)),
-            Section.Nonce => write.HasValue,
-            Section.Storage => write.HasValue && write.Value != GetPreTxValue(write.PreTxValuePosition),
-            _ => false,
-        };
-        change = isChange ? new Item(write.Key.Cell.Address, section, in write.Key.Cell.Index, in write.Value, write.Index, isChange: true) : default;
-        return isChange;
 
         static bool IsCodeChanged(in CodeWrite codeWrite) => !codeWrite.Change.Code.AsSpan().SequenceEqual(codeWrite.PreTxCode.Span);
     }
@@ -261,28 +254,26 @@ public sealed class BlockAccessListLog : IResettable
                 continue;
             }
 
-            if (!IsDeclaredBy(account!, in item)) return false;
+            bool declared = item.Section switch
+            {
+                Section.Storage when !item.IsChange => account!.TryGetDeclaredSlotChanges(in item.Slot, out _),
+                Section.Storage => account!.TryGetSlotChanges(in item.Slot, out ReadOnlySlotChanges? slot)
+                    && Contains<StorageChange>(slot.Changes, new StorageChange(item.Index, in item.Value)),
+                Section.Balance => Contains<BalanceChange>(account!.BalanceChanges, new BalanceChange(item.Index, item.Value)),
+                Section.Nonce => Contains<NonceChange>(account!.NonceChanges, new NonceChange(item.Index, item.Value.u0)),
+                _ => Contains<CodeChange>(account!.CodeChanges, GetCodeChange(in item)),
+            };
+            if (!declared) return false;
             if (item.IsChange) changeCount++;
         }
 
         return true;
-    }
 
-    /// <summary>Whether <paramref name="account"/> lists the change or storage read <paramref name="item"/> of its account.</summary>
-    internal bool IsDeclaredBy(ReadOnlyAccountChanges account, in Item item) => item.Section switch
-    {
-        Section.Storage when !item.IsChange => account.TryGetDeclaredSlotChanges(in item.Slot, out _),
-        Section.Storage => account.TryGetSlotChanges(in item.Slot, out ReadOnlySlotChanges? slot)
-            && Contains<StorageChange>(slot.Changes, new StorageChange(item.Index, in item.Value)),
-        Section.Balance => Contains<BalanceChange>(account.BalanceChanges, new BalanceChange(item.Index, item.Value)),
-        Section.Nonce => Contains<NonceChange>(account.NonceChanges, new NonceChange(item.Index, item.Value.u0)),
-        _ => Contains<CodeChange>(account.CodeChanges, GetCodeChange(in item)),
-    };
-
-    private static bool Contains<T>(ReadOnlySpan<T> changes, in T change) where T : struct, IIndexedChange, IEquatable<T>
-    {
-        int position = changes.BinarySearch(new IndexKey<T>(change.Index));
-        return position >= 0 && changes[position].Equals(change);
+        static bool Contains<T>(ReadOnlySpan<T> changes, in T change) where T : struct, IIndexedChange, IEquatable<T>
+        {
+            int position = changes.BinarySearch(new IndexKey<T>(change.Index));
+            return position >= 0 && changes[position].Equals(change);
+        }
     }
 
     private static int FindAccount(ReadOnlySpan<ReadOnlyAccountChanges> accounts, int from, Address address)

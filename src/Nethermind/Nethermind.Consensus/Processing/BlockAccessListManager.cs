@@ -76,9 +76,6 @@ public partial class BlockAccessListManager(
     // EIP-7928: post-execution system calls read storage without spending block gas, so the
     // surplus-reads budget must leave room for what their own execution grant can read.
     private ulong _postExecutionReadAllowance;
-    // The number of changes the suggested list lists at each block access index, and whether the index made others.
-    private int[] _declaredChangeCounts = [];
-    private bool[] _indexChangesDiffer = [];
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -130,8 +127,6 @@ public partial class BlockAccessListManager(
             Reset();
             if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
                 _readPlan = new BalReadStoragePlan(bal);
-            if (ParallelExecutionEnabled)
-                PrepareIndexChecks(suggestedBlock.BlockAccessList!, suggestedBlock.Transactions.Length + 2);
             // The parallel path executes on the suggested list, so it always checks it.
             _validateBlockAccessList = suggestedBlock.BlockAccessList is not null
                 && (ParallelExecutionEnabled

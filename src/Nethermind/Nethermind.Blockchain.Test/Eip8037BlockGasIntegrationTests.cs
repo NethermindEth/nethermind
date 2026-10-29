@@ -63,13 +63,6 @@ public class Eip8037BlockGasIntegrationTests
         return (balManager, block);
     }
 
-    private static GasValidationResultSlot[] ResultsForCount(int n)
-    {
-        GasValidationResultSlot[] arr = new GasValidationResultSlot[n];
-        for (int i = 0; i < n; i++) arr[i] = new();
-        return arr;
-    }
-
     private static GasValidationResult
         GasResult(Block block, int txIndex, ulong blockGasUsed, ulong blockStateGasUsed, InvalidBlockException? exception = null) =>
         new(blockGasUsed, blockStateGasUsed, exception);
@@ -84,8 +77,8 @@ public class Eip8037BlockGasIntegrationTests
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
 
-        GasValidationResultSlot[] results = ResultsForCount(1);
-        results[0].TrySetResult(GasResult(block, 0, 50_000ul, blockStateGasUsed));
+        GasValidationResult[] results = new GasValidationResult[1];
+        results[0] = GasResult(block, 0, 50_000ul, blockStateGasUsed);
 
         if (accepts)
         {
@@ -116,9 +109,9 @@ public class Eip8037BlockGasIntegrationTests
             .WithNonce(1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
-        GasValidationResultSlot[] results = ResultsForCount(2);
-        results[0].TrySetResult(GasResult(block, 0, 16_777_216, 0));
-        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
+        GasValidationResult[] results = new GasValidationResult[2];
+        results[0] = GasResult(block, 0, 16_777_216, 0);
+        results[1] = GasResult(block, 1, 53_000ul, IntrinsicNewAccountState);
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));
@@ -142,10 +135,10 @@ public class Eip8037BlockGasIntegrationTests
             .WithGasLimit(blockGasLimit + 21_000ul + 1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, onlyTx);
 
-        GasValidationResultSlot[] results = ResultsForCount(1);
+        GasValidationResult[] results = new GasValidationResult[1];
         // Simulate execution finishing with modest actual gas (post-execution view).
         // Spec inclusion check rejects before execution even though post-execution gas would fit.
-        results[0].TrySetResult(GasResult(block, 0, 21_000ul, 0ul));
+        results[0] = GasResult(block, 0, 21_000ul, 0ul);
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
@@ -168,10 +161,10 @@ public class Eip8037BlockGasIntegrationTests
             .WithNonce(1ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
-        GasValidationResultSlot[] results = ResultsForCount(2);
-        results[0].TrySetResult(GasResult(block, 0, 50_000ul, 100_000ul)); // filler post-exec
+        GasValidationResult[] results = new GasValidationResult[2];
+        results[0] = GasResult(block, 0, 50_000ul, 100_000ul); // filler post-exec
         // Simulate creation tx ran with modest actual gas - spec would have rejected at inclusion.
-        results[1].TrySetResult(GasResult(block, 1, 53_000ul, IntrinsicNewAccountState));
+        results[1] = GasResult(block, 1, 53_000ul, IntrinsicNewAccountState);
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None),
@@ -191,8 +184,8 @@ public class Eip8037BlockGasIntegrationTests
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216ul).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx);
 
-        GasValidationResultSlot[] results = ResultsForCount(1);
-        results[0].TrySetResult(GasResult(block, 0, 50_000ul, 0ul));
+        GasValidationResult[] results = new GasValidationResult[1];
+        results[0] = GasResult(block, 0, 50_000ul, 0ul);
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));

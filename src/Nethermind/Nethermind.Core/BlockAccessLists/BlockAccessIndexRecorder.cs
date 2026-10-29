@@ -139,25 +139,6 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
         }
     }
 
-    /// <summary>Whether the changes the index made so far are exactly those <paramref name="suggested"/> lists at it.</summary>
-    /// <param name="suggested">The block's access list.</param>
-    /// <param name="declaredChanges">The number of changes <paramref name="suggested"/> lists at the index.</param>
-    /// <remarks>Needs only what the index recorded, so it runs as soon as the index has executed.</remarks>
-    public bool ChangesMatch(ReadOnlyBlockAccessList suggested, int declaredChanges)
-    {
-        int changes = 0;
-        ReadOnlySpan<Entry> entries = Log.Entries;
-        foreach (int position in _latestWrites.Values)
-        {
-            if (!Log.TryGetChange(in entries[position], out Item change)) continue;
-            if (suggested.GetAccountChanges(change.Address) is not { } account || !Log.IsDeclaredBy(account, in change)) return false;
-            changes++;
-        }
-
-        // Each change made is listed, so as many of them as listed are all the listed ones.
-        return changes == declaredChanges;
-    }
-
     public void AddAccountRead(Address address) => AddAccount(address);
 
     public void AddStorageRead(in StorageCell cell) => AddEntry(new EntryKey(cell, EntryKind.StorageRead));

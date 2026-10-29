@@ -63,7 +63,7 @@ public class BlockAccessListManagerTests
         /// <see cref="BlockAccessListManager.PrepareForProcessing"/> with prerequisites met so
         /// the hint gets tracked. Subsequent calls re-stub and re-prepare for a new block.
         /// </summary>
-        public Block IssueHint(Task hint, int txCount = 0, ReadOnlyBlockAccessList? blockAccessList = null)
+        public Block IssueHint(Task hint, int txCount = 0)
         {
             WorldState.IsInScope.Returns(true);
             WorldState.HintBal(Arg.Any<ReadOnlyBlockAccessList>()).Returns(hint);
@@ -74,7 +74,7 @@ public class BlockAccessListManagerTests
             Block block = Build.A.Block
                 .WithNumber(1) // not genesis — Enabled requires non-genesis
                 .WithTransactions(Build.A.Transaction.TestObjectNTimes(txCount))
-                .WithBlockAccessList(blockAccessList ?? Build.A.BlockAccessList.TestObject)
+                .WithBlockAccessList(Build.A.BlockAccessList.TestObject)
                 .TestObject;
 
             Manager.PrepareForProcessing(block, spec, ProcessingOptions.None);
@@ -85,7 +85,7 @@ public class BlockAccessListManagerTests
         /// Prepares <paramref name="txCount"/> transactions for parallel execution, with a parent state every
         /// rented tx processor can read from.
         /// </summary>
-        public Block SetupParallelBlock(int txCount, ReadOnlyBlockAccessList? blockAccessList = null)
+        public void SetupParallelBlock(int txCount)
         {
             IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
             source.TryBuildAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope?>())
@@ -96,11 +96,10 @@ public class BlockAccessListManagerTests
                 });
             ParentReaderEnvFactory.Create().Returns(source);
 
-            Block block = IssueHint(Task.CompletedTask, txCount, blockAccessList);
+            Block block = IssueHint(Task.CompletedTask, txCount);
             Manager.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Substitute.For<IReleaseSpec>()));
             Manager.Setup(block);
             Assert.That(Manager.ParallelExecutionEnabled, Is.True);
-            return block;
         }
     }
 
@@ -232,35 +231,6 @@ public class BlockAccessListManagerTests
         Assert.That(FrameCacheLength(rented), Is.Zero, "the rented processor's virtual machine was disposed");
     }
 
-    /// <summary>
-    /// Once a worker finds that an index made other changes than the list declares, the in-order validation stops there,
-    /// after every earlier index matched.
-    /// </summary>
-    [Test]
-    public void IncrementalValidation_stops_at_the_first_index_whose_changes_differ()
-    {
-        Harness h = new();
-        // Declares a change at index 2 that no transaction makes.
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(2, UInt256.One)).TestObject)
-            .TestObject;
-        Block block = h.SetupParallelBlock(txCount: 3, bal);
-
-        GasValidationResultSlot[] gasResults = new GasValidationResultSlot[3];
-        for (uint index = 1; index <= 3; index++)
-        {
-            h.Manager.GetTxProcessor(index);
-            h.Manager.CheckIndexChanges(block, index);
-            h.Manager.ReturnTxProcessor(index);
-            gasResults[index - 1] = new GasValidationResultSlot();
-            gasResults[index - 1].TrySetResult(new GasValidationResult(0, 0, null));
-        }
-
-        Assert.That(
-            () => h.Manager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[3], null, CancellationToken.None),
-            Throws.InstanceOf<BlockAccessListManager.IndexChangesMismatchException>().With.Message.EndsWith("at index 2."));
-    }
-
     private static int FrameCacheLength(IVirtualMachine machine) => ((VirtualMachine<EthereumGasPolicy>)machine).FrameCache.Length;
 
     [Test]
@@ -359,13 +329,13 @@ public class BlockAccessListManagerTests
     public enum Tampering { ChangedValue, ExtraAccount, DroppedAccount }
 
     /// <summary>
-    /// A list found wrong at one transaction, before the rest of the block ran, is reported as the block-level
-    /// comparison reports it.
+    /// A wrong list the transactions execute against is rejected from the workers' logs, without merging them to name
+    /// the first difference; one missing an account a transaction reads fails that transaction.
     /// </summary>
-    [TestCase(Tampering.ChangedValue, "contained incorrect changes for 0x00000000000000000000000000000000000000ee at index 2.")]
-    [TestCase(Tampering.ExtraAccount, "contained surplus changes for 0x00000000000000000000000000000000000000dd at index 2.")]
+    [TestCase(Tampering.ChangedValue, "does not match the generated one.")]
+    [TestCase(Tampering.ExtraAccount, "does not match the generated one.")]
     [TestCase(Tampering.DroppedAccount, "missing account changes for 0x00000000000000000000000000000000000000ee at index 1.")]
-    public async Task Parallel_execution_reports_a_wrong_access_list_at_its_first_wrong_change(Tampering tampering, string error)
+    public async Task Parallel_execution_rejects_a_wrong_access_list(Tampering tampering, string error)
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))

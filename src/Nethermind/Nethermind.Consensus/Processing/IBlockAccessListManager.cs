@@ -63,12 +63,7 @@ public interface IBlockAccessListManager
     TxProcessorLease RentTxProcessor(uint balIndex)
         => new(GetTxProcessor(balIndex), this, balIndex);
 
-    void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
-
-    /// <summary>Checks the changes <paramref name="balIndex"/> made against those its access list lists at that index, so that
-    /// <see cref="IncrementalValidation"/> rejects the block when it reaches an index that differs.</summary>
-    /// <remarks>Called on the parallel worker that executed the index, before it returns the index's processor.</remarks>
-    void CheckIndexChanges(Block block, uint balIndex) { }
+    void IncrementalValidation(Block block, GasValidationResult[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
 
     void SetBlockAccessList(Block block);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);

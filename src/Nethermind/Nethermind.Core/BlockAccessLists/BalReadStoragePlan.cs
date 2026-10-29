@@ -238,27 +238,6 @@ public sealed partial class BalReadStoragePlan : IDisposable
         return false;
     }
 
-    /// <summary>Records the declared reads some worker executed as storage reads of <paramref name="recorder"/>.</summary>
-    /// <remarks>Call only after all workers have completed.</remarks>
-    public void RecordCoveredReads(BlockAccessIndexRecorder recorder)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        int ordinal = 0;
-        foreach (ReadOnlyAccountChanges account in _accounts)
-        {
-            foreach (UInt256 slot in account.StorageReads)
-            {
-                foreach (BalReadCoverage worker in _workers)
-                {
-                    if (!worker.IsCovered(ordinal)) continue;
-                    recorder.AddStorageRead(new StorageCell(account.Address, slot));
-                    break;
-                }
-                ordinal++;
-            }
-        }
-    }
-
     /// <inheritdoc/>
     public void Dispose()
     {

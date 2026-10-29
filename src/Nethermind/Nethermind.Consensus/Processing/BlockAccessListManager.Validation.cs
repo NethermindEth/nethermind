@@ -21,34 +21,22 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Validation paths:
-///   * <see cref="IncrementalValidation"/> awaits each worker's gas result, runs the
-///     EIP-8037 2D inclusion check on the cumulative gas, then stops at the first index whose
-///     changes <see cref="CheckIndexChanges"/> found to differ.
+///   * <see cref="IncrementalValidation"/> checks the workers' gas results in transaction order once
+///     they have all executed: each transaction's own failure, the EIP-8037 2D inclusion check and the
+///     cumulative gas.
 ///   * <see cref="CheckPerTxInclusion"/> is the EIP-8037 worst-case 2D inclusion check.
-///   * <see cref="CheckIndexChanges"/> checks the changes of one index as soon as a worker has executed it.
 ///   * <see cref="ValidateLogs"/> checks the logs against the suggested list once the block has
-///     executed in parallel, merging them only to report a mismatch.
+///     executed in parallel, without merging them.
 ///   * <see cref="ValidateMergedBlockAccessList"/> compares the merged list with the suggested
 ///     one once the block has executed.
 /// </summary>
 public partial class BlockAccessListManager
 {
-    /// <summary>The changes of a block access index differ from those the block's access list lists at it.</summary>
-    /// <remarks>
-    /// Raised in transaction order, once every earlier index has executed and matched, so a comparison of what the
-    /// executed indexes recorded with the suggested list reports the first wrong change, as for the whole block.
-    /// </remarks>
-    public class IndexChangesMismatchException(BlockHeader header, uint index)
-        : InvalidBlockLevelAccessListException(header, $"Suggested block-level access list does not match the changes at index {index}.");
-
-    public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, GasValidationResult[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         CheckInitialized();
 
         int len = block.Transactions.Length;
-
-        // balIndex 0 (pre-execution) is held by main-thread system contract handlers; release its processor to the workers.
-        ReturnTxProcessor(0u);
 
         ulong totalExecutionGas = 0;
         ulong totalStateGas = 0;
@@ -63,7 +51,7 @@ public partial class BlockAccessListManager
             {
                 Transaction tx = block.Transactions[j];
 
-                GasValidationResult gasResult = gasResults[j].GetResult();
+                GasValidationResult gasResult = gasResults[j];
                 CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalExecutionGas, totalStateGas);
 
                 // Surface the worker's original tx-rejection reason before running any
@@ -78,9 +66,6 @@ public partial class BlockAccessListManager
 
                 ulong headerGasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
                 CheckGasUsed(j, block, headerGasUsed);
-
-                if (ParallelExecutionEnabled && _indexChangesDiffer[j + 1])
-                    throw new IndexChangesMismatchException(block.Header, (uint)(j + 1));
 
                 if (transactionProcessedEventHandler is not null)
                 {
@@ -146,62 +131,17 @@ public partial class BlockAccessListManager
         }
     }
 
-    /// <inheritdoc/>
-    /// <remarks>
-    /// What one index cannot show, an account the block only touched or a declared read, is left to
-    /// <see cref="ValidateLogs"/>.
-    /// </remarks>
-    public void CheckIndexChanges(Block block, uint balIndex)
-    {
-        BlockAccessIndexRecorder recorder = _txProcessorWithWorldStateManager!.Get(balIndex).Recorder;
-        _indexChangesDiffer[balIndex] = !recorder.ChangesMatch(block.BlockAccessList!, _declaredChangeCounts[balIndex]);
-    }
-
-    private void PrepareIndexChecks(ReadOnlyBlockAccessList suggested, int indexCount)
-    {
-        if (_declaredChangeCounts.Length < indexCount)
-        {
-            _declaredChangeCounts = new int[indexCount];
-            _indexChangesDiffer = new bool[indexCount];
-        }
-
-        _indexChangesDiffer.AsSpan(0, indexCount).Clear();
-        Span<int> counts = _declaredChangeCounts.AsSpan(0, indexCount);
-        counts.Clear();
-        foreach (ReadOnlyAccountChanges account in suggested.AccountChanges)
-        {
-            Count(counts, account.BalanceChanges);
-            Count(counts, account.NonceChanges);
-            Count(counts, account.CodeChanges);
-            foreach (ReadOnlySlotChanges slot in account.StorageChanges) Count(counts, slot.Changes);
-        }
-
-        // An index past the post-execution one is left to the block-level comparison, which rejects it.
-        static void Count<T>(Span<int> counts, ReadOnlySpan<T> changes) where T : IIndexedChange
-        {
-            foreach (T change in changes)
-            {
-                if (change.Index < (uint)counts.Length) counts[(int)change.Index]++;
-            }
-        }
-    }
-
     /// <summary>Checks the logs against the block's suggested list without merging them.</summary>
     /// <remarks>
     /// Each index is recorded in one log, so the logs match when the suggested list declares all that each holds,
-    /// together they hold as many changes as it and touch all its accounts, and every declared read executed. A
-    /// mismatch is reported as <see cref="ValidateMergedBlockAccessList"/> reports it, over the merged logs and the
-    /// declared reads that executed.
+    /// together they hold as many changes as it and touch all its accounts, and every declared read executed. Any
+    /// mismatch would also fail <see cref="ValidateMergedBlockAccessList"/>, so it is rejected without merging the
+    /// logs to name the first difference.
     /// </remarks>
     private void ValidateLogs(Block block, ReadOnlySpan<BlockAccessListLog> logs)
     {
-        if (BlockAccessListLog.Matches(logs, block.BlockAccessList!) && _readPlan?.TryFindUncovered(out _) != true) return;
-
-        BlockAccessIndexRecorder coveredReads = new();
-        coveredReads.Begin((uint)block.Transactions.Length + 1);
-        _readPlan?.RecordCoveredReads(coveredReads);
-        coveredReads.Log.Seal();
-        ValidateMergedBlockAccessList(block, GeneratedBlockAccessList.Merge([.. logs, coveredReads.Log]));
+        if (!BlockAccessListLog.Matches(logs, block.BlockAccessList!) || _readPlan?.TryFindUncovered(out _) == true)
+            ThrowMismatch(block, "Suggested block-level access list does not match the generated one.");
     }
 
     /// <summary>Checks the merged list against the block's suggested one.</summary>

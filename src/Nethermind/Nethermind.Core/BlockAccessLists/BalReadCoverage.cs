@@ -58,8 +58,6 @@ public sealed class BalReadCoverage
         return true;
     }
 
-    internal bool IsCovered(int ordinal) => (_bits[ordinal >> 6] & (1UL << (ordinal & 63))) != 0;
-
     internal void Absorb(BalReadCoverage other)
     {
         int i = 0;
