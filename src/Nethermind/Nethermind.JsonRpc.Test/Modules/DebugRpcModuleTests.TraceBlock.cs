@@ -144,9 +144,12 @@ public partial class DebugRpcModuleTests
         bool bufferedNoop = tracer == NativeNoopTracer.NoopTracer && (!streamMode || filtered);
         if (timeout == "1s" || bufferedNoop)
         {
-            Assert.That(json["error"], Is.Null, response);
             JToken? result = json["result"];
-            Assert.That(result, Is.TypeOf<JArray>(), response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(result, Is.TypeOf<JArray>(), response);
+            }
             Assert.That((JArray)result!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
         }
         else
@@ -456,8 +459,11 @@ public partial class DebugRpcModuleTests
             {
                 await Write();
                 using JsonDocument document = JsonDocument.Parse(output.ToArray());
-                Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
-                Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(selection == "full" ? 3 : selection == "selected" ? 1 : 0));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(selection == "full" ? 3 : selection == "selected" ? 1 : 0));
+                }
             }
         }
         finally { await writer.CompleteAsync(); }

@@ -191,8 +191,11 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
         finally { await transport.CompleteAsync(); }
         using JsonDocument document = JsonDocument.Parse(stream.ToArray());
-        Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
-        Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+            Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+        }
         JsonElement previous = document.RootElement[0];
         JsonElement failed = document.RootElement[1];
         Assert.That(failed.TryGetProperty("error", out JsonElement error), Is.True);
@@ -319,8 +322,11 @@ public class JsonRpcResponseWriterStreamingIdTests
                 return;
             }
             using JsonDocument document = JsonDocument.Parse(bytes);
-            Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+            }
             JsonElement previous = document.RootElement[0];
             JsonElement item = document.RootElement[1];
             using (Assert.EnterMultipleScope())
@@ -342,8 +348,11 @@ public class JsonRpcResponseWriterStreamingIdTests
             else
             {
                 Assert.That(item.TryGetProperty("result", out JsonElement result), Is.True);
-                Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
-                Assert.That(result.GetArrayLength(), Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(result.GetArrayLength(), Is.EqualTo(2));
+                }
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(item.TryGetProperty("error", out _), Is.False);
