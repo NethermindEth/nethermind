@@ -150,6 +150,9 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
+        if (TTracingInst.IsActive)
+            TraceCreateGasCost<TGasPolicy, TOpCreate>(vm, in gas, TEip8037.IsActive, in memoryPositionOfInitCode, in initCodeLength, initCodeWords);
+
         if (!TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref gas, spec, initCodeWords))
             goto OutOfGas;
 
@@ -318,6 +321,35 @@ public static partial class EvmInstructions
         return EvmExceptionType.StaticCallViolation;
     BadInstruction:
         return EvmExceptionType.BadInstruction;
+    }
+
+    /// <summary>Reports the gas the creation is about to charge, before init-code memory is expanded.</summary>
+    /// <remarks>As in Geth, a creation that cannot pay the base charge reports that charge alone.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateGasCost<TGasPolicy, TOpCreate>(
+        VirtualMachine<TGasPolicy> vm,
+        in TGasPolicy gas,
+        bool eip8037,
+        in UInt256 initCodePosition,
+        in UInt256 initCodeLength,
+        ulong initCodeWords)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+    {
+        IReleaseSpec spec = vm.Spec;
+        ulong baseCost = CreateGasCost.Base<TOpCreate>(spec.IsEip8038Enabled, eip8037);
+        if (TGasPolicy.GetRemainingGas(in gas) < baseCost)
+        {
+            vm.TraceOperationGasCost(baseCost);
+            return;
+        }
+
+        if (initCodeWords > (ulong.MaxValue - baseCost) / (GasCostOf.InitCodeWord + GasCostOf.Sha3Word))
+            return;
+
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        vm.TraceMemoryOperationGasCost(in initCodePosition, in initCodeLength,
+            baseCost + initCodeWordCost + CreateGasCost.InitCodeHashing<TOpCreate>(initCodeWords));
     }
 
     /// <summary>

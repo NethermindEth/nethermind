@@ -30,8 +30,11 @@ namespace Nethermind.KeyStore.Test
         {
             using CryptoRandom rng = new();
 
-            Assert.That(rng.NextInt(0), Is.EqualTo(0));
-            Assert.That(rng.NextInt(-1), Is.EqualTo(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rng.NextInt(0), Is.EqualTo(0));
+                Assert.That(rng.NextInt(-1), Is.EqualTo(0));
+            }
         }
 
         [Test]
@@ -43,13 +46,19 @@ namespace Nethermind.KeyStore.Test
             byte[] b = rng.GenerateRandomBytes(32);
 
             // Ensure arrays are correct length and not all zeros
-            Assert.That(a.Length, Is.EqualTo(32));
-            Assert.That(b.Length, Is.EqualTo(32));
-            Assert.That(a.Any(x => x != 0), Is.True);
-            Assert.That(b.Any(x => x != 0), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(a.Length, Is.EqualTo(32));
+                Assert.That(b.Length, Is.EqualTo(32));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(a.Any(x => x != 0), Is.True);
+                Assert.That(b.Any(x => x != 0), Is.True);
 
-            // Extremely unlikely to fail: values should differ
-            Assert.That(a.SequenceEqual(b), Is.False);
+                // Extremely unlikely to fail: values should differ
+                Assert.That(a.SequenceEqual(b), Is.False);
+            }
         }
 
         [Test]

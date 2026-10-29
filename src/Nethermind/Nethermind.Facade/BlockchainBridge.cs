@@ -229,6 +229,7 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, bool noBaseFee, CancellationToken cancellationToken)
         {
+            if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return new() { Error = error };
             blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
             header = CloneForCall(header, noBaseFee);
             return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
@@ -296,6 +297,11 @@ namespace Nethermind.Facade
             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null ||
             blockOverride is not null && HasBlockOverrides(blockOverride);
 
+        internal static string? GetUnsupportedBlockOverrideError(BlockOverride? blockOverride) =>
+            blockOverride?.BeaconRoot is not null ? BlockOverride.BeaconRootNotSupported
+            : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
+            : null;
+
         private static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
@@ -338,6 +344,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, bool noBaseFee, CancellationToken cancellationToken)
         {
+            if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return new() { Error = error };
             BlobFeeCapFill blobFeeCapFill = new(tx.SupportsBlobs && tx.MaxFeePerBlobGas is null, blobBaseFeeOverride);
             blobBaseFeeOverride = GetBlobBaseFeeOverride(tx, blobBaseFeeOverride);
             header = CloneForCall(header, noBaseFee);
@@ -352,6 +359,7 @@ namespace Nethermind.Facade
             out bool executionReverted)
         {
             executionReverted = false;
+            if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return Result<TxFrame[]>.Fail(error);
             BlockHeader executionHeader = header.Clone();
             // The requested block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
@@ -810,15 +818,7 @@ namespace Nethermind.Facade
             BlockHeader toBlock,
             CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
 
-        public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
-        {
-            LogFilter? filter;
-            filterLogs = null;
-            if ((filter = filterStore.GetFilter<LogFilter>(filterId)) is not null)
-                filterLogs = logFinder.FindLogs(filter, cancellationToken);
-
-            return filter is not null;
-        }
+        public LogFilter? GetLogFilter(int filterId) => filterStore.GetFilter<LogFilter>(filterId);
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
             HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null)

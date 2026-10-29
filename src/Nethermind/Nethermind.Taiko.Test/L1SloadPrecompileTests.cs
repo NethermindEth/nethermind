@@ -58,15 +58,21 @@ public class L1SloadPrecompileTests
         byte[] input = new byte[Address.Size];
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
-        Assert.That(success, Is.False);
-        Assert.That(result, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(result, Is.Empty);
+        }
 
         // Input too long
         byte[] longInput = new byte[L1PrecompileConstants.L1SloadExpectedInputLength + 32];
         (result, success) = _precompile.Run(longInput, _spec);
 
-        Assert.That(success, Is.False);
-        Assert.That(result, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(result, Is.Empty);
+        }
     }
 
     [Test]
@@ -79,7 +85,9 @@ public class L1SloadPrecompileTests
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
+#pragma warning disable NUnit2045 // The operation must succeed before accessing its result.
         Assert.That(success, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(result!.Length, Is.EqualTo(32));
 
         UInt256 returnedValue = new(result!.AsSpan(0, 32), isBigEndian: true);
@@ -94,8 +102,11 @@ public class L1SloadPrecompileTests
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
-        Assert.That(success, Is.False);
-        Assert.That(result, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(result, Is.Empty);
+        }
     }
 
     [Test]
@@ -107,8 +118,11 @@ public class L1SloadPrecompileTests
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
-        Assert.That(success, Is.False);
-        Assert.That(result, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(result, Is.Empty);
+        }
     }
 
     [Test]
@@ -119,11 +133,14 @@ public class L1SloadPrecompileTests
 
         Address? precompileAddress = L1SloadPrecompile.Address;
 
-        Assert.That(enabledSpec.IsPrecompile(precompileAddress), Is.True,
-            "L1SloadPrecompile address should be identified as precompile when RIP-7728 is enabled");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(enabledSpec.IsPrecompile(precompileAddress), Is.True,
+                "L1SloadPrecompile address should be identified as precompile when RIP-7728 is enabled");
 
-        Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
-            "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
+            Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
+                "L1SloadPrecompile address should not be identified as precompile when RIP-7728 is disabled");
+        }
     }
 
     // --- Block-range validation (l1Origin passed as argument) ---
