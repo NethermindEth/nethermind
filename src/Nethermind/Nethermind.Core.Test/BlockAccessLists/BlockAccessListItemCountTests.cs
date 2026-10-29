@@ -61,7 +61,7 @@ public class BlockAccessListItemCountTests
         recorder.Begin(0);
         record(recorder);
         BlockAccessListItemSet items = new();
-        items.Add(recorder.Log, recorder.Start);
+        items.TrackAddedEntries(recorder.Log, recorder.Start);
 
         using (Assert.EnterMultipleScope())
         {
@@ -82,14 +82,14 @@ public class BlockAccessListItemCountTests
         recorder.Begin(0);
         recorder.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
         recorder.AddStorageRead(new StorageCell(TestItem.AddressA, 2));
-        items.Add(recorder.Log, recorder.Start);
+        items.TrackAddedEntries(recorder.Log, recorder.Start);
         Assert.That(items.ItemCount, Is.EqualTo(3), "block 1: 1 account + 2 storage reads");
 
         recorder.Log.Clear();
         items.Clear();
         recorder.Begin(0);
         for (int slot = 1; slot <= 4; slot++) recorder.AddStorageRead(new StorageCell(TestItem.AddressB, (UInt256)slot));
-        items.Add(recorder.Log, recorder.Start);
+        items.TrackAddedEntries(recorder.Log, recorder.Start);
 
         using (Assert.EnterMultipleScope())
         {
@@ -134,7 +134,7 @@ public class BlockAccessListItemCountTests
     }
 
     [TestCaseSource(nameof(CountNewItemsCases))]
-    public void CountNewItems_matches_the_item_count_Add_adds(Action<BlockAccessIndexRecorder> record, int expected)
+    public void CountNewItems_matches_the_item_count_TrackAddedEntries_adds(Action<BlockAccessIndexRecorder> record, int expected)
     {
         BlockAccessIndexRecorder recorder = new();
         BlockAccessListItemSet items = new();
@@ -142,13 +142,13 @@ public class BlockAccessListItemCountTests
         recorder.AddStorageRead(new StorageCell(TestItem.AddressA, 1));
         recorder.AddStorageChange(new StorageCell(TestItem.AddressA, 2), before: UInt256.Zero, after: UInt256.One);
         recorder.AddStorageRead(new StorageCell(TestItem.AddressB, 7));
-        items.Add(recorder.Log, recorder.Start);
+        items.TrackAddedEntries(recorder.Log, recorder.Start);
         int before = items.ItemCount;
 
         recorder.Begin(2);
         record(recorder);
         int counted = items.CountNewItems(recorder.Log, recorder.Start);
-        items.Add(recorder.Log, recorder.Start);
+        items.TrackAddedEntries(recorder.Log, recorder.Start);
 
         using (Assert.EnterMultipleScope())
         {

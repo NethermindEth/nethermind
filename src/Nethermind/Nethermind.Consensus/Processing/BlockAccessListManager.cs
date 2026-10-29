@@ -222,7 +222,7 @@ public partial class BlockAccessListManager(
             if (_isBuilding)
             {
                 BlockAccessIndexRecorder recorder = GetBuildingRecorder();
-                BlockAccessListItems.Add(recorder.Log, recorder.Start);
+                BlockAccessListItems.TrackAddedEntries(recorder.Log, recorder.Start);
             }
             _txProcessorWithWorldStateManager.NextTransaction();
         }

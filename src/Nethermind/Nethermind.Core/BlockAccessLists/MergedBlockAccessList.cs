@@ -21,8 +21,8 @@ namespace Nethermind.Core.BlockAccessLists;
 public sealed class MergedBlockAccessList
 {
     private readonly List<AccountRange> _accounts = [];
-    private readonly List<SlotRange> _slots = [];
-    private readonly List<StorageChange> _storageChanges = [];
+    private readonly List<SlotRange> _storageChanges = [];
+    private readonly List<StorageChange> _storageChangeEntries = [];
     private readonly List<UInt256> _storageReads = [];
     private readonly List<BalanceChange> _balanceChanges = [];
     private readonly List<NonceChange> _nonceChanges = [];
@@ -31,7 +31,7 @@ public sealed class MergedBlockAccessList
     public int AccountCount => _accounts.Count;
 
     /// <summary>The EIP-7928 item count: accounts plus distinct storage keys, changed or read.</summary>
-    public int ItemCount => _accounts.Count + _slots.Count + _storageReads.Count;
+    public int ItemCount => _accounts.Count + _storageChanges.Count + _storageReads.Count;
 
     public AccountChanges GetAccount(int index) => new(this, _accounts[index]);
 
@@ -76,9 +76,9 @@ public sealed class MergedBlockAccessList
                         FinishSlot(ref hasSlot, in slot, slotChangesStart);
                         hasSlot = true;
                         slot = item.Slot;
-                        slotChangesStart = _storageChanges.Count;
+                        slotChangesStart = _storageChangeEntries.Count;
                     }
-                    if (item.IsChange) _storageChanges.Add(new StorageChange(item.Index, item.Value));
+                    if (item.IsChange) _storageChangeEntries.Add(new StorageChange(item.Index, item.Value));
                     break;
                 case BlockAccessListLog.Section.Balance:
                     _balanceChanges.Add(new BalanceChange(item.Index, item.Value));
@@ -143,8 +143,8 @@ public sealed class MergedBlockAccessList
     public void Clear()
     {
         _accounts.Clear();
-        _slots.Clear();
         _storageChanges.Clear();
+        _storageChangeEntries.Clear();
         _storageReads.Clear();
         _balanceChanges.Clear();
         _nonceChanges.Clear();
@@ -155,7 +155,7 @@ public sealed class MergedBlockAccessList
     {
         Address = address,
         FirstIndex = firstIndex,
-        SlotsStart = _slots.Count,
+        SlotsStart = _storageChanges.Count,
         StorageReadsStart = _storageReads.Count,
         BalanceChangesStart = _balanceChanges.Count,
         NonceChangesStart = _nonceChanges.Count,
@@ -165,7 +165,7 @@ public sealed class MergedBlockAccessList
     private void FinishAccount(ref AccountRange account, ref bool hasSlot, in UInt256 slot, int slotChangesStart)
     {
         FinishSlot(ref hasSlot, in slot, slotChangesStart);
-        account.SlotsEnd = _slots.Count;
+        account.SlotsEnd = _storageChanges.Count;
         account.StorageReadsEnd = _storageReads.Count;
         account.BalanceChangesEnd = _balanceChanges.Count;
         account.NonceChangesEnd = _nonceChanges.Count;
@@ -178,9 +178,9 @@ public sealed class MergedBlockAccessList
         if (!hasSlot) return;
         hasSlot = false;
 
-        int changes = _storageChanges.Count - slotChangesStart;
+        int changes = _storageChangeEntries.Count - slotChangesStart;
         if (changes == 0) _storageReads.Add(slot);
-        else _slots.Add(new SlotRange(slot, slotChangesStart, changes));
+        else _storageChanges.Add(new SlotRange(slot, slotChangesStart, changes));
     }
 
     /// <summary>One account of a <see cref="MergedBlockAccessList"/>, valid until the list changes.</summary>
@@ -202,13 +202,13 @@ public sealed class MergedBlockAccessList
 
         public int SlotCount => _range.SlotsEnd - _range.SlotsStart;
 
-        public UInt256 GetSlotKey(int slot) => _list._slots[_range.SlotsStart + slot].Key;
+        public UInt256 GetSlotKey(int slot) => _list._storageChanges[_range.SlotsStart + slot].Key;
 
         /// <summary>The changes of a changed slot, ordered by index.</summary>
         public ReadOnlySpan<StorageChange> GetSlotChanges(int slot)
         {
-            SlotRange range = _list._slots[_range.SlotsStart + slot];
-            return CollectionsMarshal.AsSpan(_list._storageChanges).Slice(range.ChangesStart, range.ChangesCount);
+            SlotRange range = _list._storageChanges[_range.SlotsStart + slot];
+            return CollectionsMarshal.AsSpan(_list._storageChangeEntries).Slice(range.ChangesStart, range.ChangesCount);
         }
 
         public ReadOnlySpan<UInt256> StorageReads => Slice(_list._storageReads, _range.StorageReadsStart, _range.StorageReadsEnd);

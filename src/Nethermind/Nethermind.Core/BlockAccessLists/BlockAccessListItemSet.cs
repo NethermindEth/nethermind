@@ -36,7 +36,7 @@ public sealed class BlockAccessListItemSet
     }
 
     /// <summary>Adds the items of the entries of <paramref name="log"/> from <paramref name="start"/> on.</summary>
-    public void Add(BlockAccessListLog log, int start)
+    public void TrackAddedEntries(BlockAccessListLog log, int start)
     {
         Collector collector = new(this, add: true);
         log.VisitAccesses(start, ref collector);
