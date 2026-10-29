@@ -16,24 +16,44 @@ public class BlockchainProcessorFacadeTests
 {
     /// <remarks>
     /// Tracers read the sender when a transaction trace starts, before the transaction processor would recover it, so
-    /// preprocessing may leave the senders only to a processor that recovers them before it runs each transaction.
+    /// preprocessing may leave the senders only to an executor that recovers them before it runs each transaction.
     /// </remarks>
     [TestCase(false, true, false)]
     [TestCase(true, false, false)]
     [TestCase(true, true, true)]
-    public void Leaves_senders_to_the_processor_only_when_it_recovers_them_for_a_bounded_replay(
-        bool processorRecoversSenders, bool bounded, bool expectDeferred)
+    public void Leaves_senders_to_the_executor_only_when_it_recovers_them_for_a_bounded_replay(
+        bool executorRecoversSenders, bool bounded, bool expectDeferred)
+    {
+        RecordingStep step = new();
+        BlockchainProcessorFacade facade = new(Substitute.For<IBlockProcessor>(), Substitute.For<ISpecProvider>(), [step], executorRecoversSenders);
+
+        Process(facade, bounded);
+
+        AssertRecovery(step, expectDeferred);
+    }
+
+    [Test]
+    public void Public_constructor_recovers_every_sender_of_a_bounded_replay()
+    {
+        RecordingStep step = new();
+        BlockchainProcessorFacade facade = new(Substitute.For<IBlockProcessor>(), Substitute.For<ISpecProvider>(), [step]);
+
+        Process(facade, bounded: true);
+
+        AssertRecovery(step, expectDeferred: false);
+    }
+
+    private static void Process(BlockchainProcessorFacade facade, bool bounded)
     {
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
-        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
-        processor.RecoversBoundedTraceSenders.Returns(processorRecoversSenders);
-        RecordingStep step = new();
-        BlockchainProcessorFacade facade = new(processor, Substitute.For<ISpecProvider>(), [step]);
         IBlockTracer tracer = Substitute.For<IBlockTracer>();
         IBlockTracer traced = bounded ? TransactionTraceBoundary.Wrap(tracer, block.Transactions[0].Hash!) : tracer;
 
         facade.Process(block, TraceProcessingOptions.ReadOnlyReplay, traced);
+    }
 
+    private static void AssertRecovery(RecordingStep step, bool expectDeferred)
+    {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(step.Full, Is.EqualTo(expectDeferred ? 0 : 1));

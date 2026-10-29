@@ -37,10 +37,6 @@ public sealed class FinalizedBlockAccessListProcessor(
     }
 
     /// <inheritdoc/>
-    /// <remarks>A traced replay always reaches the inner processor.</remarks>
-    public bool RecoversBoundedTraceSenders => inner.RecoversBoundedTraceSenders;
-
-    /// <inheritdoc/>
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block block, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
     {

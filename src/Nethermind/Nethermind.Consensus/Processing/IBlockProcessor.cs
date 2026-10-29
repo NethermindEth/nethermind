@@ -27,13 +27,6 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event Action<Block>? TransactionsExecuted;
 
-        /// <summary>
-        /// Whether a replay bounded at one transaction recovers the senders of the transactions it runs itself, so that
-        /// preprocessing may leave them unrecovered.
-        /// </summary>
-        /// <remarks>A decorator that does not forward this keeps the default, which recovers every sender up front.</remarks>
-        bool RecoversBoundedTraceSenders => false;
-
         /// <summary>Processes a block, or a transaction prefix in a compatible read-only tracing environment.</summary>
         /// <remarks>
         /// A transaction-only trace may return fewer receipts than transactions. Such receipts have no computed bloom,

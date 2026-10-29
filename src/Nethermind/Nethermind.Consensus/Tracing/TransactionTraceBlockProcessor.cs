@@ -31,10 +31,6 @@ public sealed class TransactionTraceBlockProcessor(
 {
     private readonly bool _reportsProcessedTransactions = executor.ReportsProcessedTransactions;
 
-    /// <inheritdoc/>
-    /// <remarks>Its executor recovers the range it runs, and the whole block whenever it runs the whole block.</remarks>
-    public override bool RecoversBoundedTraceSenders => true;
-
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
