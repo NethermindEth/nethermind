@@ -1149,8 +1149,7 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // A wrapper is relayed only once usable for admission, so a verified proof over transactions the pool
-    // rejects (for example unfunded) is not republished.
+    // A wrapper none of whose transactions the pool holds, for example as they are unfunded, is not republished.
     [TestCase(true)]
     [TestCase(false)]
     public async Task Wrapper_is_relayed_only_when_admission_succeeds(bool poolAccepts)
@@ -1170,9 +1169,10 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // An already-pending funded transaction must not carry rejected junk through relay: admission has to succeed for every entry.
+    // EIP-8288 Test Case 12: a valid wrapper whose transaction fails pool admission is accepted and relayed unchanged while the
+    // pool holds another of its transactions.
     [Test]
-    public async Task Wrapper_with_a_pending_transaction_and_rejected_junk_is_not_relayed()
+    public async Task Wrapper_with_a_pending_transaction_and_a_pool_rejected_one_is_relayed_unchanged()
     {
         Transaction pending = CreateHashedTransaction(TestItem.KeccakA);
         Transaction junk = CreateHashedTransaction(TestItem.KeccakB);
@@ -1182,15 +1182,15 @@ public class ProofWrapperServiceTests
             call[1] = pending;
             return true;
         });
-        int relayed = 0;
-        service.WrapperValidated += (_, _) => relayed++;
+        List<byte[]> relayed = [];
+        service.WrapperValidated += (body, _) => relayed.Add(body);
 
         ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
-            Assert.That(relayed, Is.Zero);
+            Assert.That(relayed, Is.EqualTo(new[] { wrapper }));
         }
     }
 

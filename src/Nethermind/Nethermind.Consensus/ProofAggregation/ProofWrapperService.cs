@@ -93,9 +93,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
-    /// <summary>Raised with the encoded wrapper once the pool admits every transaction it carries and the verifier it was
-    /// validated under is still current.</summary>
-    /// <remarks>The second argument is the verifier it was validated under. Subscribers must not mutate the wrapper.</remarks>
+    /// <summary>Raised with the encoded wrapper once its proof is valid, the pool holds at least one of its transactions and the
+    /// verifier it was validated under is still current.</summary>
+    /// <remarks>EIP-8288: pool rejection of other transactions does not invalidate the wrapper or prevent its unchanged relay. The
+    /// second argument is the verifier it was validated under. Subscribers must not mutate the wrapper.</remarks>
     public event Action<byte[], Eip8288Verifier>? WrapperValidated;
 
     /// <summary>Raised with the new verifier after the verifier-change rule dropped what the previous one validated.</summary>
@@ -285,6 +286,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
             IDisposable? scope;
+            int pooled = 0;
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
@@ -296,7 +298,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 IReadOnlyList<Transaction> transactions = decoded.Transactions;
                 Hash256[] hashes = new Hash256[transactions.Count];
                 string? firstError = null;
-                int pooled = 0;
                 try
                 {
                     for (int start = 0; start < transactions.Count; start += AdmissionChunk)
@@ -333,8 +334,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
-            // Relay only once every transaction it carries is pending, so a partly rejected wrapper is not relayed.
-            if (admission.IsSuccess && relay is not null && RefreshVerifier() == verifier)
+            if (pooled != 0 && relay is not null && RefreshVerifier() == verifier)
                 WrapperValidated?.Invoke(relay, verifier);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }

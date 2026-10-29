@@ -436,8 +436,9 @@ public sealed partial class ProofWrapperTransport
                 WrapperMetrics.Record(WrapperEvent.Validated);
                 if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Announcement}");
                 break;
-            // Pool policy is not a protocol matter: a valid proof stands even if its transactions were refused. The wrapper is
-            // neither stored nor relayed, so a soft tombstone keeps re-announcements from fetching it again.
+            // Pool policy is not a protocol matter and never penalizes: a valid proof stands even if transactions were refused, and
+            // the wrapper is relayed unchanged while the pool holds any of them. A soft tombstone keeps re-announcements of one it
+            // holds none of from fetching it again.
             case Verdict.PoolRejected:
                 WrapperMetrics.Record(WrapperEvent.Validated);
                 SoftTombstone(fetch);

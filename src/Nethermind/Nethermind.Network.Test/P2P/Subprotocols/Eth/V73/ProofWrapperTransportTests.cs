@@ -470,6 +470,36 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // EIP-8437: pool rejection of one transaction neither penalizes the sender nor prevents unchanged relay of a valid wrapper.
+    [Test]
+    public async Task Partly_pool_rejected_wrapper_is_relayed_unchanged_without_penalty()
+    {
+        Transaction accepted = FrameTransaction(1), rejected = FrameTransaction(2);
+        byte[] wrapper = Wrapper(64, accepted, rejected);
+        using WrapperTestNode node = new();
+        node.Pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+        {
+            Transaction transaction = call.Arg<Transaction>();
+            if (transaction.Hash == rejected.Hash) return AcceptTxResult.FeeTooLow;
+            lock (node.Pending) node.Pending.Add(transaction);
+            return AcceptTxResult.Accepted;
+        });
+        FakeWrapperLink link = new("source"), other = new("other");
+        WrapperPeer peer = node.Connect(link);
+        node.Connect(other);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        Answer(node, peer, link, wrapper);
+
+        await WrapperTestNode.Until(() => node.Transport.IsStored(Describe(wrapper).Hash));
+        await WrapperTestNode.Until(() => other.Sent<NewProofWrapperHashesMessage>().Length != 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { accepted.Hash }));
+            Assert.That(other.Sent<NewProofWrapperHashesMessage>().Single().Announcements.Single().Hash, Is.EqualTo(Describe(wrapper).Hash));
+        }
+    }
+
     [Test]
     public async Task Pool_rejected_wrapper_is_soft_tombstoned_without_penalty_and_not_refetched()
     {
