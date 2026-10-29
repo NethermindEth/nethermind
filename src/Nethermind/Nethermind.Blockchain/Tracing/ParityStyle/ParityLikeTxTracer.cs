@@ -177,6 +177,10 @@ public partial class ParityLikeTxTracer : TxTracer
     private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input) =>
         (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
 
+    // Like the input, a frame's output and deployed code are read only through the action tree.
+    private byte[]? CopyActionOutput(ReadOnlyMemory<byte> output) =>
+        (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? output.AsArray() : null;
+
     protected void ResetTracerState(Block block, Transaction? tx)
     {
         _tx = tx;
@@ -575,7 +579,7 @@ public partial class ParityLikeTxTracer : TxTracer
                 $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
         }
 
-        _currentAction.Result.Output = output.AsArray();
+        _currentAction.Result.Output = CopyActionOutput(output);
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }
@@ -589,7 +593,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         ParityTraceResult result = _currentAction!.Result!;
-        result.Output = output.AsArray();
+        result.Output = CopyActionOutput(output);
         result.GasUsed = _currentAction.Gas - gas;
         _currentAction.Error = GetErrorDescription(EvmExceptionType.Revert);
         PopAction();
@@ -611,7 +615,7 @@ public partial class ParityLikeTxTracer : TxTracer
         }
 
         _currentAction.Result.Address = deploymentAddress;
-        _currentAction.Result.Code = deployedCode.AsArray();
+        _currentAction.Result.Code = CopyActionOutput(deployedCode);
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }

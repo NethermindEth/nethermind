@@ -101,41 +101,61 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Vm_trace_only_skips_action_input_copies()
+    public void Vm_trace_only_skips_action_input_and_result_copies([Values("return", "revert", "create")] string frameEnd)
     {
+        bool create = frameEnd == "create";
+        byte[] frameCode = (frameEnd == "revert"
+            ? Prepare.EvmCode.StoreDataInMemory(0, "ffee").Revert(2, 0)
+            : Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0)).Done;
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
-        byte[] code = Prepare.EvmCode.CallWithInput(TestItem.AddressC, 50000, "0xdeadbeef").Op(Instruction.STOP).Done;
+        TestState.InsertCode(TestItem.AddressC, frameCode, Spec);
+        byte[] code = (create
+            ? Prepare.EvmCode.Create(frameCode, 0)
+            : Prepare.EvmCode.CallWithInput(TestItem.AddressC, 50000, "0xdeadbeef")).Op(Instruction.STOP).Done;
 
-        (ParityLikeTxTrace vmOnly, int vmOnlyCopies) = TraceCountingInputCopies(ParityTraceTypes.VmTrace, code);
-        (ParityLikeTxTrace full, int fullCopies) = TraceCountingInputCopies(ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, code);
+        (ParityLikeTxTrace vmOnly, ParityTraceAction vmOnlyFrame, int vmOnlyCopies) = TraceCountingInputCopies(ParityTraceTypes.VmTrace, code);
+        (ParityLikeTxTrace full, ParityTraceAction fullFrame, int fullCopies) = TraceCountingInputCopies(ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, code);
 
         EthereumJsonSerializer serializer = new();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(vmOnlyCopies, Is.Zero);
             Assert.That(fullCopies, Is.EqualTo(2));
-            Assert.That(full.Action!.Subtraces.Single().Input, Is.SequenceEqualTo(Bytes.FromHexString("0xdeadbeef")));
-            Assert.That(serializer.Serialize(vmOnly.VmTrace), Is.EqualTo(serializer.Serialize(full.VmTrace)));
+            Assert.That(fullFrame.Input, Is.SequenceEqualTo(create ? frameCode : Bytes.FromHexString("0xdeadbeef")));
+            Assert.That(vmOnlyFrame.Result!.Output, Is.Null);
+            Assert.That(vmOnlyFrame.Result.Code, Is.Null);
+            Assert.That(create ? fullFrame.Result!.Code : fullFrame.Result!.Output, Is.EqualTo(Bytes.FromHexString("0xffee")));
+            // The second creation deploys to another address, as the first one advanced the sender's nonce.
+            if (!create) Assert.That(serializer.Serialize(vmOnly.VmTrace), Is.EqualTo(serializer.Serialize(full.VmTrace)));
         }
     }
 
-    private (ParityLikeTxTrace Trace, int CopiedInputs) TraceCountingInputCopies(ParityTraceTypes types, byte[] code)
+    private (ParityLikeTxTrace Trace, ParityTraceAction Frame, int CopiedInputs) TraceCountingInputCopies(ParityTraceTypes types, byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, [1, 2, 3], UInt256.Zero);
         InputCountingTracer tracer = new(block, transaction, types);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
-        return (tracer.BuildResult(), tracer.CopiedInputs);
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        return (trace, tracer.ActionTree!.Subtraces.Single(), tracer.CopiedInputs);
     }
 
     private sealed class InputCountingTracer(Block block, Transaction tx, ParityTraceTypes types) : ParityLikeTxTracer(block, tx, types)
     {
         public int CopiedInputs { get; private set; }
 
+        /// <summary>The action tree as built, before <see cref="BuildResult"/> drops it from a trace without <see cref="ParityTraceTypes.Trace"/>.</summary>
+        public ParityTraceAction? ActionTree { get; private set; }
+
         protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
         {
             if (!input.IsEmpty) CopiedInputs++;
             return base.CopyInput(input);
+        }
+
+        public override ParityLikeTxTrace BuildResult()
+        {
+            ActionTree = _trace.Action;
+            return base.BuildResult();
         }
     }
 
