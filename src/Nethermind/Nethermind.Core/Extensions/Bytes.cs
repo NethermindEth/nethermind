@@ -909,6 +909,8 @@ namespace Nethermind.Core.Extensions
             // is a whole number of the four-word steps below.
             const int maxChunkBytes = 28 * sizeof(ulong);
             int headZeros = 0;
+            // The span is not pinned, but only the low address bits are read; a GC move keeps them, as array data
+            // stays 8-byte aligned.
             int head = Math.Min(data.Length, (int)((nuint)(-(nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(data))) & (sizeof(ulong) - 1)));
             foreach (byte b in data[..head])
             {
