@@ -405,6 +405,55 @@ public class GuestDispatchDifferentialTests
     }
 
     /// <remarks>
+    /// Addends below the modulus take the guest's inline ADDMOD: their sums fall on both sides of the modulus, and above
+    /// 2^256 for a modulus above 2^255, and one with the largest addend sums to the modulus exactly. An addend at or
+    /// above the modulus takes the general path.
+    /// </remarks>
+    [Test]
+    public void Addition_below_the_modulus_matches_the_shared_handlers([Range(0, 3)] int seed)
+    {
+        UInt256 bn254 = UInt256.Parse("21888242871839275222246405745257275088696311169201772083599007584476017209221");
+        List<string> mismatches = [];
+        Random random = new(seed * 7883);
+        for (int i = 0; i < 400 && mismatches.Count < 5; i++)
+        {
+            UInt256 modulus = random.Next(5) switch
+            {
+                0 => bn254,
+                1 => UInt256.MaxValue - (ulong)random.Next(0, 300),
+                2 => (UInt256.One << 255) + (ulong)random.Next(1, 300),
+                3 => UInt256.Zero,
+                _ => RandomWord(random) | UInt256.One,
+            };
+
+            UInt256 largest = modulus.IsZero ? UInt256.MaxValue : modulus - 1;
+            List<byte> code = [(byte)Instruction.PUSH32, .. modulus.ToBigEndian()];
+            for (int operand = 0; operand < 2; operand++)
+            {
+                UInt256 addend = random.Next(8) switch
+                {
+                    0 => largest,
+                    1 => UInt256.Zero,
+                    2 => UInt256.One,
+                    3 => modulus,
+                    4 => modulus > UInt256.MaxValue - 300 ? UInt256.MaxValue : modulus + (ulong)random.Next(1, 300),
+                    _ => modulus.IsZero ? RandomWord(random) : RandomWord(random) % modulus,
+                };
+                code.AddRange([(byte)Instruction.PUSH32, .. addend.ToBigEndian()]);
+            }
+
+            code.AddRange([(byte)Instruction.ADDMOD, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+            byte[] program = [.. code];
+            Outcome untraced = Run(100_000, [], 0, new CodeInfo(program), Table.Untraced);
+            Outcome traced = Run(100_000, [], 0, new CodeInfo(program), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
     /// A PUSH1 or DUP fused with the opcode after it never writes the pushed or copied word, so the operands lean on the
     /// carries, borrows and signs that word meets in the one below it; both words left on the stack are stored to memory.
     /// </remarks>
