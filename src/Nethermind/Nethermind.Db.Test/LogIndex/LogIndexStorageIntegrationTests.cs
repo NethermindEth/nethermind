@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -54,6 +55,102 @@ namespace Nethermind.Db.Test.LogIndex
         private string _dbPath = null!;
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
+
+        [Test]
+        public void Posting_enumerator_respects_direction_and_range(
+            [Values("empty", "forward", "backward", "mixed", "compressed")] string layout, [Values] bool backwards)
+        {
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
+            int[] blocks = SeedPostingChunks(db, layout);
+            (int From, int To)[] ranges = [(-1, int.MaxValue), (0, 0), (1, 1), (2, 2), (3, 5), (5, 15), (6, 14), (9, 11), (0, 5), (0, 7), (0, 9), (0, 11), (0, 13), (0, 15), (16, 18), (19, int.MaxValue), (int.MaxValue, int.MaxValue)];
+            foreach ((int from, int to) in ranges)
+            {
+                using IEnumerator<int> enumerator = CreatePostingEnumerator(db, from, to, backwards);
+                List<int> actual = [];
+                while (enumerator.MoveNext()) actual.Add(enumerator.Current);
+                IEnumerable<int> expected = blocks.Where(block => block >= from && block <= to);
+                bool hasMore = enumerator.MoveNext();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(backwards ? expected.Reverse() : expected), $"{from}..{to}");
+                    Assert.That(hasMore, Is.False);
+                }
+            }
+        }
+
+        [Test]
+        public void Posting_enumerator_rejects_inverted_range([Values] bool backwards)
+        {
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
+            Assert.Throws<ArgumentException>(() => CreatePostingEnumerator(db, 2, 1, backwards));
+        }
+
+        [Test]
+        public void Posting_enumerator_retains_one_view_when_chunks_are_replaced(
+            [Values("mixed", "compressed")] string layout, [Values] bool backwards)
+        {
+            using IDb db = _dbFactory.CreateDb(new DbSettings(nameof(LogIndexStorage), "reverse-postings"));
+            int[] blocks = SeedPostingChunks(db, layout);
+            using IEnumerator<int> enumerator = CreatePostingEnumerator(db, 0, int.MaxValue, backwards);
+            Assert.That(enumerator.MoveNext(), Is.True);
+            List<int> actual = [enumerator.Current];
+            foreach (byte[] key in db.GetAllKeys().ToArray()) db.Remove(key);
+            WritePostingChunk(db, Postfix.ForwardMerge, [2, 4, 6], compressed: false);
+            db.Flush();
+            db.Compact();
+            while (enumerator.MoveNext()) actual.Add(enumerator.Current);
+            Assert.That(actual, Is.EqualTo(backwards ? blocks.Reverse() : blocks));
+        }
+
+        private IEnumerator<int> CreatePostingEnumerator(IDb db, int from, int to, bool backwards) => backwards
+            ? ReverseLogIndexEnumerator.TryCreate((ISortedKeyValueStore)db, CompressionAlgorithm.Supported[testData.Compression!],
+                TestItem.AddressA.Bytes.ToArray(), from, to)!
+            : new LogIndexEnumerator((ISortedKeyValueStore)db, CompressionAlgorithm.Supported[testData.Compression!],
+                TestItem.AddressA.Bytes.ToArray(), from, to);
+
+        private int[] SeedPostingChunks(IDb db, string layout)
+        {
+            List<int> blocks = [];
+            if (layout is "backward" or "mixed" or "compressed")
+            {
+                WritePostingChunk(db, Postfix.BackwardMerge, [3, 1], compressed: false);
+                blocks.AddRange([1, 3]);
+            }
+            if (layout is "mixed" or "compressed")
+            {
+                foreach (int first in new[] { 5, 11 })
+                {
+                    byte[] suffix = new byte[4];
+                    BinaryPrimitives.WriteInt32BigEndian(suffix, first + 1);
+                    int[] chunk = [first, first + 2, first + 4];
+                    WritePostingChunk(db, suffix, chunk, compressed: layout == "compressed");
+                    blocks.AddRange(chunk);
+                }
+            }
+            if (layout is "forward" or "mixed" or "compressed")
+            {
+                WritePostingChunk(db, Postfix.ForwardMerge, [17, 19, int.MaxValue], compressed: false);
+                blocks.AddRange([17, 19, int.MaxValue]);
+            }
+            return blocks.ToArray();
+        }
+
+        private void WritePostingChunk(IDb db, byte[] suffix, int[] blocks, bool compressed)
+        {
+            byte[] value = new byte[blocks.Length * sizeof(int) + 64];
+            if (compressed)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(value, -blocks.Length);
+                int length = (int)CompressionAlgorithm.Supported[testData.Compression!].Compress(blocks, (nuint)blocks.Length, value.AsSpan(4));
+                value = value[..(length + 4)];
+            }
+            else
+            {
+                for (int i = 0; i < blocks.Length; i++) BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(i * 4), blocks[i]);
+                value = value[..(blocks.Length * 4)];
+            }
+            db.Set(TestItem.AddressA.Bytes.ToArray().Concat(suffix).ToArray(), value);
+        }
 
         [Test]
         public async Task Compressor_waits_for_pending_work_and_supports_cancelled_waits([Values] bool enqueueAsync)

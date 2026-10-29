@@ -232,6 +232,14 @@ namespace Nethermind.Core
         public ReadOnlySpan<byte> CurrentValue { get; }
     }
 
+    /// <summary>A sorted view that can traverse preceding keys within the same view.</summary>
+    public interface IReverseSortedView : ISortedView
+    {
+        /// <summary>Moves from a valid current key to the preceding key within the view's bounds.</summary>
+        /// <returns>False when no preceding key remains.</returns>
+        public bool MovePrevious();
+    }
+
     /// <summary>A sorted view that can reposition within its bounds.</summary>
     public interface ISeekableSortedView : ISortedView
     {
