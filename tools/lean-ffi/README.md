@@ -315,8 +315,9 @@ Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker
 wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
 one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Ticks
 coalesce while proving. Subsets are transaction-hash-prefix buckets: the candidates in canonical
-order start as one bucket, and one that does not fit is subdivided by successive hash bits, so nodes
-with the same pool view build the same sets. Mode 1 is bounded by `MAX_WRAPPER_BYTES` and the
+order start as one bucket, and one that does not fit is subdivided by successive hash bits. Buckets
+do not depend on arrival order, but splits depend on the held proofs through the proving-cost
+estimate, so other nodes cut the same buckets only where their pool and held proofs agree. Mode 1 is bounded by `MAX_WRAPPER_BYTES` and the
 circuit's dependency-list limit (the guest's 256 dependencies), and a bucket also by an estimated
 proving cost equal to folding 16 fresh signatures: already proven aggregates merge whole and may
 carry many more dependencies. Mode-0 witnesses fold directly into the aggregate, and a set a held

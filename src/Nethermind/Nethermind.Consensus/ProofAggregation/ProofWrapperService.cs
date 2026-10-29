@@ -605,8 +605,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// <summary>Partitions the pending dependency-bearing transactions into transaction-hash-prefix buckets that each fit one
     /// mode-1 wrapper.</summary>
     /// <remarks>EIP-8288 proof reuse: the candidates in canonical order start as one bucket, and a bucket exceeding the wrapper's
-    /// transaction bytes, the circuit's dependency-list limit or the proving-cost budget is subdivided by successive hash bits, so
-    /// nodes with the same pool view build the same sets and can reuse each other's proofs. A transaction exceeding the proving
+    /// transaction bytes, the circuit's dependency-list limit or the proving-cost budget is subdivided by successive hash bits.
+    /// Buckets do not depend on arrival order, but the cost check depends on the proofs held here, so nodes with the same pool view
+    /// share bucket boundaries only where their held proofs agree. A transaction exceeding the proving
     /// budget alone is still a bucket of its own; one whose inputs are unavailable or exceed the circuit is left out.</remarks>
     private List<Bucket> PlanBuckets(Eip8288Verifier verifier, CancellationToken cancellationToken)
     {

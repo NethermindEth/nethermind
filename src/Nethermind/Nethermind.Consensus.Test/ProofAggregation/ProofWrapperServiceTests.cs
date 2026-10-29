@@ -628,7 +628,7 @@ public class ProofWrapperServiceTests
     }
 
     // EIP-8288 proof reuse: candidates are partitioned by transaction-hash prefix, oversized buckets subdivided by successive bits,
-    // so the wrappers depend on the pool view alone, not on the order transactions arrived in.
+    // so for a given pool and held-proof state the wrappers do not depend on the order transactions arrived in.
     [Test]
     public void Produced_wrappers_are_hash_prefix_buckets_independent_of_arrival_order()
     {
