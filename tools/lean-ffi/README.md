@@ -317,6 +317,10 @@ fold directly into the aggregate, and a selection a held proof already proves is
 before publication. `eth_getProofWrapper` returns a copy without invoking the prover.
 Managed aggregation folds at most four direct witnesses or two children per call.
 Cancellation is checked between calls; an individual native call remains uninterruptible.
+Setting `TxPool.AggregateProofs` to `false` (default `true`) disables this worker, so no proving is
+spent on mempool aggregation and `eth_getProofWrapper` has nothing to return. Received wrappers,
+including those submitted through `eth_sendProofWrapper`, are still verified, admitted and relayed as
+received, and block production still proves its own blocks on demand.
 
 The node-wide prover decorator shares up to 64 verified aggregation steps within 32 MiB, keyed by
 immutable complete inputs, verification key and expected statement. Identical concurrent requests

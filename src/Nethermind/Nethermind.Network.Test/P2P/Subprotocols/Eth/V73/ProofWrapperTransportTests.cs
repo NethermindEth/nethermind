@@ -4,10 +4,13 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Init.Modules;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
@@ -69,6 +72,42 @@ public class ProofWrapperTransportTests
             Assert.That(holderLink.Penalties, Is.Empty);
             Assert.That(node.Transport.ChargedBytes, Is.Zero, "every reservation is released once validation finishes");
             Assert.That(link.Sent<NewProofWrapperHashesMessage>(), Is.Empty, "the source already holds the wrapper");
+        }
+    }
+
+    // EIP-8288 aggregation is optional: without it no wrapper is produced, but the transport still relays what it validates.
+    [Test]
+    public void Aggregator_is_registered_only_when_the_node_aggregates_proofs([Values] bool aggregate)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new NetworkModule(new ConfigProvider(new TxPoolConfig { AggregateProofs = aggregate })));
+        using IContainer container = builder.Build();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.IsRegistered<ProofWrapperGossip>(), Is.EqualTo(aggregate));
+            Assert.That(container.IsRegistered<ProofWrapperTransport>(), Is.True);
+        }
+    }
+
+    // As eth_sendProofWrapper does, a locally submitted wrapper is offered as received, with no aggregator running.
+    [Test]
+    public async Task Locally_submitted_wrapper_is_relayed_as_received_without_aggregation()
+    {
+        Transaction transaction = FrameTransaction(1);
+        byte[] wrapper = Wrapper(1024, transaction);
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        node.Connect(link);
+
+        Assert.That((await node.Wrappers.AcceptAsync(wrapper)).IsSuccess, Is.True);
+
+        WrapperAnnouncement announcement = Describe(wrapper);
+        await WrapperTestNode.Until(() => link.Sent<NewProofWrapperHashesMessage>().Length != 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsStored(announcement.Hash), Is.True);
+            Assert.That(link.Sent<NewProofWrapperHashesMessage>().Single().Announcements.Select(static a => a.Hash),
+                Is.EqualTo(new[] { announcement.Hash }));
         }
     }
 
