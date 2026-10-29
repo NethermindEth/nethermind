@@ -3,7 +3,6 @@
 
 using System.IO.Abstractions;
 using Autofac;
-using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Monitoring;
 using Nethermind.Api.Steps;
@@ -93,7 +92,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSingleton<IStatePersistenceBarrier, StatePersistenceBarrier>()
 
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, (ctx) => ctx.Resolve<INodeKeyManager>().LoadNodeKey())
-            .AddSingleton<IAbiEncoder>(AbiEncoder.Instance)
             .AddSingleton<IEciesCipher, EciesCipher>()
             .AddSingleton<ICryptoRandom, CryptoRandom>()
 

@@ -95,8 +95,11 @@ public class AuRaHeaderDecoderTests
             ?? throw new InvalidOperationException("AuRa header decoding returned null.");
         byte[] secondPass = _decoder.Encode(decoded).Bytes;
 
-        Assert.That(secondPass, Is.EqualTo(firstPass));
-        Assert.That(decoded, Is.InstanceOf<AuRaBlockHeader>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondPass, Is.EqualTo(firstPass));
+            Assert.That(decoded, Is.InstanceOf<AuRaBlockHeader>());
+        }
     }
 
     /// <summary>
@@ -119,8 +122,11 @@ public class AuRaHeaderDecoderTests
 
         long decodedStep = (long)ctx.DecodeUInt256();
         byte[]? decodedSignature = ctx.DecodeByteArray();
-        Assert.That(decodedStep, Is.EqualTo(42L));
-        Assert.That(decodedSignature, Is.EqualTo(signature));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedStep, Is.EqualTo(42L));
+            Assert.That(decodedSignature, Is.EqualTo(signature));
+        }
     }
 
     /// <summary>Post-merge headers keep the Ethash/PoS seal shape; the AuRa decoder must fall back to the base shape.</summary>
@@ -135,8 +141,11 @@ public class AuRaHeaderDecoderTests
             ?? throw new InvalidOperationException("PoS header decoding returned null.");
 
         Assert.That(decoded, Is.Not.InstanceOf<AuRaBlockHeader>());
-        Assert.That(decoded.MixHash, Is.EqualTo(header.MixHash));
-        Assert.That(decoded.Nonce, Is.EqualTo(header.Nonce));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.MixHash, Is.EqualTo(header.MixHash));
+            Assert.That(decoded.Nonce, Is.EqualTo(header.Nonce));
+        }
     }
 
     /// <summary>
@@ -153,15 +162,21 @@ public class AuRaHeaderDecoderTests
 
         Assert.That(clone, Is.InstanceOf<AuRaBlockHeader>());
         AuRaBlockHeader auraClone = (AuRaBlockHeader)clone;
-        Assert.That(auraClone.AuRaStep, Is.EqualTo(123L));
-        Assert.That(auraClone.AuRaSignature, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(auraClone.AuRaStep, Is.EqualTo(123L));
+            Assert.That(auraClone.AuRaSignature, Is.Null);
+        }
     }
 
     [Test]
     public void AuRaBlockHeader_distinguishes_subclass_from_base_BlockHeader()
     {
-        Assert.That(Build.A.BlockHeader.TestObject, Is.Not.InstanceOf<AuRaBlockHeader>());
-        Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject, Is.InstanceOf<AuRaBlockHeader>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Build.A.BlockHeader.TestObject, Is.Not.InstanceOf<AuRaBlockHeader>());
+            Assert.That(Build.A.BlockHeader.WithAura(0, []).TestObject, Is.InstanceOf<AuRaBlockHeader>());
+        }
     }
 
     /// <summary>
