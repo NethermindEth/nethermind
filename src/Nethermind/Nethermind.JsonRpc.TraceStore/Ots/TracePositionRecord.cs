@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.TraceStore.Ots;
 
 internal static class TracePositionRecord
 {
-    internal const int Version = 1;
+    internal const int Version = 2;
     internal const int MaxBlobBytes = 2 * 1024 * 1024;
     internal const int MaxTransactions = 16384;
     internal const int MaxNodes = 32768;
@@ -38,7 +38,8 @@ internal static class TracePositionRecord
             {
                 ct.ThrowIfCancellationRequested();
                 if (++nodes > MaxNodes || action is null || action.Subtraces is null) return null;
-                if (!Add(action.From, position) || !Add(action.To, position) || !Add(action.Result?.Address, position)) return null;
+                if (!Add(action.From, position) || !Add(action.To, position) || !Add(action.Result?.Address, position)
+                    || !Add(OtsRpcModule.GetDestination(action, trace.Action!, block.Transactions[position]), position)) return null;
                 if ((long)nodes + pending.Count + action.Subtraces.Count > MaxNodes) return null;
                 foreach (ParityTraceAction child in action.Subtraces) pending.Push(child);
             }

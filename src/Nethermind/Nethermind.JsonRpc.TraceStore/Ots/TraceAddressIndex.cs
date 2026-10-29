@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.TraceStore.Ots;
 public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
 {
     internal const string DbName = "TraceAddressIndex";
-    internal static readonly byte[] CheckpointKey = "trace-address-checkpoint-v2"u8.ToArray();
+    internal static readonly byte[] CheckpointKey = "trace-address-checkpoint-v3"u8.ToArray();
     private const int CheckpointSize = 8 + 2 * Hash256.Size;
     private readonly IDb _traces;
     private readonly ITraceSerializer<ParityLikeTxTrace> _serializer;
@@ -186,6 +186,7 @@ public sealed class TraceAddressIndex : IStoppableService, IAsyncDisposable
                     Add(action.From);
                     Add(action.To);
                     Add(action.Result?.Address);
+                    Add(OtsRpcModule.GetDestination(action, trace.Action!, block.Transactions[trace.TransactionPosition!.Value]));
                     foreach (ParityTraceAction child in action.Subtraces) stack.Push(child);
                 }
             }

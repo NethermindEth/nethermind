@@ -63,8 +63,19 @@ public sealed class OtsRpcModule(
         Block? previous = null;
         Block? highestScanned = null;
 
+        // Precompile calls can be absent from postings, including in blocks that candidates would skip.
+        bool canIndex = !specProvider.GenesisSpec.IsPrecompile(address) && !specProvider.GetSpec(head.Header).IsPrecompile(address);
+        if (canIndex && addressIndex is not null)
+        {
+            foreach (ForkActivation activation in specProvider.TransitionActivations)
+                if (specProvider.GetSpec(activation).IsPrecompile(address))
+                {
+                    canIndex = false;
+                    break;
+                }
+        }
         // Each certified candidate has a match, so pageSize + 1 blocks suffice including lookahead.
-        TraceAddressIndex.Candidates? candidates = number == 0 ? null : addressIndex?.FindCandidates(address,
+        TraceAddressIndex.Candidates? candidates = number == 0 || !canIndex ? null : addressIndex?.FindCandidates(address,
             backwards ? 1 : number, backwards ? number : head.Number, backwards, pageSize + 1, ct);
         int nextCandidate = 0;
         bool crossedCoverage = false;
@@ -309,7 +320,7 @@ public sealed class OtsRpcModule(
         return ResultWrapper<List<OtsTraceEntry>>.Fail($"Stored trace for {transactionHash} is unavailable.", ErrorCodes.ResourceUnavailable);
     }
 
-    private static Address? GetDestination(ParityTraceAction action, ParityTraceAction root, Transaction transaction) =>
+    internal static Address? GetDestination(ParityTraceAction action, ParityTraceAction root, Transaction transaction) =>
         action.To ?? action.Result?.Address
         ?? (ReferenceEquals(action, root) && action.CallType == "init" && action.From is not null && !transaction.IsMessageCall
             ? ContractAddress.From(action.From, transaction.Nonce) : null);

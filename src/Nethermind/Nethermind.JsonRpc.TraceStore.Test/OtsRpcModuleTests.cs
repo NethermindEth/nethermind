@@ -941,6 +941,66 @@ public class OtsRpcModuleTests
     }
 
     [Test]
+    public async Task Index_includes_failed_root_creation_destinations([Values] bool backwards, [Values] bool positions)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env, positions: positions);
+        f.AddBlock(new ParityTraceAction
+        {
+            CallType = "init",
+            From = TestItem.PrivateKeyB.Address,
+            Error = "Address collision",
+            Result = null
+        });
+        Transaction tx = f.Blocks[4].Transactions[0];
+        Address destination = ContractAddress.From(tx.SenderAddress, tx.Nonce);
+        await BuildIndex(f);
+        if (positions)
+        {
+            SearchResult<bool[]>? proof = f.Container.Resolve<TraceAddressIndex>()
+                .TryMatchPositions(f.Blocks[4], destination, CancellationToken.None);
+            Assert.That(proof.HasValue && !proof.Value.IsError, Is.True);
+            Assert.That(proof!.Value.Object, Is.EqualTo(new[] { true }));
+        }
+        using ResultWrapper<OtsSearchResult> result = backwards
+            ? f.Module.ots_searchTransactionsBefore(destination, 0, 25)
+            : f.Module.ots_searchTransactionsAfter(destination, 0, 25);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        OtsSearchResult page = result.Data;
+        Assert.That(page.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
+    }
+
+    [Test]
+    public async Task Index_does_not_certify_precompile_history([Values] bool backwards, [Values] bool positions)
+    {
+        TestSpecProvider specs = new(Shanghai.Instance)
+        {
+            NextForkSpec = Cancun.Instance,
+            ForkOnBlockNumber = 3,
+            TransitionActivations = [(ForkActivation)0, (ForkActivation)3]
+        };
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env, positions: positions, specProvider: specs);
+        await BuildIndex(f);
+        if (backwards)
+        {
+            using ResultWrapper<OtsSearchResult> beforeFork = f.Module.ots_searchTransactionsBefore(PrecompiledAddresses.PointEvaluation, 3, 25);
+            Assert.That(beforeFork.Result.ResultType, Is.EqualTo(ResultType.Success), beforeFork.Result.Error);
+            OtsSearchResult page = beforeFork.Data;
+            Assert.That(page.Txs, Is.Empty);
+        }
+        using ResultWrapper<OtsSearchResult> result = backwards
+            ? f.Module.ots_searchTransactionsBefore(PrecompiledAddresses.PointEvaluation, 0, 25)
+            : f.Module.ots_searchTransactionsAfter(PrecompiledAddresses.PointEvaluation, 0, 25);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(result.Result.Error, Does.Contain("precompile history"));
+            Assert.That(result.Data, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task Index_certifies_absent_address_without_deserializing([Values] bool backwards)
     {
         using IndexEnvironment env = new();
@@ -1454,7 +1514,7 @@ public class OtsRpcModuleTests
             case "position": BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(156), 2); break;
             case "trailing": record = [.. record, 0]; break;
             case "identity": record[20] ^= 1; break;
-            case "version-match": BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(8), 2); break;
+            case "version-match": BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(8), TracePositionRecord.Version + 1); break;
             case "negative-transactions": BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(52), -1); break;
             case "negative-addresses": BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(60), -1); break;
             case "transaction-overflow": BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(52), int.MaxValue); break;
