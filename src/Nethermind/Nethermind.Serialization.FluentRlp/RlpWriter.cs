@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -266,63 +267,53 @@ public ref struct RlpWriter
     /// prefix fix, so it is the fastest way to write a sequence.
     /// </remarks>
     /// <returns>The value to pass to <see cref="EndSequence"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public RlpSequence StartSequence(int payloadLength)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
         int depth = ++_openSequences;
-        if (depth % StackCheckInterval == 0) RuntimeHelpers.EnsureSufficientExecutionStack();
+        if (depth % StackCheckInterval == 0 || payloadLength < 0) CheckSequenceStart(payloadLength);
 
-        int prefixLength = payloadLength > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(payloadLength) : 1;
-        if (_isContent)
+        if (payloadLength > RlpPrefix.MaxShortLength)
         {
-            Span<byte> prefix = Reserve(prefixLength);
-            if (prefixLength == 1)
-            {
-                prefix[0] = (byte)(RlpPrefix.ShortList + payloadLength);
-            }
-            else
-            {
-                WriteLongPrefix(prefix, RlpPrefix.ShortList, payloadLength);
-            }
+            WriteLongSequencePrefix(payloadLength);
+        }
+        else
+        {
+            if (_isContent) Reserve(1)[0] = (byte)(RlpPrefix.ShortList + payloadLength);
+            _length++;
         }
 
-        _length += prefixLength;
         return new RlpSequence(Length + payloadLength, depth);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CheckSequenceStart(int payloadLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void WriteLongSequencePrefix(int payloadLength)
+    {
+        int prefixLength = 1 + LengthOfLength(payloadLength);
+        if (_isContent) WriteLongPrefix(Reserve(prefixLength), RlpPrefix.ShortList, payloadLength);
+        _length += prefixLength;
     }
 
     /// <summary>Ends a sequence that <see cref="StartSequence"/> started.</summary>
     /// <exception cref="InvalidOperationException">The payload has another length than declared, or a nested sequence did not end.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EndSequence(RlpSequence sequence)
     {
-        if (Length != sequence.End) throw new InvalidOperationException("RLP payload has another length than the sequence declares");
-        if (_openSequences != sequence.Depth) throw new InvalidOperationException("RLP write action did not end all sequences");
+        if (Length != sequence.End || _openSequences != sequence.Depth) ThrowUnbalancedSequence();
         _openSequences = sequence.Depth - 1;
     }
 
-    /// <summary>Writes the prefix of a byte string of <paramref name="length"/> bytes, at least 2.</summary>
-    /// <returns>The span for the bytes, which the caller must fill; empty for a <see cref="LengthWriter"/>.</returns>
-    internal Span<byte> WriteByteStringPrefix(int length)
-    {
-        int prefixLength = length > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(length) : 1;
-        Span<byte> destination = default;
-        if (_isContent)
-        {
-            destination = Reserve(prefixLength + length);
-            if (prefixLength == 1)
-            {
-                destination[0] = (byte)(RlpPrefix.ShortString + length);
-            }
-            else
-            {
-                WriteLongPrefix(destination, RlpPrefix.ShortString, length);
-            }
-
-            destination = destination[prefixLength..];
-        }
-
-        _length += prefixLength + length;
-        return destination;
-    }
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowUnbalancedSequence()
+        => throw new InvalidOperationException("RLP payload has another length than the sequence declares, or a nested sequence did not end");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void WriteMeasuredSequence<TContext>(TContext ctx, RefRlpWriterAction<TContext> action)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.FluentRlp.Instances;
@@ -49,10 +50,13 @@ public abstract class UInt256RlpConverter : IRlpLengthConverter<UInt256>
     }
 
     /// <summary>Writes <paramref name="value"/> as a byte string of exactly 32 big-endian bytes.</summary>
-    public static void WriteFixed(ref RlpWriter writer, in UInt256 value)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteFixed(ref RlpWriter writer, UInt256 value)
     {
-        Span<byte> destination = writer.WriteByteStringPrefix(FixedLength);
-        if (!destination.IsEmpty) value.ToBigEndian(destination);
+        // A fixed-size stack buffer lets the JIT inline the whole write, which measured faster than writing in place.
+        Span<byte> bytes = stackalloc byte[FixedLength];
+        value.ToBigEndian(bytes);
+        writer.Write(bytes);
     }
 }
 

@@ -97,6 +97,14 @@ public class CurrentFluentBenchmark
         return Rlp.Write<AccessListRlpConverter, AccessList>(_bufferWriter, _fluent);
     }
 
+    [Benchmark]
+    [BenchmarkCategory("EncodeToBuffer")]
+    public int EncodeToBufferFluentBuffered()
+    {
+        _bufferWriter.ResetWrittenCount();
+        return Rlp.Write(_bufferWriter, _fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
+    }
+
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("Decode")]
     public Nethermind.Core.Eip2930.AccessList DecodeCurrent()
