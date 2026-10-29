@@ -1023,7 +1023,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
 
                     // The shared handler takes the other operands, so this handler makes no call.
-                    gas += MidGasCost.GasCost;
+                    gas += (nuint)MidGasCost.GasCost;
                     nint general = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
                 }
