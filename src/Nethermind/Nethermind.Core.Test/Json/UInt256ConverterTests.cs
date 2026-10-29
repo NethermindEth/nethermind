@@ -28,7 +28,6 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         UInt256 value = UInt256.MaxValue;
         AssertField(new StorageCell(TestItem.AddressA, value), "index");
         AssertField(new ReadOnlySlotChanges(value), "key");
-        AssertField(new GeneratedSlotChanges(value), "key");
         AssertField(new BalanceChange(3, value), "value");
         SlotChangeAtIndex slot = new(value, new StorageChange(3, value));
         AssertField(slot, "key");

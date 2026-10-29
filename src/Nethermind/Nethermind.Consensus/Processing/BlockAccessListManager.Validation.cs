@@ -201,26 +201,25 @@ public partial class BlockAccessListManager
         coveredReads.Begin((uint)block.Transactions.Length + 1);
         _readPlan?.RecordCoveredReads(coveredReads);
         coveredReads.Log.Seal();
-        _mergedBlockAccessList.Merge([.. logs, coveredReads.Log]);
-        ValidateMergedBlockAccessList(block);
+        ValidateMergedBlockAccessList(block, GeneratedBlockAccessList.Merge([.. logs, coveredReads.Log]));
     }
 
     /// <summary>Checks the merged list against the block's suggested one.</summary>
     /// <remarks>
-    /// Equal lists need no more than the walk in <see cref="MergedBlockAccessList.Matches"/>. A mismatch is reported as
+    /// Equal lists need no more than the walk in <see cref="GeneratedBlockAccessList.Matches"/>. A mismatch is reported as
     /// a change at an index past the post-execution one; failing that, as the first block access index whose changes
     /// differ; failing that, as surplus storage reads the block's remaining gas cannot pay for; failing that, as the
     /// first structural difference.
     /// </remarks>
-    private void ValidateMergedBlockAccessList(Block block)
+    private void ValidateMergedBlockAccessList(Block block, GeneratedBlockAccessList generated)
     {
         ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
-        if (_mergedBlockAccessList.Matches(suggested, out _)) return;
+        if (generated.Matches(suggested, out _)) return;
 
         ThrowIfIndexOutOfRange(block, suggested);
-        ThrowIfChangesDiffer(block, suggested);
-        ThrowIfStorageReadBudgetExceeded(block);
-        ThrowStructuralMismatch(block, suggested);
+        ThrowIfChangesDiffer(block, suggested, generated);
+        ThrowIfStorageReadBudgetExceeded(block, generated);
+        ThrowStructuralMismatch(block, suggested, generated);
     }
 
     private static void ThrowIfIndexOutOfRange(Block block, ReadOnlyBlockAccessList suggested)
@@ -242,9 +241,8 @@ public partial class BlockAccessListManager
         }
     }
 
-    private void ThrowIfChangesDiffer(Block block, ReadOnlyBlockAccessList suggested)
+    private void ThrowIfChangesDiffer(Block block, ReadOnlyBlockAccessList suggested, GeneratedBlockAccessList generated)
     {
-        MergedBlockAccessList generated = _mergedBlockAccessList;
         ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChanges.AsSpan();
         uint firstIndex = uint.MaxValue;
         Address? firstAddress = null;
@@ -258,12 +256,12 @@ public partial class BlockAccessListManager
 
             if (cmp == 0)
             {
-                MergedBlockAccessList.AccountChanges account = generated.GetAccount(g++);
+                GeneratedBlockAccessList.AccountChanges account = generated.GetAccount(g++);
                 Consider(FirstDifferingChange(account, suggestedAccounts[s++]), account.Address, surplus: false);
             }
             else if (cmp < 0)
             {
-                MergedBlockAccessList.AccountChanges account = generated.GetAccount(g++);
+                GeneratedBlockAccessList.AccountChanges account = generated.GetAccount(g++);
                 bool hasChargeableReads = !IsSystemContract(account.Address) && account.StorageReads.Length > 0;
                 // An account execution only touched is tolerated when it has chargeable reads, or is the system user at index 0.
                 bool tolerated = hasChargeableReads || (account.FirstIndex == 0 && account.Address == Address.SystemUser);
@@ -293,7 +291,7 @@ public partial class BlockAccessListManager
         }
     }
 
-    private static uint FirstDifferingChange(MergedBlockAccessList.AccountChanges generated, ReadOnlyAccountChanges suggested)
+    private static uint FirstDifferingChange(GeneratedBlockAccessList.AccountChanges generated, ReadOnlyAccountChanges suggested)
     {
         uint index = uint.Min(FirstDifference(generated.BalanceChanges, suggested.BalanceChanges),
             uint.Min(FirstDifference(generated.NonceChanges, suggested.NonceChanges), FirstDifference(generated.CodeChanges, suggested.CodeChanges)));
@@ -327,7 +325,7 @@ public partial class BlockAccessListManager
             : uint.MaxValue;
     }
 
-    private static uint FirstChange(MergedBlockAccessList.AccountChanges account)
+    private static uint FirstChange(GeneratedBlockAccessList.AccountChanges account)
     {
         uint index = FirstDifference(account.BalanceChanges, default);
         index = uint.Min(index, FirstDifference(account.NonceChanges, default));
@@ -374,12 +372,12 @@ public partial class BlockAccessListManager
         return reads;
     }
 
-    private static ulong ChargeableStorageReads(MergedBlockAccessList blockAccessList)
+    private static ulong ChargeableStorageReads(GeneratedBlockAccessList blockAccessList)
     {
         ulong reads = 0;
         for (int i = 0; i < blockAccessList.AccountCount; i++)
         {
-            MergedBlockAccessList.AccountChanges account = blockAccessList.GetAccount(i);
+            GeneratedBlockAccessList.AccountChanges account = blockAccessList.GetAccount(i);
             if (!IsSystemContract(account.Address)) reads += (ulong)account.StorageReads.Length;
         }
 
@@ -417,9 +415,9 @@ public partial class BlockAccessListManager
     private bool HasCanonicalCode(Address predeploy, in ValueHash256 canonicalCodeHash)
         => stateProvider.GetCodeHash(predeploy) == canonicalCodeHash;
 
-    private void ThrowIfStorageReadBudgetExceeded(Block block)
+    private void ThrowIfStorageReadBudgetExceeded(Block block, GeneratedBlockAccessList generated)
     {
-        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(ChargeableStorageReads(_mergedBlockAccessList));
+        ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(ChargeableStorageReads(generated));
         if (surplusReads > _postExecutionReadAllowance
             && _gasRemaining < (surplusReads - _postExecutionReadAllowance) * Eip7928Constants.ItemCost)
         {
@@ -441,9 +439,8 @@ public partial class BlockAccessListManager
 
     /// <summary>Reports the account set or the storage_reads of an account differing from the suggested list.</summary>
     [DoesNotReturn, StackTraceHidden]
-    private void ThrowStructuralMismatch(Block block, ReadOnlyBlockAccessList suggested)
+    private void ThrowStructuralMismatch(Block block, ReadOnlyBlockAccessList suggested, GeneratedBlockAccessList generated)
     {
-        MergedBlockAccessList generated = _mergedBlockAccessList;
         if (generated.AccountCount != suggested.AccountChanges.Count)
         {
             ThrowMismatch(block, $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generated.AccountCount}.");
@@ -453,7 +450,7 @@ public partial class BlockAccessListManager
         ReadOnlySpan<ReadOnlyAccountChanges> suggestedAccounts = suggested.AccountChanges.AsSpan();
         for (int i = 0; i < generated.AccountCount; i++)
         {
-            MergedBlockAccessList.AccountChanges generatedAccount = generated.GetAccount(i);
+            GeneratedBlockAccessList.AccountChanges generatedAccount = generated.GetAccount(i);
             ReadOnlyAccountChanges suggestedAccount = suggestedAccounts[i];
             if (!generatedAccount.Address.Equals(suggestedAccount.Address))
             {

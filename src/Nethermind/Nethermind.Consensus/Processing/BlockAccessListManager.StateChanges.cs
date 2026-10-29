@@ -36,14 +36,14 @@ public partial class BlockAccessListManager
             return;
         }
 
-        _mergedBlockAccessList.Merge(logs);
+        GeneratedBlockAccessList generated = GeneratedBlockAccessList.Merge(logs);
         // Set before validating, so a block rejected for its access list keeps the generated one.
-        GeneratedBlockAccessList = _mergedBlockAccessList.ToGeneratedBlockAccessList();
-        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+        GeneratedBlockAccessList = generated;
+        block.GeneratedBlockAccessList = generated;
 
         if (_validateBlockAccessList)
         {
-            ValidateMergedBlockAccessList(block);
+            ValidateMergedBlockAccessList(block, generated);
 
             // A match encodes to the suggested canonical wire bytes, as the decoder accepts nothing else, so their hash
             // stands in for the re-encode.
@@ -54,7 +54,7 @@ public partial class BlockAccessListManager
             }
         }
 
-        block.EncodedBlockAccessList = MergedBlockAccessListEncoder.EncodeToBytes(_mergedBlockAccessList);
+        block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(generated);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 }

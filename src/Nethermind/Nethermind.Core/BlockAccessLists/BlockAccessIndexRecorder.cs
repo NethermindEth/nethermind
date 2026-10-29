@@ -17,7 +17,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// and answers the index's own reads of what it wrote.
 /// </summary>
 /// <remarks>
-/// Each written key maps to its latest entry, which also carries the key's value from before the index. A write
+/// Each written key maps to its latest entry, which also points to the key's value from before the index. A write
 /// overwrites that entry in place when no snapshot was taken since, so a loop writing one slot keeps one entry per
 /// snapshot. <see cref="Restore"/> marks the writes after the snapshot as reverted, which keeps them as accesses, since
 /// EIP-7928 lists the accesses of reverted calls. The lookups report a key only while its latest value differs from the
@@ -62,7 +62,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <summary>Gets the balance the index changed the account to.</summary>
     public bool TryGetBalance(Address address, out UInt256 balance)
     {
-        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != entry.PreTxValue;
+        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != Log.GetPreTxValue(entry.PreTxValuePosition);
         balance = found ? entry.Value : default;
         return found;
     }
@@ -70,8 +70,8 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <summary>Gets the account's balance from before the index, if the index changed it.</summary>
     public bool TryGetPreTxBalance(Address address, out UInt256 balance)
     {
-        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != entry.PreTxValue;
-        balance = found ? entry.PreTxValue : default;
+        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != Log.GetPreTxValue(entry.PreTxValuePosition);
+        balance = found ? Log.GetPreTxValue(entry.PreTxValuePosition) : default;
         return found;
     }
 
@@ -102,7 +102,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <summary>Gets the slot value the index changed the slot to.</summary>
     public bool TryGetStorage(in StorageCell cell, out UInt256 value)
     {
-        bool found = TryGetLatest(new EntryKey(cell, EntryKind.Storage), out Entry entry) && entry.HasValue && entry.Value != entry.PreTxValue;
+        bool found = TryGetLatest(new EntryKey(cell, EntryKind.Storage), out Entry entry) && entry.HasValue && entry.Value != Log.GetPreTxValue(entry.PreTxValuePosition);
         value = found ? entry.Value : default;
         return found;
     }
@@ -112,7 +112,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     {
         if (TryGetLatest(new EntryKey(cell, EntryKind.Storage), out Entry entry))
         {
-            value = entry.PreTxValue;
+            value = Log.GetPreTxValue(entry.PreTxValuePosition);
             return true;
         }
         return _seededPreTxStorage.TryGetValue(cell, out value);
@@ -342,7 +342,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
         }
         else
         {
-            latest = Log.AddEntry(new Entry { Key = key, PreTxValue = preTxValue, Epoch = _snapshotEpoch, Index = Index, Previous = -1 });
+            latest = Log.AddEntry(new Entry { Key = key, PreTxValuePosition = Log.AddPreTxValue(in preTxValue), Epoch = _snapshotEpoch, Index = Index, Previous = -1 });
         }
 
         return ref Log.Entries[latest];

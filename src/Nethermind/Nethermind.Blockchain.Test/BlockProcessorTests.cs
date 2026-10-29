@@ -2329,7 +2329,7 @@ public partial class BlockProcessorTests
             Assert.That(stateProvider.GetCode(contract), Is.SequenceEqualTo(code));
             Assert.That(stateProvider.GetNonce(contract), Is.EqualTo(nonce));
             Assert.That(stateProvider.GetBalance(contract), Is.EqualTo(balance));
-            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(contract), Is.Null);
+            Assert.That(processed.GeneratedBlockAccessList!.ToReadOnly().GetAccountChanges(contract), Is.Null);
         }
     }
 

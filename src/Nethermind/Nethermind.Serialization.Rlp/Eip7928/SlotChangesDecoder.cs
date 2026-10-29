@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 
@@ -59,21 +58,11 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     public override int GetLength(ReadOnlySlotChanges? item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
 
-    public int GetLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
     public override void Encode<TWriter>(ref TWriter writer, ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => Encode(ref writer, item.Key, item.Changes, rlpBehaviors);
 
-    public void Encode<TWriter>(ref TWriter writer, GeneratedSlotChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
-        => Encode(ref writer, item.Key, CollectionsMarshal.AsSpan(item.Changes), rlpBehaviors);
-
     public static int GetContentLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
         => GetContentLength(item.Key, StorageChangesContentLength(item.Changes, rlpBehaviors));
-
-    public static int GetContentLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
-        => GetContentLength(item.Key, StorageChangesContentLength(CollectionsMarshal.AsSpan(item.Changes), rlpBehaviors));
 
     private static int GetContentLength(in UInt256 key, int storageChangesContentLength)
         => Rlp.LengthOf(key) + Rlp.LengthOfSequence(storageChangesContentLength);

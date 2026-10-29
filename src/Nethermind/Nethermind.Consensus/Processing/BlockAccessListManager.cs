@@ -69,7 +69,6 @@ public partial class BlockAccessListManager(
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
 
-    private readonly MergedBlockAccessList _mergedBlockAccessList = new();
     // Whether the merged list is checked against the suggested one rather than only encoded.
     private bool _validateBlockAccessList;
     // Total chargeable storage reads of the suggested list, computed once at PrepareForProcessing.
@@ -303,7 +302,6 @@ public partial class BlockAccessListManager(
         _suggestedChargeableStorageReads = 0ul;
         _postExecutionReadAllowance = 0ul;
         BlockAccessListItems.Clear();
-        _mergedBlockAccessList.Clear();
     }
 
     [DoesNotReturn]
