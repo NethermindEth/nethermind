@@ -82,7 +82,8 @@ public class OtsRpcModuleTests
             ? f.Module.ots_searchTransactionsBefore(TestItem.PrivateKeyB.Address, 0, 25)
             : f.Module.ots_searchTransactionsAfter(TestItem.PrivateKeyB.Address, 0, 25);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs.Select(t => t.Hash), Is.EqualTo(f.Blocks
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs.Select(t => t.Hash), Is.EqualTo(f.Blocks
             .SelectMany(b => b.Transactions).Reverse().Select(t => t.Hash)));
     }
 
@@ -111,7 +112,8 @@ public class OtsRpcModuleTests
         f.Save(4);
         using ResultWrapper<OtsSearchResult> response = f.Search(backwards, backwards ? 0ul : 3ul, 1);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { f.Blocks[4].Transactions[0].Hash }));
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs.Select(t => t.Hash), Is.EqualTo(new[] { f.Blocks[4].Transactions[0].Hash }));
     }
 
     [Test]
@@ -276,6 +278,35 @@ public class OtsRpcModuleTests
     }
 
     [Test]
+    public void Requests_return_timeout_sources([Values("search", "trace", "missing-trace")] string request)
+    {
+        using Fixture f = new();
+        using CancellationTokenSource timeout = new();
+        f.RpcConfig.Timeout = Timeout.Infinite;
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
+        try
+        {
+            if (request == "search")
+            {
+                using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+                Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+            }
+            else
+            {
+                using ResultWrapper<List<OtsTraceEntry>> response = f.Module.ots_traceTransaction(
+                    request == "trace" ? f.Blocks[3].Transactions[0].Hash! : TestItem.KeccakF);
+                Assert.That(response.Result.ResultType, Is.EqualTo(request == "trace" ? ResultType.Success : ResultType.Failure));
+            }
+            bool returned = JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
+            Assert.That(returned, Is.True);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
+        }
+    }
+
+    [Test]
     public void Search_honors_timeout()
     {
         using Fixture f = new();
@@ -360,7 +391,8 @@ public class OtsRpcModuleTests
                 ? f.Module.ots_searchTransactionsBefore(recipient, 0, 25)
                 : f.Module.ots_searchTransactionsAfter(recipient, 0, 25);
             Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
-            Assert.That(history.Data.Txs.Select(t => t.Hash), Does.Contain(tx.Hash));
+            OtsSearchResult page = history.Data;
+            Assert.That(page.Txs.Select(t => t.Hash), Does.Contain(tx.Hash));
         }
     }
 
@@ -395,7 +427,8 @@ public class OtsRpcModuleTests
         f.AddBlock(Call(TestItem.AddressC), Call(TestItem.AddressA));
         using ResultWrapper<OtsSearchResult> response = f.Search(backwards, backwards ? 0ul : 3ul, 1);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
-        Assert.That(response.Data.Txs, Has.Count.EqualTo(1));
+        OtsSearchResult page = response.Data;
+        Assert.That(page.Txs, Has.Count.EqualTo(1));
         using JsonDocument json = Serialize(response);
         JsonElement receipt = json.RootElement.GetProperty("result").GetProperty("receipts")[0];
         using (Assert.EnterMultipleScope())
@@ -680,7 +713,8 @@ public class OtsRpcModuleTests
             else
             {
                 Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
-                Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
+                OtsSearchResult page = history.Data;
+                Assert.That(page.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
             }
         }
     }
