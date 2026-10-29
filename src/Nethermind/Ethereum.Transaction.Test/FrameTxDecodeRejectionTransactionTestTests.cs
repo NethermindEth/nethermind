@@ -71,6 +71,25 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
         Assert.That((bool)result, Is.True, result.Error);
     }
 
+    // EIP-8250's seq_beyond_width: the fixtures label a nonce_seq wider than 64 bits TYPE_6_INVALID_FRAME_FORMAT only.
+    [Test]
+    public void KeyedNonceSeqWiderThan64BitsIsInvalidFrameFormat()
+    {
+        Result result = RunTest(TestFor(TxBytes(nonceKeys: [Rlp.Encode(1L)], nonce: NonceOf2Pow64),
+            "TransactionException.TYPE_6_INVALID_FRAME_FORMAT"));
+
+        Assert.That((bool)result, Is.True, result.Error);
+    }
+
+    [Test]
+    public void FeeListMissingAnElementIsInvalidFrameFormat()
+    {
+        Result result = RunTest(TestFor(TxBytes(fees: Rlp.Encode(new[] { Rlp.Encode(0L) })), // the list [max_fee]
+            "TransactionException.TYPE_6_INVALID_FRAME_FORMAT"));
+
+        Assert.That((bool)result, Is.True, result.Error);
+    }
+
     [Test]
     public void NonceWiderThan64BitsIsNotNonceTooBig()
     {
@@ -102,18 +121,19 @@ public class FrameTxDecodeRejectionTransactionTestTests : TransactionTestBase
     }
 
     /// <summary>A frame transaction with no frames, varying only the fields the caller supplies.</summary>
-    private static string TxBytes(Rlp nonce = null, Rlp maxPriorityFeePerGas = null)
+    private static string TxBytes(Rlp nonce = null, Rlp maxPriorityFeePerGas = null, Rlp[] nonceKeys = null, Rlp fees = null)
     {
-        Rlp payload = Rlp.Encode(
+        Rlp payload = Rlp.Encode([
             Rlp.Encode(1L),                                 // chain_id
-            nonce ?? Rlp.Encode(0L),
+            .. nonceKeys is null ? [] : new[] { Rlp.Encode(nonceKeys) },
+            nonce ?? Rlp.Encode(0L),                        // nonce, or nonce_seq after nonce_keys
             Rlp.Encode(TestItem.AddressA.Bytes),            // sender
             Rlp.Encode(Array.Empty<Rlp>()),                 // frames
             Rlp.Encode(Array.Empty<Rlp>()),                 // signatures
-            Rlp.Encode(                                     // fees
+            fees ?? Rlp.Encode(                             // fees
                 Rlp.Encode(0L),                             // max_fee
                 maxPriorityFeePerGas ?? Rlp.Encode(0L)),
-            Rlp.Encode(Array.Empty<Rlp>()));                // blob_versioned_hashes
+            Rlp.Encode(Array.Empty<Rlp>())]);               // blob_versioned_hashes
 
         return Bytes.Concat((byte)TxType.FrameTx, payload.Bytes).ToHexString(true);
     }

@@ -36,16 +36,16 @@ public class FrameExceptionFragmentsTests
     }
 
     /// <summary>Encodes a frame transaction payload, varying only the fields the caller supplies.</summary>
-    private static byte[] EncodePayload(Rlp frames, Rlp maxFee, Rlp[] nonceKeys = null)
+    private static byte[] EncodePayload(Rlp frames, Rlp maxFee, Rlp[] nonceKeys = null, Rlp nonce = null, Rlp fees = null)
     {
         Rlp payloadSequence = Rlp.Encode([
             Rlp.Encode(1L),                      // chain_id
             .. nonceKeys is null ? [] : new[] { Rlp.Encode(nonceKeys) },
-            Rlp.Encode(0L),                      // nonce
+            nonce ?? Rlp.Encode(0L),             // nonce, or nonce_seq after nonce_keys
             Rlp.Encode(TestItem.AddressA.Bytes), // sender
             frames,
             Rlp.Encode(Array.Empty<Rlp>()),      // signatures
-            Rlp.Encode(maxFee, Rlp.Encode(0L)),  // fees: max_fee, max_priority_fee_per_gas
+            fees ?? Rlp.Encode(maxFee, Rlp.Encode(0L)), // fees: max_fee, max_priority_fee_per_gas
             Rlp.Encode(Array.Empty<Rlp>())]);    // blob_versioned_hashes
 
         byte[] payload = new byte[1 + payloadSequence.Length];
@@ -146,6 +146,39 @@ public class FrameExceptionFragmentsTests
             nonceKeys));
 
         Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+    }
+
+    // EIP-8250's seq_beyond_width: nonce_seq = 2^64, nine bytes, behind a nonce key. The fixtures label it
+    // TYPE_6_INVALID_FRAME_FORMAT only, so Decode has to cover the NonceTooWide wording, not just NONCE_OVERFLOW.
+    [Test]
+    public void Decode_CoversANonceSeqWiderThan64Bits()
+    {
+        string message = DecodeFailureMessage(EncodePayload(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            nonceKeys: [Rlp.Encode(1L)],
+            nonce: new Rlp([0x89, 0x01, 0, 0, 0, 0, 0, 0, 0, 0])));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("NonceTooWide"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    [Test]
+    public void Decode_CoversAFeeListMissingAnElement()
+    {
+        string message = DecodeFailureMessage(EncodePayload(
+            frames: Rlp.Encode(Array.Empty<Rlp>()),
+            maxFee: Rlp.Encode(0L),
+            fees: Rlp.Encode(new[] { Rlp.Encode(0L) })));    // the list [max_fee]
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.Contain("fees must hold two items"));
+            Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
     }
 
     [Test]

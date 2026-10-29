@@ -116,6 +116,9 @@ public static class FrameExceptionFragments
     public static readonly string[] Decode =
     [
         "Unexpected length of integer value",
+        // A nonce or nonce_seq wider than 64 bits, as BaseTxDecoder.DecodeNonce reports it. EIP-8250's
+        // seq_beyond_width labels it TYPE_6_INVALID_FRAME_FORMAT only; a plain nonce also matches NONCE_OVERFLOW.
+        "NonceTooWide",
         // Two producers: RlpReader words a bad address prefix, RlpHelpers a field that should be a
         // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
@@ -129,6 +132,8 @@ public static class FrameExceptionFragments
         "Expected length greater than or equal to 56",
         // A list header that does not match the bytes its elements take up, e.g. a frame's limits missing one.
         "Data checkpoint failed",
+        // A fees list without both max_fee and max_priority_fee_per_gas.
+        "fees must hold two items",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",
