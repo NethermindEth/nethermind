@@ -243,6 +243,7 @@ internal static class StartupPipelineWarmer
             {
                 TerminalTotalDifficulty = "0",
                 PrioritizeBlockLatency = mergeConfig.PrioritizeBlockLatency,
+                NoGcRegionOnNewPayload = mergeConfig.NoGcRegionOnNewPayload,
                 CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit,
                 DecommitMemoryLoadPercent = mergeConfig.DecommitMemoryLoadPercent,
                 CollectionsPerUnconditionalDecommit = mergeConfig.CollectionsPerUnconditionalDecommit,

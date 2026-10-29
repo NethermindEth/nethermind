@@ -44,6 +44,10 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "Whether to reduce block latency by disabling garbage collection during Engine API calls.", DefaultValue = "true")]
     public bool PrioritizeBlockLatency { get; set; }
 
+    [ConfigItem(Description = $"Whether an `engine_newPayload` call enters a runtime no-GC region while `{nameof(PrioritizeBlockLatency)}` is enabled. With `{nameof(NoGcRegionMode.Never)}`, the call enters none, so the runtime collects inside it whenever its allocation budget runs out, but it still holds off scheduled collections, counts toward `{nameof(CollectionsPerDecommit)}` and is followed by the post-block collection; the re-commit after a decommit is skipped.",
+        DefaultValue = nameof(NoGcRegionMode.Always))]
+    public NoGcRegionMode NoGcRegionOnNewPayload { get; set; }
+
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
 

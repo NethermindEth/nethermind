@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Threading;
+using KeeperMetrics = Nethermind.Core.Memory.Metrics;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -607,16 +608,19 @@ public class GCKeeperTests
             return Task.FromResult(false);
         });
 
+        KeeperCounters before = KeeperCounters.Read();
         for (int i = 1; i <= 400; i++)
         {
             CountPayload(keeper, strategy);
             await keeper.ScheduleGCInternal(throttle: false);
         }
 
+        KeeperCounters counted = KeeperCounters.Read().Since(before);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtime.Collections, Is.EqualTo(Enumerable.Repeat(Ordinary, 400)));
             Assert.That(idleWaits, Is.EqualTo(Enumerable.Repeat(2750, 101)), "the decommit stays due from payload 300 on");
+            Assert.That(counted, Is.EqualTo(new KeeperCounters(Collections: 400, IdleWaitsCancelled: 101)));
         }
     }
 
@@ -628,11 +632,16 @@ public class GCKeeperTests
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
 
         // Either the decommit's own ordinary collection has just run, or a collection before it throttles that one.
+        KeeperCounters before = KeeperCounters.Read();
         if (ordinaryThrottled) await keeper.ScheduleGCInternal(throttle: true);
         CountPayload(keeper, strategy);
         await keeper.ScheduleGCInternal(throttle: true);
 
-        Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Throttled: ordinaryThrottled ? 1 : 0, Decommits: 1, Recommits: 1)));
+        }
     }
 
     private static ILogManager CreateInfoLogManager(List<string> infos)
@@ -1066,10 +1075,19 @@ public class GCKeeperTests
         CadenceRun run = new();
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, run.Delay, run.Time);
 
+        KeeperCounters before = KeeperCounters.Read();
         List<int> collected = await run.Run(keeper, strategy, runtime, CadencePayloads, intervalMs, processingMs);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(
+                Collections: collected.Count,
+                Cancelled: cadence == Cadence.Ms200 ? PayloadCadence.Samples : 0,
+                Throttled: cadence == Cadence.Seconds2 ? PayloadCadence.Samples / 2 : 0)));
+            Assert.That(KeeperMetrics.GcKeeperPostBlockDelayMs, Is.EqualTo(adaptedDelayMs));
+            Assert.That(KeeperMetrics.GcKeeperMinMsBetweenCollections, Is.EqualTo(Math.Min(3_000, intervalMs / 2)));
+            Assert.That(KeeperMetrics.GcKeeperMedianIdleGapMs, Is.EqualTo(intervalMs - processingMs));
+            Assert.That(KeeperMetrics.GcKeeperMedianPayloadIntervalMs, Is.EqualTo(intervalMs));
             Assert.That(run.Delays.Take(PayloadCadence.Samples), Is.All.EqualTo(slotDelayMs), "the slot's delay until the window is full");
             Assert.That(run.Delays.Skip(PayloadCadence.Samples), Is.All.EqualTo(adaptedDelayMs));
             // At 200 ms the slot's delay never completes; at 2 s the 3 s spacing lets every other payload collect.
@@ -1145,6 +1163,103 @@ public class GCKeeperTests
         await keeper.ScheduleGCInternal(throttle: false);
 
         Assert.That(run.Delays, Is.EqualTo(new[] { 250 }));
+    }
+
+    [Test]
+    public async Task Never_mode_keeps_the_keeper_without_entering_a_region([Values] NoGcRegionMode mode)
+    {
+        // Due after every payload, so a payload that did not count would leave the decommit out.
+        IGCStrategy strategy = CreatePressureStrategy(interval: 1, loadPercent: 0, unconditional: -1);
+        strategy.NoGcRegionOnNewPayload.Returns(mode);
+        RegionRuntime runtime = new();
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+        KeeperCounters before = KeeperCounters.Read();
+
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        using (keeper.TryStartNoGCRegion())
+        {
+            foreach (IThreadPoolWorkItem entry in queued) entry.Execute();
+            bool gateFree = GCScheduler.MarkGCPaused();
+            if (gateFree) GCScheduler.MarkGCResumed();
+            Assert.That(gateFree, Is.False, "the payload holds off scheduled collections");
+        }
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        bool always = mode == NoGcRegionMode.Always;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued, Has.Count.EqualTo(always ? 1 : 0));
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }));
+            // The payload's region, then the re-commit after the decommit.
+            Assert.That(runtime.Operations, Is.EqualTo(always
+                ? new[] { "start", "end", "collect", "collect", "start", "end" }
+                : new[] { "collect", "collect" }));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Decommits: 1, Recommits: always ? 1 : 0)));
+        }
+    }
+
+    // A payload that starts while another is in processing finds the scheduler paused and does not hold it once the
+    // other one lets go; without a region of its own nothing but the keeper keeps the collection out of it.
+    [Test]
+    public async Task Collection_waits_for_payloads_still_in_processing([Values] NoGcRegionMode mode)
+    {
+        IGCStrategy strategy = CreateCadenceStrategy(0, adaptive: false);
+        strategy.NoGcRegionOnNewPayload.Returns(mode);
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
+        KeeperCounters before = KeeperCounters.Read();
+
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        IDisposable first = keeper.TryStartNoGCRegion();
+        IDisposable second = keeper.TryStartNoGCRegion();
+        first.Dispose();
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
+        Assert.That(runtime.Collections, Is.Empty, "the second payload is still in processing");
+
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        second.Dispose();
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary }));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Skipped: 1)));
+        }
+    }
+
+    [Test]
+    public async Task Declined_and_cancelled_collections_are_counted([Values] bool cancelled)
+    {
+        IGCStrategy strategy = CreateCadenceStrategy(1, adaptive: false);
+        RegionRuntime runtime = new() { CollectionSucceeds = false };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, (_, _) => Task.FromResult(!cancelled));
+        KeeperCounters before = KeeperCounters.Read();
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(cancelled ? new KeeperCounters(Cancelled: 1) : new KeeperCounters(Skipped: 1)));
+    }
+
+    /// <summary>The keeper's counters at one moment, so that a test reads what it moved.</summary>
+    private readonly record struct KeeperCounters(long Collections = 0, long Cancelled = 0, long Throttled = 0, long Skipped = 0,
+        long Decommits = 0, long IdleWaitsCancelled = 0, long Recommits = 0)
+    {
+        public static KeeperCounters Read() => new(
+            Interlocked.Read(ref KeeperMetrics.GcKeeperPostBlockCollections),
+            Interlocked.Read(ref KeeperMetrics.GcKeeperPostBlockCancelled),
+            Interlocked.Read(ref KeeperMetrics.GcKeeperPostBlockThrottled),
+            Interlocked.Read(ref KeeperMetrics.GcKeeperPostBlockSkipped),
+            Interlocked.Read(ref KeeperMetrics.GcKeeperDecommits),
+            Interlocked.Read(ref KeeperMetrics.GcKeeperDecommitIdleWaitsCancelled),
+            Interlocked.Read(ref KeeperMetrics.NoGcRegionRecommits));
+
+        public KeeperCounters Since(KeeperCounters before) => new(Collections - before.Collections, Cancelled - before.Cancelled,
+            Throttled - before.Throttled, Skipped - before.Skipped, Decommits - before.Decommits,
+            IdleWaitsCancelled - before.IdleWaitsCancelled, Recommits - before.Recommits);
     }
 
     [Test]

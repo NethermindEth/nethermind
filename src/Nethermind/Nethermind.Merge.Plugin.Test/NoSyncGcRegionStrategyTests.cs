@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
+using Nethermind.Config.Test;
+using Nethermind.Core.Memory;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -43,4 +45,18 @@ public class NoSyncGcRegionStrategyTests
             Assert.That(strategy.AdaptivePostBlockDelay, Is.False);
         }
     }
+
+    [Test]
+    public void No_gc_region_mode_defaults_to_always_and_reaches_the_strategy()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CreateStrategy([]).NoGcRegionOnNewPayload, Is.EqualTo(NoGcRegionMode.Always));
+            Assert.That(CreateStrategy(new() { { "Merge.NoGcRegionOnNewPayload", "Never" } }).NoGcRegionOnNewPayload, Is.EqualTo(NoGcRegionMode.Never));
+        }
+    }
+
+    [Test]
+    public void Documented_no_gc_region_default_matches_the_implementation() =>
+        StandardConfigTests.CheckDefault(typeof(IMergeConfig).GetProperty(nameof(IMergeConfig.NoGcRegionOnNewPayload))!, new MergeConfig());
 }
