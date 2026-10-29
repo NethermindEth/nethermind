@@ -286,5 +286,11 @@ namespace Nethermind.Trie
         /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ReadChildHash(ReadOnlySpan<byte> hash) => new(MemoryMarshal.Read<ValueHash256>(hash));
+
+        /// <remarks>Only to a resolver that observes such nodes, a node inlined in its parent being visited without a load.</remarks>
+        partial void OnEmbeddedNodeResolving(ITrieNodeResolver tree, in TreePath path, CappedArray<byte> rlp)
+        {
+            if (tree is IEmbeddedNodeObserver observer) observer.OnEmbeddedNodeResolving(path, rlp.AsSpan());
+        }
     }
 }

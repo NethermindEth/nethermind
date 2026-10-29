@@ -74,6 +74,18 @@ public sealed partial class LeafData
         return source is null ? null : _key = HexPrefix.FromBytes(source.AsSpan(_compactKeyStart, _compactKeyLength)).key;
     }
 
+    /// <summary>The number of nibbles of this leaf's key.</summary>
+    internal int KeyNibbleCount
+    {
+        get
+        {
+            byte[]? source = _compactKeySource;
+            return source is null
+                ? _key?.Length ?? 0
+                : 2 * _compactKeyLength - ((source[_compactKeyStart] & 0x10) != 0 ? 1 : 2);
+        }
+    }
+
     /// <summary>Whether this leaf's key is the last <paramref name="nibbleCount"/> nibbles of <paramref name="key"/>.</summary>
     internal bool KeyIsSuffixOf(ReadOnlySpan<byte> key, int nibbleCount)
     {
