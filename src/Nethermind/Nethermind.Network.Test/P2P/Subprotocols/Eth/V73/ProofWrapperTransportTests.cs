@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -252,6 +253,28 @@ public class ProofWrapperTransportTests
             Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static r => r.Hashes), Is.EqualTo(new[] { otherTransactions.Hash }));
             Assert.That(node.Transport.FetchCount, Is.EqualTo(1));
         }
+    }
+
+    // A held mode-0 wrapper does not suppress fetching a mode-1 one with the same coverage, whose recursive proof production and
+    // inclusion lists reuse; a held mode-1 wrapper suppresses either mode.
+    [TestCase(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive, true)]
+    [TestCase(MempoolWrapper.ModeRecursive, MempoolWrapper.ModeDirect, false)]
+    public void Equivalent_coverage_suppresses_a_fetch_only_when_the_held_mode_serves_it(byte heldMode, byte announcedMode, bool fetched)
+    {
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
+        static byte[] Of(byte mode, Transaction[] transactions) =>
+            mode == MempoolWrapper.ModeRecursive ? Wrapper(64, transactions) : DirectWrapper(transactions);
+        byte[] held = Of(heldMode, [a, b]), announced = Of(announcedMode, [a, b]);
+        using WrapperTestNode node = new();
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        Assert.That(node.Transport.PublishWrapper(held), Is.True);
+        WrapperAnnouncement announcement = Describe(announced);
+        Assert.That(announcement.Coverage, Is.EqualTo(Describe(held).Coverage));
+
+        node.Transport.OnAnnounce(peer, new([announcement]));
+
+        Assert.That(link.Sent<GetProofWrappersMessage>().SelectMany(static r => r.Hashes), fetched ? Is.EqualTo(new[] { announcement.Hash }) : Is.Empty);
     }
 
     // EIP-8288 proof reuse: aggregation learns which dependency sets announced mode-1 wrappers claim while they are fetched.

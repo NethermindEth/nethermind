@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
@@ -138,12 +139,17 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         return true;
     }
 
-    /// <summary>Whether a held wrapper validated under <paramref name="verifier"/> has these coverage hints.</summary>
-    public bool HoldsEquivalent(in WrapperCoverage coverage, Eip8288Verifier? verifier)
+    /// <summary>Whether a held wrapper validated under <paramref name="verifier"/> has these coverage hints and makes one of
+    /// <paramref name="mode"/> redundant.</summary>
+    /// <remarks>A held mode-0 wrapper never stands in for a mode-1 one, whose recursive proof production and inclusion lists reuse.</remarks>
+    public bool HoldsEquivalent(in WrapperCoverage coverage, int mode, Eip8288Verifier? verifier)
     {
         if (!_byCoverage.TryGetValue(coverage, out List<ValueHash256>? equivalent)) return false;
         foreach (ValueHash256 wrapperHash in equivalent)
-            if (_objects[wrapperHash].Verifier == verifier) return true;
+        {
+            Entry entry = _objects[wrapperHash];
+            if (entry.Verifier == verifier && (entry.Shape.Mode == mode || entry.Shape.Mode == MempoolWrapper.ModeRecursive)) return true;
+        }
         return false;
     }
 

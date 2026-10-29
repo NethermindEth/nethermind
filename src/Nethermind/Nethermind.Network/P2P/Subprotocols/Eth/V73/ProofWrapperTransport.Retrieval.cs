@@ -52,7 +52,7 @@ public sealed partial class ProofWrapperTransport
                     existing.AddSource(peer, announcement);
                     continue;
                 }
-                if (_store.HoldsEquivalent(announcement.Coverage, _verifier))
+                if (_store.HoldsEquivalent(announcement.Coverage, announcement.Mode, _verifier))
                 {
                     WrapperMetrics.Record(WrapperEvent.EquivalentSkipped);
                     continue;
