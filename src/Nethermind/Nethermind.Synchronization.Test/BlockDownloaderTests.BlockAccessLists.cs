@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -286,12 +289,18 @@ public partial class BlockDownloaderTests
         // A far beacon head puts the block below the serving window, where peers may have pruned its list.
         IBlockTree farBeaconBlockTree = Substitute.For<IBlockTree>();
         farBeaconBlockTree.BestKnownBeaconNumber.Returns(ulong.MaxValue);
+        CountingBlockAccessListStore? countingStore = null;
         await using CatchUp catchUp = CreateCatchUp(1, reconstruct: false,
             new BlocksConfig { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead },
-            source == AccessListSource.OutsideServingWindow
-                ? builder => builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider, ITimestamper, IBlocksConfig>(
-                    (historyPruner, specProvider, timestamper, blocksConfig) => new(farBeaconBlockTree, historyPruner, specProvider, timestamper, blocksConfig))
-                : null);
+            builder =>
+            {
+                builder.AddDecorator<IBlockAccessListStore>((_, inner) => countingStore = new CountingBlockAccessListStore(inner));
+                if (source == AccessListSource.OutsideServingWindow)
+                {
+                    builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider, ITimestamper, IBlocksConfig>(
+                        (historyPruner, specProvider, timestamper, blocksConfig) => new(farBeaconBlockTree, historyPruner, specProvider, timestamper, blocksConfig));
+                }
+            });
         if (source == AccessListSource.NoEth71Peer) catchUp.Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth70);
         bool served = source == AccessListSource.Served;
         Block block = catchUp.Blocks[0];
@@ -328,6 +337,8 @@ public partial class BlockDownloaderTests
                 AccessListSource.Withheld => 3,
                 _ => 0,
             }));
+            // The store is checked once, when the block enters the download buffer, not on each request.
+            Assert.That(countingStore!.ExistsCalls, Is.EqualTo(1));
             Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo((usesAccessLists && served) || source == AccessListSource.Stored));
         }
     }
@@ -364,6 +375,28 @@ public partial class BlockDownloaderTests
 
     private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
         new ArrayPoolList<byte[]?>(blockAccessLists);
+
+    /// <summary>Counts the store checks for a list, which are database reads.</summary>
+    private sealed class CountingBlockAccessListStore(IBlockAccessListStore inner) : IBlockAccessListStore
+    {
+        public int ExistsCalls { get; private set; }
+        public Lock WriteLock => inner.WriteLock;
+        public void InsertFromBlock(Block block) => inner.InsertFromBlock(block);
+        public void InsertFromBlockDeferred(Block block) => inner.InsertFromBlockDeferred(block);
+        public void Insert(ulong blockNumber, Hash256 blockHash, byte[] bal) => inner.Insert(blockNumber, blockHash, bal);
+        public void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal) => inner.Insert(blockNumber, blockHash, bal);
+        public void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal) => inner.Insert(blockNumber, blockHash, bal);
+        public MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash) => inner.GetRlp(blockNumber, blockHash);
+        public ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash) => inner.Get(blockNumber, blockHash);
+        public void Delete(ulong blockNumber, Hash256 blockHash) => inner.Delete(blockNumber, blockHash);
+        public void DeleteRange(ulong fromInclusive, ulong toExclusive) => inner.DeleteRange(fromInclusive, toExclusive);
+
+        public bool Exists(ulong blockNumber, Hash256 blockHash)
+        {
+            ExistsCalls++;
+            return inner.Exists(blockNumber, blockHash);
+        }
+    }
 
     /// <summary>Requests block access lists while processing, as the merge downloader does for reconstructable blocks.</summary>
     private sealed class AccessListOnProcessingBlockDownloader(

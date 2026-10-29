@@ -346,6 +346,7 @@ namespace Nethermind.Synchronization.Blocks
             int? blockAccessListsRequestSize = null;
             ulong? blockAccessListsPeerHead = null;
             bool blockAccessListsPeerHeadKnown = false;
+            bool accessListsInBuffer = false;
             int receiptsRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
@@ -372,7 +373,8 @@ namespace Nethermind.Synchronization.Blocks
                             Block: TryGetLocalBlock(blockHeader),
                             Receipts: null,
                             PeerInfo: null,
-                            EncodedAccessList: null));
+                            EncodedAccessList: null)
+                        { AccessListStored = IsAccessListStored(blockHeader) });
                 }
                 entry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                 parentHeader = blockHeader;
@@ -397,7 +399,9 @@ namespace Nethermind.Synchronization.Blocks
                     requestContentType = BlocksRequestContentType.Bodies;
                 }
 
-                if (ShouldDownloadAccessList(blockHeader, shouldProcess) && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
+                bool downloadAccessList = ShouldDownloadAccessList(blockHeader, shouldProcess);
+                accessListsInBuffer |= entry.EncodedAccessList is not null || (downloadAccessList && !entry.HasAccessList);
+                if (downloadAccessList && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
                         (HasFreeBlockAccessListsPeer()
@@ -438,6 +442,13 @@ namespace Nethermind.Synchronization.Blocks
                 }
             }
 
+            // When no block in the buffer holds or still needs a list, e.g. all are stored or below the serving window,
+            // the last downloaded list size no longer limits the buffer. A break leaves headers unchecked, so it keeps the estimate.
+            if (!accessListsInBuffer && bodiesToDownload.Count < bodiesRequestSize && receiptsToDownload.Count < receiptsRequestSize)
+            {
+                _estimateAccessListKbPerBlock = 0;
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies, {blockAccessListsToDownload.Count} access lists and {receiptsToDownload.Count} receipts.");
 
             if (receiptsToDownload.Count + bodiesToDownload.Count + blockAccessListsToDownload.Count == 0)
@@ -472,7 +483,8 @@ namespace Nethermind.Synchronization.Blocks
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry))
                     {
                         if (TryGetLocalBlock(blockHeader) is not { } localBlock) break;
-                        blockEntry = _downloadRequests.GetOrAdd(blockHeader.Hash, new BlockEntry(headersSpan[i - 1]!, blockHeader, localBlock, Receipts: null, PeerInfo: null, EncodedAccessList: null));
+                        blockEntry = _downloadRequests.GetOrAdd(blockHeader.Hash, new BlockEntry(headersSpan[i - 1]!, blockHeader, localBlock, Receipts: null, PeerInfo: null, EncodedAccessList: null)
+                        { AccessListStored = IsAccessListStored(blockHeader) });
                     }
 
                     blockEntry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
@@ -781,6 +793,10 @@ namespace Nethermind.Synchronization.Blocks
         /// <summary>Whether this header requires a BAL before suggestion.</summary>
         protected virtual bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) => !shouldProcess;
 
+        /// <summary>Whether the block access list of this header is already in the store, so that it is not downloaded.</summary>
+        /// <remarks>Checked once, when the block enters the download buffer; processing takes a stored list from the store.</remarks>
+        protected virtual bool IsAccessListStored(BlockHeader header) => false;
+
         /// <summary>Whether this header requires receipts before suggestion.</summary>
         protected virtual bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) => requested;
 
@@ -1007,8 +1023,9 @@ namespace Nethermind.Synchronization.Blocks
             public bool CanExecuteMissingData { get; set; }
             public bool SkipAccessListDownload { get; set; }
             public bool NoAccessListPeer { get; set; }
+            public bool AccessListStored { get; init; }
             public bool SkipReceiptDownload { get; set; }
-            public bool HasAccessList => (CanExecuteMissingData && (SkipAccessListDownload || NoAccessListPeer)) || Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
+            public bool HasAccessList => AccessListStored || (CanExecuteMissingData && (SkipAccessListDownload || NoAccessListPeer)) || Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
             public bool HasReceipt => (CanExecuteMissingData && (SkipReceiptDownload || SkipAccessListDownload || NoAccessListPeer)) || !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;

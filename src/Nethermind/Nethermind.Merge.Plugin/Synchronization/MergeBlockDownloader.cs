@@ -79,14 +79,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// A block that executes also takes its list when parallel execution or read warming uses it, as a block from
         /// <c>engine_newPayload</c> does. Such a block executes without the list when peers do not serve it. Below the serving
         /// window of the best known header, peers may have pruned the list, so the block does not wait for retries that fail.
-        /// A list already in the store, e.g. from <c>engine_newPayload</c> for a stored beacon body, is not downloaded again:
-        /// processing takes it from the store.
         /// </remarks>
         protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
             base.ShouldDownloadAccessList(header, shouldProcess)
-            || (shouldProcess && _executionUsesAccessLists && _balServingWindow.Contains(header.Number, ulong.MaxValue)
-                && !balStore.Exists(header.Number, header.Hash!))
+            || (shouldProcess && _executionUsesAccessLists && _balServingWindow.Contains(header.Number, ulong.MaxValue))
             || finalizedBalPolicy?.CanReconstruct(header) == true;
+
+        /// <inheritdoc/>
+        /// <remarks><c>engine_newPayload</c> stores the list of a beacon body, which full sync then takes from the block store.</remarks>
+        protected override bool IsAccessListStored(BlockHeader header) =>
+            header.BlockAccessListHash is not null && balStore.Exists(header.Number, header.Hash!);
 
         protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>
             base.ShouldDownloadReceipts(header, shouldProcess, requested)
