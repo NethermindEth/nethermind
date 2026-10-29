@@ -422,9 +422,10 @@ public partial class EngineModuleTests
             Assert.That(successResponse, Is.Not.Null);
             Assert.That(response, Does.Contain("\"status\":\"INVALID\""));
             Assert.That(response, Does.Contain($"\"latestValidHash\":\"{Keccak.Zero.ToString(true)}\""));
-            Assert.That(response,
-                Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
-                .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
+            Assert.That(response, Parallel
+                ? Does.Contain(MismatchedBalError)
+                : Does.Contain($"InvalidBlockLevelAccessListHash: Expected {expectedBalHash}, got {invalidBalHash}")
+                    .Or.Contain("InvalidBlockLevelAccessList: Account-set size mismatch"));
         }
     }
 
@@ -553,6 +554,8 @@ public partial class EngineModuleTests
                 _ => "invalid storage reads",
             };
 
+    private const string MismatchedBalError = "InvalidBlockLevelAccessList: Suggested block-level access list does not match the generated one.";
+
     private static void AssertInvalidBalError(string? validationError, string expectedError) =>
         Assert.That(validationError,
             Does.Contain(expectedError).Or.Contain("InvalidBlockLevelAccessListHash:"));
@@ -563,7 +566,11 @@ public partial class EngineModuleTests
         bool eip8037Enabled, bool useEnginePipeline, BalErrorKind errorKind)
     {
         bool useManualBlock = !eip8037Enabled && !useEnginePipeline;
-        string expectedError = GetExpectedBalError(errorKind, exactMatch: useManualBlock);
+        // The parallel path rejects a list its transactions execute against from the workers' logs, without merging
+        // them to name the difference.
+        string expectedError = Parallel && errorKind != BalErrorKind.MissingChange
+            ? MismatchedBalError
+            : GetExpectedBalError(errorKind, exactMatch: useManualBlock);
 
         return useManualBlock
             ? NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, expectedError, errorKind)
