@@ -69,8 +69,12 @@ namespace Nethermind.Db.Test.LogIndex
                 List<int> actual = [];
                 while (enumerator.MoveNext()) actual.Add(enumerator.Current);
                 IEnumerable<int> expected = blocks.Where(block => block >= from && block <= to);
-                Assert.That(actual, Is.EqualTo(backwards ? expected.Reverse() : expected), $"{from}..{to}");
-                Assert.That(enumerator.MoveNext(), Is.False);
+                bool hasMore = enumerator.MoveNext();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual, Is.EqualTo(backwards ? expected.Reverse() : expected), $"{from}..{to}");
+                    Assert.That(hasMore, Is.False);
+                }
             }
         }
 
