@@ -1169,19 +1169,23 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // EIP-8288 Test Case 12: a valid wrapper whose transaction fails pool admission is accepted and relayed unchanged while the
-    // pool holds another of its transactions.
-    [Test]
-    public async Task Wrapper_with_a_pending_transaction_and_a_pool_rejected_one_is_relayed_unchanged()
+    // EIP-8288 Test Case 12: a valid wrapper whose transaction fails pool admission is accepted and relayed unchanged when it
+    // newly admitted another; rejected transactions cannot ride on one that was already pending.
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Partly_pool_rejected_wrapper_is_relayed_unchanged_only_when_it_newly_admits_a_transaction(bool newlyAdmitted)
     {
-        Transaction pending = CreateHashedTransaction(TestItem.KeccakA);
+        Transaction accepted = CreateHashedTransaction(TestItem.KeccakA);
         Transaction junk = CreateHashedTransaction(TestItem.KeccakB);
-        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, pending, junk);
-        pool.TryGetPendingTransaction(pending.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
-        {
-            call[1] = pending;
-            return true;
-        });
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, accepted, junk);
+        if (newlyAdmitted)
+            pool.SubmitTx(Arg.Is<Transaction>(t => t.Hash == accepted.Hash), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        else
+            pool.TryGetPendingTransaction(accepted.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+            {
+                call[1] = accepted;
+                return true;
+            });
         List<byte[]> relayed = [];
         service.WrapperValidated += (body, _) => relayed.Add(body);
 
@@ -1190,7 +1194,7 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
-            Assert.That(relayed, Is.EqualTo(new[] { wrapper }));
+            Assert.That(relayed, Is.EqualTo(newlyAdmitted ? new[] { wrapper } : Array.Empty<byte[]>()));
         }
     }
 

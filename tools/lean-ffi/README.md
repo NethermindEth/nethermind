@@ -281,7 +281,8 @@ A wrapper is announced to every `eth/73` peer once validated, except a hash alre
 sent on that connection, or one whose transactions the peer's exchanged wrappers already cover
 without more proof bytes or verification work. No wrapper is announced, served, admitted or
 reaggregated before full validation. Each transaction is admitted individually; a valid wrapper is
-relayed unchanged while the pool holds any of its transactions, and pool rejection never penalizes.
+relayed unchanged even if some of its transactions are rejected, provided it newly admitted another,
+and pool rejection never penalizes.
 
 Dependency-bearing transactions travel only inside their covering wrappers: on every `eth`
 version they are neither broadcast nor announced, and GetPooledTransactions answers them as

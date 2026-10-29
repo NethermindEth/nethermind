@@ -93,9 +93,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
-    /// <summary>Raised with the encoded wrapper once its proof is valid, the pool holds at least one of its transactions and the
-    /// verifier it was validated under is still current.</summary>
-    /// <remarks>EIP-8288: pool rejection of other transactions does not invalidate the wrapper or prevent its unchanged relay. The
+    /// <summary>Raised with the encoded wrapper once its proof is valid, the pool holds every transaction it carries or newly
+    /// admitted at least one of them, and the verifier it was validated under is still current.</summary>
+    /// <remarks>EIP-8288: pool rejection of some transactions does not invalidate the wrapper or prevent its unchanged relay. The
     /// second argument is the verifier it was validated under. Subscribers must not mutate the wrapper.</remarks>
     public event Action<byte[], Eip8288Verifier>? WrapperValidated;
 
@@ -284,7 +284,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
             IDisposable? scope;
-            int pooled = 0;
+            int pooled = 0, admitted = 0;
             lock (_commitLock)
             {
                 if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
@@ -317,7 +317,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                             }
                         }
                         SubmitProofTransactions(transactions, start, Math.Min(start + AdmissionChunk, transactions.Count), hashes,
-                            ref firstError, ref pooled, cancellationToken, admittedDependencies, source);
+                            ref firstError, ref pooled, ref admitted, cancellationToken, admittedDependencies, source);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && pooled != 0)
@@ -332,7 +332,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
-            if (pooled != 0 && relay is not null && RefreshVerifier() == verifier)
+            // A rejected transaction must not ride on one that was already pending, so a partly rejected wrapper is relayed
+            // only when it newly admitted one.
+            if ((admission.IsSuccess || admitted != 0) && relay is not null && RefreshVerifier() == verifier)
                 WrapperValidated?.Invoke(relay, verifier);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
@@ -422,7 +424,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Submits <paramref name="transactions"/> from <paramref name="start"/> up to <paramref name="end"/>.</summary>
     private void SubmitProofTransactions(IReadOnlyList<Transaction> transactions, int start, int end, Hash256[] hashes, ref string? firstError,
-        ref int pooled, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
+        ref int pooled, ref int admitted, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies, object? source)
     {
         for (int i = start; i < end; i++)
         {
@@ -445,6 +447,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             else
             {
                 pooled++;
+                admitted++;
                 admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue));
             }
         }
