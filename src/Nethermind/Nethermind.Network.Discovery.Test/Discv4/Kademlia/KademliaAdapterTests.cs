@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     onWirePing?.Invoke(msg);
                     PongMsg pong = new(
@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
-            using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg).AsDisposable();
+            byte[] buffer = _receiverSerializationManager.SerializeToArray<T>(msg);
             IPEndPoint? farAddress = msg.FarAddress;
             msg = _receiverSerializationManager.Deserialize<T>(buffer);
             msg.FarAddress = farAddress;
@@ -311,7 +311,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
+                    byte[] buffer = _receiverSerializationManager.SerializeToArray(sent);
                     PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
@@ -364,7 +364,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
             ConfigureBondCallback();
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(_receiver.Id));
             ecdsa.Received().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
             ecdsa.ClearReceivedCalls();
@@ -452,7 +454,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             ConfigureBondCallback(onWirePing: ping => sourceAddresses.Add(ping.SourceAddress!));
 
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(sourceAddresses, Is.EqualTo(new[]
             {
@@ -719,7 +723,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await AssertNoPeerCandidate(token);
 
             Node droppedNode = nodes[^1];
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
             Assert.That(await _adapter.Ping(droppedNode, token), Is.True);
+#pragma warning restore NUnit2045
             Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(droppedNode.Id));
         }
 

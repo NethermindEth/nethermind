@@ -28,13 +28,14 @@ public partial class BlockAccessListManager
 
         CheckInitialized();
         _mergedBlockAccessList.Merge(_txProcessorWithWorldStateManager.SealLogs());
-        if (_validateBlockAccessList) ValidateMergedBlockAccessList(block);
-
+        // Set before validating, so a block rejected for its access list keeps the generated one.
         if (!VerifyOnly)
         {
             GeneratedBlockAccessList = _mergedBlockAccessList.ToGeneratedBlockAccessList();
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
         }
+
+        if (_validateBlockAccessList) ValidateMergedBlockAccessList(block);
 
         if (_validateBlockAccessList)
         {

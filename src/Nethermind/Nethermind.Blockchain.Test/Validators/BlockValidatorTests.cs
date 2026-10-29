@@ -93,8 +93,11 @@ public class BlockValidatorTests
 
         bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+        }
     }
 
     [Test]
@@ -150,8 +153,11 @@ public class BlockValidatorTests
             .WithParent(parent)
             .WithUncles(Build.A.BlockHeader.WithNumber(10).TestObject)
             .TestObject;
-        Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
-        Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(false));
+            Assert.That(blockValidator.ValidateOrphanedBlock(block, out _), Is.EqualTo(true));
+        }
     }
 
     private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
@@ -612,8 +618,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.True, error);
-        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.True, error);
+            Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+        }
     }
 
     /// <summary>A self-transfer priced between the two charges is valid only for its own sender, so that one is recovered.</summary>
@@ -624,8 +633,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.True, error);
-        Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.True, error);
+            Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+        }
     }
 
     /// <summary>
@@ -640,8 +652,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut(txValidator).ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
-        Assert.That(isValid, Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
+            Assert.That(isValid, Is.True, error);
+        }
     }
 
     /// <summary>Stands in for the background recovery: the sender appears just after the first check reads it as missing.</summary>
@@ -674,8 +689,11 @@ public class BlockValidatorTests
 
         bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isValid, Is.False);
+            Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+        }
     }
 
     private static Transaction Eip2780Transfer(PrivateKey signer, Address to, ulong gasLimit) =>

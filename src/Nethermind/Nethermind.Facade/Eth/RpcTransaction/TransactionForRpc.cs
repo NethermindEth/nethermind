@@ -139,10 +139,11 @@ public abstract class TransactionForRpc
     /// Validates fields required for signing (gas, fee, nonce) and returns the resulting <see cref="Transaction"/>.
     /// </summary>
     /// <remarks>As in geth, the fields pick the envelope: a request priced with <c>gasPrice</c> alone signs as legacy.</remarks>
-    public Result<Transaction> ToSignableTransaction() =>
+    /// <param name="spec">The fork a frame transaction priced per gas buys its <c>max_gas</c> in, as in <see cref="ToValidatedTransaction"/>.</param>
+    public Result<Transaction> ToSignableTransaction(IReleaseSpec? spec = null) =>
         MissingSigningField() is { } missing
             ? Result<Transaction>.Fail(missing)
-            : ToValidatedTransaction();
+            : ToValidatedTransaction(spec: spec);
 
     /// <summary>The first field signing needs that the request leaves out, or null when gas, fees and nonce are set.</summary>
     internal string? MissingSigningField() =>
@@ -154,6 +155,7 @@ public abstract class TransactionForRpc
 
     private static bool HasFeeFields(TransactionForRpc rpcTx) =>
         rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: not null, MaxPriorityFeePerGas: not null }
+            or FrameTransactionForRpc { MaxFee: not null, MaxPriorityFeePerGas: not null }
             or LegacyTransactionForRpc { GasPrice: not null };
 
     /// <summary>

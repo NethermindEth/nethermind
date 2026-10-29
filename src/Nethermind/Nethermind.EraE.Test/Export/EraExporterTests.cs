@@ -61,9 +61,12 @@ public class EraExporterTests
 
         await sut.Export(tmpDirectory, 0, 15);
 
-        Assert.That(System.IO.File.Exists(eraeFile), Is.True, "pre-existing legacy .erae file must be kept on re-export");
-        Assert.That(System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}"), Is.Empty,
-            "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(System.IO.File.Exists(eraeFile), Is.True, "pre-existing legacy .erae file must be kept on re-export");
+            Assert.That(System.IO.Directory.GetFiles(tmpDirectory, $"*{EraPathUtils.FileExtension}"), Is.Empty,
+                "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
+        }
     }
 
     [Test]
@@ -92,8 +95,11 @@ public class EraExporterTests
         {
             ReadOnlySpan<char> span = line.AsSpan();
             int spaceIdx = span.IndexOf(' ');
-            Assert.That(spaceIdx, Is.GreaterThan(0), "each line should be '<hash> <filename>'");
-            Assert.That(span[(spaceIdx + 1)..].EndsWith(EraPathUtils.FileExtension.AsSpan()), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(spaceIdx, Is.GreaterThan(0), "each line should be '<hash> <filename>'");
+                Assert.That(span[(spaceIdx + 1)..].EndsWith(EraPathUtils.FileExtension.AsSpan()), Is.True);
+            }
         }
     }
 

@@ -74,8 +74,11 @@ public class TransactionProcessorFeeTests
 
         ExecuteAndTrace(block, compositeTracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        }
     }
 
     [Test]
@@ -106,9 +109,12 @@ public class TransactionProcessorFeeTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        Assert.That(feesTracer.Fees, Is.EqualTo(UInt256.Zero));       // no tip to the coinbase
-        Assert.That(feesTracer.BurntFees, Is.EqualTo(UInt256.Zero));  // capped base fee (0), not baseFee * gasUsed
-        Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero)); // fee collector not credited
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feesTracer.Fees, Is.EqualTo(UInt256.Zero));       // no tip to the coinbase
+            Assert.That(feesTracer.BurntFees, Is.EqualTo(UInt256.Zero));  // capped base fee (0), not baseFee * gasUsed
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(UInt256.Zero)); // fee collector not credited
+        }
     }
 
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
@@ -144,8 +150,11 @@ public class TransactionProcessorFeeTests
 
         ExecuteAndTrace(block, compositeTracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
     }
 
     [Test]
@@ -170,10 +179,13 @@ public class TransactionProcessorFeeTests
 
         // tx1: 1 * 21000
         // tx2: (10 - 2) * 21000 = 168000
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
 
-        Assert.That(block.GasUsed, Is.EqualTo(42000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
+            Assert.That(block.GasUsed, Is.EqualTo(42000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
+        }
     }
 
     [Test]
@@ -198,10 +210,13 @@ public class TransactionProcessorFeeTests
         FeesTracer tracer = new();
         ExecuteAndTrace(block, tracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo(UInt256.Zero));
 
-        Assert.That(block.GasUsed, Is.EqualTo(21000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)131072));
+            Assert.That(block.GasUsed, Is.EqualTo(21000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)131072));
+        }
 
         if (withFeeCollector)
         {
@@ -243,10 +258,13 @@ public class TransactionProcessorFeeTests
         // tx1: 2 * 21000
         // tx2: (10 - 1) * 21000
         // tx3: 1 * 60000
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)291000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)291000));
 
-        Assert.That(block.GasUsed, Is.EqualTo(102000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
+            Assert.That(block.GasUsed, Is.EqualTo(102000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
+        }
     }
 
     [Test]
@@ -296,14 +314,20 @@ public class TransactionProcessorFeeTests
         if (withCancellation)
         {
             // tx1: 1 * 21000
-            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)21000));
-            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)42000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)21000));
+                Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)42000));
+            }
         }
         else
         {
             // tx2: (10 - 2) * 21000 = 168000
-            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)189000));
-            Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)84000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)189000));
+                Assert.That(feesTracer.BurntFees, Is.EqualTo((UInt256)84000));
+            }
         }
     }
 
@@ -324,10 +348,13 @@ public class TransactionProcessorFeeTests
         FeesTracer tracer = new();
         ExecuteAndTrace(block, tracer);
 
-        Assert.That(tracer.Fees, Is.EqualTo((UInt256)42000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Fees, Is.EqualTo((UInt256)42000));
 
-        Assert.That(block.GasUsed, Is.EqualTo(42000));
-        Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+            Assert.That(block.GasUsed, Is.EqualTo(42000));
+            Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        }
     }
 
     [Test]
@@ -361,8 +388,11 @@ public class TransactionProcessorFeeTests
         BlockExecutionContext blkCtx = new(block.Header, _spec);
         TransactionResult result = _transactionProcessor.CallAndRestore(tx, blkCtx, NullTxTracer.Instance);
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
-        Assert.That(result.ErrorDescription, Does.Contain($"maxFeePerGas: {feeCap}"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
+            Assert.That(result.ErrorDescription, Does.Contain($"maxFeePerGas: {feeCap}"));
+        }
         Assert.That(result.ErrorDescription, Does.Contain($"baseFee: {baseFee}"));
         Assert.That(result.ErrorDescription, Does.Contain(TestItem.AddressA.ToString(withEip55Checksum: true)));
     }

@@ -108,12 +108,12 @@ public class TransactionDiffViewTests
             new TransactionDiffView.SlotRef(High, 2),
         }));
         // A run past the first is what TXDIFF 0x06/0x07 misresolves if a start is ever left at zero.
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(SlotRun(view, Low), Is.EqualTo((0, 2)));
             Assert.That(SlotRun(view, Mid), Is.EqualTo((2, 1)));
             Assert.That(SlotRun(view, High), Is.EqualTo((3, 1)));
-        });
+        }
     }
 
     private static (int Start, int Count) SlotRun(TransactionDiffView view, Address address)
@@ -135,10 +135,12 @@ public class TransactionDiffViewTests
 
         ValueHash256 hash = view.GetPreTxCodeHash(Low, recordedPreTxCode);
 
-        Assert.That(hash, Is.EqualTo(hadCode ? ValueKeccak.Compute(preTxCode) : ValueKeccak.OfAnEmptyString));
-
-        // With a different source, only a memoized second call still returns the hash.
-        Assert.That(view.GetPreTxCodeHash(Low, Code), Is.EqualTo(hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hash, Is.EqualTo(hadCode ? ValueKeccak.Compute(preTxCode) : ValueKeccak.OfAnEmptyString));
+            // With a different source, only a memoized second call still returns the hash.
+            Assert.That(view.GetPreTxCodeHash(Low, Code), Is.EqualTo(hash));
+        }
     }
 
     // Spec enumeration order for balance_changes is ascending by address, whatever order the slice recorded.
@@ -177,7 +179,7 @@ public class TransactionDiffViewTests
 
         TransactionDiffView view = TransactionDiffView.Build(new BlockAccessIndexRecorder(), logs);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(view.AddressEventCount(High), Is.EqualTo(3));
             Assert.That(view.AddressEventCount(Low), Is.EqualTo(1));
@@ -185,7 +187,7 @@ public class TransactionDiffViewTests
             Assert.That(GlobalIndices(view, High), Is.EqualTo(new[] { 0, 2, 4 }));
             Assert.That(GlobalIndices(view, Low), Is.EqualTo(new[] { 1 }));
             Assert.That(GlobalIndices(view, Mid), Is.EqualTo(new[] { 3 }));
-        });
+        }
     }
 
     [Test]
@@ -193,13 +195,13 @@ public class TransactionDiffViewTests
     {
         TransactionDiffView view = TransactionDiffView.Build(new BlockAccessIndexRecorder(), [Log(Low)]);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(view.AddressEventCount(High), Is.Zero);
             Assert.That(view.TryGetAddressEventGlobalIndex(High, UInt256.Zero, out _), Is.False);
             Assert.That(view.TryGetAddressEventGlobalIndex(Low, UInt256.One, out _), Is.False);
             Assert.That(view.TryGetAddressEventGlobalIndex(Low, UInt256.MaxValue, out _), Is.False);
-        });
+        }
     }
 
     private static LogEntry Log(Address address) => new(address, [], []);

@@ -55,11 +55,14 @@ public class Eip7823Tests
 
         byte[] input = Bytes.FromHexString(inputHex);
 
-        Assert.That(TestSuccess(input, specDisabled), Is.EqualTo(false));
-        Assert.That(TestSuccess(input, specEnabled), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestSuccess(input, specDisabled), Is.EqualTo(false));
+            Assert.That(TestSuccess(input, specEnabled), Is.EqualTo(false));
 
-        Assert.That(TestGas(input, specDisabled), Is.EqualTo(ulong.MaxValue));
-        Assert.That(TestGas(input, specEnabled), Is.EqualTo(ulong.MaxValue));
+            Assert.That(TestGas(input, specDisabled), Is.EqualTo(ulong.MaxValue));
+            Assert.That(TestGas(input, specEnabled), Is.EqualTo(ulong.MaxValue));
+        }
     }
 
     private static IEnumerable<object> LimitTests

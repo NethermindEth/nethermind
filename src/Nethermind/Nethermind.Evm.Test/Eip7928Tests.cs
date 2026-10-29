@@ -129,25 +129,31 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     private static void AssertPureAccountRead(RecordedAccountChanges? accountChanges)
     {
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.BalanceChange, Is.Null);
-        Assert.That(accountChanges.NonceChange, Is.Null);
-        Assert.That(accountChanges.CodeChange, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.BalanceChange, Is.Null);
+            Assert.That(accountChanges.NonceChange, Is.Null);
+            Assert.That(accountChanges.CodeChange, Is.Null);
+        }
     }
 
     private static void AssertEqual(ReadOnlyAccountChanges expected, RecordedAccountChanges? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Address, Is.EqualTo(expected.Address));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual!.Address, Is.EqualTo(expected.Address));
 
-        Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
-        Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
-        Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
-            ? Is.Null
-            : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
+            Assert.That(actual.BalanceChange, expected.BalanceChanges.Length == 0
+                ? Is.Null
+                : Is.EqualTo((BalanceChange?)expected.BalanceChanges[0]));
+            Assert.That(actual.NonceChange, expected.NonceChanges.Length == 0
+                ? Is.Null
+                : Is.EqualTo((NonceChange?)expected.NonceChanges[0]));
+            Assert.That(actual.CodeChange, expected.CodeChanges.Length == 0
+                ? Is.Null
+                : Is.EqualTo((CodeChange?)expected.CodeChanges[0]));
+        }
 
         // Compare storage changes (one entry per slot, all at index 0).
         Dictionary<UInt256, StorageChange> actualStorage = [];
@@ -202,8 +208,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
-        Assert.That(slotChange.Value, Is.EqualTo(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
+            Assert.That(slotChange.Value, Is.EqualTo(value));
+        }
     }
 
     private static void AssertNonceChange(BlockAccessIndexRecorder bal, Address address, ulong value)
@@ -217,7 +226,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
+#pragma warning disable NUnit2045 // The nullable value must be checked before accessing its contents.
         Assert.That(accountChanges!.CodeChange, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(accountChanges.CodeChange!.Value.Index, Is.EqualTo(0u));
         Assert.That(accountChanges.CodeChange.Value.Code, Is.EqualTo(code));
     }
@@ -226,8 +237,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.StorageChangeCount, Is.EqualTo(0));
-        Assert.That(accountChanges.StorageReads, Does.Contain(key));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountChanges!.StorageChangeCount, Is.EqualTo(0));
+            Assert.That(accountChanges.StorageReads, Does.Contain(key));
+        }
     }
 
     private static byte[] BuildDelegationCode(Address target) =>

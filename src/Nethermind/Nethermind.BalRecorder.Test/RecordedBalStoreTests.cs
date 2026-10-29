@@ -41,8 +41,11 @@ public class RecordedBalStoreTests
             ReadOnlyBlockAccessList? result = store.Get(100);
 
             Assert.That(result, Is.Not.Null);
-            Assert.That(result!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
-            Assert.That(result.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+                Assert.That(result.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+            }
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -88,10 +91,13 @@ public class RecordedBalStoreTests
             ReadOnlyBlockAccessList? resultA = store.Get(0);
             ReadOnlyBlockAccessList? resultB = store.Get(1);
 
-            Assert.That(resultA!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
-            Assert.That(resultA.GetAccountChanges(TestItem.AddressB), Is.Null);
-            Assert.That(resultB!.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
-            Assert.That(resultB.GetAccountChanges(TestItem.AddressA), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultA!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+                Assert.That(resultA.GetAccountChanges(TestItem.AddressB), Is.Null);
+                Assert.That(resultB!.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+                Assert.That(resultB.GetAccountChanges(TestItem.AddressA), Is.Null);
+            }
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -112,10 +118,13 @@ public class RecordedBalStoreTests
             store.Insert(block0, MakeBal(TestItem.AddressA));
             store.Insert(block1, MakeBal(TestItem.AddressB));
 
-            Assert.That(Directory.GetFiles(dir, "*.bal").Length, Is.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.GetFiles(dir, "*.bal").Length, Is.EqualTo(2));
 
-            Assert.That(store.Get(era0Block)!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
-            Assert.That(store.Get(era1Block)!.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+                Assert.That(store.Get(era0Block)!.GetAccountChanges(TestItem.AddressA), Is.Not.Null);
+                Assert.That(store.Get(era1Block)!.GetAccountChanges(TestItem.AddressB), Is.Not.Null);
+            }
         }
         finally { Directory.Delete(dir, true); }
     }

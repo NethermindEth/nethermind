@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 
@@ -15,7 +14,12 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
 {
     public static readonly SlotChangesDecoder Instance = new();
 
-    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
+    /// <summary>Maximum number of changes to one account field or storage slot.</summary>
+    /// <remarks>
+    /// One change per block access index: the pre-execution index, one per transaction and the post-execution one.
+    /// A property, as <see cref="RlpLimit.MaxBlockGas"/> that the transaction count follows is set from configuration.
+    /// </remarks>
+    internal static RlpLimit ChangesLimit => new(BlockBodyDecoder.TransactionsCountLimit.Limit + 2, "", ReadOnlyMemory<char>.Empty);
 
     protected override ReadOnlySlotChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {
@@ -23,7 +27,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         int check = length + ctx.Position;
 
         UInt256 slot = ctx.DecodeUInt256();
-        StorageChange[] changes = StorageChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, _txLimit);
+        StorageChange[] changes = StorageChangeDecoder.Instance.DecodeNonNullArray(ref ctx, RlpBehaviors.None, ChangesLimit);
 
         // EIP-7928: a slot in storage_changes must have at least one change.
         // A slot with zero changes belongs in storage_reads instead.

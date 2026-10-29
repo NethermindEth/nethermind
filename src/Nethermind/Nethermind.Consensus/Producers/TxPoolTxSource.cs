@@ -62,7 +62,10 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
+            // EIP-8141: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
+            // processor checks is checked here too, rather than failing at execution in every block built.
+            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec)
+                && FrameTxValidation.CoversRequiredMaxFee(tx, spec, baseFee, UInt256.Zero);
             bool BlobFilter(Transaction tx) => HasFullBlobData(tx) && filter(tx);
             // A revalidated pool has already rejected everything whose validity changes with the target spec.
             Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
@@ -196,9 +199,17 @@ namespace Nethermind.Consensus.Producers
                         continue;
                     }
 
-                    if (validateForkSensitiveState)
+                    if (!FrameTxValidation.CoversRequiredMaxFee(blobTx, spec, baseFee, feePerBlobGas))
                     {
-                        if (blobTx is LightTransaction lightTransaction
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, max fee is below the required max fee.");
+                        continue;
+                    }
+
+                    // A frameless record only bounds max_gas from below, so a max_fee is checked exactly on the full tx.
+                    if (validateForkSensitiveState || (blobTx.SupportsFrames && blobTx.Frames is null))
+                    {
+                        if (validateForkSensitiveState
+                            && blobTx is LightTransaction lightTransaction
                             && lightTxValidator is not null
                             && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
                         {
@@ -206,7 +217,8 @@ namespace Nethermind.Consensus.Producers
                         }
 
                         if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                            || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                            || (validateForkSensitiveState && !IsForkSensitiveStateValid(fullBlobTx, spec))
+                            || !FrameTxValidation.CoversRequiredMaxFee(fullBlobTx, spec, baseFee, feePerBlobGas))
                         {
                             rejectedBlobCount += txBlobCount;
                             if (rejectedBlobCount > maxRejectedBlobsToConsider)
