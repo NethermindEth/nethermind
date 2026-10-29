@@ -660,7 +660,8 @@ public partial class DebugRpcModuleTests
             List<GethLikeTxTrace> selected = [];
             foreach (GethLikeTxTrace trace in traces)
                 if (trace.TxHash == target) selected.Add(trace);
-            Assert.That(selected, Has.Count.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+                Assert.That(selected, Has.Count.EqualTo(1));
             Assert.That((int?)JToken.Parse(JsonSerializer.Serialize(selected[0], EthereumJsonSerializer.JsonOptions))["txIndex"], Is.EqualTo(selectedAt));
             foreach (GethLikeTxTrace trace in traces)
                 if (trace.TxHash != target)
