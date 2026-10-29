@@ -1121,11 +1121,11 @@ namespace Nethermind.Blockchain.Receipts
                 // it would permanently drop the tx-index write of every block queued near the head.
                 if (_pendingReceipts is not null)
                 {
-                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive));
                 }
                 else
                 {
-                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive);
                 }
 
                 removedAny |= fromInclusive < toExclusive;

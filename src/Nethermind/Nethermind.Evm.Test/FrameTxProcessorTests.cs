@@ -66,7 +66,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address Recipient = TestItem.AddressC;
     private static readonly Address Beneficiary = TestItem.AddressE;
 
-    // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
+    // The gas leg of max_cost for a SelfVerify + one DEFAULT frame at a tip of 1 per gas, blob-free.
     private const ulong DefaultFrameStateGasLimit = 200_000;
     private const ulong BlobFreeMaxCost = 612_950;
 
@@ -118,7 +118,9 @@ public partial class FrameTxProcessorTests
         using NativeStateGasTracer stateGasTracer = new(tx, Spec, GethTraceOptions.Default);
         CompositeTxTracer combinedTracer = new(tracer, stateGasTracer);
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer: combinedTracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(tracer.TraceResult, Is.Not.Null);
         using GethLikeTxTrace trace = stateGasTracer.BuildResult();
         StateGasTrace gas = (StateGasTrace)trace.CustomTracerResult!.Value;
@@ -196,7 +198,7 @@ public partial class FrameTxProcessorTests
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        Transaction tx = FrameTx(nonce: 0, FrameTxTestFrames.SelfVerify(50_000), Frame(FrameMode.Sender, target: Recipient, value: 5));
         tx.FrameSignatures = placeholder
             ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
             : [];
@@ -298,8 +300,11 @@ public partial class FrameTxProcessorTests
 
         TransactionResult result = CallAndRestore(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
     }
 
     [Test]
@@ -351,8 +356,11 @@ public partial class FrameTxProcessorTests
 
         TransactionResult result = CallAndRestore(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
     }
 
     [Test]
@@ -701,7 +709,6 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1000;
 
         CallOutputTracer tracer = new();
         TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0, tracer: tracer);
@@ -731,9 +738,6 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1000;
-        tx.GasPrice = 1;                 // max_priority_fee_per_gas
-        tx.DecodedMaxFeePerGas = 10;
 
         const ulong baseFee = 7;
         CallOutputTracer tracer = new();
@@ -755,72 +759,36 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_BlobFrameTx_MaxFeePerBlobGasBelowBlobBaseFee_Invalid()
+    public void Execute_MaxCost_BlobCarryingFrameTx_PricesBlobLegAtBlobBaseFee()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        // max_cost's blob leg is the blob gas at the block's blob_base_fee, paid from the max_fee budget.
+        Transaction tx = MaxCostObserverTx();
         tx.BlobVersionedHashes = [new byte[32]];
-
-        const ulong excessBlobGas = 50_000_000;
-        UInt256 feePerBlobGas = FeePerBlobGas(excessBlobGas);
-        Assert.That(feePerBlobGas, Is.GreaterThan(UInt256.One), "excess chosen so the blob base fee exceeds 1");
-        tx.MaxFeePerBlobGas = feePerBlobGas - 1;
-
-        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientSenderBalance));
-            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
-            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
-        }
-    }
-
-    [Test]
-    public void Execute_TxParamMaxCost_BlobCarryingFrameTx_ReservesBlobLegAtBlobBaseFeeNotMaxFee()
-    {
-        // max_cost's blob leg reserves at the actual blob_base_fee, not max_fee_per_blob_gas.
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-        tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1000;
 
         TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        // Gas leg is the blobless Execute_TxParam_MaxCost value the same frame shape observes (max fee 1).
-        UInt256 expectedMaxCost = BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
-        AssertStorage(Observer, 0, expectedMaxCost);
-        UInt256 maxFeePricedMaxCost = BlobFreeMaxCost + tx.MaxFeePerBlobGas.Value * BlobGasCalculator.CalculateBlobGas(1);
-        Assert.That(expectedMaxCost, Is.LessThan(maxFeePricedMaxCost),
-            "max_cost priced below the max_fee_per_blob_gas reservation, i.e. at the blob base fee");
+        AssertStorage(Observer, 0, BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1));
     }
 
-    [TestCase(7ul, 2ul, 10ul, 2ul, TestName = "Execute_NonZeroBaseFee_PremiumIsTheRequestedPriorityFee")]
-    [TestCase(7ul, 5ul, 8ul, 1ul, TestName = "Execute_NonZeroBaseFee_PremiumCappedByMaxFeeMinusBaseFee")]
-    public void Execute_NonZeroBaseFee_PaysBeneficiaryThePremiumAndBurnsTheBaseFee(
-        ulong baseFee, ulong priorityFee, ulong maxFee, ulong expectedPremium)
+    [Test]
+    public void Execute_MaxCost_IsTheGasBudgetAtTheTip()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.GasPrice = priorityFee;
-        tx.DecodedMaxFeePerGas = maxFee;
-
-        CallOutputTracer tracer = new();
-        TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
+        TransactionResult result = Process(MaxCostObserverTx());
 
         Assert.That(result.TransactionExecuted, Is.True);
-        UInt256 spentGas = (UInt256)tracer.GasSpent;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas * expectedPremium), "beneficiary gets the premium only");
-            Assert.That(_stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary),
-                Is.EqualTo(1.Ether - spentGas * baseFee), "the base fee share is burned");
-        }
+        AssertStorage(Observer, 0, BlobFreeMaxCost);
+    }
+
+    /// <summary>Builds the transaction whose body frame stores the <c>max_cost</c> approval collected from the sender.</summary>
+    /// <remarks>The sender starts with one ether and nothing else moves its balance before settlement.</remarks>
+    private Transaction MaxCostObserverTx()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(Sender).Op(Instruction.BALANCE).PushData(1.Ether).Op(Instruction.SUB).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        return FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
     }
 
     [Test]
@@ -829,7 +797,6 @@ public partial class FrameTxProcessorTests
         const ulong baseFee = 7;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.DecodedMaxFeePerGas = 10;
 
         FeesTracer tracer = new();
         TransactionResult result = Process(tx, baseFeePerGas: baseFee, tracer: tracer);
@@ -846,34 +813,15 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_MaxFeeBelowBaseFee_ReturnsMaxFeePerGasBelowBaseFee()
+    public void Execute_RequiredMaxFeeOverflows_RejectedWithoutCreditingBeneficiary()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.DecodedMaxFeePerGas = 5;
-
-        TransactionResult result = Process(tx, baseFeePerGas: 10);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee));
-            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
-            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
-        }
-    }
-
-    [Test]
-    public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
-    {
-        // max_fee = max_priority = 2^255 with an even gas limit wraps maxCost to 0 mod 2^256: unchecked,
-        // the payer gate passes for free and a wrapped premium is credited out of nothing.
+        // A base fee of 2^255 with an even max_gas wraps required_max_fee to 0 mod 2^256: unchecked, the budget
+        // check passes for free and a wrapped fee is collected out of nothing.
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Recipient));
-        tx.GasPrice = UInt256.One << 255;
-        tx.DecodedMaxFeePerGas = UInt256.One << 255;
+        tx.MaxFee = UInt256.MaxValue;
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = Process(tx, baseFeePerGas: UInt256.One << 255);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1005,9 +953,7 @@ public partial class FrameTxProcessorTests
     [TestCase((byte)0x00, 6UL, TestName = "Execute_TxParam_TxType")]
     [TestCase((byte)0x01, 0UL, TestName = "Execute_TxParam_Nonce")]
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
-    [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
-    [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
-    [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
+    [TestCase((byte)0x04, DefaultMaxFeeWei, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
@@ -1046,7 +992,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Simulation_TxParamMaxCost_PlaceholderCoversSignedSignature()
+    public void Simulation_MaxCost_PlaceholderCoversSignedSignature()
     {
         UInt256 placeholder = SimulatedMaxCost(signed: false);
         UInt256 signed = SimulatedMaxCost(signed: true);
@@ -1054,10 +1000,10 @@ public partial class FrameTxProcessorTests
         Assert.That(placeholder, Is.GreaterThanOrEqualTo(signed));
     }
 
-    /// <summary>The <c>TXPARAM</c> max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
+    /// <summary>The max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
     private UInt256 SimulatedMaxCost(bool signed)
     {
-        Transaction tx = TxParamObserverTx(0x06);
+        Transaction tx = MaxCostObserverTx();
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
         if (signed) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
         Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
@@ -1523,7 +1469,9 @@ public partial class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(blockGasLimit).TestObject;
 
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
 
         GasEstimator estimator = new(_transactionProcessor, _stateProvider);
@@ -2251,7 +2199,9 @@ public partial class FrameTxProcessorTests
 
         CallOutputTracer tracer = new();
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         AssertStorage(Recipient, 0, UInt256.Zero, "an ASSERT frame cannot write");
         AssertStorage(Observer, 0, UInt256.Zero, "the halted assertion unwound the body");
@@ -2270,7 +2220,9 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Assert, FrameFlags.ApprovePayment, target: Recipient));
 
         CallOutputTracer tracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
@@ -2312,7 +2264,9 @@ public partial class FrameTxProcessorTests
             Frame(FrameMode.Sender, target: Observer),
             Frame(FrameMode.Assert, target: Recipient));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
             "the sender nonce bump is part of the prefix that payment approval committed");
     }
@@ -2928,7 +2882,9 @@ public partial class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
 
         FrameReceiptTracer tracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0), tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         Assert.That(tracer.FrameReceipts![0].GasUsed, Is.EqualTo(Eip8038Constants.WarmAccess),
             "the default code draws no execution gas of its own, leaving the warm sender's entry access");
@@ -3089,8 +3045,10 @@ public partial class FrameTxProcessorTests
         FrameReceiptTracer tracer = new();
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(BuildProcessor(_stateProvider, MovedPrecompile(IdentityPrecompile.Address, movedTo)),
             tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         // The target and the designation are both cold — the latter because a moved precompile is no
         // longer in the spec's EIP-2929 pre-warm set — and nothing beyond those two accesses runs.
@@ -3119,7 +3077,9 @@ public partial class FrameTxProcessorTests
         FrameReceiptTracer tracer = new();
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(BuildProcessor(_stateProvider, repository), tx, tracer: tracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
 
         // Empty code cannot revert, so the failure is the override code having run.
         Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
@@ -3371,7 +3331,9 @@ public partial class FrameTxProcessorTests
         Transaction simulated = FrameTx(nonce: 5, KeyedSelfVerifyFrame(freshKeyCount: 1));
         simulated.NonceKeys = [7];
 
+#pragma warning disable NUnit2045 // Check the execution result before running the next transaction.
         Assert.That(Process(executed).TransactionExecuted, Is.False, "key 7 sits at sequence 0, so the set is not consumable");
+#pragma warning restore NUnit2045
         Assert.That(CallAndRestore(simulated).TransactionExecuted, Is.True);
     }
 
@@ -3424,7 +3386,9 @@ public partial class FrameTxProcessorTests
         keyed.NonceKeys = [UInt256.Zero];
 
         FrameReceiptTracer keyedTracer = new();
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
 
         FrameReceiptTracer plainTracer = new();
@@ -3802,7 +3766,9 @@ public partial class FrameTxProcessorTests
 
         Transaction tx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
 
+#pragma warning disable NUnit2045 // Transaction execution must succeed before inspecting its output or performing the next execution.
         Assert.That(Process(tx).TransactionExecuted, Is.True);
+#pragma warning restore NUnit2045
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(2UL), "payment approval moved the account nonce");
         AssertStorage(Observer, 0, (UInt256)1);
     }
@@ -3894,12 +3860,10 @@ public partial class FrameTxProcessorTests
             ApproveCode(FrameFlags.ApproveExecutionAndPayment),
             Prepare.EvmCode
                 .CallWithInput(Sender, 100_000, [1]).Op(Instruction.POP)
-                // balance + max_cost matches the funded balance only once APPROVE has collected it.
-                .PushData(0x06).Op(Instruction.TXPARAM)
-                .Op(Instruction.ADDRESS).Op(Instruction.BALANCE)
-                .Op(Instruction.ADD)
+                // The balance falls below the funded one only once APPROVE has collected max_cost.
                 .PushData(1.Ether)
-                .Op(Instruction.EQ)
+                .Op(Instruction.ADDRESS).Op(Instruction.BALANCE)
+                .Op(Instruction.LT)
                 .Op(Instruction.ISZERO)
                 .PushData(0).PushData(0)
                 .Op(Instruction.RETURNDATACOPY)
@@ -4247,8 +4211,12 @@ public partial class FrameTxProcessorTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1, // max_priority_fee_per_gas
-            DecodedMaxFeePerGas = 1,
+            // Ample at a zero base fee, so the tip of 1 per gas bounds max_cost to max_gas.
+            MaxFee = DefaultMaxFee,
         };
+
+    private const ulong DefaultMaxFeeWei = 1_000_000_000_000_000_000;
+    private static readonly UInt256 DefaultMaxFee = DefaultMaxFeeWei;
 
     [Test]
     public void Execute_AssertionOpcodeOutsideAssertFrame_HaltsExceptionally(
@@ -4593,15 +4561,15 @@ public partial class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // Payer and max cost come from the frame context rather than the diff, so they are read back
-    // against TXPARAM, which exposes the same two values to the body.
+    // Payer and max cost come from the frame context rather than the diff, so max cost is read back
+    // against what approval collected from the payer, which nothing else has moved yet.
     [Test]
     public void Execute_TxTrace_ReadsThePayerAndMaxCost()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, AssertAll(
             (Txtrace(0x15, 0), To32(AddressAsWord(Sender))),
-            ([.. Txtrace(0x14, 0), .. Txparam(0x06), (byte)Instruction.EQ], To32(1))));
+            ([.. Txtrace(0x14, 0), .. Prepare.EvmCode.PushData(Sender).Op(Instruction.BALANCE).PushData(1.Ether).Op(Instruction.SUB).Done, (byte)Instruction.EQ], To32(1))));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)));
@@ -4668,9 +4636,6 @@ public partial class FrameTxProcessorTests
     {
         public BlockAccessListAtIndex? GeneratedBlockAccessList => null;
     }
-
-    private static byte[] Txparam(byte param)
-        => Prepare.EvmCode.PushData((UInt256)param).Op(Instruction.TXPARAM).Done;
 
     // TXTRACE stack order is (param, index) with param on top.
     private static byte[] Txtrace(byte param, UInt256 index)
@@ -5634,8 +5599,6 @@ public partial class FrameTxProcessorTests
             tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: storageHelper));
         }
 
-        // Leaves a priority fee over the base fee, so the beneficiary is credited in every case.
-        tx.DecodedMaxFeePerGas = 2;
         if (framePayer == FramePayer.CodelessSponsor)
         {
             tx.FrameSignatures =
@@ -5696,7 +5659,7 @@ public partial class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce, KeyedSelfVerifyFrame(keysUsedBefore ? 0 : keys.Length));
         tx.NonceKeys = keys;
 
-        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), baseFeePerGas: 0, out _);
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode, includeEmpty: false), baseFeePerGas: 0, out _);
         JsonElement root = document.RootElement;
         JsonElement pre = diffMode ? root.GetProperty("pre") : root;
 
@@ -5754,7 +5717,6 @@ public partial class FrameTxProcessorTests
                 stateGasLimit: (ulong)(GasCostOf.NewAccountState + GasCostOf.CodeDepositState * senderInit.Length), UInt256.Zero, default),
             SelfVerifyFrame());
         tx.SenderAddress = smartSender;
-        tx.DecodedMaxFeePerGas = 2;
 
         using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: true), (UInt256)baseFeePerGas, out TxReceipt receipt);
         JsonElement pre = document.RootElement.GetProperty("pre");
@@ -5766,10 +5728,10 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
+    private static GethTraceOptions PrestateOptions(bool diffMode, bool includeEmpty = true) => GethTraceOptions.Default with
     {
         Tracer = NativePrestateTracer.PrestateTracer,
-        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}},"includeEmpty":{{(!diffMode && includeEmpty ? "true" : "false")}}}""")
     };
 
     private static BigInteger PrestateBalance(JsonElement state, string address) =>

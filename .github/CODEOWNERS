@@ -5,7 +5,6 @@
 /LICENSE* @rubo @LukaszRozmej @MarekM25
 *.md @rubo @LukaszRozmej @MarekM25
 
-/src/Nethermind/**/I*Config.cs @rubo
 /src/Nethermind/Ethereum.Test.Base @flcl42
 /src/Nethermind/Nethermind.Abi @LukaszRozmej
 /src/Nethermind/Nethermind.Blockchain @LukaszRozmej @MarekM25 @flcl42

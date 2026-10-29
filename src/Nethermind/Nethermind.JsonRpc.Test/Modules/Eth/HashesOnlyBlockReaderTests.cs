@@ -147,7 +147,9 @@ public class HashesOnlyBlockReaderTests
 
             HashesOnlyBlock? hashesOnly = reader.Find(blockTree, parameter);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
             Assert.That(hashesOnly, Is.Not.Null, $"block {number} is below the head window");
+#pragma warning restore NUnit2045
             Assert.That(Serialize(factory, hashesOnly!), Is.EqualTo(Serialize(factory, blockTree.FindBlock(parameter)!)),
                 $"block {number} must be served as the block tree serves it");
         }
@@ -160,9 +162,12 @@ public class HashesOnlyBlockReaderTests
     public void Find_BlockTheBlockTreeServes_ReturnsNull(ulong number)
     {
         (IBlockTree blockTree, HashesOnlyBlockReader reader) = BuildChain();
-        Assert.That(blockTree.Head!.Number, Is.EqualTo((ulong)HeadNumber), "precondition: the chain has its expected head");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.Head!.Number, Is.EqualTo((ulong)HeadNumber), "precondition: the chain has its expected head");
 
-        Assert.That(reader.Find(blockTree, new BlockParameter(number)), Is.Null, $"block {number} is left to the block tree");
+            Assert.That(reader.Find(blockTree, new BlockParameter(number)), Is.Null, $"block {number} is left to the block tree");
+        }
     }
 
     [Test]
@@ -352,7 +357,9 @@ public class HashesOnlyBlockReaderTests
             Assert.That(blockTree.TryRewindHead(rewindHash), Is.True);
         };
 
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(reader.Find(blockTree, parameter), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(blockTree.Head!.Number, Is.EqualTo(6UL));
         Assert.That(reader.Read(block.Number, block.Hash!), Is.Not.Null);
 

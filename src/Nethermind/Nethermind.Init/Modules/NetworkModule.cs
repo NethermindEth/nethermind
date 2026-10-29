@@ -73,7 +73,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
                     .MaxCandidatePeerCount)) // The INetworkConfig is not referable in NodeStatsManager.
 
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
-            .AddSingleton<IMessagePad, Handshake.Eip8MessagePad>()
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<Subprotocols.Eth.V72.ISparseBlobPoolPeerRegistry, Subprotocols.Eth.V72.SparseBlobPoolPeerRegistry>()
             .AddSingleton<IProtocolsManager, ProtocolsManager>()

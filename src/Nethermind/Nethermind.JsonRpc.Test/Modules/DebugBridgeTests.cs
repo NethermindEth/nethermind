@@ -264,8 +264,9 @@ public class DebugBridgeTests
                 Assert.That(result.Result.Error, Is.EqualTo(expectedError));
             }
             Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[retainedHead].Hash));
-            Assert.That(tree.FindBlock(blocks[3].Hash!, BlockTreeLookupOptions.None), accepted ? Is.Null : Is.Not.Null);
-            Assert.That(tree.FindBlock(blocks[4].Hash!, BlockTreeLookupOptions.None), accepted ? Is.Null : Is.Not.Null);
+            // Not FindBlock: rewind listeners load removed blocks in the background and may briefly re-cache them across the deletion.
+            Assert.That(tree.HasBlock(3, blocks[3].Hash!), Is.EqualTo(!accepted));
+            Assert.That(tree.HasBlock(4, blocks[4].Hash!), Is.EqualTo(!accepted));
             Assert.That(tree.FindBlock(blocks[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.LowestInsertedHeader!.Hash, Is.EqualTo(blocks[history == HistoricalSync.Headers ? 2 : 1].Hash));
             Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2 : history == HistoricalSync.BodyFloor ? 3 : 1));
@@ -423,8 +424,8 @@ public class DebugBridgeTests
                 Is.EqualTo(blocks[accepted ? target : 4].Hash!.Bytes.ToArray()));
             Assert.That(tree.SyncPivot, Is.EqualTo((2UL, blocks[2].Hash!)));
             Assert.That(tree.FindBlock(blocks[2].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
-            Assert.That(tree.FindBlock(blocks[4].Hash!, BlockTreeLookupOptions.None),
-                accepted && mutation == ChainMutation.DeleteSlice ? Is.Null : Is.Not.Null);
+            // Not FindBlock: rewind listeners load removed blocks in the background and may briefly re-cache them across the deletion.
+            Assert.That(tree.HasBlock(4, blocks[4].Hash!), Is.EqualTo(!(accepted && mutation == ChainMutation.DeleteSlice)));
         }
     }
 
@@ -549,9 +550,12 @@ public class DebugBridgeTests
         Block head = Build.A.Block.WithParent(target).TestObject;
         foreach (Block block in new[] { genesis, target, head }) AddToMainChain(tree, block);
         container.Resolve<IBlockStore>().Delete(target.Number, target.Hash!);
-        Assert.That(tree.FindBlock(target.Hash!, BlockTreeLookupOptions.None), Is.Null);
-        Assert.That(container.Resolve<IWorldStateManager>().GlobalWorldState.HasRoot(target.Header), Is.True);
-        Assert.That(container.Resolve<IWorldStateManager>().GlobalStateReader.HasStateForBlock(target.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindBlock(target.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(container.Resolve<IWorldStateManager>().GlobalWorldState.HasRoot(target.Header), Is.True);
+            Assert.That(container.Resolve<IWorldStateManager>().GlobalStateReader.HasStateForBlock(target.Header), Is.True);
+        }
 
         if (throughRpc)
         {
@@ -695,8 +699,11 @@ public class DebugBridgeTests
 
         string response = await RpcTest.TestSerializedRequest(debug, "debug_setHead", parameter == "hash" ? safe.Hash!.ToString() : parameter);
 
-        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
-        Assert.That(tree.Head!.Number, Is.EqualTo(expectedNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+            Assert.That(tree.Head!.Number, Is.EqualTo(expectedNumber));
+        }
     }
 
     public enum TrieRetention { Pruned, AtBoundary, Archive }
@@ -734,8 +741,11 @@ public class DebugBridgeTests
         }
         manager.FlushCache(CancellationToken.None);
         TrieStore trieStore = (TrieStore)container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore;
-        Assert.That(trieStore.LastPersistedBlockNumber, Is.EqualTo(66));
-        Assert.That(trieStore.HasRoot(target.StateRoot!), Is.True, "root presence alone does not enforce retention");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieStore.LastPersistedBlockNumber, Is.EqualTo(66));
+            Assert.That(trieStore.HasRoot(target.StateRoot!), Is.True, "root presence alone does not enforce retention");
+        }
         ResultWrapper<bool> result = ResetHead(container, target, byHash);
 
         bool accepted = retention != TrieRetention.Pruned;
@@ -806,8 +816,11 @@ public class DebugBridgeTests
             replacement = Build.A.Block.WithParent(target).WithStateRoot(state.StateRoot).TestObject;
         }
         IStateReader reader = container.Resolve<IWorldStateManager>().GlobalStateReader;
-        Assert.That(reader.TryGetAccount(replacement.Header, TestItem.AddressA, out AccountStruct account), Is.True);
-        Assert.That(account.Balance, Is.EqualTo((UInt256)3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.TryGetAccount(replacement.Header, TestItem.AddressA, out AccountStruct account), Is.True);
+            Assert.That(account.Balance, Is.EqualTo((UInt256)3));
+        }
     }
 
     [TestCase("debug_setHead", "0x42")]
@@ -875,8 +888,8 @@ public class DebugBridgeTests
         IDebugRpcModule first = factory.Create();
         await using ILifetimeScope wrappedScope = container.BeginLifetimeScope(builder => builder
             .AddSingleton<IBlockTree>(new BlockTreeOverlay(blockTree.AsReadOnly(), blockTree))
-            .AddSingleton<IGethStyleTracer>(Substitute.For<IGethStyleTracer>()));
-        IDebugRpcModule second = wrappedScope.Resolve<IDebugRpcModule>();
+            .AddScoped<IRpcModuleFactory<IDebugRpcModule>, DebugModuleFactory>());
+        IDebugRpcModule second = wrappedScope.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         // Explicit rendezvous holds the mutation open; timeouts only prevent a hung test.
         TaskCompletionSource mutationEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim releaseMutation = new();
@@ -949,10 +962,13 @@ public class DebugBridgeTests
             persistedHeadWhileBlocked = container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes);
             targetRetained = blockTree.FindBlock(blocks[1].Hash!, BlockTreeLookupOptions.None) is not null;
             resumeThread.Start();
-            Assert.That(SpinWait.SpinUntil(() => resumed.Task.IsCompleted ||
-                (resumeThread.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(resumed.Task.IsCompleted, Is.False, "admin resume must wait for state cleanup");
-            Assert.That(container.Resolve<IBlockProcessingPauseControl>().IsPaused, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SpinWait.SpinUntil(() => resumed.Task.IsCompleted ||
+                    (resumeThread.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(resumed.Task.IsCompleted, Is.False, "admin resume must wait for state cleanup");
+                Assert.That(container.Resolve<IBlockProcessingPauseControl>().IsPaused, Is.True);
+            }
         }
         catch (Exception exception)
         {
@@ -1012,6 +1028,7 @@ public class DebugBridgeTests
         public StateId GetCurrentPersistedStateId() => inner.GetCurrentPersistedStateId();
         public Task AddToPersistence(StateId latestSnapshot) => inner.AddToPersistence(latestSnapshot);
         public StateId FlushToPersistence(CancellationToken cancellationToken) => inner.FlushToPersistence(cancellationToken);
+        public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken) => inner.PersistInMemoryTailForShutdown(cancellationToken);
         public void ResetPersistedStateId() => inner.ResetPersistedStateId();
         public void DropStateNotReachableFrom(in StateId head)
         {
@@ -1094,8 +1111,11 @@ public class DebugBridgeTests
             availability.PublishGlobalFloor(head.Number);
         }
         IWorldStateManager worldState = container.Resolve<IWorldStateManager>();
-        Assert.That(worldState.GlobalStateReader.HasStateForBlock(target.Header), Is.EqualTo(state != UnavailableState.Missing), "only retained historical state is readable");
-        Assert.That(worldState.GlobalWorldState.HasRoot(head.Header), Is.True, "persisted state remains writable");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worldState.GlobalStateReader.HasStateForBlock(target.Header), Is.EqualTo(state != UnavailableState.Missing), "only retained historical state is readable");
+            Assert.That(worldState.GlobalWorldState.HasRoot(head.Header), Is.True, "persisted state remains writable");
+        }
         ResultWrapper<bool> result = ResetHead(container, target, byHash);
         ResultWrapper<int> deletion = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
             .debug_deleteChainSlice((long)head.Number, force: true);

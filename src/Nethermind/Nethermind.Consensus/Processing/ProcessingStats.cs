@@ -468,9 +468,7 @@ namespace Nethermind.Consensus.Processing
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
             string blockGas = "";
-            // Read the stable gauges (published once per block, never reset) rather than the transient
-            // per-block aggregates: GenerateReport runs on the ThreadPool and can fire after the next
-            // block's ResetBlockStats has already cleared the transient values.
+            // Read the gauges, published once per processed block and never reset.
             if (Evm.Metrics.GasPriceMax != 0f)
             {
                 float minGas = Evm.Metrics.GasPriceMin;
@@ -615,6 +613,12 @@ namespace Nethermind.Consensus.Processing
                     // Sometimes the beneficiary has done their own balance changing tx
                     // So prefer the mev reward tx value
                     return lastTx.Value.IsZero ? CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To) : lastTx.Value;
+                }
+                // The report runs later on the thread pool, so pruning may have removed the state it reads.
+                catch (Nethermind.Trie.MissingTrieNodeException ex)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Block rewards unavailable for report, state pruned: {ex.Message}");
+                    return default;
                 }
                 catch (Exception ex)
                 {

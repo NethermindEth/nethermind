@@ -122,8 +122,11 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Default_size_limits_match_eth_protocol_limits()
     {
-        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
-        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL.MiB));
+            Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL.MiB));
+        }
     }
 
     [Test]
@@ -448,10 +451,12 @@ public class Eth70ProtocolHandlerTests
 
         TxReceipt[] block1 = BuildSequentialReceipts(3);
         TxReceipt[] block2 = BuildSequentialReceipts(2);
+        int requestCount = 0;
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            requestCount++;
             if (sent.FirstBlockReceiptIndex == 0)
             {
                 using ReceiptsMessage70 firstPage = new(sent.RequestId, new[] { block1.Take(2).ToArray() }.ToPooledList(), true);
@@ -465,10 +470,6 @@ public class Eth70ProtocolHandlerTests
                 UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage,
                     UndecodableResponse.CreateReceipts(sent.RequestId, remaining + 1, Rlp.Encode(0)),
                     Eth70MessageCode.Receipts);
-
-                // Ends the still-pending request so the paging loop stops.
-                using ReceiptsMessage70 empty = new(sent.RequestId, ArrayPoolList<TxReceipt[]>.Empty(), false);
-                HandleZeroMessage(empty, Eth70MessageCode.Receipts);
                 return;
             }
 
@@ -481,7 +482,11 @@ public class Eth70ProtocolHandlerTests
 
         if (exceedsCount)
         {
-            Assert.That(async () => await task, Throws.TypeOf<SubprotocolException>().With.Message.Contains("no progress"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(async () => await task, Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(requestCount, Is.EqualTo(2));
+            }
             return;
         }
 
@@ -951,8 +956,11 @@ public class Eth70ProtocolHandlerTests
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
-        Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
+            Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        }
     }
 
     [Test]
@@ -1055,8 +1063,11 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA);
 
-        Assert.That(response.TxReceipts, Is.Empty);
-        Assert.That(response.LastBlockIncomplete, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TxReceipts, Is.Empty);
+            Assert.That(response.LastBlockIncomplete, Is.False);
+        }
     }
 
     [Test]

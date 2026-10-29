@@ -17,6 +17,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
@@ -61,6 +62,7 @@ public class PersistenceManager(
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
     private StateId? _lastWarnedStall;
     private bool _warnedHeldPastBackstop;
+    private const int InitialShutdownTailCapacity = 256;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -563,6 +565,52 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Requires stopped block processing and persistence workers. Keeps the tail reorgable in the
+    /// persisted-snapshot tier without advancing RocksDB; blocks become durable oldest first.
+    /// Without long finality there is no persisted tier. Restarted snapshots remain uncompacted until finality.
+    /// </remarks>
+    public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
+    {
+        if (!_enableLongFinality || cancellationToken.IsCancellationRequested) return 0;
+
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        if (snapshotRepository.GetLastCommittedStateId() is not { } head) return 0;
+
+        StateId currentPersistedState = GetCurrentPersistedStateId();
+        using ArrayPoolList<Snapshot> tail = new(InitialShutdownTailCapacity);
+        try
+        {
+            StateId cursor = head;
+            while (!IsOnDisk(cursor, currentPersistedState))
+            {
+                if (cancellationToken.IsCancellationRequested) return 0;
+                // A gap means the head's state cannot be reached from disk, so converting part of it would not help.
+                if (!snapshotRepository.TryLeaseInMemoryState(cursor, SnapshotTier.InMemoryBase, out Snapshot? snapshot)) return 0;
+                tail.Add(snapshot);
+                cursor = snapshot.From;
+            }
+
+            if (tail.Count == 0 || cancellationToken.IsCancellationRequested) return 0;
+
+            persistenceBarrier.FlushDeferred();
+
+            int converted = 0;
+            for (int i = tail.Count - 1; i >= 0 && !cancellationToken.IsCancellationRequested; i--)
+            {
+                loader.ConvertAndRegister(tail[i]);
+                converted++;
+            }
+
+            return converted;
+        }
+        finally
+        {
+            foreach (Snapshot snapshot in tail.AsSpan()) snapshot.Dispose();
+        }
+    }
+
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -627,39 +675,23 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
-            // faster; the rare non-compacted persist enumerates unordered, which is still correct.
+            // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
             long stateNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
+            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
             {
-                TreePath path = kvp.Key.Key;
-                TrieNode node = kvp.Value;
+                ReadOnlySpan<byte> rlp = record.Rlp;
 
-                // TODO: Need to double check this case. Does it need a rewrite or not?
-                if (node.IsHashOnlyPlaceholder()) continue;
-
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node.FullRlp.AsSpan());
-
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
+                stateNodesSize += rlp.Length;
+                batch.SetStateTrieNode(path, rlp);
             }
 
             long storageNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
+            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
             {
-                (Hash256 address, TreePath path) = kvp.Key.Key;
-                TrieNode node = kvp.Value;
+                ReadOnlySpan<byte> rlp = record.Rlp;
 
-                // TODO: Need to double check this case. Does it need a rewrite or not?
-                if (node.IsHashOnlyPlaceholder()) continue;
-
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                node.IsPersisted = true;
-                node.PrunePersistedRecursively(1);
+                storageNodesSize += rlp.Length;
+                batch.SetStorageTrieNode(address, path, rlp);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

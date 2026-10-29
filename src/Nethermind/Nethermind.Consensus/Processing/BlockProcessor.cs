@@ -16,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -28,6 +29,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
@@ -55,11 +57,7 @@ public partial class BlockProcessor(
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     protected readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() =>
-        new(
-            beaconBlockRootHandler,
-            balManager
-        ));
+    private readonly Lazy<BlockAccessListSystemContractHandler> _balSystemContractHandler = new(() => new(balManager));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
@@ -74,7 +72,7 @@ public partial class BlockProcessor(
     public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
         : InvalidBlockException(block, message, innerException);
 
-    public event Action? TransactionsExecuted;
+    public event Action<Block>? TransactionsExecuted;
 
     public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
@@ -95,12 +93,18 @@ public partial class BlockProcessor(
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
-        catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
+        catch (InvalidBlockException ex) when (IsBlockAccessListFailure(ex))
         {
-            // Some checks run only on the parallel path, and no sequential re-execution backs them up, so a false
-            // positive on a valid block must stand out from ordinary invalid blocks.
-            Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
-            if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            if (_balManager.ParallelExecutionEnabled)
+            {
+                // Some checks run only on the parallel path, so a false positive on a valid block must stand out from
+                // ordinary invalid blocks, even when a sequential retry later accepts it.
+                Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
+                if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+                if (HasFrameTransaction(suggestedBlock)) throw new BlockAccessListSequentialRetryException(suggestedBlock.Header, ex.Message, ex);
+            }
+
+            KeepGeneratedBlockAccessList(suggestedBlock, block.GeneratedBlockAccessList);
             throw;
         }
         finally
@@ -117,6 +121,20 @@ public partial class BlockProcessor(
         return (block, receipts);
     }
 
+    private static bool HasFrameTransaction(Block block)
+    {
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.Type == TxType.FrameTx) return true;
+        }
+
+        return false;
+    }
+
+    // The manager resets its generated access list in place for the next block, so the bad-block store gets a copy.
+    private static void KeepGeneratedBlockAccessList(Block suggestedBlock, GeneratedBlockAccessList? generated) =>
+        suggestedBlock.EncodedGeneratedBlockAccessList = generated is null ? null : BlockAccessListDecoder.EncodeToBytes(generated);
+
     private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
         e is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException
             or BlockAccessListManager.ParallelExecutionException { InnerException: BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException };
@@ -128,6 +146,7 @@ public partial class BlockProcessor(
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             block.DisposeAccountChanges();
+            KeepGeneratedBlockAccessList(suggestedBlock, suggestedBlock.GeneratedBlockAccessList);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             throw new InvalidBlockException(suggestedBlock, error);
         }
@@ -219,7 +238,7 @@ public partial class BlockProcessor(
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
-        TransactionsExecuted?.Invoke();
+        TransactionsExecuted?.Invoke(block);
 
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
     }
@@ -314,6 +333,11 @@ public partial class BlockProcessor(
         if (TComputesCommitments.IsActive)
         {
             header.Hash = header.CalculateHash();
+        }
+
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            Evm.Metrics.PublishBlockGasPrices(block.Transactions, spec.IsEip1559Enabled, header.BaseFeePerGas);
         }
 
         return receipts;
@@ -474,18 +498,6 @@ public partial class BlockProcessor(
             {
                 if (bal.GetAccountChanges(address) is not { HasStateChanges: true }) balChanges.Add(address);
             }
-        }
-    }
-
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
-    {
-        try
-        {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Storing beacon block root for block {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
         }
     }
 

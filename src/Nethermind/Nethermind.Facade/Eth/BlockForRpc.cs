@@ -89,8 +89,10 @@ public class BlockForRpc
                 SlotNumber = block.SlotNumber;
             }
 
-            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
-            if (specProvider.MergeBlockNumber is null)
+            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded. A chain that
+            // merges omits it for every block, pre-merge ones included, as the execution-apis test vectors expect. Such a
+            // chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
+            if (specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
             {
                 TotalDifficulty = block.TotalDifficulty;
             }
@@ -130,7 +132,7 @@ public class BlockForRpc
     public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Bloom LogsBloom { get; set; }
+    public Bloom? LogsBloom { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? Miner { get; set; }

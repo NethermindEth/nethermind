@@ -95,14 +95,17 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-        Assert.That(_handler.Name, Is.EqualTo("eth68"));
-        Assert.That(_handler.ProtocolVersion, Is.EqualTo(68));
-        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
-        Assert.That(_handler.IncludeInTxPool, Is.True);
-        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-        Assert.That(_handler.HeadHash, Is.Null);
-        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth68"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(68));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -332,7 +335,7 @@ public class Eth68ProtocolHandlerTests
 
         bool shapeMatches = announced is AnnouncedShape.None or AnnouncedShape.Matching;
         recyclablePool.Received(shapeMatches ? 1 : 0).TrySubmitKnown(Arg.Any<ValueHash256>());
-        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), out _, out _);
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
         _session.Received(shapeMatches ? 0 : 1).InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
@@ -348,7 +351,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
 
         recyclablePool.DidNotReceive().TrySubmitKnown(Arg.Any<ValueHash256>());
-        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), out _, out _);
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
     }
 
     [Test]
@@ -454,13 +457,17 @@ public class Eth68ProtocolHandlerTests
         {
             ValueHash256 hash = Keccak.Compute(i.ToString()).ValueHash256;
             Assert.That(first.Set(in hash), Is.True);
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
             Assert.That(first.Set(in hash), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(second.Set(in hash), Is.True);
             Assert.That(second.Set(in hash), Is.False);
         }
 
         ValueHash256 evicted = Keccak.Compute("0").ValueHash256;
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(first.Set(in evicted), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(second.Set(in evicted), Is.True);
     }
 
@@ -474,7 +481,9 @@ public class Eth68ProtocolHandlerTests
         for (int i = 0; i < 64; i++)
         {
             ValueHash256 hash = Keccak.Compute(i.ToString()).ValueHash256;
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
             Assert.That(peer.Set(in hash), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(peer.Set(in active), Is.False);
         }
     }

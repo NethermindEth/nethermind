@@ -62,8 +62,11 @@ namespace Ethereum.Test.Base
         protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+                Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            }
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 

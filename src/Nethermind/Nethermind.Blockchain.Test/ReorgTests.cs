@@ -116,7 +116,8 @@ public class ReorgTests
             stateProvider,
             blockhashProvider,
             new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
@@ -167,9 +168,15 @@ public class ReorgTests
 
         await block2BAdded.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.That(_blockTree.Head, Is.EqualTo(block2B));
-        Assert.That(events.Count, Is.EqualTo(6));
-        Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
-        Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockTree.Head, Is.EqualTo(block2B));
+            Assert.That(events.Count, Is.EqualTo(6));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(events[4].Hash, Is.EqualTo(block1B.Hash!));
+            Assert.That(events[5].Hash, Is.EqualTo(block2B.Hash!));
+        }
     }
 }

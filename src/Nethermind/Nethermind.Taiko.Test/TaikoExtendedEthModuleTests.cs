@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Taiko.Rpc;
 using NSubstitute;
@@ -30,7 +31,11 @@ public class TaikoExtendedEthModuleTests
             .Build();
 
         Func<ITaikoExtendedEthRpcModule> act = () => container.Resolve<ITaikoExtendedEthRpcModule>();
-        Assert.That(act, Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(act, Throws.Nothing);
+            Assert.That(container.Resolve<PayloadTransactionCountGuard>(), Is.SameAs(PayloadTransactionCountGuard.Disabled));
+        }
     }
 
     [TestCase(true, "snap")]
@@ -110,9 +115,12 @@ public class TaikoExtendedEthModuleTests
         string? l1BlockHashString = jsonDoc.RootElement.GetProperty("l1BlockHash").GetString();
 
         Assert.That(l2BlockHashString, Is.Not.Null);
-        Assert.That(l2BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(l2BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
 
-        Assert.That(l1BlockHashString, Is.Not.Null);
+            Assert.That(l1BlockHashString, Is.Not.Null);
+        }
         Assert.That(l1BlockHashString!.Length, Is.EqualTo(expectedLengthInChars));
     }
 }

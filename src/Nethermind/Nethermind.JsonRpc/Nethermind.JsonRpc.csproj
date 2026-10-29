@@ -3,10 +3,11 @@
     <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <!-- Loads the experimental read-only query modules (NMEVM0001) into the query environments. -->
+    <NoWarn>$(NoWarn);NMEVM0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />

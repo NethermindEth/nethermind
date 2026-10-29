@@ -25,8 +25,11 @@ public class BlockhashCacheTests
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(1);
         Hash256? result = cache.GetHash(tree.Genesis!, 0);
-        Assert.That(result, Is.EqualTo(tree.Genesis!.Hash!));
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(0, 0, 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(tree.Genesis!.Hash!));
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(0, 0, 0)));
+        }
     }
 
     [Test]
@@ -47,9 +50,12 @@ public class BlockhashCacheTests
 
         // depth=9 should return block 0 (genesis)
         Hash256? result9 = cache.GetHash(head!, 9);
-        Assert.That(result9, Is.EqualTo(tree.Genesis!.Hash!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result9, Is.EqualTo(tree.Genesis!.Hash!));
 
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(10, 1, 0)));
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(10, 1, 0)));
+        }
     }
 
     [Test]
@@ -58,8 +64,11 @@ public class BlockhashCacheTests
         (BlockTree tree, BlockhashCache cache) = BuildTest(5);
         BlockHeader? head = tree.FindHeader(4, BlockTreeLookupOptions.None);
         Hash256? result = cache.GetHash(head!, 10);
-        Assert.That(result, Is.Null);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(5, 1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(5, 1, 1)));
+        }
     }
 
     [Test]
@@ -71,8 +80,11 @@ public class BlockhashCacheTests
 
         Assert.That(cache.Contains(head!.Hash!), Is.True);
         BlockHeader? ancestor = tree.FindHeader(4, BlockTreeLookupOptions.None);
-        Assert.That(cache.Contains(ancestor!.Hash!), Is.True);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(6, 1, 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Contains(ancestor!.Hash!), Is.True);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(6, 1, 0)));
+        }
     }
 
     [Test]
@@ -83,8 +95,11 @@ public class BlockhashCacheTests
         Hash256? result = cache.GetHash(head!, 256);
 
         BlockHeader? expected = tree.FindHeader(43, BlockTreeLookupOptions.None);
-        Assert.That(result, Is.EqualTo(expected!.Hash!));
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(FlatCacheItemLength, 1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected!.Hash!));
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(FlatCacheItemLength, 1, 1)));
+        }
     }
 
     [Test]
@@ -96,9 +111,12 @@ public class BlockhashCacheTests
         Hash256? result300 = cache.GetHash(head!, 300);
         Hash256? result256 = cache.GetHash(head!, 256);
 
-        Assert.That(result300, Is.Null);
-        Assert.That(result256, Is.Not.Null);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(FlatCacheItemLength, 1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result300, Is.Null);
+            Assert.That(result256, Is.Not.Null);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(FlatCacheItemLength, 1, 1)));
+        }
     }
 
     [Test]
@@ -109,8 +127,11 @@ public class BlockhashCacheTests
         BlockHeader? head = tree.FindHeader(9, BlockTreeLookupOptions.None);
         cache.GetHash(head!, 5);
 
-        Assert.That(cache.Contains(head!.Hash!), Is.True);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(6, 1, 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Contains(head!.Hash!), Is.True);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(6, 1, 0)));
+        }
     }
 
     [Test]
@@ -134,9 +155,12 @@ public class BlockhashCacheTests
         Assert.That(removed, Is.GreaterThan(0));
         BlockHeader? old = tree.FindHeader(40, BlockTreeLookupOptions.None);
         BlockHeader? kept = tree.FindHeader(60, BlockTreeLookupOptions.None);
-        Assert.That(cache.Contains(old!.Hash!), Is.False);
-        Assert.That(cache.Contains(kept!.Hash!), Is.True);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(40, 1, 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Contains(old!.Hash!), Is.False);
+            Assert.That(cache.Contains(kept!.Hash!), Is.True);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(40, 1, 0)));
+        }
     }
 
     [Test]
@@ -148,8 +172,11 @@ public class BlockhashCacheTests
         cache.GetHash(head!, 5);
         cache.Clear();
 
-        Assert.That(cache.Contains(head!.Hash!), Is.False);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(0, 0, 0)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Contains(head!.Hash!), Is.False);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(0, 0, 0)));
+        }
     }
 
     [Test]
@@ -161,9 +188,12 @@ public class BlockhashCacheTests
         BlockHeader? block1 = tree.FindHeader(1, BlockTreeLookupOptions.None);
         await cache.Prefetch(head!);
 
-        Assert.That(cache.Contains(head!.Hash!), Is.True);
-        Assert.That(cache.Contains(block1!.Hash!), Is.True);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(100, 1, 1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Contains(head!.Hash!), Is.True);
+            Assert.That(cache.Contains(block1!.Hash!), Is.True);
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(100, 1, 1)));
+        }
     }
 
     [Test]
@@ -178,9 +208,12 @@ public class BlockhashCacheTests
         Task prefetch90 = cache.Prefetch(block90);
         await Task.WhenAll(prefetch99, prefetch90);
 
-        Assert.That(cache.GetHash(head, 98), Is.EqualTo(block1.Hash!));
-        Assert.That(cache.GetHash(block90, 89), Is.EqualTo(block1.Hash!));
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(100, 1, 2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetHash(head, 98), Is.EqualTo(block1.Hash!));
+            Assert.That(cache.GetHash(block90, 89), Is.EqualTo(block1.Hash!));
+            Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(100, 1, 2)));
+        }
     }
 
     [Test]
@@ -214,8 +247,11 @@ public class BlockhashCacheTests
             if (i > 500ul)
             {
                 int pruned = cache.PruneBefore(i - 400ul);
-                Assert.That(pruned, Is.GreaterThan(0));
-                Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(401, 1, 5)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(pruned, Is.GreaterThan(0));
+                    Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(401, 1, 5)));
+                }
             }
         }
     }
@@ -273,8 +309,8 @@ public class BlockhashCacheTests
 
         Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(depth, 1, 5)));
         await cache.Prefetch(tree.FindHeader(depth - 1ul, BlockTreeLookupOptions.RequireCanonical)!);
-        await Task.Delay(100);
-        Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2ul + 1ul, 1, 3)));
+        // The old forks are pruned by a background task, which a fixed delay may not outlast.
+        Assert.That(() => cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(BlockhashCache.MaxDepth * 2ul + 1ul, 1, 3)).After(5000, 10));
     }
 
     [Test]
@@ -306,13 +342,12 @@ public class BlockhashCacheTests
         Hash256[] prevHashes = (await cache.Prefetch(prev, CancellationToken.None))!;
         Hash256[] headHashes = (await cache.Prefetch(head, CancellationToken.None))!;
         Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(Math.Min(chainDepth - 1ul, FlatCacheItemLength), 1, 2)));
-        Assert.Multiple(() =>
-            {
-                int compareLength = headHashes.Length - 1;
-                Assert.That(prevHashes.AsSpan(0, compareLength).SequenceEqual(headHashes.AsSpan(1, compareLength)), Is.True);
-                Assert.That(headHashes[0], Is.EqualTo(head.ParentHash));
-            }
-        );
+        using (Assert.EnterMultipleScope())
+        {
+            int compareLength = headHashes.Length - 1;
+            Assert.That(prevHashes.AsSpan(0, compareLength).SequenceEqual(headHashes.AsSpan(1, compareLength)), Is.True);
+            Assert.That(headHashes[0], Is.EqualTo(head.ParentHash));
+        }
     }
 
     [Test]
@@ -336,8 +371,11 @@ public class BlockhashCacheTests
         BlockHeader headerOnHeadMinus4 = Build.A.BlockHeader.WithParent(headMinus4).WithHash(null!).TestObject;
         BlockHeader headerOnHead = Build.A.BlockHeader.WithParent(head).WithHash(null!).TestObject;
         Hash256? hashOnHeadMinus8 = cache.GetHash(headerOnHeadMinus4, 4);
-        Assert.That(cache.GetHash(headerOnHead, 5), Is.EqualTo(headMinus4.Hash!));
-        Assert.That(hashOnHeadMinus8, Is.EqualTo(cache.GetHash(headerOnHead, 8)!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetHash(headerOnHead, 5), Is.EqualTo(headMinus4.Hash!));
+            Assert.That(hashOnHeadMinus8, Is.EqualTo(cache.GetHash(headerOnHead, 8)!));
+        }
     }
 
     [Test]

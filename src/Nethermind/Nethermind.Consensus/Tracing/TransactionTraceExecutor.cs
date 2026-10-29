@@ -10,7 +10,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -66,7 +65,6 @@ public sealed class TransactionTraceExecutor(
         if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
             return inner.ProcessTransactions(block, options, tracer, token);
 
-        Metrics.ResetBlockStats();
         inner.SetupTxTimingMetrics(block);
         if (balManager.Enabled) balManager.NextTransaction();
 
@@ -119,7 +117,7 @@ public sealed class TransactionTraceExecutor(
 
     private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)
     {
-        for (int i = first; i < block.Transactions.Length; i++)
+        for (int i = first; i < block.Transactions.Length && !boundary.IsComplete; i++)
         {
             token.ThrowIfCancellationRequested();
             Transaction tx = block.Transactions[i];
@@ -146,11 +144,8 @@ public sealed class TransactionTraceExecutor(
                 balManager.NextTransaction();
                 balManager.SpendGas(tx.BlockGasUsed);
             }
-            if (boundary.IsComplete) break;
         }
 
-        Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
-        Metrics.PublishBlockGasPriceGauges();
         // The receipts of what executed: with a seeded prefix that is the tail from the target on, not the block's.
         return [.. tracer.TxReceipts];
     }

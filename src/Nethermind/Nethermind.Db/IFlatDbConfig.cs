@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 
 namespace Nethermind.Db;
@@ -130,8 +131,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
+    [ConfigItem(Description = "Obsolete trie cache memory target, in bytes. The trie-node cache has been removed, so this setting has no effect.", DefaultValue = "536870912", HiddenFromDocs = true)]
+    [Obsolete("The trie-node cache has been removed. This setting has no effect.")]
     ulong TrieCacheMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node buffer; the oldest are freed beyond it. 0 disables compaction, freeing dropped generations at once; it is also disabled while TrieNodeLogEnabled is set. It also sizes the buffer's storage root index.", DefaultValue = "524288000")]
+    ulong CompressedNodeRecordBufferMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for the larger of 3/4 of the processor count and 1.5 per processor up to 12, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
@@ -142,7 +147,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
-    [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
+    [ConfigItem(Description = "Publish the storage trie roots when the block commits, after it is reported valid, as the state trie already does; their nodes are written as each write batch completes either way. `false` publishes each storage trie's root before the block is reported valid.", DefaultValue = "true")]
     bool DeferStorageTrieCommit { get; set; }
 
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
@@ -175,12 +180,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Validate persisted snapshots against in-memory snapshots after conversion (debug/diagnostic only)", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
 
-    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14.0")]
+    [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
 
     /// <summary>Gets or sets the bits per storage key in the in-memory snapshot filter used by read-only execution.</summary>
     /// <remarks>Defaults to 14 bits per key. Set to 0 to disable the filter. Block processing does not use it.</remarks>
-    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_createAccessList, eth_simulateV1, eth_getProof, debug and trace calls, Flashbots block validation, receipt regeneration and the transaction changeset index), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
+    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_createAccessList, eth_simulateV1, eth_getProof, debug and trace calls, Flashbots block validation, receipt regeneration and the transaction changeset index), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14")]
     double InMemorySnapshotBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
 /// buffer grow with the size of each entry.
 /// </remarks>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost, ITraceOperationStart
 {
     internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -53,6 +53,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private string? _pendingError;
     private long _pendingRefund;
     private bool _gasCostAlreadySet;
+    private bool _gasCostReported;
+    private ulong? _calculatedGasCost;
     private bool _pendingStorageTouched;
 
     private UInt256[]? _stackBuffer;
@@ -111,6 +113,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingError = null;
         _pendingRefund = 0;
         _gasCostAlreadySet = false;
+        _gasCostReported = false;
+        _calculatedGasCost = null;
         _pendingStorageTouched = false;
         ResetRefund();
         _stackCount = 0;
@@ -149,6 +153,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingError = null;
         _pendingRefund = CurrentRefund;
         _gasCostAlreadySet = false;
+        _gasCostReported = false;
+        _calculatedGasCost = null;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
         _stackCount = 0;
@@ -164,10 +170,51 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _gasCostAlreadySet = true;
     }
 
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        if (_hasPendingOpcode)
+        {
+            _pendingGasCost = gasCost;
+            _gasCostAlreadySet = true;
+            _gasCostReported = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) => _calculatedGasCost = gasCost;
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
+
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
+    {
+        if (_hasPendingOpcode)
+            _pendingError = error;
+    }
+
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (!_hasPendingOpcode) return;
-        _pendingError = GetErrorDescription(error);
+        if (_pendingOpcode == Instruction.INVALID)
+        {
+            _pendingGasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
+        // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
+        if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
+            _pendingGasCost = gasCost;
+        if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
+            _pendingError = "out of gas: write protection";
+        if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
+    {
+        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
     }
 
     public override void SetOperationMemorySize(ulong newSize)

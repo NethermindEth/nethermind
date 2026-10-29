@@ -23,6 +23,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -32,6 +33,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -47,11 +49,15 @@ public class SszMiddlewareTests
     private IEngineRpcModule _engineModule = null!;
     private ISpecProvider _specProvider = null!;
     private Nethermind.Blockchain.Find.IBlockFinder _blockFinder = null!;
+    private IStateReader _stateReader = null!;
+    private IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = null!;
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
     private IProcessExitSource _processExitSource = null!;
     private SszMiddleware _middleware = null!;
+    private IContainer? _container;
+    private ServiceProvider? _services;
 
     private const int AuthenticatedPort = 8551;
     private const string OctetStream = "application/octet-stream";
@@ -66,6 +72,8 @@ public class SszMiddlewareTests
         _engineModule = Substitute.For<IEngineRpcModule>();
         _specProvider = Substitute.For<ISpecProvider>();
         _blockFinder = Substitute.For<Nethermind.Blockchain.Find.IBlockFinder>();
+        _stateReader = Substitute.For<IStateReader>();
+        _witnessEnvFactory = Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -80,60 +88,39 @@ public class SszMiddlewareTests
         _middleware = BuildMiddleware();
     }
 
-    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
-    {
-        RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
+    [TearDown]
+    public void TearDown() => DisposeServices();
 
-        return new SszMiddleware(
-            passthrough,
-            _urlCollection,
-            _auth,
-            BuildHandlers(),
-            _processExitSource,
-            LimboLogs.Instance);
+    private void DisposeServices()
+    {
+        _services?.Dispose();
+        _container?.Dispose();
     }
 
-    private ISszEndpointHandler[] BuildHandlers() =>
-        [
-            new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-            new NewPayloadV6SszHandler(_engineModule),
+    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
+    {
+        DisposeServices();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new BaseMergePluginModule())
+            .AddSingleton(_engineModule)
+            .AddSingleton(_specProvider)
+            .AddSingleton(_blockFinder)
+            .AddSingleton(_stateReader)
+            .AddSingleton(_witnessEnvFactory)
+            .AddSingleton(_auth)
+            .AddSingleton(_processExitSource)
+            .Build();
 
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedV5SszHandler(_engineModule, _specProvider),
+        ServiceCollection services = [];
+        new SszMiddlewareConfigurer(_container).Configure(services);
+        services.AddSingleton(_urlCollection);
+        _services = services.BuildServiceProvider();
 
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
+        return ActivatorUtilities.CreateInstance<SszMiddleware>(_services, next ?? (_ => Task.CompletedTask));
+    }
 
-            new GetInclusionListSszHandler(_engineModule),
-
-            new GetBlobsV1SszHandler(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
-            new GetBlobsV4SszHandler(_engineModule),
-
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
-
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
-
-            new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
-            new CapabilitiesSszHandler(),
-
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
-        ];
+    private ISszEndpointHandler[] BuildHandlers() => _services!.GetServices<ISszEndpointHandler>().ToArray();
 
     private static ChainSpecBasedSpecProvider CreateChainSpecProvider() => new(new ChainSpec
     {
@@ -230,18 +217,6 @@ public class SszMiddlewareTests
         Assert.That(missing, Is.Empty);
     }
 
-    // The coverage above only means something if this hand-built set matches what production registers.
-    [Test]
-    public void Configurer_registers_the_handler_set_this_fixture_builds()
-    {
-        ServiceCollection services = [];
-        new SszMiddlewareConfigurer(Substitute.For<IComponentContext>()).Configure(services);
-
-        Assert.That(
-            services.Where(d => d.ServiceType == typeof(ISszEndpointHandler)).Select(d => d.ImplementationType),
-            Is.EquivalentTo(BuildHandlers().Select(h => h.GetType())));
-    }
-
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
     {
         DefaultHttpContext ctx = new();
@@ -300,8 +275,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        }
         await _engineModule.Received(version == 1 ? 1 : 0).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
@@ -323,8 +301,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
+        }
         await _engineModule.DidNotReceive().engine_getPayloadV1(Arg.Any<byte[]>());
         await _engineModule.Received(1).engine_getPayloadV2(Arg.Any<byte[]>());
     }
@@ -499,8 +480,11 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_getBlobsV4(Arg.Any<byte[][]>(), Arg.Any<System.Collections.BitArray>());
-        Assert.That(forwardedHashes, Is.Not.Null);
-        Assert.That(forwardedIndices, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forwardedHashes, Is.Not.Null);
+            Assert.That(forwardedIndices, Is.Not.Null);
+        }
         GetBlobsV4ResponseWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out GetBlobsV4ResponseWire decoded);
 
         using (Assert.EnterMultipleScope())
@@ -701,8 +685,11 @@ public class SszMiddlewareTests
 
         ulong capturedStart = version == 1 ? v1Start : v2Start;
         ulong capturedCount = version == 1 ? v1Count : v2Count;
-        Assert.That(capturedStart, Is.EqualTo(expectedStart));
-        Assert.That(capturedCount, Is.EqualTo(expectedCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capturedStart, Is.EqualTo(expectedStart));
+            Assert.That(capturedCount, Is.EqualTo(expectedCount));
+        }
     }
 
     [Test]
@@ -728,7 +715,7 @@ public class SszMiddlewareTests
         using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
         string[] endpoints = response.RootElement.GetProperty("fork_scoped_endpoints").EnumerateArray()
             .Select(static endpoint => endpoint.GetString()!).ToArray();
-        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "inclusion_list" }));
+        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "payloads/{payloadId}/witness", "inclusion_list" }));
     }
 
     [Test]
@@ -754,9 +741,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
-        Assert.That(ResponseBytes(ctx).Length, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+            Assert.That(ResponseBytes(ctx).Length, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -795,8 +785,11 @@ public class SszMiddlewareTests
 
         await mw.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
-        Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+            Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+        }
     }
 
     // Each case is a different routing rejection that must NOT reach the engine module:
@@ -859,8 +852,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
-        Assert.That(ResponseBytes(ctx), Is.Empty, "204 responses must have no body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+            Assert.That(ResponseBytes(ctx), Is.Empty, "204 responses must have no body");
+        }
     }
 
     [Test]
@@ -898,8 +894,11 @@ public class SszMiddlewareTests
         // With the fix: the outer catch sees RequestAborted is cancelled and does NOT
         // call WriteErrorAsync. StatusCode remains the DefaultHttpContext default (200);
         // crucially it must NOT be 500.
-        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status500InternalServerError));
-        Assert.That(ResponseBytes(ctx), Is.Empty, "aborted request must not have an error body written");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status500InternalServerError));
+            Assert.That(ResponseBytes(ctx), Is.Empty, "aborted request must not have an error body written");
+        }
     }
 
     [Test]
@@ -916,8 +915,11 @@ public class SszMiddlewareTests
 
         await middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
-        Assert.That(ResponseBytes(ctx), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+            Assert.That(ResponseBytes(ctx), Is.Empty);
+        }
     }
 
     private sealed class ZeroLengthEncodeHandler : SszEndpointHandlerBase
@@ -1069,10 +1071,13 @@ public class SszMiddlewareTests
             .ToArray();
         Assert.That(calls.Length, Is.EqualTo(1));
         ClientVersionV1 arg = (ClientVersionV1)calls[0].GetArguments()[0]!;
-        Assert.That(arg.Code, Is.EqualTo("NB"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arg.Code, Is.EqualTo("NB"));
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        }
     }
 
     [Test]
@@ -1291,8 +1296,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        }
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(body, Does.Contain("supported_forks"));
     }
@@ -1310,8 +1318,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        }
     }
 
     // Unknown extra path segments still 404; trailing slashes are accepted (covered below).
@@ -1479,9 +1490,12 @@ public class SszMiddlewareTests
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(body);
         System.Text.Json.JsonElement root = doc.RootElement;
-        Assert.That(root.TryGetProperty("type", out _), Is.True, "RFC 7807 body must contain 'type'");
-        Assert.That(root.TryGetProperty("detail", out _), Is.False, "ssz-decode-error must NOT include 'detail'");
-        Assert.That(root.EnumerateObject().Count(), Is.EqualTo(1), "ssz-decode-error body must have exactly one key");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.TryGetProperty("type", out _), Is.True, "RFC 7807 body must contain 'type'");
+            Assert.That(root.TryGetProperty("detail", out _), Is.False, "ssz-decode-error must NOT include 'detail'");
+            Assert.That(root.EnumerateObject().Count(), Is.EqualTo(1), "ssz-decode-error body must have exactly one key");
+        }
     }
 
     [Test]
@@ -1494,9 +1508,12 @@ public class SszMiddlewareTests
         string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(body);
         System.Text.Json.JsonElement root = doc.RootElement;
-        Assert.That(root.TryGetProperty("type", out _), Is.True);
-        Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
-        Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.TryGetProperty("type", out _), Is.True);
+            Assert.That(root.TryGetProperty("detail", out _), Is.True, "unsupported-fork must include 'detail'");
+            Assert.That(root.EnumerateObject().Count(), Is.EqualTo(2), "error body must have exactly two keys: type + detail");
+        }
     }
 
     private const string WitnessPath = "/engine/v1/payloads/witness";
@@ -1531,20 +1548,26 @@ public class SszMiddlewareTests
 
         await _engineModule.Received(1).engine_newPayloadWithWitnessV5(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>());
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
-            "a VALID status must return 200 OK whether or not a witness was produced");
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
-            "successful SSZ responses must use application/octet-stream");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
+                "a VALID status must return 200 OK whether or not a witness was produced");
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream),
+                "successful SSZ responses must use application/octet-stream");
+        }
 
         byte[] responseBody = ResponseBytes(ctx);
         Assert.That(responseBody, Is.Not.Empty, "the SSZ body must contain the encoded response");
 
         (byte decodedStatus, Hash256? decodedLvh, bool witnessPresent) = SszCodec.DecodeNewPayloadWithWitnessResponse(responseBody);
-        Assert.That(decodedStatus, Is.EqualTo(0), "decoded status byte must match VALID");
-        Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
-            "latest_valid_hash Union Some variant must round-trip the hash correctly");
-        Assert.That(witnessPresent, Is.EqualTo(withWitness),
-            "the witness Union must be Some iff a witness was generated");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedStatus, Is.EqualTo(0), "decoded status byte must match VALID");
+            Assert.That(decodedLvh, Is.EqualTo(TestItem.KeccakA),
+                "latest_valid_hash Union Some variant must round-trip the hash correctly");
+            Assert.That(witnessPresent, Is.EqualTo(withWitness),
+                "the witness Union must be Some iff a witness was generated");
+        }
     }
 
     [Test]
@@ -1596,9 +1619,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
-            "a POST with wrong Content-Type must receive 415, like every other SSZ POST endpoint");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status415UnsupportedMediaType),
+                "a POST with wrong Content-Type must receive 415, like every other SSZ POST endpoint");
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        }
     }
 
     [Test]
@@ -1616,10 +1642,13 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
-            "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
-        Assert.That(ResponseBytes(ctx), Is.Not.Empty, "the SSZ body must contain the status fields");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK),
+                "SYNCING is a normal processing outcome and must return 200, not an HTTP error");
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+            Assert.That(ResponseBytes(ctx), Is.Not.Empty, "the SSZ body must contain the status fields");
+        }
     }
 
     [Test]
@@ -1629,9 +1658,12 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
-            "the witness resource is POST-only; a GET resolves no handler, like every other POST endpoint");
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound),
+                "the witness resource is POST-only; a GET resolves no handler, like every other POST endpoint");
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        }
     }
 
     [Test]
@@ -1671,10 +1703,118 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(ctx.Response.ContentType, Does.Contain("application/problem+json"));
+        }
         string responseBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(responseBody, Does.Contain(expectedTypeUri));
+    }
+
+    private const string BuiltPayloadWitnessPath = "/engine/v1/payloads/0x0102030405060708/witness";
+
+    private IExistingBlockWitnessCollector SetUpBuiltPayload(bool payloadKnown, bool hasParentState, Witness witness, Action? onGenerate = null)
+    {
+        Block block = (Block)SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL).TryGetBlock();
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+        _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(_ => payloadKnown
+            ? ResultWrapper<GetPayloadV6Result?>.Success(new GetPayloadV6Result(block, UInt256.One, new BlobsBundleV2(block), [], shouldOverrideBuilder: false))
+            : ResultWrapper<GetPayloadV6Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload));
+        _blockFinder.FindHeader(block.ParentHash!).Returns(parent);
+        _stateReader.HasStateForBlock(parent).Returns(hasParentState);
+        IExistingBlockWitnessCollector collector = _witnessEnvFactory.CreateScope().Env.CreateExistingBlockWitnessCollector();
+        collector.GetWitnessForExistingBlock(parent, block, Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            onGenerate?.Invoke();
+            call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+            return witness;
+        });
+        return collector;
+    }
+
+    [Test]
+    public async Task GetPayloadWithWitness_returns_the_built_payload_and_its_witness([Values(1, 3)] int requests)
+    {
+        byte[] stateNode = [0xde, 0xad];
+        byte[] header = [0xbe, 0xef];
+        IExistingBlockWitnessCollector collector = SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        {
+            State = new ArrayPoolList<byte[]>(1) { stateNode },
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(1) { header },
+        });
+
+        for (int i = 0; i < requests; i++)
+        {
+            DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+            await _middleware.InvokeAsync(ctx);
+
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            BuiltPayloadWithWitnessV6Wire.Decode(ResponseBytes(ctx), out BuiltPayloadWithWitnessV6Wire wire);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.Headers.CacheControl.ToString(), Is.EqualTo("no-store"));
+                Assert.That(wire.BuiltPayload.BlockValue, Is.EqualTo(UInt256.One));
+                Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(new[] { stateNode }));
+                Assert.That(wire.Witness.Codes, Is.Empty);
+                Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(new[] { header }));
+            }
+        }
+        await _engineModule.Received(requests).engine_getPayloadV6(
+            Arg.Is<byte[]>(static id => Convert.ToHexString(id) == "0102030405060708"));
+        collector.Received(1).GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task GetPayloadWithWitness_aborted_request_cancels_witness_generation()
+    {
+        AbortableLifetimeFeature lifetime = new();
+        IExistingBlockWitnessCollector collector = SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        {
+            State = new ArrayPoolList<byte[]>(0),
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        }, onGenerate: lifetime.Abort);
+
+        DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+        ctx.Features.Set<IHttpRequestLifetimeFeature>(lifetime);
+        await _middleware.InvokeAsync(ctx);
+
+        collector.Received(1).GetWitnessForExistingBlock(
+            Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Is<CancellationToken>(static t => t.IsCancellationRequested));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "an aborted request must not be answered");
+    }
+
+    private static readonly TestCaseData[] GetPayloadWithWitnessErrorCases =
+    [
+        new TestCaseData("osaka", BuiltPayloadWitnessPath, true, true, StatusCodes.Status400BadRequest, "/engine-api/errors/unsupported-fork")
+            .SetName("GetPayloadWithWitness_before_Amsterdam_is_unsupported_fork"),
+        new TestCaseData("amsterdam", "/engine/v1/payloads/0xZZZZZZZZZZZZZZZZ/witness", true, true, StatusCodes.Status400BadRequest, "/engine-api/errors/invalid-request")
+            .SetName("GetPayloadWithWitness_malformed_payload_id_is_invalid_request"),
+        new TestCaseData("amsterdam", BuiltPayloadWitnessPath, false, true, StatusCodes.Status404NotFound, "/engine-api/errors/unknown-payload")
+            .SetName("GetPayloadWithWitness_unknown_payload_is_not_found"),
+        new TestCaseData("amsterdam", BuiltPayloadWitnessPath, true, false, StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
+            .SetName("GetPayloadWithWitness_without_a_witness_is_internal_error"),
+    ];
+
+    [TestCaseSource(nameof(GetPayloadWithWitnessErrorCases))]
+    public async Task GetPayloadWithWitness_error_maps_to_http_status(
+        string fork, string path, bool payloadKnown, bool hasParentState, int expectedStatus, string expectedTypeUri)
+    {
+        SetUpBuiltPayload(payloadKnown, hasParentState, null!);
+
+        DefaultHttpContext ctx = MakeGetContext(path, fork: fork);
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain(expectedTypeUri));
+        }
     }
 
     private static byte[] BuildMinimalWitnessRequestBody() =>
@@ -1737,8 +1877,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        }
         await _engineModule.Received(1).engine_newPayloadV6(
             Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>());
     }
@@ -1773,8 +1916,11 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        }
         await _engineModule.Received(1).engine_getInclusionListV1();
     }
 

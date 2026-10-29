@@ -41,6 +41,26 @@ internal sealed partial class PersistentStorageProvider
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void EnsureOriginalsIndexed() { }
 
+    // The guest captures every original straight into the map, so the map already answers.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial bool TryGetRoundOriginal(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
+
+    private partial bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears)
+    {
+        if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue)
+            && initialValue == change.Value && (!hasStorageClears || !WasCleared(change.StorageCell.Address)))
+        {
+            return false;
+        }
+
+        GetOrCreateStorage(change.StorageCell.Address).SaveChange(change.StorageCell, change.Value);
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial void EndPendingOriginalsRound() { }
 

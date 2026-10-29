@@ -88,11 +88,33 @@ namespace Nethermind.Facade.Find
 
             if (_bodiesOnDisk)
             {
-                bool fromMissing = fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!);
+                bool fromMissing = ReceiptsMissing(fromBlock);
                 cancellationToken.ThrowIfCancellationRequested();
-                bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
+                bool toMissing = ReceiptsMissing(toBlock);
 
-                if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                if (fromMissing && !WasPruned(fromBlock))
+                {
+                    // As in geth, a single block whose header bloom misses the filter has no logs to read.
+                    if (fromBlock.Hash == toBlock.Hash && !filter.Matches(fromBlock.Bloom!))
+                    {
+                        return new FoundLogs([], []);
+                    }
+
+                    throw new BlockNotProcessedException(fromBlock.Number);
+                }
+
+                if (toMissing && !WasPruned(toBlock))
+                {
+                    throw new BlockNotProcessedException(toBlock.Number);
+                }
+
+                // Sliced retention guarantees matching logs on the canonical chain by height, not receipts
+                // for a particular non-canonical block hash. A processed orphan with missing receipts must
+                // fail closed even when the same address is retained at this height.
+                if ((fromMissing || toMissing)
+                    && ((fromMissing && !_blockFinder.IsMainChain(fromBlock))
+                        || (toMissing && !_blockFinder.IsMainChain(toBlock))
+                        || !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number)))
                 {
                     throw new ResourceNotFoundException(fromMissing
                         ? $"Receipt not available for From block {fromBlock.Number}."
@@ -105,6 +127,27 @@ namespace Nethermind.Facade.Find
                 FilterLogsIteratively<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, cancellationToken),
                 FilterLogsIteratively<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, cancellationToken));
         }
+
+        /// <summary>Throws when the receipts of <paramref name="header"/> are missing because the block is not processed yet.</summary>
+        /// <exception cref="BlockNotProcessedException">The block is not processed yet.</exception>
+        protected void ThrowIfNotProcessed(BlockHeader header)
+        {
+            if (_bodiesOnDisk && ReceiptsMissing(header) && !WasPruned(header))
+            {
+                throw new BlockNotProcessedException(header.Number);
+            }
+        }
+
+        private bool ReceiptsMissing(BlockHeader header) =>
+            header.Number != 0 && header.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(header.Number, header.Hash!);
+
+        /// <remarks>
+        /// Missing receipts on an already processed non-canonical block are unavailable history, not proof that
+        /// the block still awaits execution. Reorgs change canonical membership without clearing WasProcessed.
+        /// </remarks>
+        private bool WasPruned(BlockHeader header) =>
+            (_blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header))
+            || _blockFinder.GetInfo(header.Number, header.Hash!).Info?.WasProcessed == true;
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
             prunedLogsRetention is not null
@@ -256,6 +299,12 @@ namespace Nethermind.Facade.Find
                 return filter.Matches(ref bloomRef);
             };
 
+            // A block-hash filter can target a processed block that is not canonical, so a lookup by number misses it.
+            if (fromBlock.Hash == toBlock.Hash)
+            {
+                return RunParallel([fromBlock], header => FindLogsInBlock<TBlockLogs, TLog>(filter, header, cancellationToken), tryParallel: false, cancellationToken);
+            }
+
             return RunParallel(BlockNumbers(fromBlock.Number, rangeSize),
                 number => FindHeaderIfBloomMatchesOrLogError(number, bloomMatches, cancellationToken) is { } header
                     ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
@@ -380,6 +429,7 @@ namespace Nethermind.Facade.Find
 
             TxReceipt[] receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
+            bool receiptsRecovered = false;
             if (receipts is not null)
             {
                 for (int i = 0; i < receipts.Length; i++)
@@ -398,7 +448,12 @@ namespace Nethermind.Facade.Find
                             LogEntry log = receipt.Logs[j];
                             if (filter.Accepts(log))
                             {
-                                RecoverReceiptsData(blockHash, receipts);
+                                if (!receiptsRecovered)
+                                {
+                                    RecoverReceiptsData(blockHash, receipts);
+                                    receiptsRecovered = true;
+                                }
+
                                 yield return new FilterLog(logIndexInBlock, receipt, log, blockTimestamp);
                             }
 

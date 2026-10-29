@@ -217,10 +217,13 @@ namespace Nethermind.JsonRpc.Test.Data
             using JsonDocument document = JsonDocument.Parse(serialized);
             JsonElement root = document.RootElement;
 
-            Assert.That(root.GetProperty("effectiveGasPrice").GetString(), Is.EqualTo("0x7"));
-            Assert.That(root.GetProperty("blockGasUsed").GetString(), Is.EqualTo("0xa"));
-            Assert.That(root.GetProperty("executionGasUsed").GetString(), Is.EqualTo("0xb"));
-            Assert.That(root.GetProperty("storageGasUsed").GetString(), Is.EqualTo("0xc"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("effectiveGasPrice").GetString(), Is.EqualTo("0x7"));
+                Assert.That(root.GetProperty("blockGasUsed").GetString(), Is.EqualTo("0xa"));
+                Assert.That(root.GetProperty("executionGasUsed").GetString(), Is.EqualTo("0xb"));
+                Assert.That(root.GetProperty("storageGasUsed").GetString(), Is.EqualTo("0xc"));
+            }
         }
 
         [TestCase("StateGasSpill", "stateGasSpill")]
@@ -301,6 +304,17 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
+        public void Serializes_transaction_index_as_hex_quantity([Values(0, 1, 255, int.MaxValue)] int index)
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.Index = index;
+
+            using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
+
+            Assert.That(document.RootElement.GetProperty("transactionIndex").GetString(), Is.EqualTo($"0x{index:x}"));
+        }
+
+        [Test]
         public void Error_field_is_not_serialized()
         {
             Hash256 txHash = Keccak.OfAnEmptyString;
@@ -376,8 +390,11 @@ namespace Nethermind.JsonRpc.Test.Data
             using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
             JsonElement root = document.RootElement;
 
-            Assert.That(root.TryGetProperty("root", out _), Is.False);
-            Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.TryGetProperty("root", out _), Is.False);
+                Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            }
         }
 
         [Test]
@@ -401,8 +418,11 @@ namespace Nethermind.JsonRpc.Test.Data
             using JsonDocument document = JsonDocument.Parse(SerializeReceipt(receipt));
             JsonElement root = document.RootElement;
 
-            Assert.That(root.TryGetProperty("status", out _), Is.False);
-            Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.TryGetProperty("status", out _), Is.False);
+                Assert.That(root.GetProperty("root").GetString(), Is.EqualTo(TestItem.KeccakB.ToString()));
+            }
         }
 
         private static TxReceipt CreateDiagnosticReceipt()

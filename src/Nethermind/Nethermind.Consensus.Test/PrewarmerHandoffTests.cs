@@ -36,6 +36,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -339,6 +340,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             preWarmer,
             new PrewarmerState(caches, isPrewarmer: false),
             ProcessingScope.Resolve<IWorldState>(),
+            ProcessingScope.Resolve<ICodeInfoRepository>(),
             LimboLogs.Instance);
 
         Assert.That(Handoff(ThreeIndependentTransactions(), preWarmer, adapter).Tally.Replayed, Is.EqualTo(3));
@@ -732,7 +734,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Task processing = Task.Run(() => run = ProcessWhileWarming(block, (footprints, index) =>
             index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is not null)));
 
+#pragma warning disable NUnit2045 // Completion must be confirmed before inspecting or advancing the operation.
         Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
+#pragma warning restore NUnit2045
         Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
     }
 
@@ -924,7 +928,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    private static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count)
+    internal static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++) txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -941,7 +945,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         return null;
     }
 
-    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
+    internal static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
         new(tx, [],
             [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
             [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Cell = write.Cell, Value = write.Value })],
@@ -1228,6 +1232,42 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         public int MainThreadTxIndex { get; set; }
     }
 
+    /// <summary>
+    /// The prewarmer wraps its world state in a <see cref="FootprintRecorder"/> when handoff is on, the default; the
+    /// address warmer prefetches only when that wrapper reports and forwards the backend's prefetch support.
+    /// </summary>
+    [Test]
+    public void FootprintRecorder_forwards_prefetch_to_the_recorded_state([Values] bool supported)
+    {
+        PrefetchRecordingState inner = new(Substitute.For<IWorldState>(), supported);
+        IWorldState recorder = new FootprintRecorder(inner);
+        Address[] accounts = [TestItem.AddressA, TestItem.AddressB];
+        StorageCell[] slots = [new(TestItem.AddressA, 1)];
+
+        recorder.Prefetch(accounts, slots, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recorder.SupportsPrefetch, Is.EqualTo(supported));
+            Assert.That(inner.Accounts, Is.EqualTo(accounts));
+            Assert.That(inner.Slots, Is.EqualTo(slots));
+        }
+    }
+
+    private sealed class PrefetchRecordingState(IWorldState state, bool supported) : WorldStateDecorator(state), IWorldState
+    {
+        public List<Address> Accounts { get; } = [];
+        public List<StorageCell> Slots { get; } = [];
+
+        bool IWorldState.SupportsPrefetch => supported;
+
+        void IWorldState.Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        {
+            Accounts.AddRange(accounts);
+            Slots.AddRange(slots);
+        }
+    }
+
     private sealed class ForwardingWorldState(IWorldState state) : WorldStateDecorator(state);
 
     private sealed class ForwardingProcessor(ITransactionProcessor processor) : ITransactionProcessor
@@ -1373,14 +1413,16 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     /// <param name="configure">Registrations made after the production ones, as a plugin's would be.</param>
     protected void Initialize(bool handoff, Action<ContainerBuilder>? configure = null)
     {
+        BlocksConfig blocksConfig = new()
+        {
+            PreWarming = PreWarmMode.Block,
+            PreWarmStateConcurrency = 3,
+            ProcessingCores = ProcessingCores.All,
+            PreWarmHandoff = handoff
+        };
+        ConfigureBlocks(blocksConfig);
         ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new BlocksConfig
-            {
-                PreWarming = PreWarmMode.Block,
-                PreWarmStateConcurrency = 3,
-                ProcessingCores = ProcessingCores.All,
-                PreWarmHandoff = handoff
-            }))
+            .AddModule(new TestNethermindModule(blocksConfig))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
             .AddSingleton<IStateHeaderProvider>(new Parents(_headers));
         configure?.Invoke(builder);
@@ -1388,11 +1430,11 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
 
         IMainProcessingModule[] mainModules = _container.Resolve<IMainProcessingModule[]>();
         IWorldStateManager worldStateManager = _container.Resolve<IWorldStateManager>();
-        IWorldStateScopeProvider scopeProvider = worldStateManager.GlobalWorldState;
+        IWorldStateScopeProvider scopeProvider = WrapMainScopeProvider(worldStateManager.GlobalWorldState);
         ProcessingScope = _container.BeginLifetimeScope(b =>
         {
             b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
-            b.RegisterInstance(worldStateManager).As<IWorldStateManager>().ExternallyOwned();
+            b.RegisterInstance(WrapWorldStateManager(worldStateManager)).As<IWorldStateManager>().ExternallyOwned();
             b.AddModule(mainModules);
         });
 
@@ -1434,6 +1476,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
             worldState.Set(new StorageCell(Child, ChildSlot), 0x4e4d);
+            DeployGenesis(worldState);
             worldState.Commit(Spec);
             worldState.CommitTree(0);
             genesisRoot = worldState.StateRoot;
@@ -1455,6 +1498,21 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         }
     }
 
+    /// <summary>Adjusts the blocks config the fixture's container is built with.</summary>
+    protected virtual void ConfigureBlocks(BlocksConfig config) { }
+
+    /// <summary>Deploys a fixture's own accounts into the genesis state, before it is committed.</summary>
+    protected virtual void DeployGenesis(IWorldState worldState) { }
+
+    /// <summary>Decorates the scope provider block processing reads through, under the pre-block caches.</summary>
+    protected virtual IWorldStateScopeProvider WrapMainScopeProvider(IWorldStateScopeProvider provider) => provider;
+
+    /// <summary>Decorates the world state manager of block processing's scope, which the prewarmer's envs create their world states from.</summary>
+    protected virtual IWorldStateManager WrapWorldStateManager(IWorldStateManager manager) => manager;
+
+    /// <summary>The state reader of the fixture's container, which reads past every cache.</summary>
+    protected IStateReader StateReader => _container.Resolve<IWorldStateManager>().GlobalStateReader;
+
     [TearDown]
     public void TearDown()
     {
@@ -1465,14 +1523,57 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected sealed record Run(Hash256 StateRoot, TxReceipt[] Receipts, TransactionResult[] Results, (int Replayed, int Rejected, int Missing) Tally);
 
     /// <summary>Processes the block by execution, then warmed and handed off, and requires the same results, root and receipts.</summary>
-    protected Run Handoff(Block block, IBlockTracer? otherTracer = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer);
+    protected Run Handoff(Block block, IBlockTracer? otherTracer = null, Action<IWorldState>? beforeTransactions = null) =>
+        Handoff(block, PreWarmer, ProductionAdapter, otherTracer, beforeTransactions);
 
-    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null)
+    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null,
+        Action<IWorldState>? beforeTransactions = null)
     {
-        Run executed = Process(block, adapter: null);
+        Run executed = Process(block, adapter: null, beforeTransactions: beforeTransactions);
         RunPreWarmCaches(preWarmer, block);
-        Run run = Process(block, adapter, otherTracer: otherTracer);
+        Run run = Process(block, adapter, otherTracer: otherTracer, beforeTransactions: beforeTransactions);
 
+        AssertSameRun(run, executed);
+        return run;
+    }
+
+    /// <summary>
+    /// Processes the block by execution, then with its prewarming session open while the production adapter processes
+    /// it, as block processing does, and requires the same results, root and receipts.
+    /// </summary>
+    /// <param name="afterSession">Run once the transactions are executed and the session has ended, before the block is committed.</param>
+    protected Run HandoffWhileWarming(Block block, Action? afterSession = null, Action<IWorldState>? beforeTransactions = null)
+    {
+        Run executed = Process(block, adapter: null, beforeTransactions: beforeTransactions);
+        Run run = ProcessWithSession(block, afterSession, beforeTransactions);
+        AssertSameRun(run, executed);
+        return run;
+    }
+
+    /// <summary>Processes the block with its prewarming session open, ending the session once the transactions are executed.</summary>
+    protected Run ProcessWithSession(Block block, Action? afterSession = null, Action<IWorldState>? beforeTransactions = null)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            IDisposable? session = PreWarmer.PreWarmCaches(block, Parent, Spec);
+            try
+            {
+                return ProcessInScope(block, ProductionAdapter, beforeTransactions: beforeTransactions, transactionsExecuted: () =>
+                {
+                    Interlocked.Exchange(ref session, null)?.Dispose();
+                    afterSession?.Invoke();
+                });
+            }
+            finally
+            {
+                session?.Dispose();
+            }
+        }
+    }
+
+    protected static void AssertSameRun(Run run, Run executed)
+    {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(run.Results, Is.EqualTo(executed.Results));
@@ -1480,7 +1581,6 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         }
 
         AssertSameReceipts(run.Receipts, executed.Receipts);
-        return run;
     }
 
     // Sync on purpose: the scope is closed on the thread that opened it.
@@ -1495,10 +1595,11 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     }
 
     /// <param name="adapter">The adapter that hands off; without one the block is executed.</param>
-    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null)
+    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null,
+        Action<IWorldState>? beforeTransactions = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer);
+        using (worldState.BeginScope(parent ?? Parent)) return ProcessInScope(block, adapter, otherTracer, beforeTransactions: beforeTransactions);
     }
 
     /// <summary>
@@ -1521,12 +1622,13 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     }
 
     private Run ProcessInScope(Block block, PrewarmerTxAdapter? adapter, IBlockTracer? otherTracer = null,
-        Action<int>? beforeTransaction = null, Action? transactionsExecuted = null)
+        Action<int>? beforeTransaction = null, Action? transactionsExecuted = null, Action<IWorldState>? beforeTransactions = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         Block processing = new(block.Header.CloneForProcessing(), block.Body);
         (int Replayed, int Rejected, int Missing) before = adapter?.Tally ?? default;
         ITransactionProcessorAdapter transactions = (ITransactionProcessorAdapter?)adapter ?? new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>());
+        beforeTransactions?.Invoke(worldState);
         BlockReceiptsTracer tracer = new();
         tracer.SetOtherTracer(otherTracer ?? NullBlockTracer.Instance);
         tracer.StartNewBlockTrace(processing);
@@ -1597,6 +1699,75 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         _headers.Add(header);
         return header;
     }
+
+    /// <summary>The cache entries whose value is not the parent state's, read past every cache.</summary>
+    protected List<string> EntriesNotAtTheParent()
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        IStateReader reader = StateReader;
+        List<string> wrong = [];
+        foreach ((AddressAsKey key, Account? account) in caches.StateCache.SnapshotForTests())
+        {
+            bool exists = reader.TryGetAccount(Parent, key.Value, out AccountStruct parent);
+            if (account is null ? exists : !exists || !account.ToStruct().Equals(parent))
+            {
+                wrong.Add($"account {key.Value}: {Describe(account?.ToStruct())} cached, {Describe(exists ? parent : null)} at the parent");
+            }
+        }
+
+        foreach ((StorageCell cell, UInt256 value) in caches.StorageCache.SnapshotForTests())
+        {
+            reader.GetStorage(Parent, cell.Address, in cell.Index, out UInt256 parent);
+            if (value != parent) wrong.Add($"slot {cell}: {value} cached, {parent} at the parent");
+        }
+
+        return wrong;
+    }
+
+    private static string Describe(AccountStruct? account) => account is { } a
+        ? $"nonce {a.Nonce} balance {a.Balance} storage {a.StorageRoot} code {a.CodeHash}"
+        : "none";
+
+    /// <summary>A block of the cold tail's shapes, from <paramref name="rng"/>; <paramref name="heavyGas"/> splits a sender's claims.</summary>
+    protected Block RandomColdTailBlock(Random rng, ulong heavyGas = 2_100_000)
+    {
+        PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD];
+        ulong[] nonces = new ulong[senders.Length];
+        int count = rng.Next(3, 11);
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            int s = rng.Next(senders.Length);
+            PrivateKey sender = senders[s];
+            ulong nonce = nonces[s]++;
+            transactions[i] = rng.Next(12) switch
+            {
+                0 or 1 => BatchClaim(sender, nonce, rng.Next(1, 10), rng.Next(2) == 0 ? 400_000ul : heavyGas),
+                2 => Claim(sender, nonce, rng.Next(1, 6), (ulong)rng.Next(0, 4) * 16),
+                3 => Call(sender, nonce, ColdTailContracts.Deleter, 200_000),
+                4 => Call(sender, nonce, ColdTailContracts.Deleter, 200_000, data: [1]),
+                5 => Walk(sender, nonce, rng.Next(2) == 0 ? 0x4e4dul : (ulong)rng.Next(0x100, 0x140), rng.Next(1, 12)),
+                6 => Call(sender, nonce, ColdTailContracts.Chain, 500_000),
+                7 => Call(sender, nonce, ColdTailContracts.Brancher),
+                8 => Transfer(sender, nonce, ColdTailContracts.Gate, 1.Wei),
+                9 => Call(sender, nonce, rng.Next(2) == 0 ? ColdTailContracts.SwapThenCheck : ColdTailContracts.CheckThenSwap,
+                    data: rng.Next(2) == 0 ? Array.Empty<byte>() : new byte[] { 2 }),
+                10 => Call(sender, nonce, rng.Next(2) == 0 ? Caller : Reverter),
+                _ => Call(sender, nonce, Counter),
+            };
+        }
+
+        return BuildBlock(transactions);
+    }
+
+    protected static Transaction BatchClaim(PrivateKey sender, ulong nonce, int count, ulong gasLimit) =>
+        Call(sender, nonce, ColdTailContracts.Batch, gasLimit, ColdTailContracts.Word((ulong)count));
+
+    protected static Transaction Claim(PrivateKey sender, ulong nonce, int proxies, ulong firstSalt) =>
+        Call(sender, nonce, ColdTailContracts.Claimer, 1_500_000, ColdTailContracts.Words((ulong)proxies, firstSalt));
+
+    protected static Transaction Walk(PrivateKey sender, ulong nonce, ulong start, int count) =>
+        Call(sender, nonce, ColdTailContracts.Walker, 400_000, ColdTailContracts.Words(start, (ulong)count));
 
     protected static Transaction Call(PrivateKey sender, ulong nonce, Address to, ulong gasLimit = 100_000, byte[]? data = null) =>
         Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(nonce).WithTo(to).WithValue(UInt256.Zero).WithGasLimit(gasLimit).WithData(data ?? [])
@@ -1762,6 +1933,180 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
     }
 
     [Test]
+    public void The_transaction_workers_warm_while_the_runs_are_taken_over()
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei), Unrelated());
+        Run executed = Process(block, adapter: null);
+        // The mempool pass never saw the last transaction, so a worker warms it whatever is taken over.
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(BuildBlock(block.Transactions[0], block.Transactions[1]), null),
+            () => PreWarmer.SpeculativeMarkerPublished);
+
+        // The taking over is held until a warm run stores a footprint.
+        bool warmedWhileTakingOver = false;
+        PreWarmer.Seeded = () => warmedWhileTakingOver = SpinWait.SpinUntil(WarmRunStored, TimeSpan.FromSeconds(10));
+        RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        Run run = Process(block, ProductionAdapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmedWhileTakingOver, Is.True);
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+            Assert.That(run.Tally.Replayed, Is.EqualTo(3));
+        }
+
+        AssertSameReceipts(run.Receipts, executed.Receipts);
+
+        bool WarmRunStored() => PreWarmer.Footprints is { } footprints
+            && Enumerable.Range(0, footprints.Count).Any(i => footprints.Get(i) is { FromMempool: false });
+    }
+
+    [Test]
+    public void A_transaction_whose_sender_lands_after_its_run_was_taken_over_is_left_to_the_run()
+    {
+        Transaction late = Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei);
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei), late, Unrelated());
+        Run executed = Process(block, adapter: null);
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            senderRecovery: new LateSender(late, TestItem.AddressB),
+            handoff: true);
+        PrewarmerTxAdapter adapter = new(
+            new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
+            preWarmer,
+            new PrewarmerState(caches, isPrewarmer: false),
+            ProcessingScope.Resolve<IWorldState>(),
+            ProcessingScope.Resolve<ICodeInfoRepository>(),
+            LimboLogs.Instance);
+        preWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => preWarmer.SpeculativeMarkerPublished);
+        late.SenderAddress = null;
+
+        // The runs are stored before the workers start, so the late transaction is the only one a worker could warm.
+        using ManualResetEventSlim seeded = new(initialState: false);
+        preWarmer.Seeded = seeded.Set;
+        preWarmer.BeforeTransactionWorkers = () => seeded.Wait(TimeSpan.FromSeconds(10));
+        RunPreWarmCaches(preWarmer, block);
+        bool[] taken = [.. Enumerable.Range(0, block.Transactions.Length).Select(i => preWarmer.Footprints?.Get(i)?.FromMempool == true)];
+        Run run = Process(block, adapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(late.SenderAddress, Is.EqualTo(TestItem.AddressB), "precondition: the sender landed while the block was warmed");
+            Assert.That(taken, Is.All.True);
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+            Assert.That(run.Tally.Replayed, Is.EqualTo(3));
+        }
+    }
+
+    /// <summary>
+    /// The takeover belongs to the warm pass, so the pass does not end while the takeover still runs. The takeover is held
+    /// until the pass ends or the coordinator waits at the join, so a pass that ends without joining it ends while it is
+    /// held.
+    /// </summary>
+    [Test]
+    public void The_warm_pass_ends_only_once_the_runs_are_taken_over()
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei), Unrelated());
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => PreWarmer.SpeculativeMarkerPublished);
+
+        BlockFootprints? footprints = null;
+        Thread? joining = null;
+        bool heldAtJoin = false;
+        bool? endedWhileTakingOver = null;
+        PreWarmer.BeforeSeedingJoin = () => Volatile.Write(ref joining, Thread.CurrentThread);
+        PreWarmer.Seeded = () =>
+        {
+            footprints = PreWarmer.Footprints;
+            // The timeout only guards against a deadlock; what is asserted is the order.
+            heldAtJoin = SpinWait.SpinUntil(() => footprints?.WarmPassEnded == true || WaitsAtJoin(), TimeSpan.FromSeconds(10));
+            endedWhileTakingOver = footprints?.WarmPassEnded;
+        };
+        RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        PreWarmer.BeforeSeedingJoin = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints, Is.Not.Null, "precondition: the takeover ran on the block's footprints");
+            Assert.That(heldAtJoin, Is.True, "precondition: the takeover was held until the pass ended or the coordinator waited at the join");
+            Assert.That(endedWhileTakingOver, Is.False, "the warm pass ended while the takeover was still running");
+            Assert.That(footprints?.WarmPassEnded, Is.True, "the warm pass ended once the takeover returned");
+        }
+
+        // Past the join boundary the coordinator blocks nowhere but in the join before the pass ends; a takeover it runs
+        // on its own thread from there is inside the join.
+        bool WaitsAtJoin() => Volatile.Read(ref joining) is { } coordinator
+            && (coordinator == Thread.CurrentThread || (coordinator.ThreadState & ThreadState.WaitSleepJoin) != 0);
+    }
+
+    /// <summary>
+    /// A sender's job is left to the mempool runs only when every one of its transactions was taken over; a transaction
+    /// of that sender the mempool pass never saw is still warmed, and its run is replayed.
+    /// </summary>
+    [Test]
+    public void A_job_only_partly_taken_over_is_still_warmed()
+    {
+        Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyA, 1, TestItem.AddressC, 1.Wei), Unrelated());
+        Run executed = Process(block, adapter: null);
+        // The mempool pass saw only the sender's first transaction.
+        PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(BuildBlock(block.Transactions[0]), null),
+            () => PreWarmer.SpeculativeMarkerPublished);
+
+        using ManualResetEventSlim seeded = new(initialState: false);
+        bool seededFirst = false;
+        PreWarmer.Seeded = seeded.Set;
+        PreWarmer.BeforeTransactionWorkers = () => seededFirst = seeded.Wait(TimeSpan.FromSeconds(10));
+        RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        PreWarmer.BeforeTransactionWorkers = null;
+        TransactionFootprint? second = PreWarmer.Footprints?.Get(1);
+        Run run = Process(block, ProductionAdapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seededFirst, Is.True, "precondition: the runs were taken over before the transaction workers started");
+            Assert.That(second, Is.Not.Null, "the transaction the mempool pass never saw was not warmed");
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+            Assert.That(run.Tally.Replayed, Is.EqualTo(3));
+        }
+    }
+
+    /// <summary>A recovery in flight whose one sender lands only once a warm worker waits for it, after the block's jobs were taken.</summary>
+    private sealed class LateSender(Transaction tx, Address sender) : ISenderRecoveryTracker, ISenderRecoveryProgress
+    {
+        private int _recovered;
+        private int _landing;
+
+        public ISenderRecoveryProgress GetInFlight(Transaction[] txs) => this;
+        public int Recovered => Volatile.Read(ref _recovered);
+        public bool IsCompleted => false;
+
+        public bool WaitForCompletion(int millisecondsTimeout)
+        {
+            if (Interlocked.Exchange(ref _landing, 1) == 0)
+            {
+                tx.SenderAddress = sender;
+                Volatile.Write(ref _recovered, 1);
+            }
+
+            return false;
+        }
+    }
+
+    [Test]
     public void Runs_are_warmed_again_where_the_caches_did_not_carry_over()
     {
         // Taking a run over reads its preconditions from the caches, which only the warm pass refills after a clear.
@@ -1785,7 +2130,16 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
 
         PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, mispredict), () => PreWarmer.SpeculativeMarkerPublished);
         if (!carried) ProcessingScope.Resolve<PreBlockCaches>().PrepareFor(Keccak.Zero);
+        // Taken over alongside the warms, the runs are stored first here, so what is taken does not depend on which
+        // gets to a transaction first.
+        using ManualResetEventSlim seeded = new(initialState: false);
+        bool seededFirst = false;
+        PreWarmer.Seeded = seeded.Set;
+        PreWarmer.BeforeTransactionWorkers = () => seededFirst = seeded.Wait(TimeSpan.FromSeconds(10));
         RunPreWarmCaches(PreWarmer, block);
+        PreWarmer.Seeded = null;
+        PreWarmer.BeforeTransactionWorkers = null;
+        Assert.That(seededFirst, Is.True, "the runs were not taken over before the transaction workers started");
         bool[] taken = new bool[block.Transactions.Length];
         for (int i = 0; i < taken.Length; i++) taken[i] = PreWarmer.Footprints?.Get(i)?.FromMempool == true;
 
@@ -1923,14 +2277,14 @@ public class MempoolFootprintsTests
 
         recorded.Record(footprint, predicted, Osaka.Instance);
         BlockFootprints footprints = new(block);
-        HashSet<Hash256>? seeded = recorded.Seed(block, difference == Difference.Spec ? Prague.Instance : Osaka.Instance, footprints);
+        int seeded = recorded.SeedWhereEmpty(block, difference == Difference.Spec ? Prague.Instance : Osaka.Instance, footprints, CancellationToken.None);
 
         bool holds = difference is Difference.None or Difference.TimestampUnread or Difference.GasLimitUnread or Difference.RecordedAgainWhenFull;
         TransactionFootprint? stored = footprints.Get(0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stored is not null, Is.EqualTo(holds));
-            Assert.That(seeded?.Contains(tx.Hash!) == true, Is.EqualTo(holds));
+            Assert.That(seeded, Is.EqualTo(holds ? 1 : 0));
         }
 
         if (stored is null) return;
@@ -1958,5 +2312,269 @@ public class MempoolFootprintsTests
         }
 
         Assert.That(recorded.Count, Is.EqualTo(MempoolFootprints.MaxEntries));
+    }
+
+    [Test]
+    public void Runs_are_taken_over_alongside_the_warms_only_where_no_footprint_is_stored_yet()
+    {
+        BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithHash(TestItem.KeccakA).TestObject;
+        BlockHeader predicted = Build.A.BlockHeader.WithParentHash(head.Hash!).WithNumber(11).WithTimestamp(112).WithGasLimit(30_000_000)
+            .WithBaseFee(7).WithExcessBlobGas(0).TestObject;
+        MempoolFootprints recorded = new(head);
+        Transaction[] txs = new Transaction[3];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            Transaction recordedTx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(TestItem.PrivateKeys[i]).TestObject;
+            StateEffect fee = new() { Kind = EffectKind.AddToBalanceAndCreateIfNotExists, Cell = new StorageCell(recorded.Coinbase, 0), Value = Fee };
+            recorded.Record(new TransactionFootprint(recordedTx, [], [], [fee], default, default, default), predicted, Osaka.Instance);
+            txs[i] = new Transaction();
+            recordedTx.CopyTo(txs[i], copyHash: true);
+        }
+
+        Block block = Build.A.Block.WithParentHash(head.Hash!).WithNumber(11).WithBeneficiary(TestItem.AddressF).WithTimestamp(112)
+            .WithGasLimit(30_000_000).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithTransactions(txs).TestObject;
+        BlockFootprints footprints = new(block);
+        TransactionFootprint warmed = new(txs[1], [], [], [], default, default, default);
+        footprints.Store(1, warmed);
+
+        int stored = recorded.SeedWhereEmpty(block, Osaka.Instance, footprints, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored, Is.EqualTo(2));
+            Assert.That(footprints.Get(0)?.FromMempool, Is.True);
+            Assert.That(footprints.Get(1), Is.SameAs(warmed), "the warm run that got there first keeps its footprint");
+            Assert.That(footprints.Get(2)?.FromMempool, Is.True);
+        }
+    }
+
+    [Test]
+    public void Taking_over_stops_at_the_next_transaction_once_the_pass_is_cancelled()
+    {
+        const int count = 4;
+        BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithHash(TestItem.KeccakA).TestObject;
+        BlockHeader predicted = Build.A.BlockHeader.WithParentHash(head.Hash!).WithNumber(11).WithTimestamp(112).WithGasLimit(30_000_000)
+            .WithBaseFee(7).WithExcessBlobGas(0).TestObject;
+        MempoolFootprints recorded = new(head);
+        Transaction[] signed = new Transaction[count];
+        for (int i = 0; i < count; i++)
+        {
+            signed[i] = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(TestItem.PrivateKeys[i]).TestObject;
+            StateEffect fee = new() { Kind = EffectKind.AddToBalanceAndCreateIfNotExists, Cell = new StorageCell(recorded.Coinbase, 0), Value = Fee };
+            recorded.Record(new TransactionFootprint(signed[i], [], [], [fee], default, default, default), predicted, Osaka.Instance);
+        }
+
+        // Decoded as a payload is: a transaction's hash is computed under its own lock on the first read.
+        Transaction[] txs = TxsDecoder.DecodeTxs(
+            [.. signed.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+        Block block = Build.A.Block.WithParentHash(head.Hash!).WithNumber(11).WithBeneficiary(TestItem.AddressF).WithTimestamp(112)
+            .WithGasLimit(30_000_000).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithTransactions(txs).TestObject;
+        BlockFootprints footprints = new(block);
+        using CancellationTokenSource cancellation = new();
+        Task<int> takingOver;
+        bool firstTaken;
+        // Held at the second transaction's hash until the pass is cancelled, once the first run is taken over.
+        lock (txs[1])
+        {
+            takingOver = Task.Run(() => recorded.SeedWhereEmpty(block, Osaka.Instance, footprints, cancellation.Token));
+            firstTaken = SpinWait.SpinUntil(() => footprints.Get(0) is not null, TimeSpan.FromSeconds(10));
+            cancellation.Cancel();
+        }
+
+        int stored = takingOver.GetAwaiter().GetResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstTaken, Is.True, "precondition: the first run is taken over before the pass is cancelled");
+            // The second transaction was already being taken over when the pass was cancelled.
+            Assert.That(footprints.Get(2), Is.Null);
+            Assert.That(footprints.Get(3), Is.Null);
+            Assert.That(stored, Is.EqualTo(Enumerable.Range(0, count).Count(i => footprints.Get(i) is not null)));
+        }
+    }
+}
+
+/// <summary>
+/// The mempool pass's runs taken over while the block's warm runs store theirs: a run taken over never replaces a stored
+/// footprint, a warm run replaces a run taken over, and what is indexed stays what is stored.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public class BlockFootprintsSeedingTests
+{
+    [Test]
+    public void A_seed_is_stored_only_where_no_footprint_is_and_a_stored_footprint_replaces_a_seed()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        TransactionFootprint warm = PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 1)]);
+        TransactionFootprint seed = PrewarmerHandoffMechanicsTests.Footprint(txs[1], writes: [(cell, 2)]);
+        TransactionFootprint replacing = PrewarmerHandoffMechanicsTests.Footprint(txs[1], writes: [(cell, 3)]);
+        footprints.Store(0, warm);
+
+        bool seededOverWarm = footprints.TryStoreIfEmpty(0, PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 4)]));
+        bool seededEmpty = footprints.TryStoreIfEmpty(1, seed);
+        TransactionFootprint? seededAt1 = footprints.Get(1);
+        footprints.Store(1, replacing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seededOverWarm, Is.False);
+            Assert.That(footprints.Get(0), Is.SameAs(warm));
+            Assert.That(footprints.IndexedAt(0), Is.SameAs(warm));
+            Assert.That(seededEmpty, Is.True);
+            Assert.That(seededAt1, Is.SameAs(seed));
+            Assert.That(footprints.Get(1), Is.SameAs(replacing));
+            Assert.That(footprints.IndexedAt(1), Is.SameAs(replacing));
+            Assert.That(footprints.ValueBefore(cell, 2), Is.EqualTo((UInt256)3));
+        }
+    }
+
+    /// <remarks>
+    /// Seeds, warm runs and later runs (a refresh, a run of a late sender) store at the same positions at once; each round
+    /// is checked as a whole once they are done.
+    /// </remarks>
+    [Test]
+    public void Seeds_and_warm_runs_storing_at_once_leave_each_position_the_footprint_indexed_for_it()
+    {
+        const int rounds = 300;
+        const int count = 48;
+        StorageCell[] cells = [.. Enumerable.Range(0, 4).Select(static i => new StorageCell(TestItem.AddressC, (UInt256)i))];
+        int disagreeing = 0;
+        int misplaced = 0;
+        int versionsOff = 0;
+        int missed = 0;
+        for (int round = 0; round < rounds; round++)
+        {
+            (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(count);
+            Random random = new(round);
+            TransactionFootprint[] seeds = Runs(txs, cells, random);
+            TransactionFootprint[] warms = Runs(txs, cells, random);
+            TransactionFootprint[] later = Runs(txs, cells, random);
+            bool[] warmed = [.. Enumerable.Range(0, count).Select(_ => random.Next(2) == 0)];
+            int seedsStored = 0;
+            int warmsStored = 0;
+            int laterStored = 0;
+            using Barrier start = new(3);
+            Thread[] threads =
+            [
+                new(() =>
+                {
+                    start.SignalAndWait();
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (footprints.TryStoreIfEmpty(i, seeds[i])) seedsStored++;
+                    }
+                }),
+                new(() =>
+                {
+                    start.SignalAndWait();
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (!warmed[i]) continue;
+                        footprints.Store(i, warms[i]);
+                        warmsStored++;
+                    }
+                }),
+                new(() =>
+                {
+                    start.SignalAndWait();
+                    // As a refresh does, only where a footprint is stored.
+                    for (int i = count - 1; i >= 0; i--)
+                    {
+                        if (footprints.Get(i) is null) continue;
+                        footprints.Store(i, later[i]);
+                        laterStored++;
+                    }
+                })
+            ];
+            foreach (Thread thread in threads) thread.Start();
+            foreach (Thread thread in threads) thread.Join();
+
+            if (footprints.WritesVersion != seedsStored + warmsStored + laterStored) versionsOff++;
+            HashSet<int> invalidated = [];
+            while (footprints.TryTakeInvalidated(-1, out int position)) invalidated.Add(position);
+            for (int i = 0; i < count; i++)
+            {
+                TransactionFootprint? stored = footprints.Get(i);
+                if (!ReferenceEquals(stored, footprints.IndexedAt(i))) disagreeing++;
+                // Where a warm run stored a footprint, the seed never replaced it.
+                if (!ReferenceEquals(stored, later[i]) && !ReferenceEquals(stored, warmed[i] ? warms[i] : seeds[i])) misplaced++;
+                if (stored is null) continue;
+                foreach (ref readonly SlotPrecondition read in stored.Slots)
+                {
+                    // A footprint that read a slot at another value than the footprints before it leave is invalidated.
+                    if (footprints.ValueBefore(read.Cell, i) is { } value && value != read.Value && !invalidated.Contains(i)) missed++;
+                }
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disagreeing, Is.Zero, "positions whose footprint is not the one indexed for them");
+            Assert.That(misplaced, Is.Zero, "positions holding a seed over a warm run's footprint, or no footprint");
+            Assert.That(versionsOff, Is.Zero, "rounds whose writes version does not count each footprint stored once");
+            Assert.That(missed, Is.Zero, "outdated footprints left valid");
+        }
+
+        static TransactionFootprint[] Runs(Transaction[] txs, StorageCell[] cells, Random random) =>
+        [
+            .. txs.Select((tx, i) => PrewarmerHandoffMechanicsTests.Footprint(tx,
+                reads: [(cells[i % cells.Length], (UInt256)random.Next(3))],
+                writes: [(cells[(i + 1) % cells.Length], (UInt256)random.Next(3))]))
+        ];
+    }
+
+    /// <remarks>
+    /// Block processing reported executing a transaction and the writes were applied: a seed or a warm run that ends
+    /// after that is not indexed for the position, so it is not stored there either, and a seed is not counted as stored.
+    /// </remarks>
+    [Test]
+    public void Nothing_is_stored_at_a_position_block_processing_has_executed([Values] bool seed)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.QueueExecuted(0, new[] { (cell, (UInt256)7) });
+        footprints.ApplyExecuted();
+        TransactionFootprint late = PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 9)]);
+
+        bool stored = true;
+        if (seed) stored = footprints.TryStoreIfEmpty(0, late);
+        else footprints.Store(0, late);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (seed) Assert.That(stored, Is.False, "a seed for an executed position is not counted as stored");
+            Assert.That(footprints.Get(0), Is.Null);
+            Assert.That(footprints.IndexedAt(0), Is.Null);
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)7), "the executed writes stay indexed");
+        }
+    }
+
+    /// <remarks>
+    /// A refreshed run is excused reading one of its own seeded slots at another value only while no footprint was
+    /// stored since the refresh read them: a seed taken over in between counts as one, a seed refused does not.
+    /// </remarks>
+    [Test]
+    public void A_refreshed_run_is_checked_again_after_a_seed_is_stored_but_not_after_one_is_refused([Values] bool seedStored)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        footprints.Store(1, PrewarmerHandoffMechanicsTests.Footprint(txs[1], reads: [(cell, UInt256.Zero)]));
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.True, "precondition: the reader is invalidated");
+        if (!seedStored) footprints.Store(2, PrewarmerHandoffMechanicsTests.Footprint(txs[2]));
+
+        int seededAt = footprints.WritesVersion;
+        bool stored = footprints.TryStoreIfEmpty(2, PrewarmerHandoffMechanicsTests.Footprint(txs[2]));
+        footprints.Store(1, PrewarmerHandoffMechanicsTests.Footprint(txs[1], reads: [(cell, UInt256.Zero)]), seededAt);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stored, Is.EqualTo(seedStored));
+            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.EqualTo(seedStored));
+        }
     }
 }

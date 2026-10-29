@@ -52,7 +52,9 @@ public class DisposableScopeOverridableEnvTests
     {
         using TestContext ctx = new();
 
+#pragma warning disable NUnit2045 // The type assertion must pass before casting the result.
         Assert.That(ctx.ChildComponents.WorldState, Is.Not.EqualTo(ctx.WorldStateManager.GlobalWorldState));
+#pragma warning restore NUnit2045
         Assert.That(ctx.ChildComponents.StateReader, Is.Not.EqualTo(ctx.WorldStateManager.GlobalStateReader));
         Assert.That(ctx.ChildComponents.CodeInfoRepository, Is.AssignableTo<OverridableCodeInfoRepository>());
         Assert.That(ctx.ChildComponents.TransactionProcessor, Is.AssignableTo<TestTransactionProcessor>());
@@ -71,8 +73,11 @@ public class DisposableScopeOverridableEnvTests
                 { TestItem.AddressA, new AccountOverride { Balance = 123 } }
             });
 
-        Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+        }
     }
 
     // Idle is what keeps state overrides in the prestate, and the processor must share the very
@@ -158,6 +163,24 @@ public class DisposableScopeOverridableEnvTests
             });
 
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)456));
+    }
+
+    [Test]
+    public void PrecompileMoveError_ChecksSourceBeforeDestination([Values] bool isPrecompile, [Values] bool destinationOverridden)
+    {
+        Dictionary<Address, AccountOverride> overrides = [];
+        if (destinationOverridden) overrides.Add(TestItem.AddressB, new());
+        string? expected = !isPrecompile ? $"Account {TestItem.AddressA} is not a precompile"
+            : destinationOverridden ? $"account {TestItem.AddressB} is already overridden" : null;
+
+        string? actual = StateOverridesExtensions.GetPrecompileMoveError(
+            TestItem.AddressA, TestItem.AddressB, isPrecompile, overrides);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(overrides.Count, Is.EqualTo(destinationOverridden ? 1 : 0));
+        }
     }
 
     private sealed class TestContext : IDisposable

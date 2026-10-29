@@ -55,7 +55,9 @@ public class RlpDecoderTests
         RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         context.Check(sequenceEnd);
@@ -277,7 +279,9 @@ public class RlpDecoderTests
         RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
+#pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         context.Check(sequenceEnd);

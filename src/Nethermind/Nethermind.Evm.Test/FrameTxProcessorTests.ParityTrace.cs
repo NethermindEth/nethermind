@@ -205,6 +205,11 @@ public partial class FrameTxProcessorTests
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Used),
                 Is.EqualTo(framesInVm.Select(i => frames[i].GasLimit - frameReceipts[i].GasUsed)), "root operation ex.used");
             Assert.That(trace.VmTrace.Operations.All(static o => o.Sub is not null), Is.True, "every root operation carries its frame");
+            using JsonDocument vmTrace = JsonDocument.Parse(JsonSerializer.Serialize(trace.VmTrace, EthereumJsonSerializer.JsonOptions));
+            JsonElement[] rootOperations = [.. vmTrace.RootElement.GetProperty("ops").EnumerateArray()];
+            Assert.That(rootOperations.Select(static o => o.TryGetProperty("op", out _)), Is.All.False, "a root operation runs no opcode");
+            Assert.That(rootOperations.SelectMany(static o => o.GetProperty("sub").GetProperty("ops").EnumerateArray()).Select(static o => o.TryGetProperty("op", out _)),
+                Is.All.True, "a frame operation names its opcode");
             // Every frame's code opens with a PUSH, which a gas carry-over from the previous frame would misprice.
             Assert.That(trace.VmTrace.Operations.Where(static o => o.Sub.Operations.Count > 0).Select(static o => o.Sub.Operations[0].Cost),
                 Is.All.EqualTo(GasCostOf.VeryLow), "first operation of each frame");
@@ -303,7 +308,9 @@ public partial class FrameTxProcessorTests
     /// <summary>The gas the processor reserves for <paramref name="tx"/>: its frame limits plus the intrinsic gas.</summary>
     private ulong FrameGasBudget(Transaction tx)
     {
+#pragma warning disable NUnit2045 // Later checks and actions require these output variables in the enclosing scope.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(maxGas, Is.GreaterThan(tx.GasLimit), "the budget exceeds the frame limits");
         return maxGas;
     }
