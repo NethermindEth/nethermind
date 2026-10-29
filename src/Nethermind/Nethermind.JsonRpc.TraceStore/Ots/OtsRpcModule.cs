@@ -48,11 +48,16 @@ public sealed class OtsRpcModule(
         if (address is null || pageSize is < 1 or > MaxPageSize)
             return ResultWrapper<OtsSearchResult>.Fail($"An address and page size between 1 and {MaxPageSize} are required.", ErrorCodes.InvalidParams);
 
+        CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
+        try { return Search(address, cursor, pageSize, backwards, timeout.Token); }
+        finally { JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout); }
+    }
+
+    private ResultWrapper<OtsSearchResult> Search(Address address, ulong cursor, int pageSize, bool backwards, CancellationToken ct)
+    {
         if (blockFinder.Head is not { } head)
             return ResultWrapper<OtsSearchResult>.Fail("Chain head is unavailable.", ErrorCodes.ResourceUnavailable);
 
-        using RentedTimeout timeout = rpcConfig.RentTimeout();
-        CancellationToken ct = timeout.Token;
         OtsSearchResult result = new();
         bool hasMore = false;
         // Genesis contains no user transactions. Avoid overflowing an after cursor at ulong.MaxValue.
@@ -197,8 +202,13 @@ public sealed class OtsRpcModule(
         if (transactionHash is null)
             return ResultWrapper<List<OtsTraceEntry>>.Fail("A transaction hash is required.", ErrorCodes.InvalidParams);
 
-        using RentedTimeout timeout = rpcConfig.RentTimeout();
-        CancellationToken ct = timeout.Token;
+        CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
+        try { return TraceTransaction(transactionHash, timeout.Token); }
+        finally { JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout); }
+    }
+
+    private ResultWrapper<List<OtsTraceEntry>> TraceTransaction(Hash256 transactionHash, CancellationToken ct)
+    {
         SearchResult<Hash256> blockHash = receiptFinder.SearchForReceiptBlockHash(transactionHash);
         if (blockHash.IsError) return ResultWrapper<List<OtsTraceEntry>>.Fail(blockHash);
 
