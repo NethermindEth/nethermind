@@ -907,6 +907,24 @@ public class TxPoolSourceTests
     }
 
     [Test]
+    public void Ordering_counts_a_transaction_that_has_not_run_at_the_base_cost_of_its_fork_against_later_nonces([Values] bool eip2780)
+    {
+        // Each later nonce must fit at its 100,000 gas limit on top of the base costs of the earlier ones:
+        // 21,000 each leaves room for four of them, 12,000 under EIP-2780 for seven.
+        const ulong GasLimit = 100_000;
+        Transaction[] transactions = Enumerable.Range(0, 10)
+            .Select(nonce => new Transaction { SenderAddress = TestItem.AddressA, Nonce = (ulong)nonce, GasLimit = GasLimit })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = new() { [TestItem.AddressA] = transactions };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer, _ => true, GasLimit + 4 * GasCostOf.Transaction,
+            eip2780 ? Amsterdam.Instance : Osaka.Instance).ToArray();
+
+        Assert.That(selected, Is.EqualTo(transactions[..(eip2780 ? 8 : 5)]));
+    }
+
+    [Test]
     public async Task First_build_includes_every_transaction_of_a_sender_whose_gas_limits_add_up_above_the_block_gas_limit([Values] bool eip8037)
     {
         const ulong BlockGasLimit = 4_000_000;
