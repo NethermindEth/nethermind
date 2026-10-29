@@ -92,7 +92,6 @@ public class MonitoringModule : Module
             try
             {
                 SetAllocatorMetrics(NethermindBuffers.RlpxAllocator, "rlpx");
-                SetAllocatorMetrics(NethermindBuffers.DiscoveryAllocator, "discovery");
                 SetAllocatorMetrics(NethermindBuffers.Default, "default");
                 SetAllocatorMetrics(PooledByteBufferAllocator.Default, "netty_default");
             }

@@ -91,9 +91,9 @@ public class EciesCipherTests
             Assert.That(authMessage.Signature, Is.Not.Null);
         }
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
+        byte[] data = _messageSerializationService.SerializeToArray(authMessage);
 
-        Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
+        Assert.That(data, Is.EqualTo(deciphered), "serialization");
     }
 
     [Test]
@@ -127,9 +127,9 @@ public class EciesCipherTests
             Assert.That(authMessage.Signature, Is.Not.Null);
         }
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
+        byte[] data = _messageSerializationService.SerializeToArray(authMessage);
 
-        Assert.That(data.Slice(0, 169).ReadAllBytesAsArray(), Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
+        Assert.That(data, Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
     }
 
     [Test]
@@ -152,8 +152,8 @@ public class EciesCipherTests
             Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
         }
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
-        Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
+        byte[] data = _messageSerializationService.SerializeToArray(ackMessage);
+        Assert.That(data, Is.EqualTo(deciphered), "serialization");
     }
 
     [Test]
@@ -188,10 +188,9 @@ public class EciesCipherTests
             Assert.That(ackMessage.Version, Is.EqualTo(4));
         }
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
+        byte[] data = _messageSerializationService.SerializeToArray(ackMessage);
 
-        // TODO: check 102
-        Assert.That(data.ReadAllBytesAsArray().Slice(0, 102), Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
+        Assert.That(data, Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
     }
 
     [Test]
