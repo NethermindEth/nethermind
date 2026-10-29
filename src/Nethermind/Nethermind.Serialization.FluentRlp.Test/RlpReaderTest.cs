@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using NUnit.Framework;
 using Nethermind.Serialization.FluentRlp.Instances;
 
@@ -10,31 +11,15 @@ namespace Nethermind.Serialization.FluentRlp.Test;
 
 public class RlpReaderTest
 {
-    [Test]
-    public void ReadShortString()
+    [TestCase(new byte[] { 0x83 }, "dog", TestName = "ReadShortString")]
+    [TestCase(new byte[] { 0x80 }, "", TestName = "ReadEmptyString")]
+    [TestCase(new byte[] { 0xb8, 0x38 }, "Lorem ipsum dolor sit amet, consectetur adipisicing elit", TestName = "ReadLongString")]
+    public void ReadString(byte[] prefix, string expected)
     {
-        byte[] source = [0x83, (byte)'d', (byte)'o', (byte)'g'];
+        byte[] source = [.. prefix, .. Encoding.UTF8.GetBytes(expected)];
         string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
 
-        Assert.That(actual, Is.EqualTo("dog"));
-    }
-
-    [Test]
-    public void ReadEmptyString()
-    {
-        byte[] source = [0x80];
-        string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
-
-        Assert.That(actual, Is.EqualTo(""));
-    }
-
-    [Test]
-    public void ReadLongString()
-    {
-        byte[] source = [0xb8, 0x38, .. "Lorem ipsum dolor sit amet, consectetur adipisicing elit"u8];
-        string actual = Rlp.Read(source, static (scoped ref RlpReader r) => r.ReadString());
-
-        Assert.That(actual, Is.EqualTo("Lorem ipsum dolor sit amet, consectetur adipisicing elit"));
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     [Test]
@@ -56,7 +41,7 @@ public class RlpReaderTest
     [Test]
     public void ReadLongInteger()
     {
-        for (int i = 0x100; i < 0xFFFF; i++)
+        for (int i = 0x100; i <= 0xFFFF; i++)
         {
             int integer = i;
             byte[] source = [0x82, (byte)((integer & 0xFF00) >> 8), (byte)((integer & 0x00FF) >> 0)];

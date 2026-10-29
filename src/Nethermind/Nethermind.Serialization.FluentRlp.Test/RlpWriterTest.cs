@@ -135,7 +135,7 @@ public class RlpWriterTest
     public void WriteInteger_3Components()
     {
         byte[] expected = [0x82, 0x00, 0x00];
-        for (int i = 0x100; i < 0xFFFF; i++)
+        for (int i = 0x100; i <= 0xFFFF; i++)
         {
             int integer = i;
             byte[] serialized = Rlp.Write(integer, static (ref RlpWriter w, int integer) => { w.Write(integer); });

@@ -363,7 +363,7 @@ public class RlpDerivedTest
     [TestCase("public record Key([RlpFixedLength(20)] string A);", "RLP0007", TestName = "Fixed length on a string")]
     [TestCase("public record Key([RlpFixedLength(20)] Nethermind.Int256.UInt256 A);", "RLP0007", TestName = "Fixed length of a UInt256 other than 32")]
     [TestCase("public record Key([RlpFixedLength(32)] Nethermind.Int256.UInt256 A);", null, TestName = "Fixed length of a UInt256 of 32")]
-    [TestCase("public record Chunks(byte[][] A, int[][] B, (int, long)[] C);", null, TestName = "Arrays of arrays and tuples")]
+    [TestCase("public record Chunks(byte[][] A, int[][] B, (int, long)[] C, (byte[], int)[] D, System.Collections.Generic.List<int[]>[] E);", null, TestName = "Arrays of arrays and tuples")]
     [TestCase("internal record Hidden(int A);", null, TestName = "Internal record")]
     [TestCase("public record Names(int @class, string value, int r, int w, System.Collections.Generic.List<System.Collections.Generic.List<int>> items, int _0);", null, TestName = "Keyword and generated names as parameters")]
     public void GeneratorDiagnostics(string declaration, string? expectedId)

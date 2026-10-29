@@ -77,12 +77,12 @@ public ref struct RlpReader
 
     /// <summary>Reads a non-negative integer.</summary>
     /// <exception cref="RlpReaderException">The item is not a canonical integer or does not fit in <typeparamref name="T"/>.</exception>
-    public unsafe T ReadInteger<T>() where T : unmanaged, IBinaryInteger<T>
+    public T ReadInteger<T>() where T : unmanaged, IBinaryInteger<T>
     {
         ReadOnlySpan<byte> bigEndian = ReadIntegerBytes();
-        if (bigEndian.Length > sizeof(T)) ThrowInvalid("RLP integer is too large");
+        if (bigEndian.Length > Unsafe.SizeOf<T>()) ThrowInvalid("RLP integer is too large");
 
-        if (sizeof(T) <= sizeof(ulong))
+        if (Unsafe.SizeOf<T>() <= sizeof(ulong))
         {
             ulong value = 0;
             foreach (byte b in bigEndian)
@@ -91,12 +91,12 @@ public ref struct RlpReader
             }
 
             // A full-width value of a signed type would come out negative.
-            int valueBits = sizeof(T) * 8 - (T.IsNegative(T.AllBitsSet) ? 1 : 0);
+            int valueBits = Unsafe.SizeOf<T>() * 8 - (T.IsNegative(T.AllBitsSet) ? 1 : 0);
             if (value >> (valueBits - 1) > 1) ThrowInvalid("RLP integer is too large");
             return T.CreateTruncating(value);
         }
 
-        Span<byte> buffer = stackalloc byte[sizeof(T)];
+        Span<byte> buffer = stackalloc byte[Unsafe.SizeOf<T>()];
         buffer.Clear();
         bigEndian.CopyTo(buffer[^bigEndian.Length..]);
         if (!T.TryReadBigEndian(buffer, isUnsigned: true, out T result) || T.IsNegative(result))

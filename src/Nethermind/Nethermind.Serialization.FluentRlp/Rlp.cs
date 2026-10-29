@@ -80,7 +80,7 @@ public static class Rlp
         => value.Length == 1 && value[0] < RlpPrefix.ShortString ? 1 : LengthOfString(value.Length);
 
     /// <summary>Gets the encoded length of a non-negative integer.</summary>
-    public static unsafe int LengthOf<T>(T value) where T : unmanaged, IBinaryInteger<T>
+    public static int LengthOf<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
         int byteCount = (int.CreateTruncating(T.Log2(value)) + 8) / 8;
         // Saturating, as 0x80 does not fit a signed byte: truncated, it would be -128.

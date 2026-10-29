@@ -529,9 +529,14 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         // The size of an array of arrays goes in the first brackets: new int[n][], not new int[][n].
         private static string ArrayOf(ITypeSymbol itemType, string count)
         {
-            string name = Name(itemType);
-            int brackets = name.IndexOf('[');
-            return brackets < 0 ? $"{name}[{count}]" : $"{name.Substring(0, brackets)}[{count}]{name.Substring(brackets)}";
+            string ranks = "";
+            while (itemType is IArrayTypeSymbol array)
+            {
+                ranks += "[]";
+                itemType = array.ElementType;
+            }
+
+            return $"{Name(itemType)}[{count}]{ranks}";
         }
 
         private string WriteItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value)
