@@ -34,9 +34,9 @@ public static class FrameTxValidation
     /// fixed constant.</summary>
     /// <remarks>The cap is the fixed <see cref="Eip7825Constants.DefaultTxGasLimitCap"/>, applied unconditionally
     /// as EIP-8141 § Constraints specifies. The check sits in the release-spec-aware validator only because
-    /// <see cref="TryCalculateBlockGasReservations"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
+    /// <see cref="TryCalculateExecutionReservation"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
     /// so just its wording is kept here alongside the other messages.</remarks>
-    public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
+    public static string FrameExecutionGasExceedsCap(UInt128 executionReservation, ulong gasLimitCap) =>
         $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
@@ -799,6 +799,26 @@ public static class FrameTxValidation
         out ulong stateReservation,
         bool estimateSignatureBytes)
     {
+        bool priced = CalculateBlockGasReservations(transaction, spec, out UInt128 execution, out stateReservation, estimateSignatureBytes);
+        executionReservation = (ulong)UInt128.Min(execution, ulong.MaxValue);
+        return priced;
+    }
+
+    /// <summary>The execution reservation of <see cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// without its saturation at <see cref="ulong.MaxValue"/>: the intrinsic gas plus the frames' execution gas can pass it.</summary>
+    /// <remarks>For the EIP-7825 cap check, whose error reports the amount.</remarks>
+    /// <returns><c>false</c>, with 0, where <see cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// returns <c>false</c>.</returns>
+    public static bool TryCalculateExecutionReservation(Transaction transaction, IReleaseSpec spec, out UInt128 executionReservation) =>
+        CalculateBlockGasReservations(transaction, spec, out executionReservation, out _, estimateSignatureBytes: false);
+
+    private static bool CalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out UInt128 executionReservation,
+        out ulong stateReservation,
+        bool estimateSignatureBytes)
+    {
         executionReservation = 0;
         stateReservation = 0;
         if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _, estimateSignatureBytes))
@@ -820,9 +840,7 @@ public static class FrameTxValidation
             stateReservation = nextState;
         }
 
-        ulong standardExecution = intrinsicGas.SaturatingAdd(frameExecution);
-
-        executionReservation = Math.Max(standardExecution, floorGas);
+        executionReservation = UInt128.Max((UInt128)intrinsicGas + frameExecution, floorGas);
         return true;
     }
 

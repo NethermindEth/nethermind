@@ -1639,6 +1639,8 @@ public class FrameTxStructuralAdmissionTests
         }
     }
 
+    // The reservation saturates at 2^64 - 1 for block accounting, but the error reports the real intrinsic plus
+    // execution gas, so it never names 2^64 - 1 for a larger amount.
     [Test]
     public void IsWellFormed_ExecutionGasAtTheMaximum_IsRejectedByTheTransactionGasCap()
     {
@@ -1646,7 +1648,25 @@ public class FrameTxStructuralAdmissionTests
 
         ValidationResult result = Validate(OnChain(SelfVerify(ulong.MaxValue)));
 
-        Assert.That(result.Error, Is.EqualTo(FrameTxValidation.FrameExecutionGasExceedsCap(ulong.MaxValue, cap)));
+        Assert.That(result.Error, Is.EqualTo(FrameTxValidation.FrameExecutionGasExceedsCap((UInt128)IntrinsicGas() + ulong.MaxValue, cap)));
+    }
+
+    [Test]
+    public void IsWellFormed_ExecutionGasSummingTo2To64_ReportsTheRealSumInTheCapError()
+    {
+        ulong executionGas = (ulong)(((UInt128)1 << 64) - IntrinsicGas());
+
+        ValidationResult result = Validate(OnChain(SelfVerify(executionGas)));
+
+        Assert.That(result.Error, Is.EqualTo("frame intrinsic and execution gas (18446744073709551616) exceeds the transaction gas cap of 16777216"));
+    }
+
+    /// <summary>The intrinsic gas of a single-frame transaction, which its frame's gas limit does not change.</summary>
+    private static ulong IntrinsicGas()
+    {
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(OnChain(SelfVerify(0)), Eip8141Prototype.Instance, out ulong intrinsicGas, out _, out _),
+            Is.True, "an unpriced probe would hand back an intrinsic gas of 0");
+        return intrinsicGas;
     }
 
     /// <summary>The execution gas a single-frame transaction may budget before its reservation reaches <paramref name="cap"/>.</summary>
