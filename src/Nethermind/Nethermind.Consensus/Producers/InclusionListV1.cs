@@ -48,9 +48,9 @@ public sealed class InclusionListV1
     /// <c>MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST</c>, with a proof whose <c>proofDeps</c> entries are 96 bytes and whose SSZ
     /// container, with its added <c>InclusionList</c> offset, fits <c>MAX_IL_PROOF_BYTES</c>.</summary>
     /// <remarks>Proof bytes never count against the transaction-byte limit: from EIP-8288's activation a list carrying a proof
-    /// may exceed EIP-7805's list size limit by at most <c>MAX_IL_PROOF_BYTES</c>.</remarks>
-    /// <remarks>An undecodable entry or an invalid proof is left to per-list processing: the entry contributes nothing and the
-    /// proof obligates nothing (EIPs#12475), so one committee member cannot fail the request.</remarks>
+    /// may exceed EIP-7805's list size limit by at most <c>MAX_IL_PROOF_BYTES</c>. An undecodable entry or an invalid proof is left
+    /// to per-list processing: the entry contributes nothing and the proof obligates nothing (EIPs#12475), so one committee member
+    /// cannot fail the request.</remarks>
     /// <returns>The violated bound, or <c>null</c>.</returns>
     public static string? Validate(InclusionListV1[]? lists)
     {
