@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
@@ -1246,6 +1247,25 @@ public class GCKeeperTests
         await keeper.ScheduleGCInternal(throttle: false);
 
         Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(cancelled ? new KeeperCounters(Cancelled: 1) : new KeeperCounters(Skipped: 1)));
+    }
+
+    [Test]
+    public void Reset_gives_every_keeper_metric_its_start_value()
+    {
+        // Every field, so a metric added later without a reset fails here.
+        FieldInfo[] fields = typeof(KeeperMetrics).GetFields(BindingFlags.Public | BindingFlags.Static);
+        foreach (FieldInfo field in fields) field.SetValue(null, 12_345L);
+
+        KeeperMetrics.ResetGcKeeper();
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (FieldInfo field in fields)
+            {
+                long expected = field.Name is nameof(KeeperMetrics.GcKeeperMedianIdleGapMs) or nameof(KeeperMetrics.GcKeeperMedianPayloadIntervalMs) ? -1 : 0;
+                Assert.That(field.GetValue(null), Is.EqualTo(expected), field.Name);
+            }
+        }
     }
 
     /// <summary>The keeper's counters at one moment, so that a test reads what it moved.</summary>

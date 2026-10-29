@@ -51,4 +51,24 @@ public static class Metrics
     [GaugeMetric]
     [Description("The median interval, in milliseconds, between the starts of consecutive engine_newPayload calls, over the last 16; -1 until there are 16.")]
     public static long GcKeeperMedianPayloadIntervalMs = -1;
+
+    /// <summary>Gives every keeper metric its start value back.</summary>
+    /// <remarks>
+    /// For what a keeper other than the node's own published, such as the startup warm-up's, which drives real payloads
+    /// before the RPC opens. Call it only while no keeper is handling payloads.
+    /// </remarks>
+    public static void ResetGcKeeper()
+    {
+        GcKeeperPostBlockCollections = 0;
+        GcKeeperPostBlockCancelled = 0;
+        GcKeeperPostBlockThrottled = 0;
+        GcKeeperPostBlockSkipped = 0;
+        GcKeeperDecommits = 0;
+        GcKeeperDecommitIdleWaitsCancelled = 0;
+        NoGcRegionRecommits = 0;
+        GcKeeperPostBlockDelayMs = 0;
+        GcKeeperMinMsBetweenCollections = 0;
+        GcKeeperMedianIdleGapMs = -1;
+        GcKeeperMedianPayloadIntervalMs = -1;
+    }
 }

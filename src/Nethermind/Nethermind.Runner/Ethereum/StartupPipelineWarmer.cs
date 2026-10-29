@@ -53,6 +53,7 @@ using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using BlockchainMetrics = Nethermind.Blockchain.Metrics;
+using KeeperMetrics = Nethermind.Core.Memory.Metrics;
 
 namespace Nethermind.Runner.Ethereum;
 
@@ -311,6 +312,8 @@ internal static class StartupPipelineWarmer
             try
             {
                 await container.Resolve<GCKeeper>().StopAsync();
+                // The warm keeper published into the process-wide keeper metrics; the live keeper starts from their start values.
+                KeeperMetrics.ResetGcKeeper();
             }
             finally
             {
