@@ -27,6 +27,7 @@ public class OptimismCompactReceiptStorageDecoder :
             return null;
         }
 
+        int receiptStart = decoderContext.Position;
         OptimismTxReceipt txReceipt = new();
         int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
@@ -66,6 +67,12 @@ public class OptimismCompactReceiptStorageDecoder :
 
         txReceipt.Logs = [.. logEntries];
 
+        if (IsFrameExtensionNext(decoderContext, lastCheck))
+        {
+            decoderContext.Position = receiptStart;
+            return new OptimismTxReceipt(CompactReceiptStorageDecoder.Instance.Decode(ref decoderContext, rlpBehaviors)!);
+        }
+
         if (lastCheck > decoderContext.Position)
         {
             int remainingItems = decoderContext.PeekNumberOfItemsRemaining(lastCheck);
@@ -84,6 +91,12 @@ public class OptimismCompactReceiptStorageDecoder :
         if (!allowExtraBytes)
         {
             decoderContext.Check(lastCheck);
+        }
+
+        // EIP-7668: as in CompactReceiptStorageDecoder, the bloom would be discarded.
+        if ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0)
+        {
+            txReceipt.Bloom = Bloom.ZeroLength;
         }
 
         return txReceipt;
@@ -106,7 +119,7 @@ public class OptimismCompactReceiptStorageDecoder :
 
         int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-        ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan();
+        ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
         if (firstItem.Length == 1)
         {
             item.StatusCode = firstItem[0];
@@ -123,23 +136,27 @@ public class OptimismCompactReceiptStorageDecoder :
         (int prefixLength, int contentLength) = decoderContext.PeekPrefixAndContentLength();
         int logsBytes = contentLength + prefixLength;
         item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
+        decoderContext.SkipItem();
 
-        if (lastCheck > decoderContext.Position)
+        if (IsFrameExtensionNext(decoderContext, lastCheck))
         {
-            int remainingItems = decoderContext.PeekNumberOfItemsRemaining(lastCheck);
-
-            if (remainingItems > 1)
-            {
-                decoderContext.SkipItem();
-            }
-
-            if (remainingItems > 2)
-            {
-                decoderContext.SkipItem();
-            }
+            item.TxType = TxType.FrameTx;
         }
 
-        decoderContext.SkipItem();
+        decoderContext.Position = lastCheck;
+    }
+
+    /// <summary>
+    /// Whether the receipt's trailing items are the EIP-8141 frame-receipt extension, <c>[payer, frames]</c>,
+    /// rather than the deposit nonce and receipt version.
+    /// </summary>
+    /// <remarks>The deposit fields are integers, so only a frame receipt has a list in second place.</remarks>
+    private static bool IsFrameExtensionNext(RlpReader reader, int receiptEnd)
+    {
+        if (reader.Position >= receiptEnd || reader.PeekNumberOfItemsRemaining(receiptEnd) < 2) return false;
+
+        reader.SkipItem();
+        return reader.IsSequenceNext();
     }
 
     public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none,
@@ -155,6 +172,12 @@ public class OptimismCompactReceiptStorageDecoder :
         if (item is null)
         {
             writer.WriteByte(Rlp.EmptyListByte);
+            return;
+        }
+
+        if (item.TxType == TxType.FrameTx)
+        {
+            CompactReceiptStorageDecoder.Instance.Encode(ref writer, item, rlpBehaviors);
             return;
         }
 
@@ -249,6 +272,8 @@ public class OptimismCompactReceiptStorageDecoder :
 
     public override int GetLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
     {
+        if (item?.TxType == TxType.FrameTx) return CompactReceiptStorageDecoder.Instance.GetLength(item, rlpBehaviors);
+
         (int Total, _) = GetContentLength(item, rlpBehaviors);
         return LengthOfSequence(Total);
     }
