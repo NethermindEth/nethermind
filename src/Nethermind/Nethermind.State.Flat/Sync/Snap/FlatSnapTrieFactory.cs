@@ -72,13 +72,20 @@ public class FlatSnapTrieFactory(
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A checkpoint that cannot be read, or was saved with a different number of account range partitions, is not
-    /// returned, so every caller, including those ahead of <see cref="EnsureInitialize"/>, treats it as gone.
+    /// A checkpoint that cannot be read, was saved with a different number of account range partitions, or outlived a
+    /// wipe of the data it describes, is not returned, so every caller, including those ahead of
+    /// <see cref="EnsureInitialize"/>, treats it as gone.
     /// </remarks>
     public SnapCheckpoint? LoadCheckpoint()
     {
         byte[]? record = BasePersistence.ReadSnapCheckpoint(flatDb.GetColumnDb(FlatDbColumns.Metadata));
         if (record is null) return null;
+
+        if (!BasePersistence.HasSnapCheckpointSentinel(flatDb))
+        {
+            if (_logger.IsWarn) _logger.Warn("Ignoring the snap sync checkpoint: the data it describes was wiped after it was saved, likely by an older Nethermind version.");
+            return null;
+        }
 
         SnapCheckpoint checkpoint;
         try

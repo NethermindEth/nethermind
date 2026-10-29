@@ -323,20 +323,31 @@ public class FlatSnapTrieFactoryTests
         }
     }
 
-    public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable }
+    public enum Unresumable { ResumeDisabled, PartitionCountChanged, Unreadable, WipedByAnOlderVersion, WipeByAnOlderVersionInterrupted }
 
     [Test]
     public void EnsureInitialize_StartsOver_WhenTheCheckpointCannotBeResumed([Values] Unresumable reason)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
-        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
-        {
-            batch.SetAccountRaw(LastAccount, new Account(1));
-        }
+        WriteLastAccount(persistence);
 
         CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint());
-        if (reason == Unresumable.Unreadable) BasePersistence.WriteSnapCheckpoint(db, [0xff]);
+        switch (reason)
+        {
+            case Unresumable.Unreadable:
+                BasePersistence.WriteSnapCheckpoint(db, [0xff]);
+                break;
+            case Unresumable.WipedByAnOlderVersion:
+                // The older version leaves the checkpoint behind, then syncs data the checkpoint does not describe.
+                WipeLikeAnOlderVersion(db, maxKeys: int.MaxValue);
+                WriteLastAccount(persistence);
+                break;
+            case Unresumable.WipeByAnOlderVersionInterrupted:
+                // The least such a wipe commits: the first key of its first batch.
+                WipeLikeAnOlderVersion(db, maxKeys: 1);
+                break;
+        }
 
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db,
             partitionCount: reason == Unresumable.PartitionCountChanged ? 4 : 2,
@@ -412,6 +423,29 @@ public class FlatSnapTrieFactoryTests
     }
 
     private static ValueHash256 Path(string hexPrefix) => new(hexPrefix.PadRight(64, '0'));
+
+    private static void WriteLastAccount(IPersistence persistence)
+    {
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetAccountRaw(LastAccount, new Account(1));
+    }
+
+    /// <summary>Deletes the first <paramref name="maxKeys"/> keys in the order a wipe of a version that predates the snap checkpoint does.</summary>
+    /// <remarks>Such a wipe goes through every column but the metadata, each in key order, as a RocksDB iterator yields them.</remarks>
+    private static void WipeLikeAnOlderVersion(IColumnsDb<FlatDbColumns> db, int maxKeys)
+    {
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column == FlatDbColumns.Metadata) continue;
+
+            IDb columnDb = db.GetColumnDb(column);
+            foreach (byte[] key in columnDb.GetAllKeys().Order(Bytes.Comparer))
+            {
+                if (maxKeys-- == 0) return;
+                columnDb.Remove(key);
+            }
+        }
+    }
 
     private static byte[] BuildBranchRlp()
     {
