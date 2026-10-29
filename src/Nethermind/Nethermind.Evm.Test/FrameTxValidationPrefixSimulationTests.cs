@@ -654,9 +654,9 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     // EIP-8151: ecRecover returns the signer only while its code is empty or a delegation, so an owner check in the
-    // prefix depends on a third party's code. Under EIP-8298, which lets that code change, the signer is recorded like a
-    // delegating helper whether or not ecRecover withheld it: recording needs no code read, and regular code is never
-    // replaced by empty code or a delegation, so the only change that can flip the result is returned -> withheld.
+    // prefix depends on a third party's code. Under EIP-8298, which lets that code change, a returned signer is recorded
+    // like a delegating helper, tagged when a paymaster's pay frame recovered it. A withheld signer is not: its regular
+    // code can only be replaced by other regular code, so it stays withheld.
     // With EIP-8151 off recovery reads no account, and with EIP-8298 off no code change can flip the result.
     public sealed record EcRecoverSigner(string Name, byte[] Code, bool Approves)
     {
@@ -695,8 +695,8 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(tracer.ViolationReason, Is.Null);
             Assert.That(result.TransactionExecuted, Is.EqualTo(signer.Approves || !eip8151), result.ErrorDescription);
             Assert.That(tracer.Payer, signer.Approves || !eip8151 ? Is.EqualTo(checker) : Is.Null);
-            Assert.That(tracer.CodeDependencies, eip8151 && eip8298
-                ? Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.Compute(signer.Code)) })
+            Assert.That(tracer.CodeDependencies, eip8151 && eip8298 && signer.Approves
+                ? Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.Compute(signer.Code), inPayFrame) })
                 : Is.Empty);
         }
     }
@@ -798,6 +798,91 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(tracer.ViolationReason, Is.Null);
             Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
             Assert.That(tracer.CodeDependencies, Is.EqualTo(new[] { new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString) }));
+        }
+    }
+
+    // One dependency per signer ecRecover returned, however often the prefix recovers it; a withheld signer is none.
+    [Test]
+    public void Simulate_PrefixRecoveringSeveralSigners_RecordsEachReturnedSignerOnce()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        PrivateKey second = TestItem.PrivateKeys[10];
+        PrivateKey withheld = TestItem.PrivateKeys[11];
+        DeployContract(withheld.Address, [(byte)Instruction.STOP]);
+        DeployContract(Sender,
+        [
+            .. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)),
+            .. EcRecoverCode(Eip8151Tests.CreateInput(second)),
+            .. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)),
+            .. EcRecoverCode(Eip8151Tests.CreateInput(withheld)),
+            .. ApproveCode(FrameFlags.ApproveExecutionAndPayment),
+        ], 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[]
+            {
+                new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString),
+                new FrameTxCodeDependency(second.Address, ValueKeccak.OfAnEmptyString),
+            }));
+        }
+    }
+
+    // The pool gives a pay-frame dependency a slot per paymaster, so a signer the sender's verify frame relied on first
+    // keeps the per-transaction slot.
+    [Test]
+    public void Simulate_SignerRecoveredInTheVerifyAndThePayFrame_IsRecordedAsAVerifyFrameDependency()
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        PrivateKey paymasterSigner = TestItem.PrivateKeys[10];
+        DeployContract(Sender, OwnerCheckCode(OwnerKey, FrameFlags.ApproveExecution), 1.Ether);
+        DeployContract(Sponsor, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), .. OwnerCheckCode(paymasterSigner, FrameFlags.ApprovePayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Sponsor, gasLimit: 200_000, UInt256.Zero, default));
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+            Assert.That(tracer.Payer, Is.EqualTo(Sponsor));
+            Assert.That(tracer.CodeDependencies, Is.EqualTo(new[]
+            {
+                new FrameTxCodeDependency(OwnerKey.Address, ValueKeccak.OfAnEmptyString),
+                new FrameTxCodeDependency(paymasterSigner.Address, ValueKeccak.OfAnEmptyString, InPaymasterFrame: true),
+            }));
+        }
+    }
+
+    // Signers and delegating helpers count against the same limit, and the first account over it violates the prefix.
+    [Test]
+    public void Simulate_PrefixRelyingOnMoreAccountsThanTheLimit_Violates([Values(3, 2, 0)] int limit)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+        Address[] helpers = [TestItem.AddressC, TestItem.AddressF];
+        Prepare code = Prepare.EvmCode;
+        foreach (Address helper in helpers)
+        {
+            DeployContract(helper, [(byte)Instruction.STOP, (byte)Instruction.DELEGATECALL]);
+            code = code.PushData(helper).Op(Instruction.EXTCODESIZE).Op(Instruction.POP);
+        }
+
+        DeployContract(Sender, [.. EcRecoverCode(Eip8151Tests.CreateInput(OwnerKey)), .. code.Done, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Address[] dependencies = [OwnerKey.Address, .. helpers];
+        bool admitted = limit >= dependencies.Length;
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()), maxCodeDependencies: limit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, admitted ? Is.Null : Is.EqualTo($"validation prefix relies on the code of more than {limit} accounts"));
+            Assert.That(tracer.CodeDependencies.Select(d => d.Account), Is.EqualTo(dependencies.Take(limit)));
         }
     }
 
@@ -1378,9 +1463,9 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     /// <summary>Runs a prefix the tracer may abort mid-execution, returning the tracer either way.</summary>
-    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx, ulong? slotNumber = null)
+    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx, ulong? slotNumber = null, int maxCodeDependencies = int.MaxValue)
     {
-        FrameTxValidationTracer tracer = Tracer(tx);
+        FrameTxValidationTracer tracer = Tracer(tx, maxCodeDependencies: maxCodeDependencies);
         try
         {
             return (Run(tx, tracer, slotNumber), tracer);
@@ -1541,8 +1626,8 @@ public class FrameTxValidationPrefixSimulationTests
         return (Run(tx, tracer, slotNumber, extraOptions), tracer);
     }
 
-    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null) =>
-        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, timeout, time);
+    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null, int maxCodeDependencies = int.MaxValue) =>
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, timeout, time, maxCodeDependencies: maxCodeDependencies);
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {

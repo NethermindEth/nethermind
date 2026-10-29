@@ -5124,9 +5124,9 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task Revalidation_is_triggered_by_a_change_at_a_delegating_code_dependency()
+        public async Task Revalidation_is_triggered_by_a_change_at_a_delegating_code_dependency([Values] bool inPaymasterFrame)
         {
-            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD, DelegatingCodeDependency));
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD, [new FrameTxCodeDependency(TestItem.AddressE, TestItem.KeccakA, inPaymasterFrame)]));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
             Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
@@ -5192,6 +5192,104 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        private static readonly FrameTxCodeDependency[] PayFrameCodeDependency = [new(TestItem.AddressE, TestItem.KeccakA, InPaymasterFrame: true)];
+        private static readonly PrivateKey[] Paymasters = [TestItem.PrivateKeys[20], TestItem.PrivateKeys[21], TestItem.PrivateKeys[22]];
+
+        // A dependency of a paymaster's pay frame takes one slot per paymaster, which all the transactions that paymaster
+        // sponsors share, while one account can sit in at most FrameTxMaxPendingPerDelegatingCode paymasters' pay frames.
+        [Test]
+        public void Pay_frame_code_dependencies_take_one_slot_per_paymaster()
+        {
+            CreatePoolPaidByPayFrameTargets(maxPendingPerCode: 2, PayFrameCodeDependency);
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD];
+            PrivateKey[] paymasters = [Paymasters[0], Paymasters[1], Paymasters[2], Paymasters[0]];
+            foreach (PrivateKey sender in senders) EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+
+            AcceptTxResult[] results = new AcceptTxResult[senders.Length];
+            for (int i = 0; i < senders.Length; i++) results[i] = _txPool.SubmitTx(SponsoredFrameTx(senders[i], paymasters[i]), TxHandlingOptions.None);
+
+            Assert.That(results, Is.EqualTo(new[] { AcceptTxResult.Accepted, AcceptTxResult.Accepted, AcceptTxResult.FrameTxCodeDependencyLimitReached, AcceptTxResult.Accepted }));
+        }
+
+        public enum Departure
+        {
+            Evicted,
+            Included,
+            Replaced,
+        }
+
+        // A leaked paymaster slot would block the account's other paymasters for good.
+        [Test]
+        public async Task Paymaster_slot_is_released_when_its_last_transaction_leaves_the_pool([Values] Departure departure)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolPaidByPayFrameTargets(maxPendingPerCode: 1, PayFrameCodeDependency);
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            foreach (PrivateKey sender in senders) EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+            Transaction holder = SponsoredFrameTx(TestItem.PrivateKeyA, Paymasters[0]);
+            Assert.That(_txPool.SubmitTx(holder, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, Paymasters[1]), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.FrameTxCodeDependencyLimitReached), "the only paymaster slot must be taken");
+
+            switch (departure)
+            {
+                case Departure.Evicted:
+                    SimulatesAs(simulator, FrameTxSimulationResult.Reject("prefix reverts"));
+                    await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+                    break;
+                case Departure.Included:
+                    await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTransactions(holder).TestObject);
+                    break;
+                case Departure.Replaced:
+                    SimulatesAs(simulator, FrameTxSimulationResult.Accept(Paymasters[0].Address));
+                    Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, Paymasters[0], feePerGas: 2.GWei), TxHandlingOptions.None),
+                        Is.EqualTo(AcceptTxResult.Accepted));
+                    break;
+            }
+
+            Assert.That(_txPool.TryGetPendingTransaction(holder.Hash!, out _), Is.False);
+            SimulatesAsPaidByPayFrameTarget(simulator, PayFrameCodeDependency);
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyC, Paymasters[1]), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted), "the departed transaction must have released its paymaster slot");
+        }
+
+        // Revalidation that finds a new pay-frame dependency shares the slot its paymaster holds, and evicts the
+        // transaction when the account's paymaster slots are all held by others.
+        [Test]
+        public async Task Revalidation_judges_a_new_pay_frame_dependency_against_the_paymaster_slots([Values] bool samePaymaster)
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolPaidByPayFrameTargets(maxPendingPerCode: 1);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            Transaction untracked = SponsoredFrameTx(TestItem.PrivateKeyA, Paymasters[0]);
+            Assert.That(_txPool.SubmitTx(untracked, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            SimulatesAsPaidByPayFrameTarget(simulator, PayFrameCodeDependency);
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, samePaymaster ? Paymasters[0] : Paymasters[1]), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(samePaymaster ? 2 : 1));
+                Assert.That(_txPool.TryGetPendingTransaction(untracked.Hash!, out _), Is.EqualTo(samePaymaster));
+            }
+        }
+
+        /// <summary>A pool whose simulator accepts every prefix as paid by its pay frame's target, relying on <paramref name="dependencies"/>.</summary>
+        private IFrameTxPrefixSimulator CreatePoolPaidByPayFrameTargets(int maxPendingPerCode, params FrameTxCodeDependency[] dependencies)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAsPaidByPayFrameTarget(simulator, dependencies);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxPendingPerDelegatingCode = maxPendingPerCode },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            foreach (PrivateKey paymaster in Paymasters) EnsureSenderBalance(paymaster.Address, UInt256.MaxValue);
+            return simulator;
+        }
+
+        private static void SimulatesAsPaidByPayFrameTarget(IFrameTxPrefixSimulator simulator, FrameTxCodeDependency[] dependencies) =>
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(call => FrameTxSimulationResult.Accept(call.ArgAt<Transaction>(0).Frames![^1].Target!, dependencies));
+
         public enum EcRecoverSignerChange
         {
             UnrelatedAccountGainsCode,
@@ -5223,18 +5321,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             _stateProvider.InsertCode(senderCode, TestItem.AddressA);
 
-            Transaction tx = new()
-            {
-                Type = TxType.FrameTx,
-                ChainId = _specProvider.ChainId,
-                SenderAddress = TestItem.AddressA,
-                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
-                FrameSignatures = [],
-                GasLimit = 1_000_000,
-                GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 1.GWei,
-            };
-            tx.Hash = tx.CalculateHash();
+            Transaction tx = OpaqueFrameTx(TestItem.AddressA);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             // A baseline head first, so the following change list is trusted as complete.
@@ -5258,10 +5345,106 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        /// <summary>Code approving execution and payment only when ecRecover returns <paramref name="owner"/>'s address.</summary>
+        // Transactions recovering a paymaster's signer in their verify frames, which anyone holding one signature of the
+        // key can send, are capped among themselves but cannot take the slot the paymaster's pay frame needs for it.
+        [Test]
+        public void Verify_frame_recoveries_of_a_paymaster_signer_do_not_block_the_paymaster()
+        {
+            PrivateKey signer = TestItem.PrivateKeys[9];
+            Address paymaster = TestItem.AddressE;
+            Address[] fillers = TestItem.Addresses[20..37];
+            List<(Address, byte[])> accounts =
+            [
+                (TestItem.AddressA, ApproveCode(FrameFlags.ApproveExecution)),
+                (paymaster, OwnerCheckCode(signer, FrameFlags.ApprovePayment)),
+                .. fillers.Select(filler => (filler, OwnerCheckCode(signer))),
+            ];
+            ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+            using FrameTxPrefixSimulator simulator = CreatePoolWithEvmSimulator(specProvider, accounts);
+
+            AcceptTxResult[] fillerResults = Array.ConvertAll(fillers[..16], filler => _txPool.SubmitTx(OpaqueFrameTx(filler), TxHandlingOptions.None));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fillerResults, Is.All.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(OpaqueFrameTx(TestItem.AddressA, paymaster), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(OpaqueFrameTx(fillers[16]), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxCodeDependencyLimitReached));
+            }
+        }
+
+        // FrameTxMaxCodeDependencies (8 by default) counts returned signers and delegating helpers alike.
+        [Test]
+        public void Frame_transaction_relying_on_more_accounts_than_the_code_dependency_limit_is_rejected([Values(8, 9)] int dependencies)
+        {
+            bool accepted = dependencies <= new TxPoolConfig().FrameTxMaxCodeDependencies;
+            byte[] helperCode = [(byte)Instruction.STOP, (byte)Instruction.DELEGATECALL];
+            Address[] helpers = TestItem.Addresses[20..(20 + dependencies - 1)];
+            Prepare touchHelpers = Prepare.EvmCode;
+            foreach (Address helper in helpers) touchHelpers = touchHelpers.PushData(helper).Op(Instruction.EXTCODESIZE).Op(Instruction.POP);
+            byte[] senderCode = [.. touchHelpers.Done, .. OwnerCheckCode(TestItem.PrivateKeys[9])];
+            List<(Address, byte[])> accounts = [(TestItem.AddressA, senderCode), .. helpers.Select(helper => (helper, helperCode))];
+            ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8151Enabled = true, IsEip8298Enabled = true });
+            using FrameTxPrefixSimulator simulator = CreatePoolWithEvmSimulator(specProvider, accounts);
+
+            AcceptTxResult result = _txPool.SubmitTx(OpaqueFrameTx(TestItem.AddressA), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
+                Assert.That(result.ToString(), accepted ? Does.Not.Contain("relies on the code") : Does.Contain("relies on the code of more than 8 accounts"));
+            }
+        }
+
+        /// <summary>A pool simulating prefixes in a real EVM, with each of <paramref name="accounts"/> holding its code and a
+        /// balance in both the simulated and the pool's state.</summary>
+        private FrameTxPrefixSimulator CreatePoolWithEvmSimulator(ISpecProvider specProvider, IEnumerable<(Address Address, byte[] Code)> accounts)
+        {
+            IWorldState state = TestWorldStateFactory.CreateForTest();
+            BlockHeader stateHead = IWorldState.PreGenesis;
+            foreach ((Address address, byte[] code) in accounts)
+            {
+                stateHead = WithCode(state, specProvider.GenesisSpec, stateHead, address, code, 1.Ether);
+                EnsureSenderBalance(address, UInt256.MaxValue);
+                _stateProvider.InsertCode(code, address);
+            }
+
+            FrameTxPrefixSimulator simulator = EvmFrameTxPrefixSimulator(state, specProvider, () => stateHead);
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, specProvider, frameTxPrefixSimulator: simulator);
+            return simulator;
+        }
+
+        /// <summary>A frame transaction whose validation prefix runs <paramref name="sender"/>'s code, paid by the sender or,
+        /// with <paramref name="paymaster"/>, by that paymaster's pay frame.</summary>
+        private Transaction OpaqueFrameTx(Address sender, Address paymaster = null)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                SenderAddress = sender,
+                Frames = paymaster is null
+                    ? [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())]
+                    :
+                    [
+                        new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                        new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, paymaster, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    ],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        private static byte[] ApproveCode(FrameFlags scope) =>
+            Prepare.EvmCode.PushData((byte)scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+        /// <summary>Code approving <paramref name="scope"/> only when ecRecover returns <paramref name="owner"/>'s address.</summary>
         /// <remarks>The output is copied past the input, so a withheld (empty) one compares as zero, and an approval of
         /// scope zero reverts the frame.</remarks>
-        private static byte[] OwnerCheckCode(PrivateKey owner)
+        private static byte[] OwnerCheckCode(PrivateKey owner, FrameFlags scope = FrameFlags.ApproveExecutionAndPayment)
         {
             const int outputOffset = 256;
             ValueHash256 message = ValueKeccak.Compute("owner check"u8);
@@ -5274,7 +5457,7 @@ namespace Nethermind.TxPool.Test
                 .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover, 50_000, input).Op(Instruction.POP)
                 .Op(Instruction.RETURNDATASIZE).PushData(0).PushData(outputOffset).Op(Instruction.RETURNDATACOPY)
                 .PushData(outputOffset).Op(Instruction.MLOAD).PushData(owner.Address).Op(Instruction.EQ)
-                .PushData((byte)FrameFlags.ApproveExecutionAndPayment).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+                .PushData((byte)scope).Op(Instruction.MUL).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         }
 
         /// <summary>Installs <paramref name="code"/> at <paramref name="address"/> over the state at <paramref name="parent"/>.</summary>

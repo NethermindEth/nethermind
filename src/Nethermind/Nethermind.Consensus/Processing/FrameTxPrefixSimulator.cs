@@ -43,6 +43,7 @@ public sealed class FrameTxPrefixSimulator(
     private readonly ulong _maxVerifyGas = Math.Max(txPoolConfig.FrameTxMaxVerifyGas == 0
         ? TxPoolConfig.DefaultFrameTxMaxVerifyGas
         : txPoolConfig.FrameTxMaxVerifyGas, Eip8141Constants.MaxVerifyGas);
+    private readonly int _maxCodeDependencies = txPoolConfig.FrameTxMaxCodeDependencies;
     private readonly long _headBudgetTicks =
         (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * (timeProvider ?? TimeProvider.System).TimestampFrequency);
     private IReadOnlyTxProcessorSource? _source;
@@ -142,7 +143,7 @@ public sealed class FrameTxPrefixSimulator(
             processor.SetBlockExecutionContext(AtCurrentSlot(head));
 
             IReleaseSpec spec = specProvider.GetSpec(head);
-            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt, _maxVerifyGas);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt, _maxVerifyGas, _maxCodeDependencies);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);

@@ -627,7 +627,7 @@ namespace Nethermind.TxPool
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe. The exception is a helper
-        /// whose code can change under EIP-8298 by delegating, or an account EIP-8151 ecRecover recovered, which
+        /// whose code can change under EIP-8298 by delegating, or an account EIP-8151 ecRecover returned, which
         /// admission records and this indexes; a record restored without simulation carries none.
         /// A persistent blob pool holds a frameless light record, which is indexed all the same: the set is
         /// addresses that record carries, and <see cref="RevalidateFrameTransactions"/> reloads the prefix
@@ -1584,7 +1584,7 @@ namespace Nethermind.TxPool
                     }
                     payer = simulated.Payer;
                     // The prefix may now rely on different accounts whose code can change, re-judged against the cap.
-                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
+                    if (!_codeDependencies.TryUpdate(tx.Hash!.ValueHash256, simulated.CodeDependencies, PendingPaymasterCache.KeyFor(tx), _txPoolConfig.FrameTxMaxPendingPerDelegatingCode, out bool added)) return false;
                     // An eviction that landed before the entry was added has already released, so release again.
                     if (added && !_transactions.ContainsKey(tx.Hash!.ValueHash256) && !_blobTransactions.ContainsKey(tx.Hash!.ValueHash256))
                     {
