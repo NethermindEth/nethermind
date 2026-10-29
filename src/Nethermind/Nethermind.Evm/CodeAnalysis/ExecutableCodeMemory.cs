@@ -81,7 +81,7 @@ public static class ExecutableCodeMemory
         return new FixedManager((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(codeAndPadding)), codeLength, padded: true).Memory;
     }
 
-    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> result.</summary>
+    /// <summary>Gets whether <paramref name="code"/> is the whole of a <see cref="Place"/> or <see cref="PlacePadded"/> result.</summary>
     internal static bool IsPlaced(ReadOnlyMemory<byte> code) =>
         MemoryMarshal.TryGetMemoryManager(code, out FixedManager? manager, out int start, out int length)
         && manager.IsPadded && start == 0 && length == manager.CodeLength;

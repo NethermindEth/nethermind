@@ -24,7 +24,7 @@ public sealed partial class CodeInfo
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
         _code = code.IsEmpty ? code
             : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
-            : FirstTouchMemoryFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
+            : (FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive) && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
