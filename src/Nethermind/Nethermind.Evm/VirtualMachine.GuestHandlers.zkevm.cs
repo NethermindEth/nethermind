@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
 using static Nethermind.Evm.GuestWord;
 
 namespace Nethermind.Evm;
@@ -925,6 +926,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             ZiskArithmetic.MulMod(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
                         *(UInt256*)m = result;
                     }
+                    else if (typeof(TOperation) == typeof(EvmInstructions.OpAddMod))
+                    {
+                        AddModInSlots(ref modulus);
+                    }
+                    else if (Sp1Flag.IsActive)
+                    {
+                        Sp1MulModInSlots(ref modulus);
+                    }
                     else
                     {
                         ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
@@ -954,6 +963,101 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = Entry(&ExecuteOpcode<Math3Opcode<TOperation, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
+        }
+
+        /// <summary>ADDMOD of the slots above <paramref name="modulus"/>, whose result replaces the modulus.</summary>
+        /// <param name="modulus">The modulus, not zero, with the second addend in the slot above and the first in the slot above that.</param>
+        /// <remarks>
+        /// Two addends below the modulus, as field arithmetic gives, have a sum below twice the modulus: one add and one
+        /// conditional subtract, with no call. Any other operands take <see cref="UInt256.AddMod(in UInt256, in UInt256, in UInt256, out UInt256)"/>.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void AddModInSlots(ref ulong modulus)
+        {
+            ref ulong b = ref Unsafe.Add(ref modulus, LimbsPerWord);
+            ref ulong a = ref Unsafe.Add(ref modulus, 2 * LimbsPerWord);
+            ulong m0 = modulus, m1 = Unsafe.Add(ref modulus, 1), m2 = Unsafe.Add(ref modulus, 2), m3 = Unsafe.Add(ref modulus, 3);
+            ulong a0 = a, a1 = Unsafe.Add(ref a, 1), a2 = Unsafe.Add(ref a, 2), a3 = Unsafe.Add(ref a, 3);
+            ulong b0 = b, b1 = Unsafe.Add(ref b, 1), b2 = Unsafe.Add(ref b, 2), b3 = Unsafe.Add(ref b, 3);
+
+            // Each operand is below the modulus when subtracting the modulus from it borrows.
+            ulong aBelow = 0, bBelow = 0;
+            SubtractWithBorrow(a0, m0, ref aBelow);
+            SubtractWithBorrow(a1, m1, ref aBelow);
+            SubtractWithBorrow(a2, m2, ref aBelow);
+            SubtractWithBorrow(a3, m3, ref aBelow);
+            SubtractWithBorrow(b0, m0, ref bBelow);
+            SubtractWithBorrow(b1, m1, ref bBelow);
+            SubtractWithBorrow(b2, m2, ref bBelow);
+            SubtractWithBorrow(b3, m3, ref bBelow);
+            if ((aBelow & bBelow) == 0)
+            {
+                ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
+                UInt256.AddMod(in Unsafe.As<ulong, UInt256>(ref a), in Unsafe.As<ulong, UInt256>(ref b), in m, out UInt256 result);
+                m = result;
+                return;
+            }
+
+            ulong carry = 0;
+            ulong s0 = AddWithCarry(a0, b0, ref carry);
+            ulong s1 = AddWithCarry(a1, b1, ref carry);
+            ulong s2 = AddWithCarry(a2, b2, ref carry);
+            ulong s3 = AddWithCarry(a3, b3, ref carry);
+            ulong borrow = 0;
+            ulong d0 = SubtractWithBorrow(s0, m0, ref borrow);
+            ulong d1 = SubtractWithBorrow(s1, m1, ref borrow);
+            ulong d2 = SubtractWithBorrow(s2, m2, ref borrow);
+            ulong d3 = SubtractWithBorrow(s3, m3, ref borrow);
+
+            // The 257-bit sum is at least the modulus when it carried out or its difference did not borrow.
+            ulong keepSum = (carry | (borrow ^ 1)) - 1;
+            modulus = (s0 & keepSum) | (d0 & ~keepSum);
+            Unsafe.Add(ref modulus, 1) = (s1 & keepSum) | (d1 & ~keepSum);
+            Unsafe.Add(ref modulus, 2) = (s2 & keepSum) | (d2 & ~keepSum);
+            Unsafe.Add(ref modulus, 3) = (s3 & keepSum) | (d3 & ~keepSum);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong AddWithCarry(ulong x, ulong y, ref ulong carry)
+        {
+            ulong sum = x + y;
+            ulong result = sum + carry;
+            carry = (sum < x ? 1UL : 0UL) | (result < sum ? 1UL : 0UL);
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong SubtractWithBorrow(ulong x, ulong y, ref ulong borrow)
+        {
+            ulong difference = x - y;
+            ulong result = difference - borrow;
+            borrow = (x < y ? 1UL : 0UL) | (difference < borrow ? 1UL : 0UL);
+            return result;
+        }
+
+        /// <summary>MULMOD of the slots above <paramref name="modulus"/> on SP1's precompile, whose result replaces the modulus.</summary>
+        /// <param name="modulus">The modulus, not zero, with the second factor in the slot above and the first in the slot above that.</param>
+        /// <remarks>
+        /// The precompile overwrites its multiplicand with the product and takes the multiplier and the modulus side by
+        /// side. The second factor's slot takes the product, so only the first factor and the modulus are copied in and
+        /// the product out. The stack is pinned and its slots are 8-byte aligned, as the precompile needs.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Sp1MulModInSlots(ref ulong modulus)
+        {
+            ref UInt256 m = ref Unsafe.As<ulong, UInt256>(ref modulus);
+            ref UInt256 b = ref Unsafe.Add(ref m, 1);
+            Sp1MulModOperands operands;
+            operands.Multiplier = Unsafe.Add(ref m, 2);
+            operands.Modulus = m;
+            Accelerators.UInt256MulMod((ulong*)Unsafe.AsPointer(ref b), (ulong*)&operands);
+            m = b;
+        }
+
+        private struct Sp1MulModOperands
+        {
+            public UInt256 Multiplier;
+            public UInt256 Modulus;
         }
 
         /// <summary>
