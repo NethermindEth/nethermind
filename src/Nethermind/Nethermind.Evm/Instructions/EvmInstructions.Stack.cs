@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -1213,8 +1214,8 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-        // Load the log data from memory.
-        Span<byte> data = vmState.Memory.LoadSpanAfterGas(in position, in length);
+        // Load the log data from memory, as the memory holds it: it is copied out below.
+        Span<byte> data = vmState.Memory.LoadLaidOutSpanAfterGas(in position, in length);
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
@@ -1228,7 +1229,9 @@ public static partial class EvmInstructions
         // Create a new log entry with the executing account, log data, and topics.
         LogEntry logEntry = new(
             vmState.Env.ExecutingAccount,
-            data.Length == 0 ? [] : data.ToArray(),
+            data.Length == 0 ? []
+                : EvmPooledMemory.IsSwizzled ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(data), data.Length)
+                : data.ToArray(),
             topics);
 
         vm.AddLog(logEntry);

@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -127,7 +128,8 @@ internal struct ReturnDataScratch
 
     internal int RetainedLength => _retained.Length;
 
-    internal byte[] Stage(ReadOnlySpan<byte> returnData, bool allowReuse)
+    /// <param name="laidOut">Whether <paramref name="returnData"/> is swizzled memory, which this then copies out in natural order.</param>
+    internal byte[] Stage(ReadOnlySpan<byte> returnData, bool allowReuse, bool laidOut = false)
     {
         _stagedLength = returnData.Length;
 
@@ -145,12 +147,15 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            Bytes.Copy(returnData, scratch);
+            if (laidOut)
+                SwizzledMemory.Read(ref MemoryMarshal.GetReference(returnData), scratch.AsSpan(0, returnData.Length));
+            else
+                Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else
         {
-            output = returnData.ToArray();
+            output = laidOut ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(returnData), returnData.Length) : returnData.ToArray();
         }
 
         _staged = output;
@@ -247,7 +252,8 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
 
-    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
+    /// <param name="laidOut">Whether <paramref name="returnData"/> is swizzled memory (see <see cref="EvmPooledMemory.LoadLaidOutSpanAfterGas"/>).</param>
+    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert, bool laidOut = false)
     {
         // Nested outputs are consumed before this buffer can be reused by a later child call, and a create's
         // output may become the deployed code. A top-level call output may reuse it only when the tracer reads no
@@ -259,7 +265,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 : _tracerFlags.AllowsReturnScratch
                     && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert)));
 
-        ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
+        ReturnData = _returnDataScratch.Stage(returnData, allowReuse, laidOut);
     }
 
     /// <summary>Whether a create frame's output of <paramref name="length"/> bytes, reverted or returned, is never deployed, so nothing reads it once the frame returns.</summary>

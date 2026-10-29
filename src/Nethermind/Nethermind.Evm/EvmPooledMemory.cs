@@ -632,6 +632,21 @@ public partial struct EvmPooledMemory
         return LoadSpanAfterGas(in location, length.u0);
     }
 
+    /// <summary><see cref="LoadSpanAfterGas(in UInt256, in UInt256)"/> as the memory holds the bytes: swizzled where
+    /// <see cref="IsSwizzled"/>, for a caller that converts them as it copies them out.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Span<byte> LoadLaidOutSpanAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return [];
+        }
+
+        Debug.Assert(location.IsUint64 && length.IsUint64);
+        PrepareAccessAfterGas(location.u0 + length.u0);
+        return GetBackingSpan(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+    }
+
     /// <summary>
     /// Variant of <see cref="TryLoad"/> requiring the caller to have already charged memory expansion for exactly
     /// this range; a zero length yields an empty result at any location.

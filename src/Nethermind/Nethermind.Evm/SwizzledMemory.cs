@@ -130,10 +130,21 @@ internal static unsafe class SwizzledMemory
         laidOut.IsEmpty ? laidOut : ToArray(ref MemoryMarshal.GetReference(laidOut.Span), laidOut.Length);
 
     /// <summary>Copies <paramref name="length"/> bytes of memory from <paramref name="source"/> to <paramref name="destination"/>, which may overlap.</summary>
-    /// <remarks>Through a copy in natural order, which makes any overlap safe: MCOPY is rare.</remarks>
+    /// <remarks>
+    /// Ranges apart and in the same place of their groups move as <see cref="Copy"/> moves them; others go through a copy
+    /// in natural order, which makes any overlap safe.
+    /// </remarks>
     public static void Move(ref byte destination, ref byte source, int length)
     {
         if (length == 0) return;
+
+        nuint to = (nuint)Unsafe.AsPointer(ref destination);
+        nuint from = (nuint)Unsafe.AsPointer(ref source);
+        if (((to ^ from) & GroupMask) == 0 && (to + (nuint)length <= from || from + (nuint)length <= to))
+        {
+            Copy(ref destination, ref source, length);
+            return;
+        }
 
         Write(ref destination, ToArray(ref source, length));
     }
