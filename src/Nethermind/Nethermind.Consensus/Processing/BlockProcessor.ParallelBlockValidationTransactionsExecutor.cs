@@ -250,6 +250,8 @@ public partial class BlockProcessor
                                             state.ReceiptsTracers[txIndex],
                                             state.ProcessingOptions,
                                             state.Inner);
+                                        // Before the lease ends, while the processor still holds what the index recorded.
+                                        state.BalManager.CheckIndexChanges(state.Block, (uint)(txIndex + 1));
                                     }
                                     ulong blockStateGasUsed = state.ReceiptsTracers[txIndex].BlockStateGasUsed;
                                     state.ExecutedGas.Add(tx.BlockGasUsed, blockStateGasUsed, state.Block.Header.GasLimit);
@@ -308,7 +310,16 @@ public partial class BlockProcessor
                     throw;
                 }
 
-                incrementalValidation.GetResult();
+                try
+                {
+                    incrementalValidation.GetResult();
+                }
+                catch (BlockAccessListManager.IndexChangesMismatchException)
+                {
+                    // The workers have joined, so the block-level comparison over what they recorded names the first wrong change.
+                    balManager.SetBlockAccessList(block);
+                    throw;
+                }
             }
             finally
             {

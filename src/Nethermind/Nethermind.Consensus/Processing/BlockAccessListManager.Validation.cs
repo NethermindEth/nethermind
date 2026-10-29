@@ -21,9 +21,11 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Validation paths:
-///   * <see cref="IncrementalValidation"/> awaits each worker's gas result and runs the
-///     EIP-8037 2D inclusion check on the cumulative gas.
+///   * <see cref="IncrementalValidation"/> awaits each worker's gas result, runs the
+///     EIP-8037 2D inclusion check on the cumulative gas, then stops at the first index whose
+///     changes <see cref="CheckIndexChanges"/> found to differ.
 ///   * <see cref="CheckPerTxInclusion"/> is the EIP-8037 worst-case 2D inclusion check.
+///   * <see cref="CheckIndexChanges"/> checks the changes of one index as soon as a worker has executed it.
 ///   * <see cref="ValidateLogs"/> checks the logs against the suggested list once the block has
 ///     executed in parallel, merging them only to report a mismatch.
 ///   * <see cref="ValidateMergedBlockAccessList"/> compares the merged list with the suggested
@@ -31,6 +33,14 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 public partial class BlockAccessListManager
 {
+    /// <summary>The changes of a block access index differ from those the block's access list lists at it.</summary>
+    /// <remarks>
+    /// Raised in transaction order, once every earlier index has executed and matched, so a comparison of what the
+    /// executed indexes recorded with the suggested list reports the first wrong change, as for the whole block.
+    /// </remarks>
+    public class IndexChangesMismatchException(BlockHeader header, uint index)
+        : InvalidBlockLevelAccessListException(header, $"Suggested block-level access list does not match the changes at index {index}.");
+
     public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         CheckInitialized();
@@ -68,6 +78,9 @@ public partial class BlockAccessListManager
 
                 ulong headerGasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
                 CheckGasUsed(j, block, headerGasUsed);
+
+                if (ParallelExecutionEnabled && _indexChangesDiffer[j + 1])
+                    throw new IndexChangesMismatchException(block.Header, (uint)(j + 1));
 
                 if (transactionProcessedEventHandler is not null)
                 {
@@ -130,6 +143,46 @@ public partial class BlockAccessListManager
                 $"execution_available={block.Header.GasLimit - cumulativeExecution}, " +
                 $"state_available={block.Header.GasLimit - cumulativeState}, " +
                 $"tx.gas={tx.GasLimit}.");
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// What one index cannot show, an account the block only touched or a declared read, is left to
+    /// <see cref="ValidateLogs"/>.
+    /// </remarks>
+    public void CheckIndexChanges(Block block, uint balIndex)
+    {
+        BlockAccessIndexRecorder recorder = _txProcessorWithWorldStateManager!.Get(balIndex).Recorder;
+        _indexChangesDiffer[balIndex] = !recorder.ChangesMatch(block.BlockAccessList!, _declaredChangeCounts[balIndex]);
+    }
+
+    private void PrepareIndexChecks(ReadOnlyBlockAccessList suggested, int indexCount)
+    {
+        if (_declaredChangeCounts.Length < indexCount)
+        {
+            _declaredChangeCounts = new int[indexCount];
+            _indexChangesDiffer = new bool[indexCount];
+        }
+
+        _indexChangesDiffer.AsSpan(0, indexCount).Clear();
+        Span<int> counts = _declaredChangeCounts.AsSpan(0, indexCount);
+        counts.Clear();
+        foreach (ReadOnlyAccountChanges account in suggested.AccountChanges)
+        {
+            Count(counts, account.BalanceChanges);
+            Count(counts, account.NonceChanges);
+            Count(counts, account.CodeChanges);
+            foreach (ReadOnlySlotChanges slot in account.StorageChanges) Count(counts, slot.Changes);
+        }
+
+        // An index past the post-execution one is left to the block-level comparison, which rejects it.
+        static void Count<T>(Span<int> counts, ReadOnlySpan<T> changes) where T : IIndexedChange
+        {
+            foreach (T change in changes)
+            {
+                if (change.Index < (uint)counts.Length) counts[(int)change.Index]++;
+            }
         }
     }
 

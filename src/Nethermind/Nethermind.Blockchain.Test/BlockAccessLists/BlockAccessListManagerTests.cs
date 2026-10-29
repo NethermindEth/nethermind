@@ -17,6 +17,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Cpu;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -62,7 +63,7 @@ public class BlockAccessListManagerTests
         /// <see cref="BlockAccessListManager.PrepareForProcessing"/> with prerequisites met so
         /// the hint gets tracked. Subsequent calls re-stub and re-prepare for a new block.
         /// </summary>
-        public Block IssueHint(Task hint, int txCount = 0)
+        public Block IssueHint(Task hint, int txCount = 0, ReadOnlyBlockAccessList? blockAccessList = null)
         {
             WorldState.IsInScope.Returns(true);
             WorldState.HintBal(Arg.Any<ReadOnlyBlockAccessList>()).Returns(hint);
@@ -73,7 +74,7 @@ public class BlockAccessListManagerTests
             Block block = Build.A.Block
                 .WithNumber(1) // not genesis — Enabled requires non-genesis
                 .WithTransactions(Build.A.Transaction.TestObjectNTimes(txCount))
-                .WithBlockAccessList(Build.A.BlockAccessList.TestObject)
+                .WithBlockAccessList(blockAccessList ?? Build.A.BlockAccessList.TestObject)
                 .TestObject;
 
             Manager.PrepareForProcessing(block, spec, ProcessingOptions.None);
@@ -84,7 +85,7 @@ public class BlockAccessListManagerTests
         /// Prepares <paramref name="txCount"/> transactions for parallel execution, with a parent state every
         /// rented tx processor can read from.
         /// </summary>
-        public void SetupParallelBlock(int txCount)
+        public Block SetupParallelBlock(int txCount, ReadOnlyBlockAccessList? blockAccessList = null)
         {
             IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
             source.TryBuildAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope?>())
@@ -95,10 +96,11 @@ public class BlockAccessListManagerTests
                 });
             ParentReaderEnvFactory.Create().Returns(source);
 
-            Block block = IssueHint(Task.CompletedTask, txCount);
+            Block block = IssueHint(Task.CompletedTask, txCount, blockAccessList);
             Manager.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Substitute.For<IReleaseSpec>()));
             Manager.Setup(block);
             Assert.That(Manager.ParallelExecutionEnabled, Is.True);
+            return block;
         }
     }
 
@@ -230,6 +232,35 @@ public class BlockAccessListManagerTests
         Assert.That(FrameCacheLength(rented), Is.Zero, "the rented processor's virtual machine was disposed");
     }
 
+    /// <summary>
+    /// Once a worker finds that an index made other changes than the list declares, the in-order validation stops there,
+    /// after every earlier index matched.
+    /// </summary>
+    [Test]
+    public void IncrementalValidation_stops_at_the_first_index_whose_changes_differ()
+    {
+        Harness h = new();
+        // Declares a change at index 2 that no transaction makes.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(2, UInt256.One)).TestObject)
+            .TestObject;
+        Block block = h.SetupParallelBlock(txCount: 3, bal);
+
+        GasValidationResultSlot[] gasResults = new GasValidationResultSlot[3];
+        for (uint index = 1; index <= 3; index++)
+        {
+            h.Manager.GetTxProcessor(index);
+            h.Manager.CheckIndexChanges(block, index);
+            h.Manager.ReturnTxProcessor(index);
+            gasResults[index - 1] = new GasValidationResultSlot();
+            gasResults[index - 1].TrySetResult(new GasValidationResult(0, 0, null));
+        }
+
+        Assert.That(
+            () => h.Manager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[3], null, CancellationToken.None),
+            Throws.InstanceOf<BlockAccessListManager.IndexChangesMismatchException>().With.Message.EndsWith("at index 2."));
+    }
+
     private static int FrameCacheLength(IVirtualMachine machine) => ((VirtualMachine<EthereumGasPolicy>)machine).FrameCache.Length;
 
     [Test]
@@ -323,6 +354,59 @@ public class BlockAccessListManagerTests
                 suggested, options, NullBlockTracer.Instance, spec, CancellationToken.None);
             return (processed, receipts, balManager.ParallelExecutionEnabled);
         }
+    }
+
+    public enum Tampering { ChangedValue, ExtraAccount, DroppedAccount }
+
+    /// <summary>
+    /// A list found wrong at one transaction, before the rest of the block ran, is reported as the block-level
+    /// comparison reports it.
+    /// </summary>
+    [TestCase(Tampering.ChangedValue, "contained incorrect changes for 0x00000000000000000000000000000000000000ee at index 2.")]
+    [TestCase(Tampering.ExtraAccount, "contained surplus changes for 0x00000000000000000000000000000000000000dd at index 2.")]
+    [TestCase(Tampering.DroppedAccount, "missing account changes for 0x00000000000000000000000000000000000000ee at index 1.")]
+    public async Task Parallel_execution_reports_a_wrong_access_list_at_its_first_wrong_change(Tampering tampering, string error)
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
+            .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = true));
+
+        Block block = await chain.AddBlock([.. Enumerable.Range(0, 4).Select(static nonce => Transfer(TestItem.PrivateKeyB, (ulong)nonce))]);
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!;
+        ReadOnlyBlockAccessList bal = chain.Container.Resolve<IBlockAccessListStore>().Get(block.Number, block.Hash!)
+            ?? throw new AssertionException($"block {block.Number} has no stored block access list");
+        Block suggested = block.WithReplacedHeader(block.Header.Clone());
+        suggested.BlockAccessList = Tamper(bal, tampering);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        Assert.That(
+            () => chain.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, chain.SpecProvider.GetSpec(block.Header), CancellationToken.None),
+            Throws.InstanceOf<InvalidBlockException>().With.Message.EqualTo($"InvalidBlockLevelAccessList: Suggested block-level access list {error}"));
+    }
+
+    private static ReadOnlyBlockAccessList Tamper(ReadOnlyBlockAccessList bal, Tampering tampering)
+    {
+        ReadOnlyAccountChanges[] accounts = bal.AccountChanges.AsSpan().ToArray();
+        int recipient = Array.FindIndex(accounts, static account => account.Address == Recipient);
+        ReadOnlyAccountChanges original = accounts[recipient];
+        switch (tampering)
+        {
+            case Tampering.DroppedAccount:
+                return new([.. accounts.Where((_, i) => i != recipient)], bal.ItemCount);
+            case Tampering.ExtraAccount:
+                ReadOnlyAccountChanges extra = Build.An.AccountChanges.WithAddress(new Address("0x00000000000000000000000000000000000000dd"))
+                    .WithBalanceChanges(new BalanceChange(2, UInt256.One)).TestObject;
+                return new([.. accounts.Append(extra).OrderBy(static account => account.Address)], bal.ItemCount);
+        }
+
+        accounts[recipient] = new ReadOnlyAccountChanges(
+            Recipient,
+            original.StorageChanges,
+            original.StorageReads,
+            [.. original.BalanceChanges.Select(static change => change.Index == 2 ? new BalanceChange(2, change.Value + UInt256.One) : change)],
+            original.NonceChanges,
+            original.CodeChanges);
+        return new(accounts, bal.ItemCount);
     }
 
     private static (byte StatusCode, ulong GasUsed, ulong GasUsedTotal)[] Summarize(TxReceipt[] receipts) =>
