@@ -43,8 +43,11 @@ public class GethStyleTracerTests
             {
                 using ITxTracer txTracer = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
                 clock.Advance(TimeSpan.FromMilliseconds(600));
-                Assert.That(txTracer.IsCancelled, Is.False);
-                Assert.That(txTracer.IsTracingInstructions, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(txTracer.IsCancelled, Is.False);
+                    Assert.That(txTracer.IsTracingInstructions, Is.False);
+                }
                 tracer.EndTxTrace();
             }
             Assert.That(tracer.BuildResult(), Is.EquivalentTo(new[] { trace }));
@@ -78,8 +81,11 @@ public class GethStyleTracerTests
         using ITxTracer target = tracer.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject);
         if (externalCancellation) external.Cancel();
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.That(target.IsCancelled, Is.True);
-        Assert.That(tracer.Expired, Is.EqualTo(!externalCancellation));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target.IsCancelled, Is.True);
+            Assert.That(tracer.Expired, Is.EqualTo(!externalCancellation));
+        }
         if (externalCancellation) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
         else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
         Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
@@ -265,8 +271,11 @@ public class GethStyleTracerTests
             new() { Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock }, CancellationToken.None);
         using (ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject))
         {
-            Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
-            Assert.That(owned.IsCancelled, Is.False, "arming an expired deadline does not deliver its watcher");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(TimeSpan.Zero));
+                Assert.That(owned.IsCancelled, Is.False, "arming an expired deadline does not deliver its watcher");
+            }
             if (deliver) clock.Advance(TimeSpan.Zero);
             Assert.That(owned.IsCancelled, Is.EqualTo(deliver));
             if (deliver) Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);

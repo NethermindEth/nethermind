@@ -57,8 +57,11 @@ public class TaikoExecutionPayloadTests
 
         ResultWrapper<GetPayloadV2Result?> result = await handler.HandleAsync(new byte[8]);
 
-        Assert.That(result.Result, Is.EqualTo(Result.Success));
-        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.ExecutionPayload, Is.TypeOf<TaikoExecutionPayload>());
@@ -106,13 +109,16 @@ public class TaikoExecutionPayloadTests
         Result<Block> result = payload.TryGetBlock();
 
         Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
-        Assert.That(result.Data.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
-        Assert.That(result.Data.Withdrawals, Is.Empty);
-        // A strict V2 driver (Rust) omits the blob gas fields; Unzen must still pin them to 0
-        // so the reconstructed hash matches the producer's.
-        Assert.That(result.Data.Header.BlobGasUsed, Is.EqualTo(0UL));
-        Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+            Assert.That(result.Data.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
+            Assert.That(result.Data.Withdrawals, Is.Empty);
+            // A strict V2 driver (Rust) omits the blob gas fields; Unzen must still pin them to 0
+            // so the reconstructed hash matches the producer's.
+            Assert.That(result.Data.Header.BlobGasUsed, Is.EqualTo(0UL));
+            Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -126,8 +132,11 @@ public class TaikoExecutionPayloadTests
         Result<Block> result = payload.TryGetBlock();
 
         Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Header.BlobGasUsed, Is.EqualTo(0UL));
-        Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Header.BlobGasUsed, Is.EqualTo(0UL));
+            Assert.That(result.Data.Header.ExcessBlobGas, Is.EqualTo(0UL));
+        }
     }
 
     // The shadowing setter must reach the base setter's memo invalidation: a tx-root task
@@ -185,9 +194,12 @@ public class TaikoExecutionPayloadTests
         Result<Block> result = payload.TryGetBlock();
 
         Assert.That(result.Data, Is.Not.Null);
-        Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.Null);
-        Assert.That(result.Data.Header.RequestsHash, Is.Null);
-        Assert.That(result.Data.Header.BlobGasUsed, Is.Null);
-        Assert.That(result.Data.Header.ExcessBlobGas, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Header.ParentBeaconBlockRoot, Is.Null);
+            Assert.That(result.Data.Header.RequestsHash, Is.Null);
+            Assert.That(result.Data.Header.BlobGasUsed, Is.Null);
+            Assert.That(result.Data.Header.ExcessBlobGas, Is.Null);
+        }
     }
 }

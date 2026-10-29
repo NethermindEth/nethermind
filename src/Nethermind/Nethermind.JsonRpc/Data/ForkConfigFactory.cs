@@ -18,8 +18,8 @@ internal static class ForkConfigFactory
 
         return new ForkConfig
         {
-            ActivationTime = fork.Activation.Timestamp is not null ? (int)fork.Activation.Timestamp : null,
-            ActivationBlock = fork.Activation.Timestamp is null ? (int)fork.Activation.BlockNumber : null,
+            ActivationTime = fork.Activation.Timestamp,
+            ActivationBlock = fork.Activation.Timestamp is null ? fork.Activation.BlockNumber : null,
             Active = active,
             BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
             {

@@ -45,8 +45,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
             Assert.That(serialized, Is.EqualTo(Bytes.FromHexString("cb2ac9c481aa81bb80c281cc")));
 
             using BlockAccessListsMessage decoded = Serializer.Deserialize(serialized);
-            Assert.That(decoded.RequestId, Is.EqualTo(42));
-            Assert.That(decoded.BlockAccessLists.Count, Is.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.RequestId, Is.EqualTo(42));
+                Assert.That(decoded.BlockAccessLists.Count, Is.EqualTo(3));
+            }
             Assert.That(decoded.BlockAccessLists[0], Is.SequenceEqualTo(new byte[] { 0xc4, 0x81, 0xaa, 0x81, 0xbb }));
             Assert.That(decoded.BlockAccessLists[1].Length, Is.EqualTo(0));
             Assert.That(decoded.BlockAccessLists[2], Is.SequenceEqualTo(new byte[] { 0xc2, 0x81, 0xcc }));

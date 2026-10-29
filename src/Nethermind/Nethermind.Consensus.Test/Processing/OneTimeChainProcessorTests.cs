@@ -61,8 +61,11 @@ public class OneTimeChainProcessorTests : ChainProcessorTestsBase
 
         Block? processed = _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
-        Assert.That(processed, Is.Null);
-        Assert.That(BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed, Is.Null);
+            Assert.That(BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -78,7 +81,10 @@ public class OneTimeChainProcessorTests : ChainProcessorTestsBase
 
         Block? processed = _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
-        Assert.That(processed, Is.Null);
-        Assert.That(BranchProcessor.ProcessedBranches, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed, Is.Null);
+            Assert.That(BranchProcessor.ProcessedBranches, Is.Empty);
+        }
     }
 }

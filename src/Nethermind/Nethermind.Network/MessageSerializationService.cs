@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -19,29 +20,64 @@ public class MessageSerializationService : IMessageSerializationService
 
     public MessageSerializationService(params IReadOnlyList<SerializerInfo> serializers)
     {
-        Type openGeneric = typeof(IZeroMessageSerializer<>);
-
         foreach ((Type MessageType, object Serializer) in serializers)
         {
-            Type expectedInterface = openGeneric.MakeGenericType(MessageType);
+            Type zeroInterface = typeof(IZeroMessageSerializer<>).MakeGenericType(MessageType);
+            Type spanInterface = typeof(IMessageSerializer<>).MakeGenericType(MessageType);
 
-            if (!expectedInterface.IsAssignableFrom(Serializer.GetType()))
+            if (!zeroInterface.IsAssignableFrom(Serializer.GetType()) && !spanInterface.IsAssignableFrom(Serializer.GetType()))
             {
-                ThrowInvalidSerializer(Serializer, expectedInterface);
+                ThrowInvalidSerializer(Serializer, zeroInterface, spanInterface);
             }
 
             _zeroSerializers[MessageType.TypeHandle] = Serializer;
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowInvalidSerializer(object serializer, Type expectedInterface)
-            => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {expectedInterface.Name}.");
+        static void ThrowInvalidSerializer(object serializer, Type zeroInterface, Type spanInterface)
+            => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {zeroInterface.Name} or {spanInterface.Name}.");
+    }
+
+    public ArrayPoolSpan<byte> Serialize<T>(T message) where T : MessageBase
+    {
+        if (!TryGetSerializer(out IMessageSerializer<T> serializer))
+            ThrowNoSerializerRegistered<T>(nameof(IMessageSerializer<>));
+
+        int length = serializer.GetLength(message);
+        ArrayPoolSpan<byte> buffer = new(length);
+        try
+        {
+            int written = serializer.Serialize(buffer, message);
+            if (written != length)
+                ThrowLengthMismatch(serializer, length, written);
+
+            return buffer;
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
+
+        // A short write would leave stale pooled bytes in the message.
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowLengthMismatch(object serializer, int length, int written)
+            => throw new InvalidOperationException($"{serializer.GetType().Name} wrote {written} bytes instead of the {length} it reported.");
     }
 
     public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
     {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+        if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
             ThrowNoSerializerRegistered<T>();
+
+        if (serializerObject is IMessageSerializer<T> serializer)
+            return serializer.Deserialize(bytes);
+
+        if (serializerObject is not IZeroMessageSerializer<T> zeroMessageSerializer)
+        {
+            ThrowInvalidSerializerType<T>(serializerObject);
+            return null!;
+        }
 
         IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
         byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
@@ -119,9 +155,21 @@ public class MessageSerializationService : IMessageSerializationService
         return false;
     }
 
+    private bool TryGetSerializer<T>(out IMessageSerializer<T> serializer) where T : MessageBase
+    {
+        if (_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject) && serializerObject is IMessageSerializer<T> messageSerializer)
+        {
+            serializer = messageSerializer;
+            return true;
+        }
+
+        serializer = null!;
+        return false;
+    }
+
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowNoSerializerRegistered<T>() where T : MessageBase
-        => throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<>)} registered for {typeof(T).Name}.");
+    private static void ThrowNoSerializerRegistered<T>(string serializerInterface = nameof(IZeroMessageSerializer<>)) where T : MessageBase
+        => throw new InvalidOperationException($"No {serializerInterface} registered for {typeof(T).Name}.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidSerializerType<T>(object? serializerObject)
@@ -132,4 +180,6 @@ public class MessageSerializationService : IMessageSerializationService
 public record SerializerInfo(Type MessageType, object Serializer)
 {
     public static SerializerInfo Create<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase => new(typeof(T), messageSerializer);
+
+    public static SerializerInfo Create<T>(IMessageSerializer<T> messageSerializer) where T : MessageBase => new(typeof(T), messageSerializer);
 }
