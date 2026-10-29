@@ -75,6 +75,7 @@ public class BlockAccessListLogTests
             Assert.That(BlockAccessListDecoder.EncodeToBytes(merged), Is.EqualTo(expectedRlp));
             Assert.That(merged.ItemCount, Is.EqualTo(expectedList.ItemCount));
             Assert.That(merged.Matches(BlockAccessListDecoder.Instance.Decode(expectedRlp)!, out Address? mismatched), Is.True, $"mismatch at {mismatched}");
+            Assert.That(BlockAccessListLog.Matches(logs, BlockAccessListDecoder.Instance.Decode(expectedRlp)!), Is.True);
         }
     }
 
@@ -82,17 +83,20 @@ public class BlockAccessListLogTests
     [TestCase(Mutation.StorageValue, "0x00000000000000000000000000000000000000a3")]
     [TestCase(Mutation.ExtraAccount, "0x00000000000000000000000000000000000000a1")]
     [TestCase(Mutation.MissingLastAccount, null)]
+    [TestCase(Mutation.MissingChange, "0x00000000000000000000000000000000000000a2")]
+    [TestCase(Mutation.UndeclaredRead, "0x00000000000000000000000000000000000000a3")]
     public void Matches_detects_the_first_difference(Mutation mutation, string? mismatchedAddress)
     {
-        MergedBlockAccessList suggested = Merge(BuildLogs(Mutation.None));
-        MergedBlockAccessList merged = Merge(BuildLogs(mutation));
+        ReadOnlyBlockAccessList suggested = BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(Merge(BuildLogs(Mutation.None))))!;
+        BlockAccessListLog[] logs = BuildLogs(mutation);
 
-        bool matches = merged.Matches(BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(suggested))!, out Address? mismatched);
+        bool matches = Merge(logs).Matches(suggested, out Address? mismatched);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(matches, Is.EqualTo(mutation == Mutation.None));
             Assert.That(mismatched, Is.EqualTo(mismatchedAddress is null ? null : new Address(mismatchedAddress)));
+            Assert.That(BlockAccessListLog.Matches(logs, suggested), Is.EqualTo(mutation == Mutation.None));
         }
     }
 
@@ -102,6 +106,8 @@ public class BlockAccessListLogTests
         StorageValue,
         ExtraAccount,
         MissingLastAccount,
+        MissingChange,
+        UndeclaredRead,
     }
 
     private static BlockAccessListLog[] BuildLogs(Mutation mutation)
@@ -113,13 +119,15 @@ public class BlockAccessListLogTests
 
         BlockAccessIndexRecorder first = new();
         first.Begin(1);
-        first.AddBalanceChange(a2, 10, 7);
+        if (mutation == Mutation.MissingChange) first.AddAccountRead(a2);
+        else first.AddBalanceChange(a2, 10, 7);
         first.AddStorageChange(new StorageCell(a3, 1), 0, mutation == Mutation.StorageValue ? (UInt256)6 : 5);
         if (mutation == Mutation.ExtraAccount) first.AddAccountRead(a1);
 
         BlockAccessIndexRecorder second = new();
         second.Begin(2);
         second.AddStorageRead(new StorageCell(a3, 2));
+        if (mutation == Mutation.UndeclaredRead) second.AddStorageRead(new StorageCell(a3, 3));
         if (mutation != Mutation.MissingLastAccount) second.AddAccountRead(a4);
 
         first.Log.Seal();

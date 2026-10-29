@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp.Eip7928;
 
@@ -27,19 +29,21 @@ public partial class BlockAccessListManager
         }
 
         CheckInitialized();
-        _mergedBlockAccessList.Merge(_txProcessorWithWorldStateManager.SealLogs());
-        // Set before validating, so a block rejected for its access list keeps the generated one.
-        if (!VerifyOnly)
+        ReadOnlySpan<BlockAccessListLog> logs = _txProcessorWithWorldStateManager.SealLogs();
+        if (VerifyOnly)
         {
-            GeneratedBlockAccessList = _mergedBlockAccessList.ToGeneratedBlockAccessList();
-            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+            ValidateLogs(block, logs);
+            return;
         }
 
-        if (_validateBlockAccessList) ValidateMergedBlockAccessList(block);
+        _mergedBlockAccessList.Merge(logs);
+        // Set before validating, so a block rejected for its access list keeps the generated one.
+        GeneratedBlockAccessList = _mergedBlockAccessList.ToGeneratedBlockAccessList();
+        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
 
         if (_validateBlockAccessList)
         {
-            if (VerifyOnly) return;
+            ValidateMergedBlockAccessList(block);
 
             // A match encodes to the suggested canonical wire bytes, as the decoder accepts nothing else, so their hash
             // stands in for the re-encode.

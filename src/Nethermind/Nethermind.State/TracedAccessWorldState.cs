@@ -35,6 +35,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private StorageCell _lastReadStorageCell;
     private bool _hasLastReadStorageCell;
 
+    /// <summary>Marks the declared reads executed, which then record only their account.</summary>
+    public BalReadCoverage? ReadCoverage { get; set; }
+
     public BlockAccessIndexRecorder? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessIndexRecorder? bal)
     {
@@ -100,8 +103,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RecordStorageRead(in StorageCell storageCell)
     {
+        if (ReadCoverage?.TryMark(in storageCell) == true) GeneratingBlockAccessList.AddAccountRead(storageCell.Address);
         // A slot the index also writes is listed as a change; sealing the log drops the read.
-        GeneratingBlockAccessList.AddStorageRead(in storageCell);
+        else GeneratingBlockAccessList.AddStorageRead(in storageCell);
         _lastReadStorageCell = storageCell;
         _hasLastReadStorageCell = true;
     }

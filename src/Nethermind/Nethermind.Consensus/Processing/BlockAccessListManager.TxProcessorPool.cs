@@ -44,7 +44,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -62,6 +62,7 @@ public partial class BlockAccessListManager
 
         private Block? _currentBlock;
         private BlockExecutionContext _currentCtx;
+        private BalReadStoragePlan? _readPlan;
         private int _lastBalIndex;
 
         // _inUse[i] is the processor currently bound to balIndex i.
@@ -108,10 +109,11 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
+            _readPlan = readPlan;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -172,7 +174,7 @@ public partial class BlockAccessListManager
                     processor.LogGeneration = _blockGeneration;
                 }
                 processor.WorldState.SetGeneratingBlockAccessList(processor.Recorder);
-                processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader);
+                processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader, _readPlan);
                 _inUse[idx] = processor;
                 if (IsTransactionSlot(idx)) Interlocked.Decrement(ref _txRentsLeft);
                 return processor;
@@ -359,10 +361,10 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(_txProcessorWithWorldState.Recorder);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? _)
         {
             _log[0].Clear();
-            _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null);
+            _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u, parentReader: null, readPlan: null);
         }
 
         public TxProcessorWithWorldState Get(uint? _)
@@ -392,6 +394,7 @@ public partial class BlockAccessListManager
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
         private bool _parentReaderAttached;
+        private BalReadCoverage? _readCoverage;
 
         /// <summary>The block generation <see cref="Recorder"/>'s log belongs to.</summary>
         public int LogGeneration;
@@ -438,7 +441,7 @@ public partial class BlockAccessListManager
         /// safe: the parent reader only reads the parent state, which no slice writes, and the BAL-backed world state
         /// resets its own per-slice caches in its <c>Setup</c> and <c>ClearParentReader</c>.
         /// </remarks>
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan)
         {
             if (_parentReaderAttached) ThrowParentReaderStillAttached();
 
@@ -456,6 +459,9 @@ public partial class BlockAccessListManager
                 if (parentReader is null) ThrowParentReaderUnavailable();
                 _balWorldState.SetParentReader(parentReader.WorldState);
                 _parentReaderAttached = true;
+                if (readPlan is not null && !ReferenceEquals(_readCoverage?.Plan, readPlan))
+                    _readCoverage = readPlan.CreateCoverage();
+                WorldState.ReadCoverage = readPlan is null ? null : _readCoverage;
                 _balWorldState.Setup(block);
             }
         }
@@ -463,6 +469,7 @@ public partial class BlockAccessListManager
         /// <summary>Ends the slice's use of the parent reader and keeps the lease for the next slice of the block.</summary>
         public void DetachParentReader()
         {
+            WorldState.ReadCoverage = null;
             _balWorldState?.ClearParentReader();
             _parentReaderAttached = false;
         }

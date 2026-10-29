@@ -24,6 +24,8 @@ namespace Nethermind.Consensus.Processing;
 ///   * <see cref="IncrementalValidation"/> awaits each worker's gas result and runs the
 ///     EIP-8037 2D inclusion check on the cumulative gas.
 ///   * <see cref="CheckPerTxInclusion"/> is the EIP-8037 worst-case 2D inclusion check.
+///   * <see cref="ValidateLogs"/> checks the logs against the suggested list once the block has
+///     executed in parallel, merging them only to report a mismatch.
 ///   * <see cref="ValidateMergedBlockAccessList"/> compares the merged list with the suggested
 ///     one once the block has executed.
 /// </summary>
@@ -129,6 +131,25 @@ public partial class BlockAccessListManager
                 $"state_available={block.Header.GasLimit - cumulativeState}, " +
                 $"tx.gas={tx.GasLimit}.");
         }
+    }
+
+    /// <summary>Checks the logs against the block's suggested list without merging them.</summary>
+    /// <remarks>
+    /// Each index is recorded in one log, so the logs match when the suggested list declares all that each holds,
+    /// together they hold as many changes as it and touch all its accounts, and every declared read executed. A
+    /// mismatch is reported as <see cref="ValidateMergedBlockAccessList"/> reports it, over the merged logs and the
+    /// declared reads that executed.
+    /// </remarks>
+    private void ValidateLogs(Block block, ReadOnlySpan<BlockAccessListLog> logs)
+    {
+        if (BlockAccessListLog.Matches(logs, block.BlockAccessList!) && _readPlan?.TryFindUncovered(out _) != true) return;
+
+        BlockAccessIndexRecorder coveredReads = new();
+        coveredReads.Begin((uint)block.Transactions.Length + 1);
+        _readPlan?.RecordCoveredReads(coveredReads);
+        coveredReads.Log.Seal();
+        _mergedBlockAccessList.Merge([.. logs, coveredReads.Log]);
+        ValidateMergedBlockAccessList(block);
     }
 
     /// <summary>Checks the merged list against the block's suggested one.</summary>

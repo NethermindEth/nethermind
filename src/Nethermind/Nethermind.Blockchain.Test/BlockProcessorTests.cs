@@ -1628,14 +1628,21 @@ public partial class BlockProcessorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2)
                 .WithStorageChanges(3, new StorageChange(1, 7u)).TestObject).TestObject;
+        BalReadCoverage? previousCoverage = null;
+        Dictionary<TracedAccessWorldState, (BalReadCoverage Coverage, int Block)> previousWorkers = [];
+        bool reusedWorkerInBlock = false;
         for (int blockNumber = 1; blockNumber <= blockCount; blockNumber++)
         {
+            reusedWorkerInBlock = false;
             Block block = Build.A.Block.WithParent(parent).WithNumber(blockNumber).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
             PrepareSetup(manager, block, Amsterdam.Instance);
+            if (previousCoverage is not null) Assert.That(previousCoverage.Plan, Is.Null);
             Assert.That(manager.ParallelExecutionEnabled, Is.True);
             manager.NextTransaction();
             manager.GetTxProcessor(0);
             TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(pre, blockNumber);
+            previousCoverage = pre.ReadCoverage;
             pre.Get(new StorageCell(TestItem.AddressA, 1), out _);
             pre.Get(new StorageCell(TestItem.AddressA, 3), out _);
             if (revertWrite)
@@ -1648,6 +1655,7 @@ public partial class BlockProcessorTests
             manager.ReturnTxProcessor(0);
             manager.GetTxProcessor(uint.MaxValue);
             TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
+            CheckWorkerCoverage(post, blockNumber);
             post.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)7);
             bool skipRead = omitRead && blockNumber == blockCount;
             if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2), out _);
@@ -1663,6 +1671,32 @@ public partial class BlockProcessorTests
             }
         }
 
+        if (blockCount > RuntimeInformation.ProcessorCount)
+            Assert.That(reusedWorkerInBlock, Is.True, "The final block must reuse a worker from an earlier block.");
+
+        Block disabledBlock = Build.A.Block.WithNumber(blockCount + 1).TestObject;
+        manager.PrepareForProcessing(disabledBlock, Prague.Instance, ProcessingOptions.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.Enabled, Is.False);
+            Assert.That(previousCoverage!.Plan, Is.Null);
+        }
+
+        void CheckWorkerCoverage(TracedAccessWorldState worker, int blockNumber)
+        {
+            Assert.That(worker.ReadCoverage, Is.Not.Null);
+            if (previousWorkers.TryGetValue(worker, out (BalReadCoverage Coverage, int Block) previous)
+                && previous.Block < blockNumber)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(worker.ReadCoverage, Is.Not.SameAs(previous.Coverage));
+                    Assert.That(previous.Coverage.Plan, Is.Null);
+                }
+                reusedWorkerInBlock = true;
+            }
+            previousWorkers[worker] = (worker.ReadCoverage!, blockNumber);
+        }
     }
 
     private static IEnumerable<int> ReadCoverageBlockCounts()

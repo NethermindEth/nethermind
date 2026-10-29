@@ -69,6 +69,8 @@ public partial class BlockAccessListManager(
         || readOnlyTxProcessingEnvFactory is not null;
 
     private readonly MergedBlockAccessList _mergedBlockAccessList = new();
+    // Tracks the suggested list's declared reads on the verify-only path, whose logs then hold only their accounts.
+    private BalReadStoragePlan? _readPlan;
     // Whether the merged list is checked against the suggested one rather than only encoded.
     private bool _validateBlockAccessList;
     // EIP-7928: post-execution system calls read storage without spending block gas, so the
@@ -102,6 +104,7 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -123,6 +126,8 @@ public partial class BlockAccessListManager(
         {
             Reset();
             VerifyOnly = ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList;
+            if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
+                _readPlan = new BalReadStoragePlan(bal);
             // The parallel path executes on the suggested list, so it always checks it.
             _validateBlockAccessList = suggestedBlock.BlockAccessList is not null
                 && (ParallelExecutionEnabled
@@ -191,7 +196,7 @@ public partial class BlockAccessListManager(
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
             // Read from the state before the block, which the post-execution calls' code can differ from only when the block deploys it.
             _postExecutionReadAllowance = _validateBlockAccessList && ChargeableStorageReads(block.BlockAccessList!) > 0ul
                 ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
@@ -261,6 +266,7 @@ public partial class BlockAccessListManager(
 
     public void Dispose()
     {
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
         if (!ZkEvmFlag.IsActive && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();

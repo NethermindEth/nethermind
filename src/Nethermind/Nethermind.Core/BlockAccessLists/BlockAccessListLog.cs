@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -154,6 +157,129 @@ public sealed class BlockAccessListLog : IResettable
 
     /// <summary>The code change a sealed <see cref="Section.Code"/> item refers to.</summary>
     internal CodeChange GetCodeChange(in Item item) => GetCodeWrite((int)item.Value.u0).Change;
+
+    /// <summary>Whether the sealed runs of <paramref name="logs"/> together hold exactly the accounts and changes of
+    /// <paramref name="suggested"/>, and only storage reads it declares.</summary>
+    /// <param name="logs">Sealed logs, together holding each block access index at most once.</param>
+    /// <param name="suggested">The block's access list.</param>
+    /// <remarks>
+    /// Checks each log on its own, in parallel, instead of merging them. As no index is in two logs, logs that hold only
+    /// what <paramref name="suggested"/> declares, together hold as many changes as it and touch all its accounts hold
+    /// exactly its accounts and changes. Whether the declared reads all happened is for <see cref="BalReadStoragePlan"/>.
+    /// </remarks>
+    public static bool Matches(ReadOnlySpan<BlockAccessListLog> logs, ReadOnlyBlockAccessList suggested)
+    {
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = suggested.AccountChanges.AsSpan();
+        int suggestedChanges = suggested.TotalStorageChangeEvents;
+        foreach (ReadOnlyAccountChanges account in accounts)
+        {
+            suggestedChanges += account.BalanceChanges.Length + account.NonceChanges.Length + account.CodeChanges.Length;
+        }
+
+        int words = (accounts.Length + 63) / 64;
+        ulong[] touchedAccounts = ArrayPool<ulong>.Shared.Rent(words);
+        int[] changeCounts = ArrayPool<int>.Shared.Rent(logs.Length);
+        BlockAccessListLog[] runs = ArrayPool<BlockAccessListLog>.Shared.Rent(logs.Length);
+        try
+        {
+            touchedAccounts.AsSpan(0, words).Clear();
+            logs.CopyTo(runs);
+            ParallelUnbalancedWork.For(0, logs.Length, (runs, suggested, touchedAccounts, changeCounts), static (i, state) =>
+            {
+                state.changeCounts[i] = state.runs[i].IsDeclaredBy(state.suggested, state.touchedAccounts, out int changeCount) ? changeCount : -1;
+                return state;
+            });
+
+            int changes = 0;
+            foreach (int changeCount in changeCounts.AsSpan(0, logs.Length))
+            {
+                if (changeCount < 0) return false;
+                changes += changeCount;
+            }
+
+            return changes == suggestedChanges && AllTouched(touchedAccounts.AsSpan(0, words), accounts.Length);
+        }
+        finally
+        {
+            ArrayPool<BlockAccessListLog>.Shared.Return(runs, clearArray: true);
+            ArrayPool<int>.Shared.Return(changeCounts);
+            ArrayPool<ulong>.Shared.Return(touchedAccounts);
+        }
+
+        static bool AllTouched(ReadOnlySpan<ulong> touched, int count)
+        {
+            for (int word = 0; word < touched.Length; word++)
+            {
+                int bits = int.Min(64, count - word * 64);
+                ulong expected = bits == 64 ? ulong.MaxValue : (1UL << bits) - 1;
+                if (touched[word] != expected) return false;
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>Whether <paramref name="suggested"/> declares every account, change and storage read of the sealed run.</summary>
+    /// <param name="suggested">The block's access list.</param>
+    /// <param name="touchedAccounts">A bit per account of <paramref name="suggested"/>, set for each account the run holds; shared by the logs of a block.</param>
+    /// <param name="changeCount">The number of changes the run holds.</param>
+    /// <remarks>
+    /// A change must equal the one <paramref name="suggested"/> lists for its key and index, and a read must name a slot it
+    /// lists as read or changed.
+    /// </remarks>
+    private bool IsDeclaredBy(ReadOnlyBlockAccessList suggested, ulong[] touchedAccounts, out int changeCount)
+    {
+        changeCount = 0;
+        ReadOnlySpan<ReadOnlyAccountChanges> accounts = suggested.AccountChanges.AsSpan();
+        ReadOnlyAccountChanges? account = null;
+        int ordinal = 0;
+        foreach (ref readonly Item item in Items)
+        {
+            if (item.Section == Section.Account)
+            {
+                // The run is sorted by address, so its next account is never before the previous one.
+                ordinal = FindAccount(accounts, ordinal, item.Address);
+                if (ordinal < 0) return false;
+                account = accounts[ordinal];
+                Interlocked.Or(ref touchedAccounts[ordinal >> 6], 1UL << (ordinal & 63));
+                continue;
+            }
+
+            bool declared = item.Section switch
+            {
+                Section.Storage when !item.IsChange => account!.TryGetDeclaredSlotChanges(in item.Slot, out _),
+                Section.Storage => account!.TryGetSlotChanges(in item.Slot, out ReadOnlySlotChanges? slot)
+                    && Contains<StorageChange>(slot.Changes, new StorageChange(item.Index, in item.Value)),
+                Section.Balance => Contains<BalanceChange>(account!.BalanceChanges, new BalanceChange(item.Index, item.Value)),
+                Section.Nonce => Contains<NonceChange>(account!.NonceChanges, new NonceChange(item.Index, item.Value.u0)),
+                _ => Contains<CodeChange>(account!.CodeChanges, GetCodeChange(in item)),
+            };
+            if (!declared) return false;
+            if (item.IsChange) changeCount++;
+        }
+
+        return true;
+
+        static bool Contains<T>(ReadOnlySpan<T> changes, in T change) where T : struct, IIndexedChange, IEquatable<T>
+        {
+            int position = changes.BinarySearch(new IndexKey<T>(change.Index));
+            return position >= 0 && changes[position].Equals(change);
+        }
+    }
+
+    private static int FindAccount(ReadOnlySpan<ReadOnlyAccountChanges> accounts, int from, Address address)
+    {
+        for (int left = from, right = accounts.Length - 1; left <= right;)
+        {
+            int middle = left + ((right - left) >> 1);
+            int cmp = accounts[middle].Address.Bytes.SequenceCompareTo(address.Bytes);
+            if (cmp == 0) return middle;
+            if (cmp < 0) left = middle + 1;
+            else right = middle - 1;
+        }
+
+        return -1;
+    }
 
     public void Clear()
     {
