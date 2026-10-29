@@ -246,8 +246,8 @@ public class SnapRangeProofBoundaryTests
         }
     }
 
-    // Slots made up under the root extension, with only the extension as proof. Enough of them, and spread over every
-    // first nibble, to take the parallel path of the bulk set.
+    // Slots made up under the root extension, with only the extension as proof. The extension lies inside the range, so
+    // its missing child is caught before the bulk set.
     [TestCase(Backend.Patricia)]
     [TestCase(Backend.Flat)]
     public void AddStorageRange_SlotsUnderAnExtensionWhoseChildIsNotInTheProof_AreAnInvalidProof(Backend backend)
@@ -285,6 +285,66 @@ public class SnapRangeProofBoundaryTests
         (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
             scope.Factory, 0, source.StateRoot, ValueKeccak.Zero, ValueKeccak.MaxValue,
             [MadeUpAccountBeforeD()], Proofs(source.AccountProof(KeyBeforeD)));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
+    // Made-up accounts over every first nibble, enough for the parallel bulk set, the one under f reaching leaf D, which
+    // the proof keeps as a hash. No extension lies on this proof, so only the catch around the bulk set rejects the range.
+    [TestCase(Backend.Patricia)]
+    [TestCase(Backend.Flat)]
+    public void AddAccountRange_ManyEntriesOneReachingALeafTheProofKeepsAsAHash_IsAnInvalidProof(Backend backend)
+    {
+        Source source = new();
+        using FactoryScope scope = new(backend);
+
+        List<PathWithAccount> accounts = [MadeUpAccountBeforeD()];
+        for (int nibble = 0; nibble < 0xf; nibble++)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                byte[] key = Keccak.Compute(new byte[] { (byte)nibble, (byte)i }).BytesToArray();
+                key[0] = (byte)((nibble << 4) | (key[0] & 0x0f));
+                accounts.Add(new PathWithAccount(new ValueHash256(key), Build.An.Account.WithBalance(9).TestObject));
+            }
+        }
+        accounts.Sort(static (x, y) => x.Path.CompareTo(y.Path));
+        Assert.That(accounts, Has.Count.GreaterThanOrEqualTo(PatriciaTree.MinEntriesToParallelizeThreshold), "guards the premise");
+
+        (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
+            scope.Factory, 0, source.StateRoot, ValueKeccak.Zero, ValueKeccak.MaxValue,
+            accounts, Proofs(source.AccountProof(KeyBeforeD)));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
+    // A proof of absence for [0x40.., 0xb1ff..]: the limit runs through the extension, whose keys B and C lie in the
+    // range, and the start does not reach it.
+    [Test]
+    public void AddStorageRange_ProofOfAbsenceWhoseLimitRunsThroughAnExtensionWhoseChildIsNotInTheProof_IsAnInvalidProof()
+    {
+        Source source = new();
+        ValueHash256 origin = new("0x4000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 limit = new("0xb1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        byte[][] proof = [.. source.StorageProof(KeyD, origin), .. WithoutExtensionChild(source.StorageProof(KeyD, limit))];
+
+        (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
+            CreatePatriciaFactory(), source.AccountD, [], origin, limit, Proofs(proof));
+
+        Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
+    // A proof of absence for [0x10.., max] made of the root extension alone, which lies inside the range with both slots.
+    [Test]
+    public void AddStorageRange_ProofOfAbsenceOfARootExtensionInsideTheRange_IsAnInvalidProof()
+    {
+        Source source = new();
+        ValueHash256 origin = new("0x1000000000000000000000000000000000000000000000000000000000000000");
+        byte[][] proof = source.StorageProof(KeyA, origin);
+        Assert.That(proof, Has.Length.EqualTo(1), "guards the premise: the proof of the origin is the root extension alone");
+
+        (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
+            CreatePatriciaFactory(), source.AccountA, [], origin, null, Proofs(proof));
 
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
