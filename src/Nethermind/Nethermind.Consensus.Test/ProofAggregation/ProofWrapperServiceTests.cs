@@ -657,6 +657,67 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // A transaction whose own proving cost exceeds the per-wrapper budget is still produced, alone, rather than never offered.
+    [Test]
+    public void Transaction_exceeding_the_proving_budget_alone_is_still_produced()
+    {
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        Dictionary<FrameDependency, byte[]> witnesses = [];
+        Transaction wide = WitnessedTransaction(store, witnesses, 0, sphincs: Eip8288Constants.MaxSigsPerTx, starks: 1);
+        Transaction small = WitnessedTransaction(store, witnesses, 1, sphincs: 1);
+        Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
+        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.GreaterThan(ProofWrapperService.MaxWrapperProvingCost));
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([wide, small], store, verifier);
+        List<MempoolWrapper> produced = [];
+
+        Result result = service.RefreshWrapper(() => produced.Add(Decode(service.GetLatestWrapper().Data!)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(Result.Success));
+            Assert.That(produced.SelectMany(static w => w.Transactions).Select(static tx => tx.Hash), Is.EquivalentTo(new[] { wide.Hash, small.Hash }));
+            Assert.That(produced.Single(w => w.Transactions.Any(tx => tx.Hash == wide.Hash)).Transactions, Has.Count.EqualTo(1));
+            Assert.That(produced.Select(static w => w.Mode), Is.All.EqualTo(MempoolWrapper.ModeRecursive));
+            Assert.That(verifier.ProofCalls, Is.Positive);
+        }
+    }
+
+    /// <summary>A frame transaction with <paramref name="sphincs"/> leanSPHINCS and <paramref name="starks"/> leanSTARK dependencies,
+    /// whose coverage is added to <paramref name="store"/>: their direct witnesses, recorded in <paramref name="witnesses"/>, or a
+    /// recursive proof when <paramref name="proven"/>.</summary>
+    private static Transaction WitnessedTransaction(LeanProofStore store, Dictionary<FrameDependency, byte[]> witnesses, ulong nonce, int sphincs,
+        int starks = 0, int starkWitnessBytes = 1024, bool proven = false)
+    {
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+            Enumerable.Range(0, sphincs).Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"{nonce}:{i}"), default))
+                .Concat(Enumerable.Range(0, starks).Select(i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"{nonce}:stark:{i}"), default))));
+        if (proven) store.AddVerified(dependencies, null, [(byte)(nonce + 1)]);
+        else
+        {
+            byte[][] direct = [.. dependencies.Select(dependency =>
+            {
+                byte[] witness = new byte[dependency.Scheme == Eip8288Constants.LeanStarkScheme ? starkWitnessBytes : Eip8288Constants.LeanSphincsWitnessBytes];
+                dependency.DataHash.Bytes.CopyTo(witness);
+                witnesses[dependency] = witness;
+                return witness;
+            })];
+            store.AddVerified(dependencies, direct, null);
+        }
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Nonce = nonce,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)dependencies.Sum(static dependency => (long)dependency.VerificationGas),
+                UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
     [Test]
     public void Retained_large_mixed_roots_remain_eligible_for_gossip([Values] bool sameParent)
     {

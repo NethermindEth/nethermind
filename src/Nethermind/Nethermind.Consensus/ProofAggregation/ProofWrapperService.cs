@@ -41,7 +41,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     /// folding <c>MAX_LEANSIG_DEPS_PER_WRAPPER</c> fresh signatures.</summary>
     /// <remarks>EIP-8288 sets no mode-1 dependency-count limit, so a produced wrapper is bounded by <c>MAX_WRAPPER_BYTES</c>, the
     /// pinned guest's <see cref="Eip8288Constants.MaxProofDependencies"/> and this budget: it may cover many more dependencies
-    /// when they come from already proven aggregates, whose merge costs far less than fresh signatures.</remarks>
+    /// when they come from already proven aggregates, whose merge costs far less than fresh signatures. A transaction exceeding it
+    /// alone is produced in a wrapper of its own.</remarks>
     internal const long MaxWrapperProvingCost = Eip8288Constants.MaxLeanSigDepsPerWrapper * RecursiveStarkAggregator.SignatureCost
         + (Eip8288Constants.MaxLeanSigDepsPerWrapper / RecursiveStarkAggregator.DirectBatchSize - 1) * RecursiveStarkAggregator.MergeCost;
 
@@ -607,11 +608,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     || combined.Count + candidateInput.Discards.Count > Eip8288Constants.MaxProofDependencies
                     || !Eip8288Dependencies.FitsProofList(combined)) continue;
                 // Mode-0 witnesses fold directly into the aggregate and proven aggregates merge whole; the wrapper ends once the
-                // proving work would exceed the budget, whichever way the previous wrapper's proof is reused.
-                if (ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost)
+                // proving work would exceed the budget, whichever way the previous wrapper's proof is reused. A transaction
+                // exceeding the budget alone is still offered, in a wrapper of its own.
+                if (transactions.Count != 0 && ProvingCost(candidateInput, combined, previousProof) > MaxWrapperProvingCost)
                 {
-                    if (transactions.Count != 0) { next = end = candidateIndex; break; }
-                    continue;
+                    next = end = candidateIndex;
+                    break;
                 }
                 deps = combined;
                 selectedInput = candidateInput;
