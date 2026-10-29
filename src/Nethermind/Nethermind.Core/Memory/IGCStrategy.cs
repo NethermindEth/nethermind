@@ -21,6 +21,9 @@ public interface IGCStrategy
     int CollectionsPerUnconditionalDecommit => -1;
     /// <summary>Gets the delay in milliseconds before attempting a post-payload collection.</summary>
     int PostBlockDelayMs { get; }
+    /// <summary>Gets whether the keeper may shorten <see cref="PostBlockDelayMs"/> to fit the idle gap payloads leave.</summary>
+    /// <remarks>Defaults to <c>false</c>, so a strategy that does not implement it keeps a fixed delay.</remarks>
+    bool AdaptivePostBlockDelay => false;
     /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>
     bool CanStartNoGCRegion();
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>

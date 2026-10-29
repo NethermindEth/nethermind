@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -985,6 +986,165 @@ public class GCKeeperTests
             MemoryReads++;
             return new(MemoryLoadBytes, TotalMemoryBytes);
         }
+    }
+
+    private static IGCStrategy CreateCadenceStrategy(int postBlockDelayMs, bool adaptive)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(-1);
+        strategy.PostBlockDelayMs.Returns(postBlockDelayMs);
+        strategy.AdaptivePostBlockDelay.Returns(adaptive);
+        return strategy;
+    }
+
+    /// <summary>
+    /// Delivers payloads on a manual clock at a fixed interval, each in processing for a fixed time, and runs the
+    /// throttled post-block collection each one schedules. A post-block delay longer than the idle time left is cut
+    /// short by the next payload, as its engine API call cancels the pending collection.
+    /// </summary>
+    private sealed class CadenceRun
+    {
+        private long _idleLeftMs;
+        public ManualTimeProvider Time { get; } = new();
+        /// <summary>The post-block delays the keeper asked for, one per payload.</summary>
+        public List<int> Delays { get; } = [];
+
+        public Task<bool> Delay(int milliseconds, CancellationToken _)
+        {
+            Delays.Add(milliseconds);
+            bool completed = milliseconds <= _idleLeftMs;
+            long waitedMs = completed ? milliseconds : _idleLeftMs;
+            Time.Advance(TimeSpan.FromMilliseconds(waitedMs));
+            _idleLeftMs -= waitedMs;
+            return Task.FromResult(completed);
+        }
+
+        /// <returns>The 1-based payloads after which a collection ran.</returns>
+        public async Task<List<int>> Run(GCKeeper keeper, IGCStrategy strategy, RegionRuntime runtime, int payloads, int intervalMs, int processingMs)
+        {
+            List<int> collected = [];
+            for (int i = 1; i <= payloads; i++)
+            {
+                strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+                IDisposable lease = keeper.TryStartNoGCRegion();
+                Time.Advance(TimeSpan.FromMilliseconds(processingMs));
+                lease.Dispose();
+                strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+
+                _idleLeftMs = intervalMs - processingMs;
+                int before = runtime.Collections.Count;
+                await keeper.ScheduleGCInternal(throttle: true);
+                if (runtime.Collections.Count > before) collected.Add(i);
+                Time.Advance(TimeSpan.FromMilliseconds(_idleLeftMs));
+            }
+            return collected;
+        }
+    }
+
+    // The window holds 16 samples: from payload 17 on, the keeper times its collection by the cadence.
+    private const int CadencePayloads = 40;
+    private const int FirstAdaptedPayload = PayloadCadence.Samples + 1;
+
+    public enum Cadence { Ms200, Seconds2, Seconds12 }
+
+    [Test]
+    public async Task Post_block_delay_and_spacing_follow_the_payload_cadence([Values] Cadence cadence)
+    {
+        (int intervalMs, int processingMs, int slotDelayMs, int adaptedDelayMs) = cadence switch
+        {
+            // 160 ms idle: a quarter of it, so the collection runs before the next payload.
+            Cadence.Ms200 => (200, 40, 250, 40),
+            // 1.8 s idle: a quarter would be longer than the slot's delay, which stays.
+            Cadence.Seconds2 => (2_000, 200, 250, 250),
+            Cadence.Seconds12 => (12_000, 500, 1_500, 1_500),
+            _ => throw new ArgumentOutOfRangeException(nameof(cadence))
+        };
+        IGCStrategy strategy = CreateCadenceStrategy(slotDelayMs, adaptive: true);
+        RegionRuntime runtime = new();
+        CadenceRun run = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, run.Delay, run.Time);
+
+        List<int> collected = await run.Run(keeper, strategy, runtime, CadencePayloads, intervalMs, processingMs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Delays.Take(PayloadCadence.Samples), Is.All.EqualTo(slotDelayMs), "the slot's delay until the window is full");
+            Assert.That(run.Delays.Skip(PayloadCadence.Samples), Is.All.EqualTo(adaptedDelayMs));
+            // At 200 ms the slot's delay never completes; at 2 s the 3 s spacing lets every other payload collect.
+            Assert.That(collected.Count(static i => i < FirstAdaptedPayload), Is.EqualTo(cadence switch
+            {
+                Cadence.Ms200 => 0,
+                Cadence.Seconds2 => 8,
+                _ => 16
+            }));
+            Assert.That(collected.Where(static i => i >= FirstAdaptedPayload),
+                Is.EqualTo(Enumerable.Range(FirstAdaptedPayload, CadencePayloads - PayloadCadence.Samples)), "a collection after every payload");
+        }
+    }
+
+    [Test]
+    public async Task Back_to_back_payloads_keep_the_configured_timing([Values] bool explicitZeroDelay)
+    {
+        // A 45 ms payload every 50 ms leaves 5 ms of idle time: catch-up or replay, not a chain's cadence.
+        IGCStrategy strategy = CreateCadenceStrategy(explicitZeroDelay ? 0 : 250, adaptive: !explicitZeroDelay);
+        RegionRuntime runtime = new();
+        CadenceRun run = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, run.Delay, run.Time);
+
+        List<int> collected = await run.Run(keeper, strategy, runtime, 100, 50, 45);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Delays, Is.EqualTo(explicitZeroDelay ? Array.Empty<int>() : Enumerable.Repeat(250, 100).ToArray()));
+            // Without a delay the 3 s spacing still holds: payload 1, then the first one more than 3 s later.
+            Assert.That(collected, Is.EqualTo(explicitZeroDelay ? new[] { 1, 62 } : Array.Empty<int>()));
+        }
+    }
+
+    [Test]
+    public async Task Explicit_post_block_delay_is_kept_while_the_spacing_adapts()
+    {
+        IGCStrategy strategy = CreateCadenceStrategy(100, adaptive: false);
+        RegionRuntime runtime = new();
+        CadenceRun run = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, run.Delay, run.Time);
+
+        List<int> collected = await run.Run(keeper, strategy, runtime, CadencePayloads, 200, 40);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Delays, Is.EqualTo(Enumerable.Repeat(100, CadencePayloads)));
+            Assert.That(collected.Where(static i => i >= FirstAdaptedPayload),
+                Is.EqualTo(Enumerable.Range(FirstAdaptedPayload, CadencePayloads - PayloadCadence.Samples)));
+        }
+    }
+
+    // A payload that starts while the previous one is still in processing leaves no idle gap, so a stream of
+    // overlapping payloads reads as back to back however long their interval is.
+    [Test]
+    public async Task Overlapping_payloads_leave_no_idle_gap()
+    {
+        IGCStrategy strategy = CreateCadenceStrategy(250, adaptive: true);
+        RegionRuntime runtime = new();
+        CadenceRun run = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, run.Delay, run.Time);
+
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        IDisposable previous = keeper.TryStartNoGCRegion();
+        for (int i = 0; i < 2 * PayloadCadence.Samples; i++)
+        {
+            run.Time.Advance(TimeSpan.FromMilliseconds(200));
+            IDisposable next = keeper.TryStartNoGCRegion();
+            previous.Dispose();
+            previous = next;
+        }
+        previous.Dispose();
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        Assert.That(run.Delays, Is.EqualTo(new[] { 250 }));
     }
 
     [Test]

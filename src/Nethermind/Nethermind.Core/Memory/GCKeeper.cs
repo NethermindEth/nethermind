@@ -13,7 +13,12 @@ using Nethermind.Core.Extensions;
 public class GCKeeper : IDisposable
 {
     private const int DecommitIdleDelayMs = 3_000;
-    private const int MinMsBetweenCollections = 3_000;
+    private const int DefaultMinMsBetweenCollections = 3_000;
+    // Payloads that leave less idle time than this come back to back (catch-up, replay): the timing stays as configured.
+    private const int MinIdleGapForCadenceMs = 40;
+    // The adapted post-block delay leaves the collection three quarters of the idle gap to finish before the next payload.
+    private const int IdleGapPerPostBlockDelay = 4;
+    private const int MinPostBlockDelayMs = 10;
     private long _payloadsSinceDecommit;
     private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
@@ -22,6 +27,11 @@ public class GCKeeper : IDisposable
     private readonly Func<int, CancellationToken, Task<bool>> _delay;
     private NoGCRegion? _region;
     private readonly int _postBlockDelayMs;
+    private readonly bool _adaptPostBlockDelay;
+    private readonly TimeProvider _time;
+    private readonly long _ticksPerMs;
+    private readonly PayloadCadence _cadence = new();
+    private int _payloadsInProcessing;
     private readonly ILogger _logger;
     // The runtime splits totalSize as soh = total - loh; when lohSize is omitted it budgets the
     // full totalSize for LOH as well, committing that much LOH inside the per-call EE suspension.
@@ -39,10 +49,13 @@ public class GCKeeper : IDisposable
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
 
     internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGcRegionRuntime runtime,
-        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null)
+        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null, TimeProvider? time = null)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
+        _adaptPostBlockDelay = gcStrategy.AdaptivePostBlockDelay;
+        _time = time ?? TimeProvider.System;
+        _ticksPerMs = Math.Max(1, _time.TimestampFrequency / 1000);
         _logger = logManager.GetClassLogger<GCKeeper>();
         _runtime = runtime;
         _delay = delay ?? TaskExtensions.DelaySafe;
@@ -108,6 +121,9 @@ public class GCKeeper : IDisposable
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
+            _cadence.OnPayloadStart(NowMs(), idle: _payloadsInProcessing == 0);
+            _payloadsInProcessing++;
+            region.InProcessing = true;
             if (_region is not null)
             {
                 // A payload that starts while the previous one is still inside its region shares that region rather
@@ -134,6 +150,43 @@ public class GCKeeper : IDisposable
         return region;
     }
 
+    /// <summary>Marks an eligible payload done; once none is left in processing, the idle gap before the next one starts.</summary>
+    private void PayloadLeft()
+    {
+        lock (_lock)
+        {
+            if (--_payloadsInProcessing == 0) _cadence.OnIdle(NowMs());
+        }
+    }
+
+    private long NowMs() => _time.GetTimestamp() / _ticksPerMs;
+
+    /// <summary>The post-block delay: the strategy's, or a share of the idle gap payloads leave when that is shorter.</summary>
+    /// <remarks>
+    /// The strategy's delay suits the slot time, but payloads can come faster than their slots (a 200 ms block time on a
+    /// chain configured for 2 s), and a payload cancels the collection still waiting for it. Back to back, before there
+    /// are enough samples, or when the strategy fixes the delay, its delay stays. Called under <see cref="_lock"/>.
+    /// </remarks>
+    private int EffectivePostBlockDelayMs()
+    {
+        long idleGapMs = _cadence.MedianIdleGapMs;
+        if (!_adaptPostBlockDelay || idleGapMs < MinIdleGapForCadenceMs) return _postBlockDelayMs;
+        return (int)Math.Min(_postBlockDelayMs, Math.Max(MinPostBlockDelayMs, idleGapMs / IdleGapPerPostBlockDelay));
+    }
+
+    /// <summary>The minimum spacing between keeper collections: 3 s, or half the payload interval when that is shorter.</summary>
+    /// <remarks>
+    /// A fixed 3 s let a collection run after every other payload at 2 s blocks and after every fifteenth at 200 ms; half
+    /// the interval lets one run after every payload and still keeps two out of one idle gap. Back to back, or before
+    /// there are enough samples, the 3 s stay. Called under <see cref="_lock"/>.
+    /// </remarks>
+    private long EffectiveMinMsBetweenCollections()
+    {
+        long intervalMs = _cadence.MedianIntervalMs;
+        if (_cadence.MedianIdleGapMs < MinIdleGapForCadenceMs || intervalMs < 0) return DefaultMinMsBetweenCollections;
+        return Math.Min(DefaultMinMsBetweenCollections, intervalMs / 2);
+    }
+
     private void ReleaseRegion(NoGCRegion region)
     {
         lock (_lock)
@@ -152,6 +205,9 @@ public class GCKeeper : IDisposable
         private bool _active;
         private int _leases = 1;
         private bool _ownerReleased;
+
+        /// <summary>Set on an eligible payload's own lease, which the keeper counts as in processing until it is released.</summary>
+        public bool InProcessing;
 
         /// <summary>Takes a lease for a payload that starts while the payload that admitted this region is inside it.</summary>
         /// <remarks>
@@ -236,19 +292,29 @@ public class GCKeeper : IDisposable
         {
             bool end;
             bool release;
+            bool left;
+            bool covering;
             lock (_stateLock)
             {
                 if (_released) return;
+                // The payload is done whether or not the region still covers another one.
+                left = owner && !_ownerReleased && InProcessing;
                 if (owner) _ownerReleased = true;
                 if (force) _leases = 0; else _leases--;
                 // Still covering another payload: the region is not this lease's to end.
-                if (_leases > 0) return;
-                _released = true;
-                end = _active;
-                _active = false;
-                release = !_starting;
+                covering = _leases > 0;
+                end = !covering && _active;
+                release = !covering && !_starting;
+                if (!covering)
+                {
+                    _released = true;
+                    _active = false;
+                }
             }
 
+            // Outside the region's lock: the keeper takes its own lock, which is held around TryAddLease.
+            if (left) keeper.PayloadLeft();
+            if (covering) return;
             if (pausedGCScheduler) GCScheduler.MarkGCResumed();
             if (end) EndRegion();
             else if (release) keeper.ReleaseRegion(this);
@@ -407,8 +473,8 @@ public class GCKeeper : IDisposable
             if (pendingGcCts.IsCancellationRequested || _runtime.IsActive) return CollectionClaim.Cancelled;
             if (throttle)
             {
-                long timeStamp = Environment.TickCount64;
-                if (!exemptFromSpacing && _lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= MinMsBetweenCollections)
+                long timeStamp = NowMs();
+                if (!exemptFromSpacing && _lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= EffectiveMinMsBetweenCollections())
                 {
                     return CollectionClaim.Throttled;
                 }
@@ -442,16 +508,17 @@ public class GCKeeper : IDisposable
         if (generation > GcLevel.NoGC)
         {
             CancellationTokenSource pendingGcCts;
+            int postBlockDelayMs;
             lock (_lock)
             {
                 if (_disposed) return;
                 _pendingGcCts = pendingGcCts = new();
+                postBlockDelayMs = EffectivePostBlockDelayMs();
             }
 
             try
             {
                 // Leave time for the Engine API response before attempting ordinary collection.
-                int postBlockDelayMs = _postBlockDelayMs;
                 if (postBlockDelayMs <= 0)
                 {
                     // Always async

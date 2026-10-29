@@ -24,12 +24,15 @@ public class NoSyncGcRegionStrategy : IGCStrategy
         GcCompaction gcCompaction = (GcCompaction)Math.Min((int)GcCompaction.Full, (int)mergeConfig.CompactMemory);
         _gcParams = (gcLevel, gcCompaction);
         PostBlockDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)((mergeConfig.SecondsPerSlot * 1000) / 8);
+        // An explicit delay is kept as set; the slot-derived default only bounds the delay the payload cadence leaves.
+        AdaptivePostBlockDelay = mergeConfig.PostBlockGcDelayMs is null;
     }
 
     public int CollectionsPerDecommit { get; }
     public int DecommitMemoryLoadPercent { get; }
     public int CollectionsPerUnconditionalDecommit { get; }
     public int PostBlockDelayMs { get; }
+    public bool AdaptivePostBlockDelay { get; }
 
     public bool CanStartNoGCRegion() => _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;
     public (GcLevel, GcCompaction) GetForcedGCParams() => _gcParams;
