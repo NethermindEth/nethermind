@@ -425,7 +425,7 @@ public partial class DebugRpcModuleTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(traces, Is.Not.InstanceOf<IStreamableResult>(), "JavaScript retains master's buffered fallback");
+                Assert.That(traces, Is.TypeOf<GethLikeTxTraceStreamingResult>(), "JavaScript retains master's buffered fallback wrapper");
                 Assert.That(traces, Is.Empty);
                 Assert.That(clock.Calls, Is.EqualTo(selection == "empty" ? 0 : 3));
                 Assert.That(clock.Timers, Is.Empty);
