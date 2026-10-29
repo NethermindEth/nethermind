@@ -614,6 +614,12 @@ namespace Nethermind.Consensus.Processing
                     // So prefer the mev reward tx value
                     return lastTx.Value.IsZero ? CalculateBalanceChange(data.BaseBlock, block.Header, lastTx.To) : lastTx.Value;
                 }
+                // The report runs later on the thread pool, so pruning may have removed the state it reads.
+                catch (Nethermind.Trie.MissingTrieNodeException ex)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Block rewards unavailable for report, state pruned: {ex.Message}");
+                    return default;
+                }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error("Error when calculating block rewards", ex);

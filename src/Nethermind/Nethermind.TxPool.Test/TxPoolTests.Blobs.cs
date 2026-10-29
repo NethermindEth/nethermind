@@ -437,6 +437,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_know_persisted_blob_tx_after_restart_while_it_stays_pooled([Values] bool senderCanPayAtRestart)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.Storage, Size = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction blobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithValue(1)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            if (!senderCanPayAtRestart) EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            await AddEmptyBlock();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(blobTx.Hash!, out _), Is.EqualTo(senderCanPayAtRestart), "restored from storage");
+                Assert.That(_txPool.IsKnown(blobTx.Hash), Is.EqualTo(senderCanPayAtRestart), "a pooled tx announced by a peer must not be fetched again");
+            }
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _txPool.ResetAddress(TestItem.AddressA);
+            Assert.That(_txPool.SubmitTx(blobTx, TxHandlingOptions.None),
+                Is.EqualTo(senderCanPayAtRestart ? AcceptTxResult.AlreadyKnown : AcceptTxResult.Accepted));
+        }
+
+        [Test]
         public async Task should_skip_full_blob_revalidation_on_unchanged_restart()
         {
             BlockHeader head = _blockTree.Head.Header;
