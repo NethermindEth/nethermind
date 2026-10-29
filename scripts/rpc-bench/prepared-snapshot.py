@@ -81,7 +81,7 @@ def space(path):
 
 def budget(now, finish, gate=10800):
     if now + gate + 600 + 3600 > finish:
-        raise RuntimeError('insufficient preparation budget: 3h gate + 10m health + 1h reserve required')
+        raise RuntimeError(f'insufficient preparation budget: {gate}s gate + 10m health + 1h reserve required')
 
 
 def fingerprint(path):
@@ -106,6 +106,25 @@ def mounted(path, readonly=None):
     if any(option in options for option in ('volatile', 'metacopy=on', 'redirect_dir=on', 'index=on')):
         raise RuntimeError('unsafe overlay options')
     return entry
+
+
+def overlay_off_options(entry):
+    """findmnt omits options equal to module defaults; unknown defaults fail closed."""
+    options = entry['options'].split(',')
+    if 'volatile' in options:
+        raise RuntimeError('unsafe volatile overlay')
+    defaults = {}
+    for name in ('redirect_dir', 'metacopy', 'index'):
+        values = [option.split('=', 1)[1] for option in options if option.startswith(name + '=')]
+        if values:
+            if values != ['off'] and not (name == 'redirect_dir' and values == ['nofollow']):
+                raise RuntimeError(f'unsafe overlay option: {name}')
+        else:
+            value = Path('/sys/module/overlay/parameters', name).read_text().strip()
+            defaults[name] = value
+            if value not in ('N', '0'):
+                raise RuntimeError(f'unknown or unsafe overlay default: {name}={value}')
+    return defaults
 
 
 def overlay(lower, root):
@@ -140,7 +159,9 @@ def toy(root):
         run('mount', '-t', 'overlay', 'overlay', '-o',
             f'lowerdir={lower},upperdir={base}/upper,workdir={base}/work,{OPTIONS}', merged, root=True)
         run('mount', '-o', 'remount,ro', merged, root=True)
-        mounted(merged, True)
+        reported_mount = mounted(merged, True)
+        reported_defaults = overlay_off_options(reported_mount)
+        print('Kernel explicit-off overlay evidence: ' + json.dumps({'mount': reported_mount, 'omitted_option_defaults': reported_defaults}, sort_keys=True), flush=True)
         if (merged / 'deleted').exists() or (merged / 'directory' / 'hidden').exists() or (merged / 'replaced').read_text() != 'new':
             raise RuntimeError('overlay persistence/whiteout/opaque-dir semantics failed')
         run('mount', '-o', 'remount,rw', merged, root=True)
@@ -160,7 +181,8 @@ def toy(root):
             run('umount', child / 'merged', root=True)
         if fingerprint(merged) != before or (lower / 'replaced').read_text() != 'old' or not (lower / 'deleted').exists():
             raise RuntimeError('nested child modified a lower')
-        return {'whiteout': True, 'opaque_directory': True, 'replacement': True, 'remount': True, 'nested_isolation': True}
+        return {'whiteout': True, 'opaque_directory': True, 'replacement': True, 'remount': True, 'nested_isolation': True,
+                'mount': reported_mount, 'omitted_option_defaults': reported_defaults}
     finally:
         if subprocess.run(['mountpoint', '-q', str(base / 'merged')]).returncode == 0:
             run('umount', base / 'merged', root=True)
@@ -313,7 +335,8 @@ def recovery_preflight(root, evidence, oracle):
     if before != load('source-after.json') or fingerprint(SOURCE) != before:
         raise RuntimeError('protected source differs from old producer tripwire')
     mount = mounted(root / 'merged', True)
-    required = {f'lowerdir={SOURCE}', f'upperdir={root}/upper', f'workdir={root}/work', *OPTIONS.split(',')}
+    defaults = overlay_off_options(mount)
+    required = {f'lowerdir={SOURCE}', f'upperdir={root}/upper', f'workdir={root}/work'}
     if not required.issubset(set(mount['options'].split(','))):
         raise RuntimeError('quarantine mount lineage/options mismatch; never recreate missing mounts')
     for name in ('upper', 'work', 'merged', 'owner.json'):
@@ -328,7 +351,7 @@ def recovery_preflight(root, evidence, oracle):
     return {'producer_run': '40815701914', 'artifact_id': '12881330426',
             'artifact_zip_sha256': '9e220699c61df86cbdb83968d0c71208bb1a8ccf1f709f52794ed79d21e9afe9',
             'artifact_contents_sha256': digest(encoded(files)), 'old_runtime': old_identity,
-            'old_source_tripwire': before, 'old_mount': mount}
+            'old_source_tripwire': before, 'old_mount': mount, 'omitted_option_defaults': defaults}
 
 
 def prepare(args):

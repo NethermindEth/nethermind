@@ -67,6 +67,24 @@ class PreparedTests(unittest.TestCase):
             with self.subTest(options=options, fstype=fstype), patch.object(p, 'run', return_value=json.dumps(payload)), self.assertRaises(RuntimeError):
                 p.mounted(Path('/fixture'), True)
 
+    def test_overlay_omitted_off_options_require_verified_kernel_defaults(self):
+        for options, default, accepted in [
+            ('ro', 'N', True), ('ro', '0', True), ('ro', 'Y', False), ('ro', '', False),
+            ('ro', 'unknown', False), ('ro,volatile', 'N', False), ('ro,index=on', 'N', False),
+            ('ro,metacopy=on', 'N', False), ('ro,redirect_dir=on', 'N', False),
+            ('ro,redirect_dir=follow', 'N', False),
+            ('ro,redirect_dir=nofollow,metacopy=off,index=off', 'Y', True),
+            ('ro,redirect_dir=off,metacopy=off,index=off', 'Y', True),
+        ]:
+            with self.subTest(options=options, default=default), patch.object(Path, 'read_text', return_value=default):
+                if accepted:
+                    p.overlay_off_options({'options': options})
+                else:
+                    with self.assertRaises(RuntimeError):
+                        p.overlay_off_options({'options': options})
+        with patch.object(Path, 'read_text', side_effect=FileNotFoundError), self.assertRaises(FileNotFoundError):
+            p.overlay_off_options({'options': 'ro'})
+
     def test_verify_rejects_missing_partial_or_tampered_manifest(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(p, 'guard'):
             root = Path(directory)
@@ -213,7 +231,9 @@ class PreparedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='prepared-kernel-') as directory:
             root = Path(directory) / 'toy'
             root.mkdir()
-            self.assertTrue(all(p.toy(root).values()))
+            result = p.toy(root)
+            self.assertTrue(all(result[key] for key in ('whiteout', 'opaque_directory', 'replacement', 'remount', 'nested_isolation')))
+            self.assertEqual(result['mount']['fstype'], 'overlay')
 
 
 if __name__ == '__main__':
