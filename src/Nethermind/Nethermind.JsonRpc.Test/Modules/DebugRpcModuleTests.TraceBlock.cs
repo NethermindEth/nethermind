@@ -152,6 +152,97 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Specified_javascript_prefix_borrows_no_deadline_while_selected_and_direct_owners_expire(
+        [Values("prefix", "selected", "direct")] string ownership,
+        [Values(0, -1)] int timeout, [Values] bool deliver, [Values("step", "result")] string callback)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        DeadlineExecution clock = new();
+        using GethTraceDeadline owner = new(clock: clock);
+        using Engine engine = new(Prague.Instance);
+        Action expire = () => { if (deliver) clock.Advance(0); };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.expirePrefixTest=action;}}"))
+            installer.InvokeMethod("install", expire);
+        GethTraceDeadlineScope? scope = ownership == "direct" ? null : new() { Current = ownership == "selected" ? owner : null };
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},step:function(){" + (callback == "step" ? "expirePrefixTest();" : "")
+                + "},result:function(){" + (callback == "result" ? "expirePrefixTest();" : "") + "return 7;}}", scope, timeout);
+        Assert.That(clock.Timers, ownership == "direct" ? Has.Count.EqualTo(1) : Is.Empty,
+            "a scoped prefix has no owner and must not create a standalone watchdog; a selected child borrows its unarmed owner");
+        if (ownership == "selected") owner.Start(TimeSpan.FromSeconds(timeout));
+        void Trace()
+        {
+            if (callback == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TraceError, Is.Null);
+                Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+            }
+        }
+        if (deliver && ownership != "prefix") Assert.Throws<GethTraceDeadlineException>(Trace);
+        else Assert.DoesNotThrow(Trace);
+        tracer.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, ownership == "prefix" ? Is.Empty : Has.Count.EqualTo(1));
+            Assert.That(owner.Expired, Is.EqualTo(deliver && ownership == "selected"));
+            if (ownership != "prefix") Assert.That(clock.Timers[0].Disposed, Is.EqualTo(ownership == "direct"));
+            if (scope is not null) Assert.That(scope.Current, Is.SameAs(ownership == "selected" ? owner : null));
+        }
+        owner.Dispose();
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    [Test]
+    public async Task ByNumber_filtered_javascript_prefix_never_owns_execution_deadline(
+        [Values("blockOverrides", "noBaseFee", "stateOverrides")] string replay,
+        [Values("0s", "-1s")] string timeout, [Values("prefix", "selected", "none")] string delivery)
+    {
+        DeadlineExecution clock = new() { DeliverOnlyAtTarget = delivery != "prefix" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        clock.Target = delivery == "none" ? ulong.MaxValue : block.Transactions[2].Nonce;
+        clock.Enabled = true;
+        const string script = "{fault:function(){},result:function(){return {ok:true};}}";
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = "muxTracer",
+            ["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } },
+            ["txHash"] = block.Transactions[2].Hash!,
+            ["timeout"] = timeout,
+            ["streamMode"] = false,
+            [replay] = replay == "noBaseFee" ? (object)true : new { }
+        };
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+            "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        if (delivery == "none") Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (delivery == "none")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((JArray)json["result"]!, Has.Count.EqualTo(1), response);
+                Assert.That((string?)json["result"]?[0]?["txHash"], Is.EqualTo(block.Transactions[2].Hash!.ToString()), response);
+                Assert.That((bool?)json["result"]?[0]?["result"]?[script]?["ok"], Is.True, response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            Assert.That(clock.Calls, Is.EqualTo(3), "both prefixes execute before the selected owner's watcher can expire");
+            Assert.That(clock.Timers, Has.Count.EqualTo(1), "only the selected transaction may arm an execution deadline");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Specified_javascript_scoped_deadline_propagates_actual_external_cancellation(
         [Values("step", "result")] string callback, [Values] bool hasOwner)
     {
