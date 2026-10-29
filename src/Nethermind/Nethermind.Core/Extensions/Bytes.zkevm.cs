@@ -119,6 +119,31 @@ public static unsafe partial class Bytes
         else Buffer.MemoryCopy(source, destination, length, length);
     }
 
+    /// <summary>Writes the four words at <paramref name="source"/>, which is word-aligned, to the 32 bytes at <paramref name="destination"/>, which is not.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a misaligned 32-byte copy is 32 byte loads and stores. This
+    /// writes the five aligned words that hold the destination instead, and keeps the bytes of the first and the last
+    /// that lie outside it. Those bytes share an aligned word with the destination, so they are part of the same
+    /// object, and the guest is single-threaded, so writing them back is not a race.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteMisalignedWords(byte* destination, ulong* source)
+    {
+        int skew = (int)((nuint)destination & (sizeof(ulong) - 1));
+        // Rounding both addresses lets the JIT drop the alignment test of every access.
+        ulong* words = (ulong*)((nuint)destination - (nuint)skew);
+        source = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
+        int low = skew * 8;
+        int high = 64 - low;
+        ulong outside = ulong.MaxValue >> high;
+        ulong w0 = source[0], w1 = source[1], w2 = source[2], w3 = source[3];
+        words[0] = (words[0] & outside) | (w0 << low);
+        words[1] = (w0 >> high) | (w1 << low);
+        words[2] = (w1 >> high) | (w2 << low);
+        words[3] = (w2 >> high) | (w3 << low);
+        words[4] = (words[4] & ~outside) | (w3 >> high);
+    }
+
     /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
     /// <remarks>Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
     /// into a DMA precompile for a zero fill; elsewhere it is corelib's fill.</remarks>
