@@ -132,6 +132,12 @@ try
     File.WriteAllText(statePath, "");
     foreach (var key in new[] { "CLIENT", "INSTANCE", "INSTANCE_SUFFIX", "CONTAINER_NAME", "DB_ISOLATION", "RUN_SCRATCH", "SCRATCH_ROOT", "ARM_SCRATCH_DIR", "DB_SOURCE", "DIAG_DIR", "DOTTRACE", "DOTTRACE_DEFERRED", "PERF", "PERF_FREQUENCY", "DOTNET_TRACE", "DOTNET_DUMP", "DOTNET_DUMP_HOST_PATH", "NODE_IMAGE", "PROFILE_AFTER_WARMUP", "RPC_PORT", "PREPARED_SNAPSHOT_ROOT", "PREPARED_SNAPSHOT_SHA256" }) BenchmarkState.Append(statePath, key, Get(key));
     var docker = new List<string> { "run", "-d", "--name", container, "--restart", "no", "--stop-signal", "SIGINT", "-p", $"127.0.0.1:{rpcPort}:8545", "-v", $"{source}:{target}:{mountOption}" };
+    if (Get("PREPARED_SNAPSHOT_ROOT").Length > 0)
+    {
+        var owner = BenchmarkProcess.EnvironmentValue("GITHUB_RUN_ID");
+        if (!Regex.IsMatch(owner, "^[0-9]+$")) throw new ArgumentException("prepared children require a numeric GitHub run ownership ID");
+        docker.AddRange(["--label", "nethermind.rpc-prepared-run=" + owner]);
+    }
     if (armScratch.Length > 0) docker.AddRange(["--mount", $"type=bind,source={armScratch},target={armScratch}"]);
     foreach (var value in NodeConfiguration.SplitFlags(Get("NODE_ENV_VARS"))) docker.AddRange(["-e", value]);
     var perfEnvironment = new[] { "DOTNET_PerfMapEnabled=1", "DOTNET_PerfMapShowOptimizationTiers=1", "DOTNET_EnableWriteXorExecute=0" };

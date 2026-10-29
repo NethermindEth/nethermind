@@ -32,6 +32,6 @@ jobs:
         run: dotnet run --file scripts/rpc-bench/test-sample-resources.cs
       - name: Analyze changed scripts
         run: |
-          for script in start-node stop-node run-json-bench run-rpc-sweep sample-resources test-json-bench-reuse test-rpc-sweep test-sample-resources test-workflow-contracts; do
+          for script in start-node stop-node cleanup run-json-bench run-rpc-sweep sample-resources test-json-bench-reuse test-rpc-sweep test-sample-resources test-workflow-contracts; do
             dotnet run --file scripts/ci/run-script-tests.cs -- --check "scripts/rpc-bench/${script}.cs"
           done

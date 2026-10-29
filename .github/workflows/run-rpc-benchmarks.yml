@@ -1809,6 +1809,7 @@ jobs:
         env:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+          PREPARED_SNAPSHOT_ROOT: ${{ fromJSON(needs.resolve.outputs.tool_config).prepared_snapshot_root || '' }}
         run: dotnet run --file scripts/rpc-bench/cleanup.cs -- || true
 
       - name: Reclaim root disk after the run

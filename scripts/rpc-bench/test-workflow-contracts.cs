@@ -63,6 +63,19 @@ tests.Case("migration qualification exports UTC budgets and leaves termination g
         "receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT", "node_io_diagnostics:NODE_IO_DIAGNOSTICS",
         "- 1800", "timeout --signal=TERM --kill-after=15m");
 });
+tests.Case("prepared snapshots are opt-in and preparation cannot run ordinary benchmarks", () =>
+{
+    Contains(WorkflowTest.Text(workflow.Job("resolve"), "if"), "!inputs.prepare_snapshot");
+    Contains(WorkflowTest.Text(workflow.Job("prepare-snapshot"), "if"), "inputs.prepare_snapshot", "workflow_dispatch");
+    Contains(WorkflowTest.Text(workflow.Step("prepare-snapshot", "Guarded baseline preparation only"), "run"), "prepared-snapshot.py prepare", "--finish 2026-10-29T05:47:34Z");
+    Contains(StepText("Run RPC sweep"), "prepared_snapshot_root:PREPARED_SNAPSHOT_ROOT", "prepared_snapshot_sha256:PREPARED_SNAPSHOT_SHA256");
+});
+tests.Case("prepared defensive cleanup is ownership scoped and refuses lazy deletion", () =>
+{
+    var cleanup = File.ReadAllText(Path.Combine(workflow.Root, "scripts", "rpc-bench", "cleanup.cs"));
+    Contains(cleanup, "if (!prepared) await BenchmarkPaths.ReapAsync", "label=nethermind.rpc-prepared-run=", "rpc-prepared-benchmark-", "if (prepared) throw new IOException(\"prepared child remains busy");
+    Contains(WorkflowTest.Text(WorkflowTest.Get(workflow.Step("benchmark", "Defensive cleanup"), "env"), "PREPARED_SNAPSHOT_ROOT"), "prepared_snapshot_root");
+});
 tests.Case("generic phases and sampling reach sweep independently of corpus options", () =>
 {
     Contains(StepText("Run RPC sweep"), "generic_first_use:GENERIC_FIRST_USE", "generic_warmup_duration:GENERIC_WARMUP_DURATION",

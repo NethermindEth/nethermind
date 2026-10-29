@@ -241,6 +241,21 @@ def verify(root, expected):
     return manifest
 
 
+def start_watchdog(check, output):
+    monitoring = threading.Event()
+    def monitor():
+        while not monitoring.wait(10):
+            try:
+                check()
+            except Exception as error:
+                (output / 'pressure-failure.txt').write_text(str(error))
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+    watcher = threading.Thread(target=monitor, daemon=True)
+    watcher.start()
+    return monitoring, watcher
+
+
 def prepare(args):
     finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
     budget(time.time(), finish)
@@ -279,17 +294,7 @@ def prepare(args):
     atomic(output / 'source-before.json', source_before)
     overlay(SOURCE, root)
     running = False
-    monitoring = threading.Event()
-    def monitor():
-        while not monitoring.wait(10):
-            try:
-                pressure()
-            except Exception as error:
-                (output / 'pressure-failure.txt').write_text(str(error))
-                os.kill(os.getpid(), signal.SIGTERM)
-                return
-    watcher = threading.Thread(target=monitor, daemon=True)
-    watcher.start()
+    monitoring, watcher = start_watchdog(pressure, output)
     try:
         run('docker', 'pull', BASELINE, timeout=600)
         running = True  # Ownership is persisted before container creation, including interrupted docker run.
@@ -382,6 +387,9 @@ def prepare(args):
 def qualify(args):
     """Untimed 100-case compatibility on a fresh child; never updates the sealed generation."""
     manifest = verify(args.root, args.manifest_sha256)
+    finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
+    if time.time() + 1800 > finish:
+        raise RuntimeError('insufficient untimed compatibility/cleanup budget')
     if args.image not in (BASELINE, CANDIDATE):
         raise ValueError('only the two pinned images are supported')
     if digest(Path(args.oracle).read_bytes()) != manifest['oracle_sha256']:
@@ -393,8 +401,17 @@ def qualify(args):
     child = parent / ('getlogs-' + os.environ['GITHUB_RUN_ID'])
     child.mkdir()
     container = 'prepared-child-' + os.environ['GITHUB_RUN_ID']
+    atomic(child / 'owner.json', {'run': os.environ['GITHUB_RUN_ID'], 'container': container, 'fixture': str(args.root), 'manifest_sha256': args.manifest_sha256})
     running = False
     overlay(args.root / 'merged', child)
+    samples = []
+    def pressure():
+        samples.append({'utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'scratch': space(PARENT), 'root': space(Path('/'))})
+        atomic(output / 'disk.json', samples)
+        if time.time() > finish - 1200:
+            raise RuntimeError('compatibility deadline reached; reserving cleanup time')
+    pressure()
+    monitoring, watcher = start_watchdog(pressure, output)
     try:
         space(PARENT)
         space(Path('/'))
@@ -424,6 +441,8 @@ def qualify(args):
         atomic(output / 'COMPATIBILITY.json', {'status': 'passed', 'image': args.image, 'manifest_sha256': args.manifest_sha256,
                                               'identity': observed, 'cases': 100, 'timed': False})
     finally:
+        monitoring.set()
+        watcher.join(timeout=30)
         if running:
             stop(container, output)
         run('umount', child / 'merged', root=True)
