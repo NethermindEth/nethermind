@@ -49,10 +49,12 @@ cannot encode without data loss:
 | RLP0004 | Unsupported parameter type, for example a tuple of three                  |
 | RLP0005 | `length` on a record that is not a `Newtype` over a byte array            |
 | RLP0006 | `Newtype` record that contains itself without a sequence around it      |
+| RLP0007 | `RlpFixedLength` below 2, or on a type that is not written as a byte string |
 
 A parameter of another type `T` uses the `ReadT()` and `Write(T)` extension methods that are in scope of the record.
 
 `[RlpFixedLength(n)]` on such a type, or on a parameter, declares that its value is always a byte string of `n`
 bytes. A record or list made only of values with a known length then writes its exact prefix at once, without a pass
 over the values, and the generated converter implements `IRlpLengthConverter<T>` when every field has a computable
-length. A read or write that does not match the declared length throws.
+length. A read or write that does not match the declared length throws. On a `UInt256` parameter, `[RlpFixedLength(32)]`
+reads and writes the value as 32 big-endian bytes, as for EIP-2930 storage keys.

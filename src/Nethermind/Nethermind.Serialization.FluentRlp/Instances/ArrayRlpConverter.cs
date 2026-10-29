@@ -10,7 +10,16 @@ public abstract class ArrayRlpConverter<T>
 {
     /// <summary>Reads a sequence and converts each item with <paramref name="func"/>.</summary>
     public static T[] Read(ref RlpReader reader, RefRlpReaderFunc<T> func)
-        => ListRlpConverter<T>.Read(ref reader, func).ToArray();
+        => reader.ReadSequence(func, static (scoped ref RlpReader r, RefRlpReaderFunc<T> func) =>
+        {
+            T[] result = new T[r.CountItems()];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = func(ref r);
+            }
+
+            return result;
+        });
 
     /// <summary>Writes a sequence and converts each item with <paramref name="action"/>.</summary>
     public static void Write(ref RlpWriter writer, T[] value, RefRlpWriterAction<T> action)

@@ -54,6 +54,28 @@ public record FixedEntry([RlpFixedLength(20)] byte[] Address, List<FixedKey> Key
 public record NamedEntry([RlpFixedLength(20)] byte[] Address, string Name);
 
 [RlpSerializable]
+public record StorageSlot([RlpFixedLength(32)] UInt256 Key, UInt256 Value);
+
+[RlpFixedLength(32)]
+public record Blob(byte[] Bytes);
+
+// A hand-written converter that does not keep the declared length, to test the checks of the generated code.
+public abstract class BlobRlpConverter : IRlpConverter<Blob>
+{
+    public static Blob Read(ref RlpReader reader) => new(reader.ReadBytes().ToArray());
+    public static void Write(ref RlpWriter writer, Blob value) => writer.Write(value.Bytes);
+}
+
+public static class BlobRlpConverterExt
+{
+    public static Blob ReadBlob(this ref RlpReader reader) => BlobRlpConverter.Read(ref reader);
+    public static void Write(this ref RlpWriter writer, Blob value) => BlobRlpConverter.Write(ref writer, value);
+}
+
+[RlpSerializable]
+public record Blobs(List<Blob> Items);
+
+[RlpSerializable]
 public record UnhintedEntry(byte[] Address, List<byte[]> Keys);
 
 [RlpSerializable(RlpRepresentation.Newtype)]
@@ -264,6 +286,35 @@ public class RlpDerivedTest
     public void LengthConverterWithWrongFixedLength()
         => Assert.That(static () => Rlp.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
 
+    // The integer converter would strip the leading zeros of a small key.
+    [Test]
+    public void FixedLengthUInt256()
+    {
+        StorageSlot slot = new(UInt256.One, UInt256.One);
+        byte[] rlp = Rlp.Write<StorageSlotRlpConverter, StorageSlot>(slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp, Has.Length.EqualTo(1 + 33 + 1));
+            Assert.That(Rlp.Read(rlp, static (scoped ref RlpReader r) => r.ReadStorageSlot()), Is.EqualTo(slot));
+        }
+    }
+
+    [Test]
+    public void ListOfFixedLengthItemsWithWrongLengths()
+        => Assert.That(static () => Rlp.Write<BlobsRlpConverter, Blobs>(new Blobs([new Blob(new byte[31]), new Blob(new byte[33])])), Throws.InvalidOperationException);
+
+    [Test]
+    public void LengthConverterThatDoesNotEndASequence()
+        => Assert.That(static () => Rlp.Write<OpenSequenceConverter, int>(0), Throws.InvalidOperationException);
+
+    private abstract class OpenSequenceConverter : IRlpLengthConverter<int>
+    {
+        public static int Read(ref RlpReader reader) => throw new NotSupportedException();
+        public static void Write(ref RlpWriter writer, int value) => writer.StartSequence(0);
+        public static int GetLength(int value) => 1;
+    }
+
     [Test]
     public void BufferedWriteWithWrongFixedLength()
         => Assert.That(static () => Rlp.Write(new NamedEntry(new byte[19], "name"), static (ref RlpWriter w, NamedEntry entry) => w.Write(entry)), Throws.InvalidOperationException);
@@ -306,6 +357,13 @@ public class RlpDerivedTest
     [TestCase("public record Keys(System.Collections.Generic.Dictionary<byte[], int> A);", "RLP0004", TestName = "Byte array dictionary key")]
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop(Loop Inner);", "RLP0006", TestName = "Recursive Newtype")]
     [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record Loop((int, Loop) Inner);", "RLP0006", TestName = "Recursive Newtype through a tuple")]
+    [TestCase("[RlpSerializable(RlpRepresentation.Newtype)] public record A(B Inner); [RlpSerializable(RlpRepresentation.Newtype)] public record B(A Inner);", "RLP0006", TestName = "Mutually recursive Newtypes")]
+    [TestCase("public record Key([RlpFixedLength(1)] byte[] A);", "RLP0007", TestName = "Fixed length below 2")]
+    [TestCase("public record Key([RlpFixedLength(8)] long A);", "RLP0007", TestName = "Fixed length on an integer")]
+    [TestCase("public record Key([RlpFixedLength(20)] string A);", "RLP0007", TestName = "Fixed length on a string")]
+    [TestCase("public record Key([RlpFixedLength(20)] Nethermind.Int256.UInt256 A);", "RLP0007", TestName = "Fixed length of a UInt256 other than 32")]
+    [TestCase("public record Key([RlpFixedLength(32)] Nethermind.Int256.UInt256 A);", null, TestName = "Fixed length of a UInt256 of 32")]
+    [TestCase("public record Chunks(byte[][] A, int[][] B, (int, long)[] C);", null, TestName = "Arrays of arrays and tuples")]
     [TestCase("internal record Hidden(int A);", null, TestName = "Internal record")]
     [TestCase("public record Names(int @class, string value, int r, int w, System.Collections.Generic.List<System.Collections.Generic.List<int>> items, int _0);", null, TestName = "Keyword and generated names as parameters")]
     public void GeneratorDiagnostics(string declaration, string? expectedId)

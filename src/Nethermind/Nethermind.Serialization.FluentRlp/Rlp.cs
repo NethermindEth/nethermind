@@ -48,7 +48,8 @@ public static class Rlp
 
     /// <summary>Encodes <paramref name="value"/> with a converter that knows its length, in one pass and without a buffer copy.</summary>
     /// <returns>A new array of the exact encoded length.</returns>
-    /// <exception cref="InvalidOperationException">The converter writes another length than it computes.</exception>
+    /// <exception cref="InvalidOperationException">The converter writes fewer bytes than it computes, or does not end a sequence.</exception>
+    /// <exception cref="ArgumentException">The converter writes more bytes than it computes.</exception>
     public static byte[] Write<TConverter, T>(T value) where TConverter : IRlpLengthConverter<T>
     {
         byte[] result = GC.AllocateUninitializedArray<byte>(TConverter.GetLength(value));
@@ -71,7 +72,7 @@ public static class Rlp
     {
         RlpWriter writer = RlpWriter.ContentWriter(destination);
         TConverter.Write(ref writer, value);
-        if (writer.Length != destination.Length) throw new InvalidOperationException("RLP converter wrote another length than it computed");
+        if (writer.Length != destination.Length || writer.HasOpenSequences) throw new InvalidOperationException("RLP converter wrote another length than it computed, or did not end a sequence");
     }
 
     /// <summary>Gets the encoded length of a byte string.</summary>

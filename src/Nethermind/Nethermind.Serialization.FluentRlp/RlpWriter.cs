@@ -66,6 +66,8 @@ public ref struct RlpWriter
     /// </summary>
     public readonly int Length => _length + _longPrefixBytes;
 
+    internal readonly bool HasOpenSequences => _openSequences != 0;
+
     /// <summary>Creates a writer that only measures the length of the items.</summary>
     public static RlpWriter LengthWriter() => new(default, isContent: false);
 

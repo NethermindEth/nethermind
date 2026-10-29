@@ -11,3 +11,4 @@ RLP0003 | RLP | Error | Record shape is not supported (generic, nested, or no pr
 RLP0004 | RLP | Error | Parameter type is not supported.
 RLP0005 | RLP | Error | Fixed length requires a Newtype record over a byte array.
 RLP0006 | RLP | Error | Newtype record contains itself without a sequence around it.
+RLP0007 | RLP | Error | Fixed length is below 2 or on a type that is not written as a byte string.
