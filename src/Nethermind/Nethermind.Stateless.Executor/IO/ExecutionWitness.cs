@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Serialization.Ssz;
 
@@ -93,15 +94,18 @@ public partial struct ExecutionWitness
         public void Dispose() { }
     }
 
-    /// <summary>The decoded codes, read in place as the memory they were decoded into, or as arrays copied on request.</summary>
-    /// <remarks>The witness code store reads the memory, so the zkVM guest runs each code without copying it again.</remarks>
-    private sealed class CodeList(SszWitnessCodes[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<ReadOnlyMemory<byte>>
+    /// <summary>The decoded codes, read in place with their hashes as the memory they were decoded into, or as arrays
+    /// copied on request.</summary>
+    /// <remarks>The witness code store reads the memory, so the zkVM guest runs each code without copying it again, and
+    /// takes the hashes of the codes the guest hashed as it placed them.</remarks>
+    private sealed class CodeList(SszWitnessCodes[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>
     {
         public int Count => codes.Length;
 
         public byte[] this[int index] => codes[index].Bytes.Code.ToArray();
 
-        ReadOnlyMemory<byte> IReadOnlyList<ReadOnlyMemory<byte>>.this[int index] => codes[index].Bytes.Code;
+        (ValueHash256 Hash, ReadOnlyMemory<byte> Code) IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.this[int index] =>
+            (codes[index].Bytes.Hash, codes[index].Bytes.Code);
 
         public ReadOnlySpan<byte[]> AsSpan()
         {
@@ -118,10 +122,10 @@ public partial struct ExecutionWitness
                 yield return code.Bytes.Code.ToArray();
         }
 
-        IEnumerator<ReadOnlyMemory<byte>> IEnumerable<ReadOnlyMemory<byte>>.GetEnumerator()
+        IEnumerator<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> IEnumerable<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.GetEnumerator()
         {
             foreach (SszWitnessCodes code in codes)
-                yield return code.Bytes.Code;
+                yield return (code.Bytes.Hash, code.Bytes.Code);
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -151,6 +155,12 @@ public sealed partial class WitnessCode
     public ReadOnlyMemory<byte> Code { get; private set; }
 
     public ReadOnlySpan<byte> AsSpan() => Code.Span;
+
+    private ValueHash256? _hash;
+
+    /// <summary>The Keccak-256 hash of <see cref="Code"/>.</summary>
+    /// <remarks>Set where <see cref="MoveToFront"/> places the code, which hashes it as it copies it.</remarks>
+    internal ValueHash256 Hash => _hash ??= ValueKeccak.Compute(Code.Span);
 
     private static partial ReadOnlyMemory<byte> Hold(ReadOnlySpan<byte> code);
 
@@ -194,7 +204,8 @@ public sealed partial class WitnessCode
 
             if (placedEnd <= next)
             {
-                code.Code = ExecutableCodeMemory.Place(new Span<byte>(free, (int)(placedEnd - free)), source);
+                code.Code = ExecutableCodeMemory.Place(new Span<byte>(free, (int)(placedEnd - free)), source, out ValueHash256 hash);
+                code._hash = hash;
                 free = Align(placedEnd);
             }
             else
