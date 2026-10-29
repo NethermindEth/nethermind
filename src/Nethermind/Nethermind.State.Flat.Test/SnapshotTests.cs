@@ -55,9 +55,9 @@ public class SnapshotTests
     public void CountsAndEstimatesAreSealedByFirstObservation()
     {
         // The repository adds EstimateMemory() to its memory ledger when a snapshot is published and
-        // subtracts a later call on removal: both sides must see the same value even if a straggling
-        // writer (e.g. a trie-warmer job) mutates the content in between, and serving sealed counts
-        // avoids the all-stripe-locks ConcurrentDictionary.Count on live maps.
+        // subtracts a later call on removal: both sides must see the same value even if the content
+        // changes in between, and serving sealed counts avoids the all-stripe-locks
+        // ConcurrentDictionary.Count on live maps.
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
@@ -149,6 +149,62 @@ public class SnapshotTests
             for (int i = 0; i < 128; i++) entries.Add(new(Keccak.Compute(i.ToString()).ValueHash256, Enumerable.Repeat((byte)i, 32).ToArray()));
             return FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
         }
+    }
+
+    [Test]
+    public void FilteredLookupsFindEveryWrittenKeyAndNoOthers([Values] bool reusedContent)
+    {
+        const int Count = 1_000;
+        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+        if (reusedContent)
+        {
+            // An earlier, larger build over the keys asserted absent below: its filter arrays are reused, not reallocated.
+            Populate(Count, 4 * Count);
+            using (Snapshot previous = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing, null))
+            {
+                previous.BuildFilters();
+            }
+
+            SnapshotContent reused = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+            Assert.That(reused, Is.SameAs(content));
+            content = reused;
+        }
+
+        Populate(0, Count);
+        using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing, null);
+        snapshot.BuildFilters();
+
+        SnapshotContentFilters filters = content.Filters!;
+        int[] maybePresent = new int[2];
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 2 * Count; i++)
+            {
+                bool written = i < Count;
+                HashedKey<Address> account = new(Key(i));
+                HashedKey<(Address, UInt256)> storage = new((Key(i), (UInt256)i));
+                Assert.That(snapshot.TryGetAccount(account, out _), Is.EqualTo(written));
+                Assert.That(snapshot.TryGetStorage(storage, out _), Is.EqualTo(written));
+
+                // The dictionaries decide the lookups above, so also check that the filters reject absent keys.
+                if (written) continue;
+                if (filters.Accounts.MightContain((uint)account.GetHashCode())) maybePresent[0]++;
+                if (filters.Storages.MightContain((uint)storage.GetHashCode())) maybePresent[1]++;
+            }
+
+            Assert.That(maybePresent, Is.All.LessThan(Count / 10));
+        }
+
+        void Populate(int from, int to)
+        {
+            for (int i = from; i < to; i++)
+            {
+                content.Accounts[new(Key(i))] = new((ulong)i, 1);
+                content.Storages[new((Key(i), (UInt256)i))] = (UInt256)i;
+            }
+        }
+
+        static Address Key(int i) => new(Keccak.Compute(i.ToString()).Bytes[..Address.Size]);
     }
 
     [Test]

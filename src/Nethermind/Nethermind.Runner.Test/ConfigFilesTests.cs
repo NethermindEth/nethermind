@@ -426,6 +426,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    [TestCase("chiado_archive.json")]
+    public void Config_file_contains_only_known_settings(string configFile)
+    {
+        (string errorMsg, IList<(IConfigSource Source, string Category, string Name)> errors) = GetConfigProvider(configFile).FindIncorrectSettings();
+        Assert.That(errors, Is.Empty, errorMsg);
+    }
+
     [Test]
     public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
     {

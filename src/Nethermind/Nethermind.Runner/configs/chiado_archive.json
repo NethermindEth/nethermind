@@ -30,9 +30,6 @@
   "Receipt": {
     "TxLookupLimit": 0
   },
-  "AuRaMerge": {
-    "Enabled": false
-  },
   "EthStats": {
     "Name": "Nethermind Chiado Archive"
   },
