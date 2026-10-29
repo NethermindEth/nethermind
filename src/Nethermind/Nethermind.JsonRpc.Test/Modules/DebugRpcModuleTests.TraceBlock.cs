@@ -607,6 +607,83 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Scoped_javascript_block_tracer_skips_prefix_engines_and_preserves_selected_index(
+        [Values(0, 2)] int selectedAt, [Values] bool recover)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        DeadlineExecution clock = new();
+        GethTraceDeadlineScope scope = new();
+        Hash256 target = block.Transactions[selectedAt].Hash!;
+        GethTraceOptions options = new()
+        {
+            Tracer = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex};}}",
+            EnforceExecutionDeadline = true,
+            CaptureJavaScriptErrors = recover,
+            DeadlineScope = scope,
+            DeadlineClock = clock,
+            Timeout = TimeSpan.Zero
+        };
+        IBlockTracer<GethLikeTxTrace> inner = GethStyleTracer.CreateOptionsTracer(block.Header, options,
+            chain.MainWorldState, new TestSpecProvider(Prague.Instance));
+        using GethLikeBlockDeadlineTracer tracer = new(inner, options with { TxHash = target }, CancellationToken.None, scope);
+        tracer.StartNewBlockTrace(block);
+        for (int i = 0; i <= selectedAt; i++)
+        {
+            using ITxTracer transaction = tracer.StartNewTxTrace(block.Transactions[i]);
+            Assert.That(transaction, Is.TypeOf<CancellationTxTracer>());
+            ITxTracer child = ((CancellationTxTracer)transaction).InnerTracer;
+            using (Assert.EnterMultipleScope())
+            {
+                if (i < selectedAt)
+                {
+                    Assert.That(child, Is.SameAs(NullTxTracer.Instance), "prefix replay must never enter the JS transaction engine or its callbacks");
+                    Assert.That(Engine.CurrentEngine, Is.Null);
+                    Assert.That(scope.Current, Is.Null);
+                    Assert.That(clock.Timers, Is.Empty);
+                }
+                else
+                {
+                    Assert.That(child, Is.TypeOf<GethLikeJavaScriptTxTracer>());
+                    Assert.That(scope.Current, Is.Not.Null);
+                    Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                }
+            }
+            tracer.EndTxTrace();
+        }
+        tracer.EndBlockTrace();
+        IReadOnlyCollection<GethLikeTxTrace> traces = tracer.BuildResult();
+        try
+        {
+            List<GethLikeTxTrace> selected = [];
+            foreach (GethLikeTxTrace trace in traces)
+                if (trace.TxHash == target) selected.Add(trace);
+            Assert.That(selected, Has.Count.EqualTo(1));
+            Assert.That((int?)JToken.Parse(JsonSerializer.Serialize(selected[0], EthereumJsonSerializer.JsonOptions))["txIndex"], Is.EqualTo(selectedAt));
+            foreach (GethLikeTxTrace trace in traces)
+                if (trace.TxHash != target)
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(trace.CustomTracerResult, Is.Null, "an internal alignment entry is not an executed JS result");
+                        Assert.That(trace.TraceError, Is.Null);
+                    }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers, Has.Count.EqualTo(1));
+                Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                Assert.That(scope.Current, Is.Null);
+                Assert.That(Engine.CurrentEngine, Is.Null);
+            }
+        }
+        finally
+        {
+            foreach (GethLikeTxTrace trace in traces) trace.Dispose();
+        }
+    }
+
+    [Test]
     public async Task Specified_javascript_prefix_borrows_no_deadline_while_selected_and_direct_owners_expire(
         [Values("prefix", "selected", "direct")] string ownership,
         [Values(0, -1)] int timeout, [Values] bool deliver, [Values("step", "result")] string callback)
