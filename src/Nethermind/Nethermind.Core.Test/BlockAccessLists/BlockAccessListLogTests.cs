@@ -72,7 +72,7 @@ public class BlockAccessListLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(BlockAccessListDecoder.EncodeToBytes(merged), Is.EqualTo(expectedRlp));
+            Assert.That(MergedBlockAccessListEncoder.EncodeToBytes(merged), Is.EqualTo(expectedRlp));
             Assert.That(merged.ItemCount, Is.EqualTo(expectedList.ItemCount));
             Assert.That(merged.Matches(BlockAccessListDecoder.Instance.Decode(expectedRlp)!, out Address? mismatched), Is.True, $"mismatch at {mismatched}");
             Assert.That(BlockAccessListLog.Matches(logs, BlockAccessListDecoder.Instance.Decode(expectedRlp)!), Is.True);
@@ -87,7 +87,7 @@ public class BlockAccessListLogTests
     [TestCase(Mutation.UndeclaredRead, "0x00000000000000000000000000000000000000a3")]
     public void Matches_detects_the_first_difference(Mutation mutation, string? mismatchedAddress)
     {
-        ReadOnlyBlockAccessList suggested = BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(Merge(BuildLogs(Mutation.None))))!;
+        ReadOnlyBlockAccessList suggested = BlockAccessListDecoder.Instance.Decode(MergedBlockAccessListEncoder.EncodeToBytes(Merge(BuildLogs(Mutation.None))))!;
         BlockAccessListLog[] logs = BuildLogs(mutation);
 
         bool matches = Merge(logs).Matches(suggested, out Address? mismatched);

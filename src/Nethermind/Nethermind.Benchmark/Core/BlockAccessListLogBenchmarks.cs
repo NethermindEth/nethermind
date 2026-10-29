@@ -105,7 +105,7 @@ public class BlockAccessListLogBenchmarks
     public byte[] Merge_LogsAndEncode()
     {
         _merged.Merge(_sealedLogs);
-        return BlockAccessListDecoder.EncodeToBytes(_merged);
+        return MergedBlockAccessListEncoder.EncodeToBytes(_merged);
     }
 
     [Benchmark]

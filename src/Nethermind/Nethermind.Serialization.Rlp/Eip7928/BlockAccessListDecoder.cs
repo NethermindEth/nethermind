@@ -89,31 +89,6 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
     }
 
     /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
-    /// <remarks>Two passes over the merged accounts: lengths first, so each list's prefix is known before its content.</remarks>
-    public static byte[] EncodeToBytes(MergedBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        int accountCount = item.AccountCount;
-        using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accountCount, accountCount);
-        Span<AccountChangesDecoder.EncodingLengths> lengths = accountLengths.AsSpan();
-        int contentLength = 0;
-        for (int i = 0; i < accountCount; i++)
-        {
-            lengths[i] = AccountChangesDecoder.PrepareEncodingLengths(item.GetAccount(i), rlpBehaviors);
-            contentLength += Rlp.LengthOfSequence(lengths[i].ContentLength);
-        }
-
-        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-        RlpWriter writer = new(bytes);
-        writer.StartSequence(contentLength);
-        AccountChangesDecoder accountChangesDecoder = AccountChangesDecoder.Instance;
-        for (int i = 0; i < accountCount; i++)
-        {
-            accountChangesDecoder.EncodePrepared(ref writer, item.GetAccount(i), in lengths[i], rlpBehaviors);
-        }
-        return bytes;
-    }
-
-    /// <inheritdoc cref="EncodeToBytes(GeneratedBlockAccessList, RlpBehaviors)"/>
     public static byte[] EncodeToBytes(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();

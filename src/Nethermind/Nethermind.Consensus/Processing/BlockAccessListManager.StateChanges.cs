@@ -54,7 +54,7 @@ public partial class BlockAccessListManager
             }
         }
 
-        block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(_mergedBlockAccessList);
+        block.EncodedBlockAccessList = MergedBlockAccessListEncoder.EncodeToBytes(_mergedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 }
