@@ -220,10 +220,12 @@ public class SimulateTxExecutor<TTrace>(
     {
         SimulateOutput<TTrace> results = _blockchainBridge.Simulate(header, tx, simulateBlockTracerFactory, _rpcConfig.GasCap.EffectiveGasCap(), token);
 
-        foreach (SimulateBlockResult<TTrace> item in results.Items)
+        for (int blockIndex = 0; blockIndex < results.Items.Count; blockIndex++)
         {
-            if (item is SimulateBlockResult<SimulateCallResult> result)
+            if (results.Items[blockIndex] is SimulateBlockResult<SimulateCallResult> result)
             {
+                TransactionWithSourceDetails[] sources = tx.BlockStateCalls![blockIndex].Calls ?? [];
+                int callIndex = 0;
                 foreach (SimulateCallResult? call in result.Calls)
                 {
                     if (call is { Error: not null } && !string.IsNullOrEmpty(call.Error.Message))
@@ -233,9 +235,13 @@ public class SimulateTxExecutor<TTrace>(
                         if (exception != EvmExceptionType.Revert)
                         {
                             call.Error.Message = call.Error.EvmException.GetEvmExceptionDescription();
+                            if (callIndex < sources.Length && sources[callIndex].GasCapped)
+                                call.Error.Message += SimulateErrorMessages.GasCappedSuffix;
                             call.Error.Data = null;
                         }
                     }
+
+                    callIndex++;
                 }
             }
         }
@@ -327,4 +333,10 @@ internal static class SimulateErrorMessages
     /// (error code <see cref="ErrorCodes.InvalidParams"/>).
     /// </summary>
     public const string EmptyBlockStateCalls = "empty input";
+
+    /// <summary>
+    /// Appended, as go-ethereum does, to a call's non-revert execution error when the RPC gas cap
+    /// lowered the gas the call would otherwise have run with.
+    /// </summary>
+    public const string GasCappedSuffix = " (gas limit was capped by the RPC server's global gas cap)";
 }

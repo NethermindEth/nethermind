@@ -917,6 +917,38 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(gasAvailable, Is.GreaterThan(UInt256.Zero));
     }
 
+    [TestCase(null, true, TestName = "Omitted gas lowered from the block's remaining gas")]
+    [TestCase(2_000_000ul, true, TestName = "Requested gas lowered to the cap")]
+    [TestCase(100_000ul, false, TestName = "Requested gas within the cap")]
+    public async Task Eth_simulate_failure_notes_when_the_rpc_gas_cap_lowered_the_gas(ulong? requestGas, bool expectSuffix)
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        chain.RpcConfig.GasCap = 1_000_000;
+        Assume.That(chain.BlockFinder.Head!.GasLimit, Is.GreaterThan(chain.RpcConfig.GasCap), "the block must offer more gas than the cap");
+        Address contract = new("0xc200000000000000000000000000000000000000");
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { contract, new AccountOverride { Code = Bytes.FromHexString("0xfe") } }
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = contract, Gas = requestGas, GasPrice = 0 }]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.ToString());
+        string expected = "invalid instruction" + (expectSuffix ? SimulateErrorMessages.GasCappedSuffix : "");
+        Assert.That(result.Data.First().Calls.First().Error?.Message, Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task TestTransferLogsAddress([Values] bool eip7708)
     {
