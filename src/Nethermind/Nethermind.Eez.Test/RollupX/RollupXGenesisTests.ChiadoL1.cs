@@ -162,6 +162,7 @@ public partial class RollupXGenesisTests
     public void StreamingRuntime_ChiadoPreset_StartsOnlyForTheSelectedNetworkAndSigner([Values] bool wrongKey)
     {
         using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
         string chainPath = Path.Combine(directory.Path, "l2.json");
         File.Copy(StatelessFixtures.PathOf(ChiadoCapture, "genesis.json"), chainPath);
         (ISpecProvider specs, EezChainRules rules) = ChainConfigLoader.LoadProfile(chainPath);
