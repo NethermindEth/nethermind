@@ -4,6 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
@@ -25,9 +29,11 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public bool IsTracingRewards => inner.IsTracingRewards;
 
     internal static IBlockTracer<GethLikeTxTrace> Wrap(
-        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external)
+        Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createTracer, GethTraceOptions options, CancellationToken external, bool streaming = false)
     {
-        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null) return createTracer(options);
+        bool supported = streaming || !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
+            || options.Tracer is NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer;
+        if (!options.EnforceExecutionDeadline || options.ParsedTimeout.Error is not null || !supported) return createTracer(options);
         GethTraceDeadlineScope scope = new();
         GethLikeBlockDeadlineTracer tracer = new(createTracer(options with { DeadlineScope = scope }), options, external, scope);
         scope.BeforeEmission = tracer.CompleteExecution;

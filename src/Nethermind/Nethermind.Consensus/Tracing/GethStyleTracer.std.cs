@@ -407,7 +407,7 @@ public class GethStyleTracer(
             effective => writer is null
                 ? CreateOptionsTracer(block.Header, filtered with { DeadlineScope = effective.DeadlineScope }, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
                 : new GethLikeBlockStreamingMemoryTracer(filtered with { DeadlineScope = effective.DeadlineScope }, writer, pipeWriter, cancellationToken, destroyRefund),
-            options with { TxHash = txHash }, cancellationToken);
+            options with { TxHash = txHash }, cancellationToken, streaming: writer is not null);
 
         try
         {
@@ -485,7 +485,7 @@ public class GethStyleTracer(
             Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
                 (state, txHash) => GethLikeBlockDeadlineTracer.Wrap(
                     effective => CreateOptionsTracer(block.Header, effective, state, specProvider, parallelLogIndex),
-                    options with { TxHash = txHash }, cancellationToken);
+                    options with { TxHash = txHash }, cancellationToken, streaming: writer is not null);
             if (writer is null)
             {
                 if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
@@ -522,7 +522,7 @@ public class GethStyleTracer(
                 : streamsNative
                     ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(effective, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken, effective.DeadlineScope)
                     : new GethLikeBlockEnvelopeStreamingTracer(options with { DeadlineScope = effective.DeadlineScope }, writer, pipeWriter, cancellationToken, destroyRefund),
-            options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken);
+            options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken, streaming: writer is not null);
 
         try
         {

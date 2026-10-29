@@ -124,9 +124,9 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceBlockByNumber_buffered_execution_deadline(
+    public async Task ByNumber_execution_deadline_preserves_buffered_native_compatibility(
         [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
-        [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered)
+        [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered, [Values] bool streamMode)
     {
         DeadlineExecution clock = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -135,13 +135,14 @@ public partial class DebugRpcModuleTests
         Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
         Assert.That(block.Transactions, Has.Length.EqualTo(3));
         clock.Enabled = true;
-        Dictionary<string, object> options = new() { ["timeout"] = timeout, ["streamMode"] = false };
+        Dictionary<string, object> options = new() { ["timeout"] = timeout, ["streamMode"] = streamMode };
         if (tracer.Length != 0) options["tracer"] = tracer;
         if (filtered) options["txHash"] = block.Transactions[2].Hash!;
         string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
             nameof(IDebugRpcModule.debug_traceBlockByNumber), block.Number, options);
         JToken json = JToken.Parse(response);
-        if (timeout == "1s")
+        bool bufferedNoop = tracer == NativeNoopTracer.NoopTracer && (!streamMode || filtered);
+        if (timeout == "1s" || bufferedNoop)
         {
             Assert.That(json["error"], Is.Null, response);
             JToken? result = json["result"];
@@ -157,15 +158,18 @@ public partial class DebugRpcModuleTests
                 Assert.That(json["result"], Is.Null, response);
             }
         }
-        Assert.That(clock.Timers, Is.Not.Empty);
-        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, bufferedNoop ? Is.Empty : Is.Not.Empty);
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     [Test]
     [NonParallelizable]
-    public Task ByNumber_registered_native_tracers_enforce_reached_timeout(
+    public Task ByNumber_streamed_registered_native_tracers_enforce_reached_timeout(
         [Values(NativeNoopTracer.NoopTracer, NativeKeccakPreimageTracer.KeccakPreimageTracer, "registered", Native4ByteTracer.FourByteTracer)] string tracer,
-        [Values("before", "after")] string expiry) => AssertByNumberDeadline(tracer, expiry, streamMode: false);
+        [Values("before", "after")] string expiry) => AssertByNumberDeadline(tracer, expiry, streamMode: true);
 
     [Test]
     public Task ByNumber_streamed_tracers_enforce_reached_timeout(
