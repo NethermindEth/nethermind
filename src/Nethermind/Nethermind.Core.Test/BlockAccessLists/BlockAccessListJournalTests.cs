@@ -298,14 +298,14 @@ public class BlockAccessListJournalTests
         UInt256 slot = 7;
 
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 10);
-        slice.AddNonceChange(TestItem.AddressA, 1);
+        slice.AddNonceChange(TestItem.AddressA, 0, 1);
         slice.AddCodeChange(TestItem.AddressA, emptyCode, codeBeforeSnapshot);
         slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 11);
 
         int snapshot = slice.TakeSnapshot();
 
         slice.AddBalanceChange(TestItem.AddressA, before: 10, after: 20);
-        slice.AddNonceChange(TestItem.AddressA, 2);
+        slice.AddNonceChange(TestItem.AddressA, 1, 2);
         slice.AddCodeChange(TestItem.AddressA, codeBeforeSnapshot, codeAfterSnapshot);
         slice.AddStorageChange(TestItem.AddressA, slot, before: 11, after: 22);
 
@@ -328,7 +328,7 @@ public class BlockAccessListJournalTests
     {
         BlockAccessListAtIndex slice = new() { Index = 1 };
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 50);
-        slice.AddNonceChange(TestItem.AddressA, 3);
+        slice.AddNonceChange(TestItem.AddressA, 2, 3);
         slice.AddCodeChange(TestItem.AddressA, before: Array.Empty<byte>(), after: new byte[] { 0x60, 0x01 });
         slice.AddStorageRead(TestItem.AddressA, 999);
         for (int i = 0; i < slotCount; i++)
@@ -373,7 +373,7 @@ public class BlockAccessListJournalTests
         int empty = slice.TakeSnapshot();
 
         slice.AddBalanceChange(TestItem.AddressA, before: 0, after: 1);
-        slice.AddNonceChange(TestItem.AddressA, 9);
+        slice.AddNonceChange(TestItem.AddressA, 8, 9);
         slice.AddStorageChange(TestItem.AddressA, slot, before: 0, after: 0x42);
 
         slice.Restore(empty);
