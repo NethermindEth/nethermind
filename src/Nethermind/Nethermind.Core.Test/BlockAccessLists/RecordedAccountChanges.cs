@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Core.Test.BlockAccessLists;
 
@@ -25,7 +26,7 @@ public sealed class RecordedAccountChanges(Address address)
 
     public bool HasStorageChange(in UInt256 key) => StorageChanges.ContainsKey(key);
 
-    internal static RecordedAccountChanges From(MergedBlockAccessList.AccountChanges account)
+    internal static RecordedAccountChanges From(GeneratedBlockAccessList.AccountChanges account)
     {
         RecordedAccountChanges recorded = new(account.Address);
         if (!account.BalanceChanges.IsEmpty) recorded.BalanceChange = account.BalanceChanges[^1];
@@ -46,7 +47,7 @@ public static class BlockAccessIndexRecorderTestExtensions
         {
             get
             {
-                MergedBlockAccessList merged = recorder.Merge();
+                GeneratedBlockAccessList merged = recorder.Merge();
                 RecordedAccountChanges[] accounts = new RecordedAccountChanges[merged.AccountCount];
                 for (int i = 0; i < accounts.Length; i++) accounts[i] = RecordedAccountChanges.From(merged.GetAccount(i));
                 return accounts;
@@ -74,14 +75,18 @@ public static class BlockAccessIndexRecorderTestExtensions
             => recorder.AddStorageChange(new StorageCell(address, key), before, after);
 
         /// <summary>The block access list of every index in <paramref name="recorder"/>'s log.</summary>
-        public GeneratedBlockAccessList ToGeneratedBlockAccessList() => recorder.Merge().ToGeneratedBlockAccessList();
+        public GeneratedBlockAccessList ToGeneratedBlockAccessList() => recorder.Merge();
 
-        private MergedBlockAccessList Merge()
+        private GeneratedBlockAccessList Merge()
         {
             recorder.Log.Seal();
-            MergedBlockAccessList merged = new();
-            merged.Merge([recorder.Log]);
-            return merged;
+            return GeneratedBlockAccessList.Merge([recorder.Log]);
         }
+    }
+
+    extension(GeneratedBlockAccessList list)
+    {
+        /// <summary><paramref name="list"/> decoded from its encoding, so accounts can be looked up by address.</summary>
+        public ReadOnlyBlockAccessList ToReadOnly() => BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(list))!;
     }
 }

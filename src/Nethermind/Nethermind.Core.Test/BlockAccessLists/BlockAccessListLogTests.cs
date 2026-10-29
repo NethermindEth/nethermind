@@ -65,14 +65,13 @@ public class BlockAccessListLogTests
         }
 
         foreach (BlockAccessListLog log in logs) log.Seal();
-        MergedBlockAccessList merged = new();
-        merged.Merge(logs);
+        GeneratedBlockAccessList merged = GeneratedBlockAccessList.Merge(logs);
         ReadOnlyBlockAccessList expectedList = expected.ToReadOnlyBlockAccessList();
         byte[] expectedRlp = BlockAccessListDecoder.EncodeToBytes(expectedList);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(MergedBlockAccessListEncoder.EncodeToBytes(merged), Is.EqualTo(expectedRlp));
+            Assert.That(BlockAccessListDecoder.EncodeToBytes(merged), Is.EqualTo(expectedRlp));
             Assert.That(merged.ItemCount, Is.EqualTo(expectedList.ItemCount));
             Assert.That(merged.Matches(BlockAccessListDecoder.Instance.Decode(expectedRlp)!, out Address? mismatched), Is.True, $"mismatch at {mismatched}");
             Assert.That(BlockAccessListLog.Matches(logs, BlockAccessListDecoder.Instance.Decode(expectedRlp)!), Is.True);
@@ -87,10 +86,10 @@ public class BlockAccessListLogTests
     [TestCase(Mutation.UndeclaredRead, "0x00000000000000000000000000000000000000a3")]
     public void Matches_detects_the_first_difference(Mutation mutation, string? mismatchedAddress)
     {
-        ReadOnlyBlockAccessList suggested = BlockAccessListDecoder.Instance.Decode(MergedBlockAccessListEncoder.EncodeToBytes(Merge(BuildLogs(Mutation.None))))!;
+        ReadOnlyBlockAccessList suggested = BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList.Merge(BuildLogs(Mutation.None))))!;
         BlockAccessListLog[] logs = BuildLogs(mutation);
 
-        bool matches = Merge(logs).Matches(suggested, out Address? mismatched);
+        bool matches = GeneratedBlockAccessList.Merge(logs).Matches(suggested, out Address? mismatched);
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,13 +132,6 @@ public class BlockAccessListLogTests
         first.Log.Seal();
         second.Log.Seal();
         return [first.Log, second.Log];
-    }
-
-    private static MergedBlockAccessList Merge(BlockAccessListLog[] logs)
-    {
-        MergedBlockAccessList merged = new();
-        merged.Merge(logs);
-        return merged;
     }
 
     private static World ExecuteIndex(Random random, World world, BlockAccessListAtIndex slice, BlockAccessIndexRecorder log)
