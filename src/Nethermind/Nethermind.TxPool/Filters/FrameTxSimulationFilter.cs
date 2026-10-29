@@ -78,10 +78,10 @@ internal sealed class FrameTxSimulationFilter(
                 state.FrameValidationRan = true;
                 if (result.CodeDependencies.Count > 0 && codeDependencies is not null)
                 {
-                    if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, maxPendingPerCode, out bool recorded))
+                    if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, PendingPaymasterCache.KeyFor(tx), maxPendingPerCode, out bool recorded))
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxCodeDependencyLimitReached);
-                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, too many pending transactions depend on the same account whose code can change or that ecRecover recovered.");
+                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, too many pending transactions depend on the same account whose code can change or that ecRecover returned.");
                         return AcceptTxResult.FrameTxCodeDependencyLimitReached;
                     }
 
