@@ -368,14 +368,19 @@ public class FlatSnapTrieFactoryTests
     public void SaveCheckpoint_FlushesTheWritesItCovers_AndDeletesItWhenNull()
     {
         IPersistence persistence = Substitute.For<IPersistence>();
-        FlatSnapTrieFactory factory = CreateResumingFactory(persistence, new MemColumnsDb<FlatDbColumns>());
+        MemColumnsDb<FlatDbColumns> db = new();
+        FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db);
 
         factory.SaveCheckpoint(CreateCheckpoint());
         persistence.Received(1).Flush();
         Assert.That(factory.LoadCheckpoint()?.AnchorHash, Is.EqualTo(TestItem.KeccakA));
 
         factory.SaveCheckpoint(null);
-        Assert.That(factory.LoadCheckpoint(), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.LoadCheckpoint(), Is.Null);
+            Assert.That(BasePersistence.HasSnapCheckpointSentinel(db), Is.False);
+        }
     }
 
     [Test]
