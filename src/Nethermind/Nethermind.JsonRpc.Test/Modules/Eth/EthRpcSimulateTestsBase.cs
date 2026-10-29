@@ -72,6 +72,7 @@ public class EthRpcSimulateTestsBase
         TestSpecProvider testSpecProvider = releaseSpec is not null
             ? new TestSpecProvider(releaseSpec)
             : new TestSpecProvider(London.Instance);
+        testSpecProvider.Eip8198SlotDurationMs = 12_000;
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 

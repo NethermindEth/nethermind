@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin
 
         [CounterMetric]
         [KeyIsLabel("reason")]
-        [Description("Number of finalized blocks executed after all because they could not be caught up from their block access list, by reason")]
+        [Description("Number of blocks executed while catching up instead of being caught up from their block access list, by reason")]
         public static ConcurrentDictionary<BalCatchUpFallbackReason, long> BalCatchUpFallbacks { get; } = new();
 
         [GaugeMetric]

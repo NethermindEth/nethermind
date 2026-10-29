@@ -33,9 +33,9 @@ on:
         default: tests-zkevm@v21.0.1
         type: string
       focil_version:
-        description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
+        description: Heze fixtures release tag (focilTest lane) - pin to an exact tag
         required: false
-        default: tests-focil-devnet@v0.3.0
+        default: tests-heze-devnet@v2.0.0
         type: string
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
@@ -89,9 +89,9 @@ on:
         default: tests-zkevm@v21.0.1
         type: string
       focil_version:
-        description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
+        description: Heze fixtures release tag (focilTest lane) - pin to an exact tag
         required: false
-        default: tests-focil-devnet@v0.3.0
+        default: tests-heze-devnet@v2.0.0
         type: string
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
@@ -128,12 +128,12 @@ env:
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to the release whose stateless
   # input/output schemas this branch implements.
   ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v21.0.1' }}
-  # FOCIL fixtures ship in their own release line, resolved instead of EEST_VERSION. Keep it an exact
-  # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
-  FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.3.0' }}
+  # Heze fixtures cover EIP-7805 and EIP-8198. Keep the existing focil_version input and lane name
+  # for callers, but pin the successor release rather than resolving latest dynamically.
+  FOCIL_VERSION: ${{ inputs.focil_version || 'tests-heze-devnet@v2.0.0' }}
   # EIP-8141 frame-transaction fixtures, likewise their own release line and likewise an exact tag.
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
-  # EIP-7906, where the FOCIL archive means Amsterdam plus EIP-7805; nothing inside a fixture
+  # EIP-7906, where the Heze archive means Amsterdam plus EIP-7805 and EIP-8198; nothing inside a fixture
   # separates the two, so the lane names the fork it means through the runner's --forkAlias.
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v1.1.1' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
@@ -313,8 +313,8 @@ jobs:
                 fi
                 ;;
               focilTest)
-                # Single-fork engine fixtures, so the BAL toggles do not apply and the flat layout
-                # adds nothing over the Amsterdam corpus the flat lane already runs.
+                # Heze engine fixtures cover Bogota and its fork transitions. The Amsterdam
+                # lanes already exercise the BAL toggles and flat layout.
                 if run_sequential; then
                   emit "$type" sequential bogota '' false false 4 2
                 fi
@@ -392,7 +392,7 @@ jobs:
           if [[ "$TEST_TYPES" == *focilTest* ]]; then
             RESOLVED_FOCIL="$(resolve "$FOCIL_VERSION")"
             echo "focil_version=$RESOLVED_FOCIL" >> "$GITHUB_OUTPUT"
-            echo "Resolved FOCIL release: $RESOLVED_FOCIL"
+            echo "Resolved Heze/FOCIL release: $RESOLVED_FOCIL"
           fi
 
           if [[ "$TEST_TYPES" == *frameTest* || "$TEST_TYPES" == *frameBlockTest* || "$TEST_TYPES" == *frameTxTest* ]]; then
@@ -450,7 +450,10 @@ jobs:
           elif [ "$TEST_TYPE" = "focilTest" ]; then
             RESOLVED_EEST_VERSION="$RESOLVED_FOCIL"
             VERSION_INPUT="$FOCIL_VERSION"
-            EEST_ARCHIVE="fixtures_focil-devnet.tar.gz"
+            case "$RESOLVED_FOCIL" in
+              tests-focil-devnet@*) EEST_ARCHIVE="fixtures_focil-devnet.tar.gz" ;;
+              *) EEST_ARCHIVE="fixtures_heze-devnet.tar.gz" ;;
+            esac
           elif [ "$TEST_TYPE" = "frameTest" ] || [ "$TEST_TYPE" = "frameBlockTest" ] || [ "$TEST_TYPE" = "frameTxTest" ]; then
             RESOLVED_EEST_VERSION="$RESOLVED_FRAMES"
             VERSION_INPUT="$FRAMES_VERSION"
@@ -516,7 +519,7 @@ jobs:
             txTest)     FIXTURE_NAME=transaction_tests;       RUNNER_FLAG=--txTest ;;
             # The zkEVM archive ships blockchain-test-shaped fixtures with stateless bytes.
             zkevmTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--zkevmTest ;;
-            # The FOCIL archive ships engine-format fixtures; only for_bogota is populated.
+            # The Heze archive includes Bogota engine fixtures and fork transitions.
             focilTest)  FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
             # The frame-transaction archive likewise ships engine-format fixtures.
             frameTest)  FIXTURE_NAME=blockchain_tests_engine; RUNNER_FLAG=--engineTest ;;
@@ -561,7 +564,12 @@ jobs:
               find "$FIXTURE_DIR" -maxdepth 1 -type d | head -30
               exit 1
             fi
-            FIXTURE_DIR="$SCOPED_DIR"
+            BOGOTA_DIR="$RUNNER_TMP/nethtest-bogota-scope"
+            rm -rf "$BOGOTA_DIR"
+            mkdir -p "$BOGOTA_DIR"
+            ln -s "$SCOPED_DIR" "$BOGOTA_DIR/"
+            find "$FIXTURE_DIR" -maxdepth 1 -type d -name '*tobogota*' -exec ln -s {} "$BOGOTA_DIR/" \;
+            FIXTURE_DIR="$BOGOTA_DIR"
           elif [ "$SCOPE" = "frames" ]; then
             # Only the Bogota-specific tests: the rest of this archive's for_bogota tree duplicates
             # the Amsterdam corpus the other lanes already run against their own pinned release.
@@ -573,7 +581,7 @@ jobs:
             fi
             FIXTURE_DIR="$SCOPED_DIR"
             # This archive's fixtures declare fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250,
-            # EIP-8272 and EIP-7906, which is FramesDevnet1 here; the FOCIL archive gives the same name a
+            # EIP-8272 and EIP-7906, which is FramesDevnet1 here; the Heze archive gives the same name a
             # different meaning.
             echo "fork_alias=Bogota=FramesDevnet1" >> "$GITHUB_OUTPUT"
           fi

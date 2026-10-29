@@ -1658,7 +1658,7 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]
     public async Task Eth_estimateGas_floor_cost(IReleaseSpec spec, byte[] data, ulong gasLimit, AccessList? accessList, string expectedJson)
     {
-        TestSpecProvider specProvider = new(spec);
+        TestSpecProvider specProvider = new(spec) { Eip8198SlotDurationMs = 12_000 };
         using Context ctx = await Context.Create(specProvider);
 
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
@@ -1682,7 +1682,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimateGas_and_simulate_runtime_bal_floor(bool eip8279, ulong meteredBytes)
     {
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = eip8279 };
-        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        using Context ctx = await Context.Create(new TestSpecProvider(spec) { Eip8198SlotDurationMs = 12_000 });
 
         // Ten cold SLOADs under a calldata-bound floor: each meters 32 bytes, so only the floor grows.
         Prepare code = Prepare.EvmCode;

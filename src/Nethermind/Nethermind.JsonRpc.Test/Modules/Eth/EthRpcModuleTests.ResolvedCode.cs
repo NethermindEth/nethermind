@@ -78,7 +78,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Code_deployed_by_tcreate_is_read_back_in_the_same_call([Values("eth_call", "eth_estimateGas")] string method)
     {
-        using Context ctx = await Context.Create(new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true }));
+        using Context ctx = await Context.Create(new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true }) { Eip8198SlotDurationMs = 12_000 });
         bool revertOnMismatch = method != "eth_call";
 
         // Resolved before the TCREATE, so remembered as empty, then read through EXTCODESIZE and STATICCALL after it.

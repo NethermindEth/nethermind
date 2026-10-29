@@ -288,6 +288,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
             releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator ?? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
+            releaseSpec.IsEip8198Enabled = (chainSpec.Parameters.Eip8198TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             releaseSpec.IsEip1153Enabled = BlockOf(chainSpec.Parameters.Eip1153Transition) <= block ||
                                           (chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -448,6 +449,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
+        public ulong? Eip8198SlotDurationMs => _chainSpec.Parameters.Eip8198SlotDurationMs;
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;

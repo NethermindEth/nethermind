@@ -103,6 +103,7 @@ public partial class EthRpcModule(
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    private SlotSchedule? _slots;
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
 
     /// <summary>In-flight <c>eth_sendRawTransactionSync</c> calls on this instance.</summary>
@@ -154,7 +155,7 @@ public partial class EthRpcModule(
             return ResultWrapper<UInt256?>.Success(null);
         }
 
-        IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(head.Number + 1);
+        IEip1559Spec specFor1559 = GetNextBlockSpec(head);
         if (!specFor1559.IsEip1559Enabled)
         {
             return ResultWrapper<UInt256?>.Success(null);
@@ -162,6 +163,10 @@ public partial class EthRpcModule(
 
         return ResultWrapper<UInt256?>.Success(BaseFeeCalculator.Calculate(head, specFor1559));
     }
+
+    /// <summary>The spec of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
+    private IReleaseSpec GetNextBlockSpec(BlockHeader head) =>
+        _specProvider.GetSpec(head.Number + 1, (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(head.Timestamp));
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
@@ -595,7 +600,7 @@ public partial class EthRpcModule(
             MaxPriorityFeePerGas = rpcTx is EIP1559TransactionForRpc { GasPrice: null, MaxPriorityFeePerGas: null }
                 ? _gasPriceOracle.GetMaxPriorityGasFeeEstimate()
                 : default,
-            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
+            BaseFee = BaseFeeCalculator.Calculate(head, GetNextBlockSpec(head)),
             BlobBaseFee = blobBaseFee,
             Spec = spec,
         };

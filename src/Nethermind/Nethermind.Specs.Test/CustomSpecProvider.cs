@@ -56,5 +56,6 @@ public class CustomSpecProvider : SpecProviderBase, ISpecProvider
     }
 
     public ulong? BeaconChainGenesisTimestamp { get; set; }
+    public ulong? Eip8198SlotDurationMs { get; set; }
 }
 

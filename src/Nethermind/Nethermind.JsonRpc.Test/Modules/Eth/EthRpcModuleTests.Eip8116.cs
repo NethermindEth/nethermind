@@ -48,7 +48,8 @@ public partial class EthRpcModuleTests
             ? new CustomSpecProvider(
                 ((ForkActivation)0, Bogota.Instance),
                 (ForkActivation.TimestampOnly(Eip8116ForkTimestamp), new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = true }))
-            : new TestSpecProvider(Bogota.Instance);
+            { Eip8198SlotDurationMs = 12_000 }
+            : new TestSpecProvider(Bogota.Instance) { Eip8198SlotDurationMs = 12_000 };
 
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1 })

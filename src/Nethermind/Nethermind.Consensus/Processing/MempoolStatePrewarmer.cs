@@ -13,6 +13,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -29,6 +30,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private const int IdlePassDelayMs = 100;
     // A block is expected within the first third of its slot; past that, bet on the next one.
     private const ulong ArrivalGraceSlotFraction = 3;
+    // A head older than this many slots means the node is catching up.
+    private const ulong MaxHeadAgeSlots = 4;
 
     private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
@@ -42,7 +45,6 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly IBlockCachePreWarmer _preWarmer;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
-    private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
     private int _disposed;
 
@@ -54,7 +56,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     // Monotonic: a queued pass runs only while it still reflects the latest head.
     private long _generation;
-    private readonly ulong _secondsPerSlot;
+    private readonly SlotSchedule _slots;
 
     public MempoolStatePrewarmer(
         IBlockCachePreWarmer preWarmer,
@@ -73,8 +75,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _specProvider = specProvider;
         _timestamper = timestamper;
         _logger = logManager.GetClassLogger<MempoolStatePrewarmer>();
-        _secondsPerSlot = Math.Max(1UL, blocksConfig.SecondsPerSlot);
-        _maxHeadAgeSeconds = _secondsPerSlot * 4;
+        _slots = specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot);
         _enabled = blocksConfig.PreWarming == PreWarmMode.BlockAndMempool;
 
         if (_enabled)
@@ -131,7 +132,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ScheduleWarm(head, Interlocked.Increment(ref _generation));
     }
 
-    private bool IsTooOld(Block head) => head.Header.Timestamp + _maxHeadAgeSeconds < _timestamper.UnixTime.Seconds;
+    private bool IsTooOld(Block head) => _slots.AddSlots(head.Header.Timestamp, MaxHeadAgeSlots) < _timestamper.UnixTime.Seconds;
 
     // Queued off the notification thread so head updates are never delayed.
     private void ScheduleWarm(Block head, long generation) =>
@@ -185,7 +186,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private NextBlockContext PrepareNextBlockContext(BlockHeader parent)
     {
         ulong number = parent.Number + 1;
-        ulong timestamp = PredictNextTimestamp(parent.Timestamp, _timestamper.UnixTime.Seconds, _secondsPerSlot);
+        ulong timestamp = PredictNextTimestamp(parent.Timestamp, _timestamper.UnixTime.Seconds, _slots);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
         return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
@@ -202,12 +203,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// enough that the first boundary is already behind us. The grace is how long a passed boundary stays the bet;
     /// after it, a missed slot is the better explanation.
     /// </remarks>
-    internal static ulong PredictNextTimestamp(ulong parentTimestamp, ulong now, ulong secondsPerSlot)
+    internal static ulong PredictNextTimestamp(ulong parentTimestamp, ulong now, SlotSchedule slots)
     {
-        ulong grace = secondsPerSlot / ArrivalGraceSlotFraction;
-        ulong elapsed = now > parentTimestamp + grace ? now - parentTimestamp - grace : 0;
-        ulong slots = Math.Max(1UL, (elapsed + secondsPerSlot - 1) / secondsPerSlot);
-        return parentTimestamp + slots * secondsPerSlot;
+        ulong grace = slots.GetSecondsPerSlot(now) / ArrivalGraceSlotFraction;
+        return slots.AddSlotsUntil(parentTimestamp, now > grace ? now - grace : 0);
     }
 
     /// <summary>

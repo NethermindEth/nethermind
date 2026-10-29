@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -31,7 +32,7 @@ public class SimulateTxExecutor<TTrace>(
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
-    private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
+    private readonly SlotSchedule _slots = specProvider.GetSlotSchedule(secondsPerSlot ?? new BlocksConfig().SecondsPerSlot);
 
     private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
@@ -152,7 +153,7 @@ public class SimulateTxExecutor<TTrace>(
 
                 for (ulong fillBlockNumber = lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
                 {
-                    ulong fillBlockTime = lastBlockTime + _secondsPerSlot;
+                    ulong fillBlockTime = _slots.GetNextSlotTimestamp(lastBlockTime);
                     completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
                         BlockOverrides = new BlockOverride { Number = fillBlockNumber, Time = fillBlockTime },
@@ -174,7 +175,7 @@ public class SimulateTxExecutor<TTrace>(
                 }
                 else
                 {
-                    lastBlockTime += _secondsPerSlot;
+                    lastBlockTime = _slots.GetNextSlotTimestamp(lastBlockTime);
                     blockToSimulate.BlockOverrides.Time = lastBlockTime;
                 }
                 lastBlockNumber = givenNumber;

@@ -575,6 +575,39 @@ public class HeaderValidatorTests
             "Validation should log baseFee mismatch error");
     }
 
+    [TestCase(0UL, 895_833_334UL, true, TestName = "Eip8198_empty_parent_five_forty_eighths_decrease_is_valid")]
+    [TestCase(0UL, 895_833_333UL, false, TestName = "Eip8198_empty_parent_one_below_is_invalid")]
+    [TestCase(0UL, 895_833_335UL, false, TestName = "Eip8198_empty_parent_one_above_is_invalid")]
+    [TestCase(0UL, 875_000_000UL, false, TestName = "Eip8198_empty_parent_one_eighth_decrease_is_invalid")]
+    [TestCase(30_000_000UL, 1_104_166_666UL, true, TestName = "Eip8198_full_parent_five_forty_eighths_increase_is_valid")]
+    [TestCase(30_000_000UL, 1_104_166_665UL, false, TestName = "Eip8198_full_parent_one_below_is_invalid")]
+    [TestCase(30_000_000UL, 1_104_166_667UL, false, TestName = "Eip8198_full_parent_one_above_is_invalid")]
+    [TestCase(30_000_000UL, 1_125_000_000UL, false, TestName = "Eip8198_full_parent_one_eighth_increase_is_invalid")]
+    public void Eip8198_base_fee_is_validated_with_five_forty_eighths(ulong parentGasUsed, ulong baseFee, bool expected)
+    {
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 0, IsEip8198Enabled = true });
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider, new OneLoggerLogManager(new(_testLogger)));
+
+        _parentBlock = Build.A.Block
+            .WithDifficulty(0)
+            .WithBaseFeePerGas(1_000_000_000)
+            .WithGasUsed(parentGasUsed)
+            .WithGasLimit(30_000_000)
+            .WithNumber(5)
+            .TestObject;
+
+        _block = Build.A.Block
+            .WithParent(_parentBlock)
+            .WithDifficulty(0)
+            .WithBaseFeePerGas(baseFee)
+            .WithGasLimit(30_000_000)
+            .WithNumber(_parentBlock.Number + 1)
+            .TestObject;
+        _block.Header.Hash = _block.CalculateHash();
+
+        Assert.That(_validator.Validate(_block.Header, _parentBlock.Header), Is.EqualTo(expected));
+    }
+
     [Test]
     public void Valid_baseFee_with_NoProof_seal_engine_should_pass()
     {

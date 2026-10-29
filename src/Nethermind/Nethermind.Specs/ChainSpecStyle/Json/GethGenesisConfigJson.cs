@@ -98,6 +98,15 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
     /// <summary>
+    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> keeps <c>Blocks.SecondsPerSlot</c>.
+    /// </summary>
+    /// <remarks>
+    /// Not part of EIP-7949; mirrors <c>params.eip8198SlotDurationMs</c> of Parity-style chainspecs and the consensus-layer
+    /// <c>SLOT_DURATION_MS_EIP8198</c>.
+    /// </remarks>
+    public ulong? Eip8198SlotDurationMs { get; set; }
+
+    /// <summary>
     /// Nethermind's minimum history retention, in epochs; <c>null</c> uses <see cref="HistoryRetentionConstants.MinEpochsForBlockRequests"/>.
     /// </summary>
     public ulong? MinHistoryRetentionEpochs { get; set; }

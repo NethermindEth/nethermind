@@ -1162,6 +1162,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Address creator = new("0x9ca228250f9d8f86c23690074c2b96d5f5479f79");
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
+            Eip8198SlotDurationMs = 12_000,
             NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true, Eip8253Accounts = [target] },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
