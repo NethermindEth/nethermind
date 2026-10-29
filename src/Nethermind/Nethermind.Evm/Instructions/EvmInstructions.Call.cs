@@ -109,7 +109,8 @@ public static partial class EvmInstructions
         // The operands are read in place in their popped slots, which stay intact until the next push.
         const int MemoryOperands = 4;
         int valueOperands = TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 1 : 0;
-        if (!stack.EnsureDepth(2 + valueOperands + MemoryOperands))
+        int operands = 2 + valueOperands + MemoryOperands;
+        if (!stack.EnsureDepth(operands))
         {
             // As popping one operand at a time would leave it: the leading operands popped, the memory ones not.
             traceStackHead = (int)stack.Head;
@@ -117,8 +118,9 @@ public static partial class EvmInstructions
             goto StackUnderflow;
         }
 
-        ref readonly UInt256 gasLimit = ref AsWord(ref stack.PopBytesByRefUnchecked());
-        Address codeSource = vm.AddressCache.GetOrCreate(in AsWord(ref stack.PopBytesByRefUnchecked()));
+        ref byte deepest = ref stack.PopBytesByRefUnchecked(operands);
+        ref readonly UInt256 gasLimit = ref Operand(ref deepest, operands, 0);
+        Address codeSource = vm.AddressCache.GetOrCreate(in Operand(ref deepest, operands, 1));
 
         ExecutionEnvironment env = vm.VmState.Env;
         // Static calls cannot transfer value; delegate calls use the value from the current execution context.
@@ -126,13 +128,13 @@ public static partial class EvmInstructions
             ? ref UInt256.Zero
             : ref TOpCall.ExecutionType == ExecutionType.DELEGATECALL
                 ? ref env.Value
-                : ref AsWord(ref stack.PopBytesByRefUnchecked());
+                : ref Operand(ref deepest, operands, 2);
 
-        ref readonly UInt256 dataOffset = ref AsWord(ref stack.PopBytesByRefUnchecked());
-        ref readonly UInt256 dataLength = ref AsWord(ref stack.PopBytesByRefUnchecked());
-        ref readonly UInt256 outputOffset = ref AsWord(ref stack.PopBytesByRefUnchecked());
+        ref readonly UInt256 dataOffset = ref Operand(ref deepest, operands, 2 + valueOperands);
+        ref readonly UInt256 dataLength = ref Operand(ref deepest, operands, 3 + valueOperands);
+        ref readonly UInt256 outputOffset = ref Operand(ref deepest, operands, 4 + valueOperands);
         // The slot a push takes first: copy it before any push that it outlives.
-        ref readonly UInt256 outputLength = ref AsWord(ref stack.PopBytesByRefUnchecked());
+        ref readonly UInt256 outputLength = ref AsWord(ref deepest);
 
         bool hasValueTransfer = TOpCall.ExecutionType != ExecutionType.DELEGATECALL && !callValue.IsZero;
         // Enforce static call restrictions: no value transfer allowed unless it's a CALLCODE.
@@ -328,6 +330,11 @@ public static partial class EvmInstructions
     /// <summary>The word in a stack slot, which holds it in limb layout.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ref UInt256 AsWord(ref byte slot) => ref Unsafe.As<byte, UInt256>(ref slot);
+
+    /// <summary>The <paramref name="index"/>-th of <paramref name="count"/> popped operands, the first having been on top.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref UInt256 Operand(ref byte deepest, int count, int index) =>
+        ref AsWord(ref Unsafe.Add(ref deepest, (count - 1 - index) * EvmStack.WordSize));
 
     /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
