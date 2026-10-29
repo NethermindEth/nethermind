@@ -277,7 +277,7 @@ namespace Nethermind.Trie
                 previousRlp = item.FullRlp.AsSpan();
                 if (previousRlp.Length == FullBranchRlpLength)
                 {
-                    result = RentBranchRlp(pool, FullBranchRlpLength, path);
+                    result = RentPatchedBranchRlp(pool, previousRlp, path);
                     if (TryPatchFullBranch(tree, ref path, item, previousRlp, result.AsSpan()[..FullBranchRlpLength], pool, canBeParallel))
                         return result;
 

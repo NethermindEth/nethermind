@@ -234,6 +234,11 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);
 
+        /// <summary>Rents the buffer a full branch re-encoded from <paramref name="previousRlp"/> is patched into: from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentPatchedBranchRlp(ICappedArrayPool? pool, ReadOnlySpan<byte> previousRlp, in TreePath path) =>
+            pool.SafeRent(previousRlp.Length);
+
         /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: the one it is in.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static CappedArray<byte> StorableBranchRlp(CappedArray<byte> rlp, ICappedArrayPool? pool) => rlp;
