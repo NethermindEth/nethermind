@@ -115,6 +115,31 @@ public partial class BlockDownloaderTests
         }
     }
 
+    // Without a peer that serves lists, or with one behind the block, the block executes at once, without a list or receipts.
+    [TestCase(EthVersions.Eth70, 1UL)]
+    [TestCase(EthVersions.Eth71, 0UL)]
+    public async Task Finalized_catchup_executes_at_once_without_a_peer_that_serves_the_list(byte protocolVersion, ulong peerHead)
+    {
+        await using CatchUp catchUp = CreateCatchUp(1);
+        catchUp.Peer.SyncPeer.ProtocolVersion.Returns(protocolVersion);
+        catchUp.Peer.SyncPeer.HeadNumber.Returns(peerHead);
+        Block block = catchUp.Blocks[0];
+        bool suggested = false;
+        catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
+
+        BlocksRequest bodyRequest = (await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
+        bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
+        catchUp.Downloader.HandleResponse(bodyRequest, catchUp.Peer);
+        BlocksRequest? next = await catchUp.Downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next, Is.Null);
+            Assert.That(suggested, Is.True);
+            Assert.That(catchUp.Ctx.ReceiptStorage.HasBlock(block.Number, block.Hash!), Is.False);
+        }
+    }
+
     [Test]
     public async Task Finalized_catchup_keeps_requesting_data_cut_short_by_peer_limits()
     {
@@ -211,6 +236,7 @@ public partial class BlockDownloaderTests
             Bal = bal;
             Downloader = (BlockDownloader)Ctx.FullSyncFeedComponent.BlockDownloader;
             Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+            Peer.SyncPeer.HeadNumber.Returns(blocks[^1].Number);
             Ctx.PeerPool.InitializedPeers.Returns([Peer]);
         }
 

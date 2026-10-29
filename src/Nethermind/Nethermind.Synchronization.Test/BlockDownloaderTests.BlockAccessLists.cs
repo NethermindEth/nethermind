@@ -49,13 +49,18 @@ public partial class BlockDownloaderTests
     [TestCase(false, false, true, false, true, true)]
     // Missed slots leave the block inside the height window yet older than the retention period.
     [TestCase(false, false, true, false, true, false, true)]
-    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false, bool pastRetentionPeriod = false)
+    // A block that can execute without its list is not held back, which the warning says.
+    [TestCase(true, false, true, false, true, true)]
+    // During beacon sync the best known header follows the downloaded blocks; the beacon head marks the chain tip.
+    [TestCase(false, false, true, true, true, false, false, true)]
+    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false, bool pastRetentionPeriod = false, bool farHeadIsBeacon = false)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
         IBlockTree farKnownBlockTree = Substitute.For<IBlockTree>();
-        farKnownBlockTree.BestKnownNumber.Returns(ulong.MaxValue);
+        farKnownBlockTree.BestKnownNumber.Returns(farHeadIsBeacon ? 2UL : ulong.MaxValue);
+        farKnownBlockTree.BestKnownBeaconNumber.Returns(farHeadIsBeacon ? ulong.MaxValue : 0UL);
         ulong retentionSeconds = HistoryRetentionConstants.HistoryPruneEpochs * 32 * new BlocksConfig().SecondsPerSlot;
         ulong now = HeaderTimestamp + (pastRetentionPeriod ? retentionSeconds + 1 : retentionSeconds);
         await using IContainer node = CreateNode(builder =>
@@ -108,7 +113,8 @@ public partial class BlockDownloaderTests
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
                 Arg.Any<string>());
-            logger.Received(isStatic || isTrusted ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("block access list")));
+            logger.Received(isStatic || isTrusted ? 1 : 0).Warn(Arg.Is<string>(message =>
+                message.Contains("block access list") && message.Contains("sync cannot pass this block") != processing));
         }
     }
 
@@ -264,11 +270,18 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
-    public enum AccessListSource { Served, Withheld, NoEth71Peer, OutsideServingWindow }
+    public enum AccessListSource { Served, Withheld, NoEth71Peer, OutsideServingWindow, Stored }
 
-    [Test]
+    [TestCase(false, false, AccessListSource.Served)]
+    [TestCase(true, false, AccessListSource.Served)]
+    [TestCase(false, true, AccessListSource.Served)]
+    [TestCase(true, true, AccessListSource.Withheld)]
+    [TestCase(true, false, AccessListSource.NoEth71Peer)]
+    [TestCase(false, true, AccessListSource.OutsideServingWindow)]
+    // The list of a beacon body from engine_newPayload is already in the store.
+    [TestCase(true, false, AccessListSource.Stored)]
     public async Task Full_sync_downloads_access_lists_of_executed_blocks_when_execution_uses_them(
-        [Values] bool parallelExecution, [Values] bool batchRead, [Values] AccessListSource source)
+        bool parallelExecution, bool batchRead, AccessListSource source)
     {
         // A far beacon head puts the block below the serving window, where peers may have pruned its list.
         IBlockTree farBeaconBlockTree = Substitute.For<IBlockTree>();
@@ -282,6 +295,7 @@ public partial class BlockDownloaderTests
         if (source == AccessListSource.NoEth71Peer) catchUp.Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth70);
         bool served = source == AccessListSource.Served;
         Block block = catchUp.Blocks[0];
+        if (source == AccessListSource.Stored) catchUp.BalStore.Insert(block.Number, block.Hash!, catchUp.Bal);
         bool suggested = false;
         catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
 
@@ -314,7 +328,7 @@ public partial class BlockDownloaderTests
                 AccessListSource.Withheld => 3,
                 _ => 0,
             }));
-            Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo(usesAccessLists && served));
+            Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo((usesAccessLists && served) || source == AccessListSource.Stored));
         }
     }
 
