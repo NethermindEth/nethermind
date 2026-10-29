@@ -182,8 +182,11 @@ public class JsonRpcResponseWriterStreamingIdTests
             JsonElement item = document.RootElement;
             if (isBatch)
             {
-                Assert.That(item.ValueKind, Is.EqualTo(JsonValueKind.Array));
-                Assert.That(item.GetArrayLength(), Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(item.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(item.GetArrayLength(), Is.EqualTo(2));
+                }
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(json.AsSpan().StartsWith(prefix), Is.True);
