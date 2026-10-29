@@ -1849,6 +1849,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 first = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(first, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, firstList);
+        await chain.WaitForCommitted(first.BlockHash);
         await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: !resendHead);
 
         Block executed = chain.BlockTree.FindBlock(first.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!;
