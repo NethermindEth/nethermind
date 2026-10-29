@@ -89,7 +89,18 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.Input = tx.Data;
     }
 
-    protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
+    protected override bool ShouldTraceTx(Transaction? tx)
+    {
+        if (tx is null || !base.ShouldTraceTx(tx)) return false;
+        if (options.DeadlineScope is { Current: null })
+        {
+            if (tx.Hash is not null) _index++;
+            // Recovery and mux children require aligned entries until the selected-hash filter discards prefixes.
+            AddTrace(new GethLikeTxTrace { TxHash = tx.Hash });
+            return false;
+        }
+        return true;
+    }
 
     protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer)
     {
