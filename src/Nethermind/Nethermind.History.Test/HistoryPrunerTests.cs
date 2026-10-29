@@ -96,7 +96,7 @@ public class HistoryPrunerTests
             /*syncPivot:*/ 20UL, // below BeaconGenesisBlockNumber — sync pivot caps the prune boundary
             /*primeWithOldestRead:*/ true,
             /*expectedPruneBelow:*/ 20UL,
-            /*finalCutoff:*/ BeaconGenesisBlockNumber
+            /*finalCutoff:*/ 20UL
         ).SetName("Prunes_up_to_sync_pivot");
 
         // 5 epochs × 32 slots = 160 blocks of retention > chain length (100) — CalculateRollingCutoff
@@ -603,6 +603,37 @@ public class HistoryPrunerTests
         }
     }
 
+    [TestCase(0UL, true, BeaconGenesisBlockNumber)]
+    [TestCase(100UL, true, BeaconGenesisBlockNumber)]
+    [TestCase(0UL, false, 1UL)]
+    [TestCase(100UL, false, 1UL)]
+    public void Ancient_barriers_cutoff_follows_the_tree_pivot(ulong configPivotNumber, bool fastSync, ulong expectedCutoff)
+    {
+        // A pivot supplied by the consensus layer reaches only the block tree, after the pruner is built, and never the config.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((configPivotNumber, TestItem.KeccakA));
+        blockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        SyncConfig syncConfig = new()
+        {
+            FastSync = fastSync,
+            SnapSync = fastSync,
+            PivotNumber = configPivotNumber,
+            AncientBodiesBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber + 30,
+        };
+
+        HistoryPruner pruner = CreatePruner(
+            blockTree,
+            new TestSpecProvider(new ReleaseSpec()),
+            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0 },
+            syncConfig: syncConfig);
+        blockTree.SyncPivot.Returns((100UL, TestItem.KeccakA));
+
+        // The bodies feed stops at max(1, min(tree pivot, bodies barrier)), so blocks below it are the ones to prune.
+        // Without fast sync no feed runs and the config pivot reads 0, so nothing is pruned.
+        Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(expectedCutoff));
+    }
+
     [Test]
     public void Geth_retention_upper_bound_preserves_history([Values("4294967295", "\"0xffffffff\"")] string retentionEpochs)
     {
@@ -652,7 +683,7 @@ public class HistoryPrunerTests
             Assert.DoesNotThrow(action);
     }
 
-    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig, ILogManager logManager = null)
+    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig, ILogManager logManager = null, ISyncConfig syncConfig = null)
     {
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
@@ -667,7 +698,7 @@ public class HistoryPrunerTests
             dbProvider,
             historyConfig,
             BlocksConfig,
-            SyncConfig,
+            syncConfig ?? SyncConfig,
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),

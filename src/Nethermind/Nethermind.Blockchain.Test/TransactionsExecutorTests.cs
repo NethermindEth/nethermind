@@ -532,6 +532,35 @@ namespace Nethermind.Blockchain.Test
             if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
         }
 
+        [TestCase(true, GasCostOf.Transaction - 1, BlockProcessor.TxAction.Add, TestName = "CanAddTransaction_BelowLegacyFloor_Eip2780_Added")]
+        [TestCase(true, GasCostOf.TransactionEip2780, BlockProcessor.TxAction.Add, TestName = "CanAddTransaction_AtEip2780Floor_Added")]
+        [TestCase(true, GasCostOf.TransactionEip2780 - 1, BlockProcessor.TxAction.Stop, TestName = "CanAddTransaction_BelowEip2780Floor_Stopped")]
+        [TestCase(false, GasCostOf.Transaction - 1, BlockProcessor.TxAction.Stop, TestName = "CanAddTransaction_BelowLegacyFloor_PreEip2780_Stopped")]
+        public void CanAddTransaction_stops_only_below_the_cheapest_transaction(bool eip2780, ulong gasRemaining, BlockProcessor.TxAction expectedAction)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithTo(TestItem.AddressA)
+                .WithGasLimit(GasCostOf.TransactionEip2780)
+                .WithMaxFeePerGas(1)
+                .WithMaxPriorityFeePerGas(1)
+                .TestObject;
+
+            Block block = Build.A.Block.WithGasLimit(4 * GasCostOf.Transaction + gasRemaining).TestObject;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(eip2780 ? Amsterdam.Instance : Osaka.Instance);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
+
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
+                block, tx, new HashSet<Transaction>(), stateProvider, 4 * GasCostOf.Transaction, 0);
+
+            Assert.That(args.Action, Is.EqualTo(expectedAction));
+        }
+
         [TestCase(100_000UL, 0, false)]
         [TestCase(118_000UL, 0, true)]
         [TestCase(10_000UL, 4000, true)]

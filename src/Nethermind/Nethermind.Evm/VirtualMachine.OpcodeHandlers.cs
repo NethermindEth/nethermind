@@ -205,7 +205,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.IsEip7906Enabled)
         {
             lookup[(int)Instruction.TXTRACE] = OpcodeHandler<TxTraceOpcode<TTracingInst>, TTracingInst, TCancelable>();
-            lookup[(int)Instruction.TXDIFF] = OpcodeHandler<TxDiffOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.EVENTDATACOPY] = OpcodeHandler<EventDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
         }
         if (spec.BlobBaseFeeEnabled)
@@ -1449,13 +1448,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionTxTrace<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
-    }
-
-    [SkipLocalsInit]
-    private readonly struct TxDiffOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
-    {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionTxDiff<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
