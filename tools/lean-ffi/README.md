@@ -197,7 +197,7 @@ The `eth` JSON-RPC module provides:
 
 * `eth_sendProofWrapper("0x<RLP>")`: verify a mode 0 or mode 1 wrapper, which carries its full
   transactions, retain its witnesses, and submit its transactions. It returns transaction hashes.
-* `eth_getProofWrapper()`: return a hexadecimal RLP mode 1 wrapper for proof-backed pending
+* `eth_getProofWrapper()`: return the latest produced hexadecimal RLP wrapper for proof-backed pending
   transactions. Selection rotates across the pool when wrapper limits prevent including all
   candidates; unchanged selections reuse an already verified aggregate.
 
@@ -306,14 +306,21 @@ stays current. Each peer keeps a verification-failure score, one per wrapper of 
 capped at 16 and halving every five minutes: from three, its sources are asked after the others and
 it gets one outstanding request instead of four. It is never disconnected for it.
 
-Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker produces mode-1
+Every EIP-8288 `AGGREGATION_INTERVAL` (one second), a tracked aggregation worker produces
 wrappers over bounded subsets until every pending dependency-bearing transaction is covered or
 one interval of proving has elapsed; the next cycle resumes the rotation where it stopped. Ticks
 coalesce while proving. Selections rotate across disjoint groups, reuse authenticated child proofs and discard
 removed dependencies. Mode 1 has no dependency-count limit, so a subset is bounded by
 `MAX_WRAPPER_BYTES`, the guest's 256 dependencies and an estimated proving cost equal to folding 16 fresh
 signatures: already proven aggregates merge whole and may carry many more dependencies. Mode-0 witnesses
-fold directly into the aggregate, and a selection a held proof already proves is not proven again. Completed selections are checked against current pool membership
+fold directly into the aggregate, and a selection a held proof already proves is not proven again.
+As EIP-8288 permits, a subset whose every dependency has a held direct witness (leanSPHINCS signature or
+leanSTARK proof) is instead produced as a mode-0 wrapper concatenating them, without proving, when it fits
+`MAX_LEANSIG_DEPS_PER_WRAPPER` and `MAX_LEANSTARK_DEPS_PER_WRAPPER` and its witnesses encode no larger than
+the mode-1 proof: a held proof of the exact set, or else an estimated 265 KB. Such a subset ends where mode 0
+would stop applying rather than turn into a proof, so it costs no proving whatever the budget. A transaction
+whose witnesses are no longer held is proven from its recursive coverage, and one exceeding the proving
+budget alone gets a wrapper of its own. Completed selections are checked against current pool membership
 before publication. `eth_getProofWrapper` returns a copy without invoking the prover.
 Managed aggregation folds at most four direct witnesses or two children per call.
 Cancellation is checked between calls; an individual native call remains uninterruptible.
