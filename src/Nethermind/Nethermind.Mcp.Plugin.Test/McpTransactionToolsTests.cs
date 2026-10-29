@@ -52,6 +52,7 @@ namespace Nethermind.Mcp.Plugin.Test;
 public class McpTransactionToolsTests
 {
     private const int BatchIds = 20;
+    private const TxType OpStackDepositTransactionType = (TxType)0x7e;
     private static readonly string UnknownHash = Keccak.Compute("unknown transaction").ToString();
 
     private McpTestNode _node = null!;
@@ -1442,10 +1443,10 @@ public class McpTransactionToolsTests
 
     private sealed class DepositRpc : TransactionForRpc
     {
-        public override TxType? Type => TxType.DepositTx;
+        public override TxType? Type => OpStackDepositTransactionType;
         public override bool ShouldSetBaseFee() => false;
         public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null) =>
-            new Transaction { Type = TxType.DepositTx, SenderAddress = TestItem.AddressB, To = TestItem.AddressD, GasLimit = 21_000 };
+            new Transaction { Type = OpStackDepositTransactionType, SenderAddress = TestItem.AddressB, To = TestItem.AddressD, GasLimit = 21_000 };
     }
 
     [Test]

@@ -2054,6 +2054,8 @@ internal sealed class McpTransactionTools(
         }
     }
 
+    private const byte OpStackDepositTransactionType = 0x7e;
+
     private static string TypeName(TxType type) => type switch
     {
         TxType.Legacy => "legacy",
@@ -2061,7 +2063,7 @@ internal sealed class McpTransactionTools(
         TxType.EIP1559 => "EIP-1559",
         TxType.Blob => "blob (EIP-4844)",
         TxType.SetCode => "set-code (EIP-7702)",
-        TxType.DepositTx => "deposit (OP Stack)",
+        _ when (byte)type == OpStackDepositTransactionType => "deposit (OP Stack)",
         _ => $"type 0x{(int)type:x}"
     };
 
