@@ -318,21 +318,26 @@ public class HistoryAvailabilityTests
             });
         }
 
-        for (ulong floor = 1; floor < Blocks; floor++)
+        try
         {
-            Assert.That(_availability.TryRaiseGlobalFloor(floor), Is.True);
-            using (IWriteBatch batch = AvailableBlocks.StartWriteBatch())
+            for (ulong floor = 1; floor < Blocks; floor++)
             {
-                HistoryAvailability.UnmarkBlock(batch, floor - 1);
+                Assert.That(_availability.TryRaiseGlobalFloor(floor), Is.True);
+                using (IWriteBatch batch = AvailableBlocks.StartWriteBatch())
+                {
+                    HistoryAvailability.UnmarkBlock(batch, floor - 1);
+                }
+
+                _availability.ForgetMatchedRoots();
+                Volatile.Write(ref prunedBelow, (long)floor);
+                await Task.Delay(1);
             }
-
-            _availability.ForgetMatchedRoots();
-            Volatile.Write(ref prunedBelow, (long)floor);
-            await Task.Delay(1);
         }
-
-        await stop.CancelAsync();
-        await Task.WhenAll(readers);
+        finally
+        {
+            await stop.CancelAsync();
+            await Task.WhenAll(readers);
+        }
 
         Assert.That(violations, Is.Zero);
     }

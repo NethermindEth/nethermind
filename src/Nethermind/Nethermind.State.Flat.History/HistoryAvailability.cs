@@ -240,7 +240,10 @@ public sealed class HistoryAvailability
     {
         lock (_floorLock)
         {
-            long floor = TryGetGlobalFloor(out ulong published) ? (long)published : 0;
+            long floor = Volatile.Read(ref _knownFloor);
+            if (floor >= 0) return floor;
+
+            floor = TryGetGlobalFloor(out ulong published) ? (long)published : 0;
             Volatile.Write(ref _knownFloor, floor);
             return floor;
         }
