@@ -1398,6 +1398,26 @@ public class BlockTreeTests
         }
     }
 
+    [Test]
+    public void ForkChoiceUpdated_keeps_known_hash_when_given_zero([Values] bool zeroFinalized, [Values] bool zeroSafe)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(1);
+        BlockTree blockTree = builder.TestObject;
+        blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakB);
+
+        blockTree.ForkChoiceUpdated(zeroFinalized ? Keccak.Zero : TestItem.KeccakC, zeroSafe ? Keccak.Zero : TestItem.KeccakD);
+
+        Hash256 expectedFinalized = zeroFinalized ? TestItem.KeccakA : TestItem.KeccakC;
+        Hash256 expectedSafe = zeroSafe ? TestItem.KeccakB : TestItem.KeccakD;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(expectedFinalized));
+            Assert.That(blockTree.SafeHash, Is.EqualTo(expectedSafe));
+        }
+
+        AssertPersistedForkChoice(builder, expectedFinalized, expectedSafe);
+    }
+
     private static IEnumerable<TestCaseData> ForkChoicePairs()
     {
         yield return new TestCaseData(TestItem.KeccakA, TestItem.KeccakB).SetArgDisplayNames("finalized", "safe");
