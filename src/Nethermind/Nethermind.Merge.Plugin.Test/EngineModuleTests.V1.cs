@@ -1003,6 +1003,27 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task forkchoiceUpdatedV1_with_zero_hash_keeps_known_safe_and_finalized_blocks([Values] bool zeroSafe)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        TestRpcBlockchain testRpc = await CreateTestRpc(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
+        Hash256 newHeadHash = (await SendNewBlockV1(rpc, chain)).BlockHash!;
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newHeadHash, startingHead, startingHead));
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(newHeadHash, zeroSafe ? startingHead : Keccak.Zero, zeroSafe ? Keccak.Zero : startingHead));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data?.Hash, Is.EqualTo(startingHead));
+            Assert.That(testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data?.Hash, Is.EqualTo(startingHead));
+        }
+    }
+
+    [Test]
     public async Task forkchoiceUpdatedV1_with_no_payload_attributes_should_change_head()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -1026,11 +1047,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice()
+    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice([Values] bool zeroFinalized)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+        Hash256 safeHash = chain.BlockTree.HeadHash!;
+        if (zeroFinalized) await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF));
+        ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, zeroFinalized ? Keccak.Zero : TestItem.KeccakF, safeHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatus.Syncing).ToUpper())); // ToDo wait for final PostMerge sync
         using (Assert.EnterMultipleScope())
@@ -1039,7 +1062,7 @@ public partial class EngineModuleTests
             // are recorded so a node restarted before its first pivot update can recover without a new FCU.
             Assert.That(chain.BlockFinder.HeadHash, Is.Not.EqualTo(TestItem.KeccakF));
             Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(TestItem.KeccakF));
-            Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(TestItem.KeccakF));
+            Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(safeHash));
         }
     }
 
