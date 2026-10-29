@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core;
@@ -281,5 +282,9 @@ namespace Nethermind.Trie
         /// <summary>Climbs <paramref name="path"/> back out of the child <see cref="EnterChildPath"/> entered.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void LeaveChildPath(ref TreePath path) => path.TruncateOne();
+
+        /// <summary>The child hash <paramref name="hash"/>, read from its parent's RLP.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ReadChildHash(ReadOnlySpan<byte> hash) => new(MemoryMarshal.Read<ValueHash256>(hash));
     }
 }

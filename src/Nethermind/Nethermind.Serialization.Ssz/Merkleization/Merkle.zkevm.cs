@@ -30,14 +30,27 @@ public static partial class Merkle
             HashPairWithSha256(in left, in right, out parent);
     }
 
+    /// <remarks>
+    /// Siblings that already lie side by side, as those of a merkle level do, are hashed where they are, unless the
+    /// parent overwrites them.
+    /// </remarks>
     [SkipLocalsInit]
     private static void HashPairWithSha256(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
+        Unsafe.SkipInit(out parent);
+        if (Unsafe.AreSame(ref Unsafe.Add(ref Unsafe.AsRef(in left), 1), ref Unsafe.AsRef(in right)) &&
+            !Unsafe.AreSame(ref parent, ref Unsafe.AsRef(in left)) && !Unsafe.AreSame(ref parent, ref Unsafe.AsRef(in right)))
+        {
+            Accelerators.Sha256(
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in left, 2)),
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref parent, 1)));
+            return;
+        }
+
         Span<UInt256> concatenation = stackalloc UInt256[2];
         concatenation[0] = left;
         concatenation[1] = right;
 
-        Unsafe.SkipInit(out parent);
         Accelerators.Sha256(
             MemoryMarshal.AsBytes(concatenation),
             MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref parent, 1)));

@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -1367,7 +1366,7 @@ namespace Nethermind.Trie
         private static TrieNode ResolveHashedChild(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, ReadOnlySpan<byte> hash)
         {
             // Not interned: both interned hashes are of payloads short enough to be embedded rather than hashed.
-            Hash256 keccak = new(MemoryMarshal.Read<ValueHash256>(hash));
+            Hash256 keccak = ReadChildHash(hash);
             TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
             if (!child.IsWarmerOwnedNonVolatile || child.NodeType != NodeType.Unknown) data = child;
             return child;
