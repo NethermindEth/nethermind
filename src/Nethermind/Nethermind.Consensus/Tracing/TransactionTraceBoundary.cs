@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -12,6 +14,8 @@ namespace Nethermind.Consensus.Tracing;
 /// <summary>Marks completion of a requested transaction without changing the block presented to tracers.</summary>
 public sealed class TransactionTraceBoundary : IBlockTracer
 {
+    private const int SerialLookupLength = 64;
+
     private readonly IBlockTracer _inner;
     private readonly Hash256? _transactionHash;
     private readonly IPrefixStateSeedSource? _seeds;
@@ -57,17 +61,38 @@ public sealed class TransactionTraceBoundary : IBlockTracer
             ? new(tracer, null, null) { CompletesBeforeTransactions = true }
             : new(tracer, block.Transactions[index - 1].Hash, null);
 
+    /// <remarks>
+    /// Senders are recovered after this lookup, so the transactions are not hashed yet. The first
+    /// <see cref="SerialLookupLength"/> are hashed on this thread; each window after that is twice as long and is
+    /// hashed in parallel first, so a late target in a large block does not hash its prefix on one thread.
+    /// </remarks>
     internal int IndexOf(Block block)
     {
         Transaction[] transactions = block.Transactions;
         if (_transactionHash is null) return transactions.Length;
-        for (int i = 0; i < transactions.Length; i++)
+        int start = 0;
+        int end = Math.Min(transactions.Length, SerialLookupLength);
+        while (start < end)
         {
-            if (transactions[i].Hash == _transactionHash) return i;
+            if (start > 0) HashInParallel(transactions, start, end);
+            for (int i = start; i < end; i++)
+            {
+                if (transactions[i].Hash == _transactionHash) return i;
+            }
+
+            start = end;
+            end = Math.Min(transactions.Length, end * 2);
         }
 
         return -1;
     }
+
+    private static void HashInParallel(Transaction[] transactions, int start, int end) =>
+        ParallelUnbalancedWork.For(start, end, transactions, static (i, txs) =>
+        {
+            _ = txs[i].Hash;
+            return txs;
+        });
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
         IsUnpersistedReplay(options) ? tracer as TransactionTraceBoundary : null;
