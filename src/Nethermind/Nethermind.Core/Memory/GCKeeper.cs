@@ -395,6 +395,32 @@ public class GCKeeper : IDisposable
         };
     }
 
+    private enum CollectionClaim { Granted, Cancelled, Throttled }
+
+    /// <summary>Claims a collection after all cancellable waits; never holds the gate during runtime collection.</summary>
+    /// <param name="keepCancellable">Leaves the pending collection cancellable, for a decommit still to come or running.</param>
+    /// <param name="exemptFromSpacing">Skips the minimum spacing, for a decommit that follows its own ordinary collection.</param>
+    private CollectionClaim ClaimCollection(CancellationTokenSource pendingGcCts, bool throttle, bool keepCancellable, bool exemptFromSpacing)
+    {
+        lock (_lock)
+        {
+            if (pendingGcCts.IsCancellationRequested || _runtime.IsActive) return CollectionClaim.Cancelled;
+            if (throttle)
+            {
+                long timeStamp = Environment.TickCount64;
+                if (!exemptFromSpacing && _lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= MinMsBetweenCollections)
+                {
+                    return CollectionClaim.Throttled;
+                }
+
+                _lastGcTimeMs = timeStamp;
+            }
+
+            if (!keepCancellable && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+            return CollectionClaim.Granted;
+        }
+    }
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
@@ -443,7 +469,6 @@ public class GCKeeper : IDisposable
                     long payloadsSinceDecommit = Interlocked.Read(ref _payloadsSinceDecommit);
                     int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
-                    GCCollectionMode mode = GCCollectionMode.Forced;
                     DecommitCheck decommitCheck = default;
                     bool decommit = false;
                     if (collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit)
@@ -451,40 +476,35 @@ public class GCKeeper : IDisposable
                         decommitCheck = CheckDecommit(payloadsSinceDecommit);
                         decommit = decommitCheck.Decision != DecommitDecision.Skip;
                     }
-                    if (decommit)
-                    {
-                        // Keep the debt pending through a longer idle gap; new payloads cancel this wait.
-                        int remainingIdleMs = DecommitIdleDelayMs - Math.Max(0, postBlockDelayMs);
-                        if (remainingIdleMs > 0 && !await _delay(remainingIdleMs, pendingGcCts.Token)) return;
 
-                        // Also decommit memory back to O/S
-                        mode = GCCollectionMode.Aggressive;
-                        generation = GcLevel.Gen2;
-                        compacting = GcCompaction.Full;
-                    }
-
-                    // Claim only after all cancellable waits; never hold the gate during runtime collection.
-                    lock (_lock)
+                    // A due decommit waits for a longer idle gap, which payloads arriving faster than that never leave: the
+                    // ordinary collection runs first, so the wait cannot cost the block its own. Without a wait left, the
+                    // decommit's full collection covers it.
+                    int remainingIdleMs = decommit ? DecommitIdleDelayMs - Math.Max(0, postBlockDelayMs) : 0;
+                    if (!decommit || remainingIdleMs > 0)
                     {
-                        if (pendingGcCts.IsCancellationRequested || _runtime.IsActive) return;
-                        if (throttle)
+                        // A throttled collection does not hold up the decommit, whose idle wait is longer than the spacing.
+                        CollectionClaim claim = ClaimCollection(pendingGcCts, throttle, keepCancellable: decommit, exemptFromSpacing: false);
+                        if (claim == CollectionClaim.Cancelled) return;
+                        if (claim == CollectionClaim.Granted)
                         {
-                            long timeStamp = Environment.TickCount64;
-                            if (_lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= MinMsBetweenCollections)
-                            {
-                                return;
-                            }
-
-                            _lastGcTimeMs = timeStamp;
+                            if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
+                            _runtime.Collect(generation, GCCollectionMode.Forced, compacting);
                         }
-
-                        // A decommit stays cancellable through its collection: the next payload still calls off the re-commit.
-                        if (!decommit && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
-                    bool collected = _runtime.Collect(generation, mode, compacting);
-                    if (collected && decommit)
+                    if (!decommit) return;
+
+                    // Keep the debt pending through a longer idle gap; new payloads cancel this wait and the decommit stays due.
+                    if (remainingIdleMs > 0 && !await _delay(remainingIdleMs, pendingGcCts.Token)) return;
+
+                    // Not spaced from the ordinary collection that ran just before it; a decommit stays cancellable through
+                    // its collection, so the next payload still calls off the re-commit.
+                    if (ClaimCollection(pendingGcCts, throttle, keepCancellable: true, exemptFromSpacing: true) != CollectionClaim.Granted) return;
+
+                    // Also decommit memory back to O/S
+                    if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {GcLevel.Gen2}, compacting {GcCompaction.Full}, decommitting");
+                    if (_runtime.Collect(GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full))
                     {
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
                         RecommitAfterDecommit(pendingGcCts);

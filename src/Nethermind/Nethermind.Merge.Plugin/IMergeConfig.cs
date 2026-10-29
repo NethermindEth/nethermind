@@ -52,7 +52,7 @@ public interface IMergeConfig : IConfig
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            The number of eligible newPayload calls between compacting collections that release process memory. Once due, the decommit runs only while the memory load is at or above `DecommitMemoryLoadPercent`, or once `CollectionsPerUnconditionalDecommit` calls have been counted; until then it is checked again after every call. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer); a new payload cancels the wait without clearing the count.
+            The number of eligible newPayload calls between compacting collections that release process memory. Once due, the decommit runs only while the memory load is at or above `DecommitMemoryLoadPercent`, or once `CollectionsPerUnconditionalDecommit` calls have been counted; until then it is checked again after every call. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer), after the ordinary post-block collection has run; a new payload cancels the wait without clearing the count.
 
             Allowed values:
 
