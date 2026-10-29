@@ -315,6 +315,16 @@ namespace Nethermind.Synchronization.Blocks
             return false;
         }
 
+        private bool HasBlockAccessListsPeer()
+        {
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+            {
+                if (peer.SyncPeer.SupportsBlockAccessLists()) return true;
+            }
+
+            return false;
+        }
+
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
             BlocksRequestContentType? requestContentType = null;
@@ -328,6 +338,7 @@ namespace Nethermind.Synchronization.Blocks
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int? blockAccessListsRequestSize = null;
+            bool? hasBlockAccessListsPeer = null;
             int receiptsRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
@@ -358,6 +369,12 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 entry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                 parentHeader = blockHeader;
+
+                // Without an eth/71 peer every request for an optional list fails, so the block executes without waiting for the retries.
+                if (entry.CanExecuteMissingData && !entry.HasAccessList && !(hasBlockAccessListsPeer ??= HasBlockAccessListsPeer()))
+                {
+                    entry.SkipAccessListDownload = true;
+                }
 
                 if ((requestContentType is null or BlocksRequestContentType.Bodies) && entry.NeedBodyDownload)
                 {

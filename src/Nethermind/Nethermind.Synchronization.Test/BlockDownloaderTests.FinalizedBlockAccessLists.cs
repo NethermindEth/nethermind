@@ -207,6 +207,7 @@ public partial class BlockDownloaderTests
             Bal = bal;
             Downloader = (BlockDownloader)Ctx.FullSyncFeedComponent.BlockDownloader;
             Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+            Ctx.PeerPool.InitializedPeers.Returns([Peer]);
         }
 
         public ValueTask DisposeAsync() => _node.DisposeAsync();

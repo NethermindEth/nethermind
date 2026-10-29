@@ -81,6 +81,7 @@ public partial class BlockDownloaderTests
         syncPeer.HeadNumber.Returns(peerPastRetention ? ulong.MaxValue : 2UL);
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
+        ctx.PeerPool.InitializedPeers.Returns([peerInfo]);
 
         using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))!;
         if (peerServedBody)
@@ -263,12 +264,16 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
+    public enum AccessListSource { Served, Withheld, NoEth71Peer }
+
     [Test]
     public async Task Full_sync_downloads_access_lists_of_executed_blocks_when_execution_uses_them(
-        [Values] bool parallelExecution, [Values] bool batchRead, [Values] bool served)
+        [Values] bool parallelExecution, [Values] bool batchRead, [Values] AccessListSource source)
     {
         await using CatchUp catchUp = CreateCatchUp(1, reconstruct: false,
             new BlocksConfig { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead });
+        if (source == AccessListSource.NoEth71Peer) catchUp.Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth70);
+        bool served = source == AccessListSource.Served;
         Block block = catchUp.Blocks[0];
         bool suggested = false;
         catchUp.Ctx.BlockTree.NewBestSuggestedBlock += (_, args) => suggested |= args.Block.Hash == block.Hash;
@@ -295,8 +300,13 @@ public partial class BlockDownloaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(suggested, Is.True);
-            // An unserved list does not hold the block back: after the retries it executes without one.
-            Assert.That(accessListRequests, Is.EqualTo(!usesAccessLists ? 0 : served ? 1 : 3));
+            // An unserved list does not hold the block back: it executes without one after the retries, or at once without an eth/71 peer.
+            Assert.That(accessListRequests, Is.EqualTo(!usesAccessLists ? 0 : source switch
+            {
+                AccessListSource.Served => 1,
+                AccessListSource.Withheld => 3,
+                _ => 0,
+            }));
             Assert.That(catchUp.BalStore.Exists(block.Number, block.Hash!), Is.EqualTo(usesAccessLists && served));
         }
     }
