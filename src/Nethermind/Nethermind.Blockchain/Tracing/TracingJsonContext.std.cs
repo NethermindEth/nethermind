@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -26,13 +27,18 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(GethTraceOptionsConverter.WireOptions))]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
+[JsonSerializable(typeof(GethLikeTxTrace))]
+[JsonSerializable(typeof(Dictionary<string, JsonElement>))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
+[JsonSerializable(typeof(FourByteIdCounts))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
 [JsonSerializable(typeof(NativeCallTracerCallFrame))]
 [JsonSerializable(typeof(NativeCallTracerConfig))]
+[JsonSerializable(typeof(NativeCallTracerConfig.JsonConfig), TypeInfoPropertyName = "NativeCallTracerJsonConfig")]
 [JsonSerializable(typeof(NativeCallTracerLogEntry))]
 [JsonSerializable(typeof(NativePrestateTracerAccount))]
 [JsonSerializable(typeof(NativePrestateTracerConfig))]
+[JsonSerializable(typeof(NativePrestateTracerConfig.JsonConfig), TypeInfoPropertyName = "NativePrestateTracerJsonConfig")]
 [JsonSerializable(typeof(NativePrestateTracerDiffMode))]
 [JsonSerializable(typeof(Dictionary<AddressAsKey, NativePrestateTracerAccount>))]
 [JsonSerializable(typeof(StateGasTrace))]
@@ -48,7 +54,6 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(TxReceipt[]))]
 [JsonSerializable(typeof(UInt256?))]
 [JsonSerializable(typeof(byte[][]))]
-[JsonSerializable(typeof(Memory<NativeCallTracerLogEntry>))]
 [JsonSerializable(typeof(Dictionary<Hash256, byte[]>))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
 [JsonSerializable(typeof(Dictionary<UInt256, UInt256>))]

@@ -21,5 +21,7 @@ public class GetPayloadV3Handler(
     IBuilderOverridePolicy builderOverridePolicy)
     : GetPayloadHandlerBase<GetPayloadV3Result>(EngineApiVersions.GetPayload.V3, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
 {
+    protected override bool ValidateFork(IReleaseSpec spec) => spec.IsCancunEnabled && !spec.IsPragueEnabled && !spec.IsOsakaEnabled;
+
     protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context) => new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!), ShouldOverrideBuilder(context.CurrentBestBlock!));
 }

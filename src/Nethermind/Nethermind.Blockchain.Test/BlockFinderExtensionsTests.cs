@@ -30,8 +30,11 @@ public class BlockFinderExtensionsTests
         blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: child.Number - 1).Returns(parent);
         blockFinder.FindHeader(child.ParentHash!, BlockTreeLookupOptions.None, blockNumber: child.Number - 1).Returns(parentWithTotalDiff);
 
-        Assert.That(blockFinder.FindParentHeader(child, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.EqualTo(parent));
-        Assert.That(blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo((UInt256?)UInt256.One));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockFinder.FindParentHeader(child, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.EqualTo(parent));
+            Assert.That(blockFinder.FindParentHeader(child, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo((UInt256?)UInt256.One));
+        }
     }
 
     [TestCase(BlockParameterType.Latest, "latest")]
@@ -69,9 +72,12 @@ public class BlockFinderExtensionsTests
         BlockParameter blockParameter = new(50ul);
         SearchResult<Block> result = blockFinder.SearchForBlock(blockParameter);
 
-        Assert.That(result.IsError, Is.True);
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
-        Assert.That(result.Error, Does.Contain("50"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+            Assert.That(result.Error, Does.Contain("50"));
+        }
         Assert.That(result.Error, Does.Contain("Pruned history unavailable"));
     }
 
@@ -103,11 +109,11 @@ public class BlockFinderExtensionsTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void SearchForBlocksOnMainChain_stops_after_a_missing_to_block()
+    public void SearchForHeadersOnMainChain_stops_after_a_missing_to_block()
     {
         IBlockFinder blockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
 
-        List<SearchResult<Block>> results = blockFinder.SearchForBlocksOnMainChain(new BlockParameter(0UL), new BlockParameter(10UL)).ToList();
+        List<SearchResult<BlockHeader>> results = blockFinder.SearchForHeadersOnMainChain(new BlockParameter(0UL), new BlockParameter(10UL)).ToList();
 
         Assert.That(results, Has.Count.EqualTo(1));
         Assert.That(results[0].ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));

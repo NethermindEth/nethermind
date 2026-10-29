@@ -18,6 +18,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -305,13 +306,19 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         if (txValue == AccountBalance)
         {
             // Gas price is zero so no gas payment is needed; sending the full balance as value is valid.
-            Assert.That(err, Is.Null);
-            Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+            }
         }
         else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
-            Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
-            Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
+                Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
+            }
         }
         else
         {
@@ -370,9 +377,12 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
         GasEstimation estimation = Estimate(tx, block);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
-        Assert.That(estimation.Gas, Is.EqualTo(21000ul));
-        Assert.That(estimation.Error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
+            Assert.That(estimation.Gas, Is.EqualTo(21000ul));
+            Assert.That(estimation.Error, Is.Null);
+        }
     }
 
     [TestCase]
@@ -742,4 +752,75 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.LessThan(balanceBefore), "Warmup must debit gas so same-sender successors warm the right state");
     }
 
+    [Test]
+    public void Recording_decorator_sees_gas_purchase_and_nonce_bump()
+    {
+        SenderWriteRecorder recorder = new(_stateProvider, TestItem.AddressA);
+        ITransactionProcessor processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, recorder,
+            new EthereumVirtualMachine(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance), new EthereumCodeInfoRepository(recorder), LimboLogs.Instance);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(100000).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(recorder.Writes, Is.EqualTo(new[] { "SubtractFromBalanceAndSetNonce", "SubtractFromBalance 100000", "SetNonce 1", "AddToBalance 79000" }));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(AccountBalance - GasCostOf.Transaction));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Gas_purchase_of_a_wrong_nonce_transaction_is_applied_once()
+    {
+        const ulong gasLimit = 100000;
+        Transaction wrongNonce = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithNonce(1).WithValue(0).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+        Transaction next = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithNonce(0).WithValue(0).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(wrongNonce, next).WithGasLimit(10 * gasLimit).TestObject;
+        BlockExecutionContext context = new(block.Header, _specProvider.GetSpec(block.Header));
+
+        TransactionResult wrongNonceResult = _transactionProcessor.BuildUp(wrongNonce, context, NullTxTracer.Instance);
+        UInt256 balanceAfterWrongNonce = _stateProvider.GetBalance(TestItem.AddressA);
+        TransactionResult nextResult = _transactionProcessor.BuildUp(next, context, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongNonceResult.Error, Is.EqualTo(TransactionResult.ErrorType.TransactionNonceTooHigh));
+            Assert.That(balanceAfterWrongNonce, Is.EqualTo(AccountBalance - gasLimit));
+            Assert.That(nextResult.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(AccountBalance - gasLimit - GasCostOf.Transaction));
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1));
+        }
+    }
+
+    private sealed class SenderWriteRecorder(IWorldState state, Address sender) : WorldStateDecorator(state)
+    {
+        public List<string> Writes { get; } = [];
+
+        public override void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+        {
+            if (address == sender) Writes.Add(nameof(SubtractFromBalanceAndSetNonce));
+            base.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce, spec);
+        }
+
+        public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        {
+            if (address == sender) Writes.Add($"{nameof(SubtractFromBalance)} {balanceChange}");
+            base.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
+        }
+
+        public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        {
+            if (address == sender) Writes.Add($"{nameof(AddToBalance)} {balanceChange}");
+            base.AddToBalance(address, in balanceChange, spec, out oldBalance);
+        }
+
+        public override void SetNonce(Address address, in ulong nonce)
+        {
+            if (address == sender) Writes.Add($"{nameof(SetNonce)} {nonce}");
+            base.SetNonce(address, in nonce);
+        }
+    }
 }

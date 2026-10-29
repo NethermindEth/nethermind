@@ -660,6 +660,14 @@ namespace Nethermind.Core.Test
             Assert.That(first, Is.EqualTo(expected));
         }
 
+        // Hosts take a SIMD branch of Or for spans of 16 bytes or more, so the four-word loop runs only here.
+        [TestCaseSource(nameof(OrTests))]
+        public void OrScalar(byte[] first, byte[] second, byte[] expected)
+        {
+            Bytes.OrScalar(first, second);
+            Assert.That(first, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(XorTests))]
         public void Xor(byte[] first, byte[] second, byte[] expected)
         {
@@ -1288,7 +1296,7 @@ namespace Nethermind.Core.Test
         /// </summary>
         [Test]
         public void CountZerosWordAtATime_matches_naive(
-            [Values(0, 7, 8, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
+            [Values(0, 7, 8, 31, 32, 39, 223, 224, 225, 231, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
             [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill)
         {
             Random rng = new(length);

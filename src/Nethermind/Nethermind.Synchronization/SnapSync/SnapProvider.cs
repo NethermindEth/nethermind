@@ -151,7 +151,8 @@ namespace Nethermind.Synchronization.SnapSync
                 return AddRangeResult.ExpiredRootHash;
             }
 
-            if (responses.Length > request.Accounts.Count)
+            // An empty storage batch has no account a proof could be for, so a proof-only reply to it is out of bounds too.
+            if (responses.Length > request.Accounts.Count || request.Accounts.Count == 0)
             {
                 if (_logger.IsTrace) _logger.Trace($"SNAP - GetStorageRange - got {responses.Length} slot lists for {request.Accounts.Count} accounts, RootHash:{request.RootHash}");
 
@@ -159,6 +160,22 @@ namespace Nethermind.Synchronization.SnapSync
                 Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.OutOfBounds));
 
                 return AddRangeResult.OutOfBounds;
+            }
+
+            if (responses.Length == 0)
+            {
+                // A proof without any slot list is a proof of absence for the first account: no slots in
+                // [StartingHash, LimitHash]. It is verified like any other range, so the range either completes or the
+                // account is refreshed from the same origin rather than restarted from scratch.
+                result = AddStorageRangeForAccount(request, 0, [], response.Proofs);
+                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
+
+                foreach (PathWithAccount uncovered in request.Accounts.AsSpan()[1..])
+                {
+                    _progressTracker.EnqueueAccountStorage(uncovered);
+                }
+
+                return result;
             }
 
             int slotCount = 0;
@@ -472,8 +489,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public IDisposable? BeginResponse() => _progressTracker.BeginResponse();
+
         public void ReleaseRequest(SnapSyncBatch batch, bool responseHandled)
         {
+            _progressTracker.ReportRequestReleased(batch);
             if (batch.AccountRangeRequest is not null)
             {
                 // Re-offered from the progress it recorded, so the flag makes no difference here.

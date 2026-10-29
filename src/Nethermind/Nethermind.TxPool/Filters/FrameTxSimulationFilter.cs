@@ -48,7 +48,7 @@ internal sealed class FrameTxSimulationFilter(
             tx,
             signaturesPreValidated: state.FrameSignaturesVerified,
             local: local,
-            preempt: local ? null : _blockWorkInProgress);
+            preempt: local || state.ReAddedFromReorg ? null : _blockWorkInProgress);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
@@ -58,11 +58,12 @@ internal sealed class FrameTxSimulationFilter(
                 if (result.NodeBound)
                 {
                     Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
-                    state.FrameSimulationYielded = result.Yielded && !local && !tx.CarriesBlobs;
+                    state.FrameValidationYielded = result.Yielded && !local && !tx.CarriesBlobs;
                     if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, this node's validation-prefix simulation bounds were spent: {result.Reason}.");
                     return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
                 }
 
+                state.FrameValidationRan = true;
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
@@ -74,6 +75,7 @@ internal sealed class FrameTxSimulationFilter(
                 return AcceptTxResult.Accepted;
 
             case FrameTxSimulationOutcome.Accepted:
+                state.FrameValidationRan = true;
                 if (result.CodeDependencies.Count > 0 && codeDependencies is not null)
                 {
                     if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, maxPendingPerCode, out bool recorded))

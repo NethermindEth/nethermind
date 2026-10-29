@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -59,7 +60,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private int _storageValueByteCount;
     private bool _hasStorage;
 
-    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _pushItems = new(4);
+    // The words an operation pushes, packed into one buffer that is reused across operations.
+    private readonly ArrayPoolList<(int Offset, int Length)> _pushItems = new(4);
+    private byte[]? _pushBytes;
+    private int _pushBytesUsed;
 
     private readonly ArrayPoolList<VmFrame> _streamingFrames = new(InitialFrameStackCapacity);
     private readonly ArrayPoolList<VmFrame> _framePool = new(InitialFrameStackCapacity);
@@ -69,6 +73,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new(InitialFrameStackCapacity);
     private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = new(InitialFrameStackCapacity);
     private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = new(InitialFrameStackCapacity);
+    private readonly RetainingArrayPool<byte> _inputPool = new();
+    private readonly RetainingArrayPool<int> _traceAddressPool = new();
 
     private int _entriesSinceLastFlush;
     private bool _disposed;
@@ -153,6 +159,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         ReturnByteBuffer(ref _storageKeyBuffer);
         ReturnByteBuffer(ref _storageValueBuffer);
         ReleasePushBuffers();
+        ReturnByteBuffer(ref _pushBytes);
 
         while (_streamingFrames.Count > 0)
         {
@@ -171,6 +178,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _byteStateChangePool.Dispose();
         _uint256StateChangePool.Dispose();
         _pushItems.Dispose();
+        _inputPool.Clear();
+        _traceAddressPool.Clear();
     }
 
     private static T PopLast<T>(ArrayPoolList<T> list)
@@ -194,14 +203,14 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     protected override CappedArray<int> RentTraceAddress(int length)
     {
         if (length == 0) return CappedArray<int>.Empty;
-        return new CappedArray<int>(ArrayPool<int>.Shared.Rent(length), length);
+        return new CappedArray<int>(_traceAddressPool.Rent(length), length);
     }
 
-    private static void ReturnTraceAddress(CappedArray<int> address)
+    private void ReturnTraceAddress(CappedArray<int> address)
     {
         if (address.IsNotNull && address.UnderlyingLength > 0)
         {
-            ArrayPool<int>.Shared.Return(address.UnderlyingArray!);
+            _traceAddressPool.Return(address.UnderlyingArray!);
         }
     }
 
@@ -238,7 +247,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
     {
         if (input.IsEmpty) return CappedArray<byte>.Empty;
-        byte[] rented = ArrayPool<byte>.Shared.Rent(input.Length);
+        byte[] rented = _inputPool.Rent(input.Length);
         input.Span.CopyTo(rented);
         return new CappedArray<byte>(rented, input.Length);
     }
@@ -247,9 +256,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (input.IsNotNull && input.UnderlyingLength > 0)
         {
-            ArrayPool<byte>.Shared.Return(input.UnderlyingArray!);
+            _inputPool.Return(input.UnderlyingArray!);
         }
     }
+
+    protected override void ReturnExcludedAction(ParityTraceAction action) => ReturnActionTree(action);
 
     private void ReturnActionTree(ParityTraceAction action)
     {
@@ -289,9 +300,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.StartOperation(pc, opcode, gas, env); return; }
 
-        FinalizePendingOp(closeWithNullSub: true);
-
         VmFrame frame = PeekLast(_streamingFrames);
+        FinalizePendingOp(frame, closeWithNullSub: true);
+
         if (!frame.JsonObjectOpened)
         {
             OpenFrameJson(frame);
@@ -341,15 +352,23 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportStackPush(stackItem); return; }
 
-        if (stackItem.IsEmpty)
+        int offset = _pushBytesUsed;
+        int used = offset + stackItem.Length;
+        if (_pushBytes is null || _pushBytes.Length < used)
         {
-            _pushItems.Add((Array.Empty<byte>(), 0));
-            return;
+            byte[] grown = ArrayPool<byte>.Shared.Rent(Math.Max(used, 2 * (_pushBytes?.Length ?? 0)));
+            if (_pushBytes is not null)
+            {
+                _pushBytes.AsSpan(0, offset).CopyTo(grown);
+                ArrayPool<byte>.Shared.Return(_pushBytes);
+            }
+
+            _pushBytes = grown;
         }
 
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(stackItem.Length);
-        stackItem.CopyTo(buffer);
-        _pushItems.Add((buffer, stackItem.Length));
+        stackItem.CopyTo(_pushBytes.AsSpan(offset));
+        _pushBytesUsed = used;
+        _pushItems.Add((offset, stackItem.Length));
     }
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
@@ -464,7 +483,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        FinalizePendingOp(closeWithNullSub: true);
+        FinalizePendingOp(frame, closeWithNullSub: true);
 
         if (frame.JsonObjectOpened)
         {
@@ -508,7 +527,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (_streamVmTrace)
         {
-            FinalizePendingOp(closeWithNullSub: true);
+            FinalizePendingOp(_streamingFrames.Count > 0 ? PeekLast(_streamingFrames) : null, closeWithNullSub: true);
         }
         ParityTraceAction? action = _trace.Action;
         ParityLikeTxTrace result = base.BuildResult();
@@ -521,18 +540,19 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         return result;
     }
 
-    private void FinalizePendingOp(bool closeWithNullSub)
+    /// <param name="frame">The frame the pending operation runs in, whose code names it.</param>
+    private void FinalizePendingOp(VmFrame? frame, bool closeWithNullSub)
     {
         if (!_hasPendingOp) return;
 
         if (_outerOpHasSubWritten)
         {
-            EmitOuterOpTail();
+            EmitOuterOpTail(frame);
             _outerOpHasSubWritten = false;
         }
         else
         {
-            EmitPendingOpUpToSub();
+            EmitPendingOpUpToSub(frame);
             if (closeWithNullSub)
             {
                 _writer.WriteNullValue();
@@ -546,21 +566,31 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         MaybeFlushToWire();
     }
 
-    private void EmitOuterOpTail()
+    private void EmitOuterOpTail(VmFrame? frame)
     {
         _writer.WriteNumber("cost"u8, _pendingCost);
         WritePendingEx();
+        WritePendingOpName(frame);
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WriteEndObject();
     }
 
-    private void EmitPendingOpUpToSub()
+    private void EmitPendingOpUpToSub(VmFrame? frame)
     {
         _writer.WriteStartObject();
         _writer.WriteNumber("cost"u8, _pendingCost);
         WritePendingEx();
+        WritePendingOpName(frame);
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WritePropertyName("sub"u8);
+    }
+
+    private void WritePendingOpName(VmFrame? frame)
+    {
+        if (frame is not null && (uint)_pendingPc < (uint)frame.CodeLength)
+        {
+            _writer.WriteString("op"u8, OpcodeJsonNames.Get((Instruction)frame.CodeBuffer![_pendingPc]));
+        }
     }
 
     private void WritePendingEx()
@@ -594,8 +624,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             _writer.WriteStartArray();
             for (int i = 0; i < _pushItems.Count; i++)
             {
-                (byte[] buf, int len) = _pushItems[i];
-                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
+                (int offset, int length) = _pushItems[i];
+                ByteArrayConverter.Convert(_writer, _pushBytes.AsSpan(offset, length), skipLeadingZeros: true);
             }
             _writer.WriteEndArray();
         }
@@ -668,13 +698,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     private void ReleasePushBuffers()
     {
-        Span<(byte[] Buffer, int Length)> span = _pushItems.AsSpan();
-        for (int i = 0; i < span.Length; i++)
-        {
-            byte[] buffer = span[i].Buffer;
-            if (buffer.Length > 0) ArrayPool<byte>.Shared.Return(buffer);
-        }
         _pushItems.Clear();
+        _pushBytesUsed = 0;
     }
 
     private static void EnsureBuffer(ref byte[]? buffer, int requiredLength)

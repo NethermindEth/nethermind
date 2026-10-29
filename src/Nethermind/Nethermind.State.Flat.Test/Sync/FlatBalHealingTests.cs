@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Healing;
@@ -42,7 +43,7 @@ public class FlatBalHealingTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         _reassembler = new TrieReassembler(_persistence, LimboLogs.Instance);
         _codeDb = new MemDb();
         _balDb = new MemDb();
@@ -150,8 +151,11 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
+        }
     }
 
     // EIP-8298: an adoption records only a hash; its bytecode comes from the change that deposited it, even when
@@ -413,9 +417,12 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
-        Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "cleared slot must be removed from flat store");
+            Assert.That(FlatSlotExists(TestItem.AddressA, 2), Is.True, "untouched slot must remain");
+        }
     }
 
     [Test]
@@ -431,8 +438,11 @@ public class FlatBalHealingTests
 
         bool result = await RunOnce(_healing, firstPivot, lastPivot, [StorageOf(TestItem.AddressA)], default);
 
-        Assert.That(result, Is.True);
-        Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(FlatSlotExists(TestItem.AddressA, 1), Is.False, "removed account's storage must be wiped from flat store");
+        }
     }
 
     [Test]
@@ -624,7 +634,7 @@ public class FlatBalHealingTests
     private static Hash256 BuildRoot(params AccountSpec[] accounts)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         return CommitState(persistence, accounts);
     }
 

@@ -35,6 +35,7 @@ public class CodeInfoRepositoryTests
     {
         _releaseSpec = ReleaseSpecSubstitute.Create();
         _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
+        _releaseSpec.IsEip7702Enabled.Returns(true);
     }
 
     /// <summary>Precompile numbers a chain might register, including ones the index array cannot hold.</summary>
@@ -155,12 +156,15 @@ public class CodeInfoRepositoryTests
     public void Ordinary_address_is_not_taken_for_a_precompile()
     {
         // Sixteen leading zero bytes is what makes an address a candidate; this has none.
-        Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
-        Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
+            Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
 
-        // Zero clears the shape guard — index 0 — so only the set can reject it.
-        Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
-        Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+            // Zero clears the shape guard — index 0 — so only the set can reject it.
+            Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
+            Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+        }
     }
 
     public static IEnumerable<TestCaseData> NotDelegationCodeCases()
@@ -210,9 +214,12 @@ public class CodeInfoRepositoryTests
 
         LoadTrackingCodeInfoRepository sut = new(stateProvider);
 
-        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
 
-        Assert.That(sut.LoadCalled, Is.False);
+            Assert.That(sut.LoadCalled, Is.False);
+        }
     }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()
@@ -251,21 +258,34 @@ public class CodeInfoRepositoryTests
         Assert.That(result, Is.EqualTo(new Address(code.Slice(3, Address.Size))));
     }
 
-    [TestCaseSource(nameof(DelegationCodeCases))]
-    public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
+    public static IEnumerable<TestCaseData> DelegationCodeBeforeAndAfterPragueCases()
+    {
+        foreach (TestCaseData testCase in DelegationCodeCases())
+        {
+            yield return new TestCaseData(testCase.Arguments[0], Prague.Instance, true).SetName($"{testCase.TestName}, Prague");
+            yield return new TestCaseData(testCase.Arguments[0], Cancun.Instance, false).SetName($"{testCase.TestName}, Cancun");
+        }
+    }
+
+    [TestCaseSource(nameof(DelegationCodeBeforeAndAfterPragueCases))]
+    public void GetCachedCodeInfo_DelegatedCode_FollowsDelegationOnlyWhenEip7702Enabled(byte[] code, IReleaseSpec spec, bool followed)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressA, code, spec);
         Address delegationAddress = new(code.Slice(3, Address.Size));
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
-        stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
+        stateProvider.InsertCode(delegationAddress, delegationCode, spec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
-        Assert.That(result.CodeSpan, Is.SequenceEqualTo(delegationCode));
+        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, true, spec, out Address? delegated);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(followed ? delegationCode : code));
+            Assert.That(delegated, Is.EqualTo(followed ? delegationAddress : null));
+        }
     }
 
     [Test]

@@ -1,17 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// Covers the parallel-safe block gas-price aggregation and base-fee seeding in <see cref="Metrics"/>.
+/// Covers the per-block gas-price gauges and base-fee seeding in <see cref="Metrics"/>.
 /// </summary>
 /// <remarks>
-/// The aggregates are static process-wide state, so these run non-parallel and reset in setup.
+/// The gauges are static process-wide state, so these run non-parallel.
 /// </remarks>
 [TestFixture]
 [NonParallelizable]
@@ -19,76 +20,81 @@ public class GasPriceMetricsTests
 {
     private static UInt256 Gwei(ulong gwei) => new(gwei * 1_000_000_000UL);
 
-    [SetUp]
-    public void SetUp() => Metrics.ResetBlockStats();
+    private static Transaction LegacyTx(UInt256 gasPrice) => Build.A.Transaction.WithGasPrice(gasPrice).TestObject;
 
     [Test]
-    public void Concurrent_updates_do_not_lose_transactions_and_track_min_max()
+    public void PublishBlockGasPrices_WithTransactions_PublishesMinMaxAndMean()
     {
-        const int count = 10_000;
+        Metrics.PublishBlockGasPrices([LegacyTx(Gwei(10)), LegacyTx(Gwei(30))], isEip1559Enabled: false, Gwei(1));
 
-        // Each "tx" contributes a gas price of (i % 100 + 1) gwei across many threads at once.
-        Parallel.For(0, count, i => Metrics.UpdateBlockGasPrice(Gwei((ulong)(i % 100) + 1)));
-
-        (float Min, float EstMedian, float Ave, float Max)? prices = Metrics.GetBlockGasPrices();
-
-        Assert.That(Metrics.BlockTransactions, Is.EqualTo(count), "no updates lost under contention");
-        Assert.That(prices, Is.Not.Null);
-        Assert.That(prices!.Value.Min, Is.EqualTo(1.0f), "exact min regardless of interleaving");
-        Assert.That(prices.Value.Max, Is.EqualTo(100.0f), "exact max regardless of interleaving");
-        Assert.That(prices.Value.Ave, Is.InRange(1.0f, 100.0f));
-    }
-
-    // A non-zero base fee seeds all four aggregates; a zero base fee stays blank (no "0.000").
-    [TestCase(2u, 2.0f)]
-    [TestCase(0u, null)]
-    public void Seed_uses_base_fee_only_when_non_zero(ulong gwei, float? expected)
-    {
-        Metrics.SeedBlockGasPriceIfEmpty(Gwei(gwei));
-
-        (float Min, float EstMedian, float Ave, float Max)? prices = Metrics.GetBlockGasPrices();
-        if (expected is null)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(prices, Is.Null);
-            return;
+            Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f), "lowest effective gas price of the block");
+            Assert.That(Metrics.GasPriceMax, Is.EqualTo(30.0f), "highest effective gas price of the block");
+            Assert.That(Metrics.GasPriceAve, Is.EqualTo(20.0f), "mean of the block's effective gas prices");
         }
-
-        Assert.That(prices, Is.Not.Null);
-        Assert.That(prices!.Value, Is.EqualTo((expected.Value, expected.Value, expected.Value, expected.Value)));
     }
 
     [Test]
-    public void Seed_does_not_override_a_contributing_transaction()
+    public void PublishBlockGasPrices_WithoutTransactions_ReportsBaseFee()
     {
-        Metrics.UpdateBlockGasPrice(Gwei(50));
-        Metrics.SeedBlockGasPriceIfEmpty(Gwei(2));
+        Metrics.PublishBlockGasPrices([], isEip1559Enabled: true, Gwei(2));
 
-        (float Min, float EstMedian, float Ave, float Max)? prices = Metrics.GetBlockGasPrices();
-        Assert.That(prices, Is.Not.Null);
-        Assert.That(prices!.Value.Min, Is.EqualTo(50.0f), "real tx price wins over base-fee seed");
+        const float expected = 2.0f;
+        Assert.That((Metrics.GasPriceMin, Metrics.GasPriceMedian, Metrics.GasPriceAve, Metrics.GasPriceMax),
+            Is.EqualTo((expected, expected, expected, expected)), "an empty block reports its base fee in every gauge");
     }
 
     [Test]
-    public void Gas_price_at_or_above_ulong_max_is_skipped()
+    public void PublishBlockGasPrices_WithoutTransactionsAndZeroBaseFee_KeepsPreviousValues()
     {
-        // > ulong.MaxValue wei/gas (~18.4 ETH) is not a meaningful gas price.
-        Metrics.UpdateBlockGasPrice(new UInt256(0, 0, 1, 0));
+        Metrics.PublishBlockGasPrices([LegacyTx(Gwei(10))], isEip1559Enabled: false, UInt256.Zero);
+        Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f), "precondition: a priced block was published");
 
-        Assert.That(Metrics.BlockTransactions, Is.EqualTo(0));
-        Assert.That(Metrics.GetBlockGasPrices(), Is.Null);
+        Metrics.PublishBlockGasPrices([], isEip1559Enabled: false, UInt256.Zero);
+
+        Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f), "a zero base fee is less useful than the last block's values");
     }
 
     [Test]
-    public void Gauges_publish_final_aggregates_not_per_tx_worker_value()
+    public void PublishBlockGasPrices_WithGasPriceAboveUlong_SkipsTheTransaction()
     {
-        Metrics.UpdateBlockGasPrice(Gwei(10));
-        Metrics.UpdateBlockGasPrice(Gwei(30));
+        Metrics.PublishBlockGasPrices([LegacyTx(new UInt256(0, 0, 1, 0)), LegacyTx(Gwei(5))], isEip1559Enabled: false, Gwei(1));
 
-        // Per-tx updates do not touch the gauges; only the explicit publish does (once, after workers join).
-        Metrics.PublishBlockGasPriceGauges();
+        Assert.That((Metrics.GasPriceMin, Metrics.GasPriceAve, Metrics.GasPriceMax), Is.EqualTo((5.0f, 5.0f, 5.0f)),
+            "a gas price of 2^128 wei is not meaningful and is skipped");
+    }
 
-        Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f));
-        Assert.That(Metrics.GasPriceMax, Is.EqualTo(30.0f));
-        Assert.That(Metrics.GasPriceAve, Is.EqualTo(20.0f));
+    [Test]
+    public void PublishBlockGasPrices_WithSystemTransaction_LeavesItOut()
+    {
+        Transaction system = Build.A.Transaction.WithGasPrice(UInt256.Zero).WithSenderAddress(Address.SystemUser).TestObject;
+
+        Metrics.PublishBlockGasPrices([system, LegacyTx(Gwei(8))], isEip1559Enabled: false, Gwei(1));
+
+        Assert.That((Metrics.GasPriceMin, Metrics.GasPriceAve, Metrics.GasPriceMax), Is.EqualTo((8.0f, 8.0f, 8.0f)),
+            "a system transaction pays no gas price, so it must not pull the block's gauges to zero");
+    }
+
+    [TestCase(10ul, 30ul, 0.3f, TestName = "AscendingOrder")]
+    [TestCase(30ul, 10ul, 0.5f, TestName = "DescendingOrder")]
+    public void PublishBlockGasPrices_WithTransactions_EstimatesMedianInBlockOrder(ulong firstGwei, ulong secondGwei, float expectedMedian)
+    {
+        Metrics.PublishBlockGasPrices([LegacyTx(Gwei(firstGwei)), LegacyTx(Gwei(secondGwei))], isEip1559Enabled: false, Gwei(1));
+
+        Assert.That(Metrics.GasPriceMedian, Is.EqualTo(expectedMedian).Within(1e-5f), "the streaming median estimate follows block order");
+    }
+
+    [TestCase(50ul, 2ul, 12.0f, TestName = "BaseFeePlusTip")]
+    [TestCase(11ul, 5ul, 11.0f, TestName = "CappedByMaxFee")]
+    public void PublishBlockGasPrices_WithEip1559Transaction_UsesEffectiveGasPrice(ulong maxFeeGwei, ulong tipGwei, float expected)
+    {
+        Transaction transaction = Build.A.Transaction.WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(Gwei(maxFeeGwei)).WithMaxPriorityFeePerGas(Gwei(tipGwei)).TestObject;
+
+        Metrics.PublishBlockGasPrices([transaction], isEip1559Enabled: true, Gwei(10));
+
+        Assert.That((Metrics.GasPriceMin, Metrics.GasPriceAve, Metrics.GasPriceMax), Is.EqualTo((expected, expected, expected)),
+            "the effective gas price is the base fee plus the tip, capped by the max fee");
     }
 }

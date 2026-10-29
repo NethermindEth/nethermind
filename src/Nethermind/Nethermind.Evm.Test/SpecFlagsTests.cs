@@ -49,12 +49,14 @@ public class SpecFlagsTests
         ("Eip2780", nameof(IReleaseSpec.IsEip2780Enabled), static s => s.IsEip2780Enabled),
         ("Eip2929", "UseHotAndColdStorage", static s => s.UseHotAndColdStorage),
         ("Eip3860", nameof(IReleaseSpec.IsEip3860Enabled), static s => s.IsEip3860Enabled),
+        ("Eip4758", nameof(IReleaseSpec.IsEip4758Enabled), static s => s.IsEip4758Enabled),
         ("Eip6780", "SelfdestructOnlyOnSameTransaction", static s => s.SelfdestructOnlyOnSameTransaction),
         ("Eip7708", nameof(IReleaseSpec.IsEip7708Enabled), static s => s.IsEip7708Enabled),
         ("Eip8037", nameof(IReleaseSpec.IsEip8037Enabled), static s => s.IsEip8037Enabled),
         ("Eip8038", nameof(IReleaseSpec.IsEip8038Enabled), static s => s.IsEip8038Enabled),
         ("Eip8246", "RemoveSelfdestructBurn", static s => s.RemoveSelfdestructBurn),
         ("Eip8279", nameof(IReleaseSpec.IsEip8279Enabled), static s => s.IsEip8279Enabled),
+        ("Eip8360", nameof(IReleaseSpec.IsEip8360Enabled), static s => s.IsEip8360Enabled),
         ("NetGasMetering", "UseNetGasMetering", static s => s.UseNetGasMetering),
     ];
 

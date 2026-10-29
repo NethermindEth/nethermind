@@ -3,6 +3,8 @@
 
 #nullable enable
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -177,6 +179,60 @@ public class TxDistinctSortedPoolTests
             Assert.That(pool.ContainsKey(victim.Hash!), Is.False, "precondition: the key-map eviction took the other sender's transaction");
             Assert.That(pool.GetRemovalGeneration(Sender), Is.Not.EqualTo(before));
         }
+    }
+
+    /// <summary>
+    /// The bucket's ordered copy must walk in the tree's own order, including after a reprice leaves equal-nonce
+    /// entries out of comparer order.
+    /// </summary>
+    [Test]
+    public void Bucket_walk_matches_the_sorted_set_through_inserts_removals_and_reprices([Range(1, 20)] int seed)
+    {
+        Random random = new(seed);
+        Transaction[] candidates = new Transaction[24];
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            ulong nonce = (ulong)(i % 8);
+            uint gasBottleneck = (uint)random.Next(1, 200);
+            Hash256 hash = Keccak.Compute($"candidate{i}");
+            candidates[i] = i % 3 == 0
+                ? Build.A.Transaction.WithType(TxType.FrameTx).WithNonce(nonce).WithNonceKeys((ulong)(0xbeef + i))
+                    .WithSenderAddress(Sender).WithGasBottleneck(gasBottleneck).WithHash(hash).TestObject
+                : AccountTx(nonce, gasBottleneck, hash);
+        }
+
+        TxDistinctSortedPool pool = Pool(blobs: false, candidates);
+        for (int step = 0; step < 300; step++)
+        {
+            Transaction tx = candidates[random.Next(candidates.Length)];
+            switch (random.Next(3))
+            {
+                case 0:
+                    pool.TryInsert(tx.Hash!, tx);
+                    break;
+                case 1:
+                    pool.TryRemove(tx.Hash!);
+                    break;
+                default:
+                    if (pool.ContainsKey(tx.Hash!)) Reprice(pool, tx, (uint)random.Next(1, 200));
+                    break;
+            }
+
+            Assert.That(pool.GetBucketSnapshot(Sender), Is.EqualTo(TreeOrder(pool)).Using<Transaction>(ReferenceEquals), $"step {step}");
+        }
+    }
+
+    private static Transaction[] TreeOrder(TxDistinctSortedPool pool)
+    {
+        Transaction[] order = [];
+        pool.UpdatePool(Substitute.For<IAccountStateProvider>(),
+            (in AccountStruct _, EnhancedSortedSet<Transaction> bucket, ref Transaction? _, TxDistinctSortedPool.UpdateTransactionDelegate _) =>
+            {
+                List<Transaction> walked = [];
+                foreach (Transaction tx in bucket) walked.Add(tx);
+                order = [.. walked];
+            });
+        return order;
     }
 
     private static Transaction OtherSenderTx(string seed, uint gasBottleneck)

@@ -96,11 +96,14 @@ public class KzgPointEvaluationPrecompileTests
 
     private static byte[] CreateKzgTestInput(string versionedHash, string z, string y, string commitment, string proof)
     {
-        Assert.That(versionedHash.Length, Is.EqualTo(64));
-        Assert.That(z.Length, Is.EqualTo(64));
-        Assert.That(y.Length, Is.EqualTo(64));
-        Assert.That(commitment.Length, Is.EqualTo(96));
-        Assert.That(proof.Length, Is.EqualTo(96));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(versionedHash.Length, Is.EqualTo(64));
+            Assert.That(z.Length, Is.EqualTo(64));
+            Assert.That(y.Length, Is.EqualTo(64));
+            Assert.That(commitment.Length, Is.EqualTo(96));
+            Assert.That(proof.Length, Is.EqualTo(96));
+        }
         return Bytes.FromHexString(versionedHash + z + y + commitment + proof);
     }
 
@@ -136,6 +139,24 @@ public class KzgPointEvaluationPrecompileTests
                 "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
             {
                 TestName = "Y is out of range"
+            };
+            yield return new TestCaseData(CreateKzgTestInput(
+                "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
+                "5eb7004fe57383e6c88b99d839937fddf3f99279353aaf8d5c9a75f91ce33c62",
+                "0000000000000000000000000000000000000000000000000000000000000001",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+            {
+                TestName = "Zero polynomial evaluated to non-zero"
+            };
+            yield return new TestCaseData(CreateKzgTestInput(
+                "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+            {
+                TestName = "Zero polynomial evaluated to the largest field element"
             };
             yield return new TestCaseData(CreateKzgTestInput(
                 "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
@@ -241,6 +262,16 @@ public class KzgPointEvaluationPrecompileTests
                 "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
             {
                 TestName = "Verification passes 5"
+            };
+
+            yield return new TestCaseData(CreateKzgTestInput(
+                "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
+                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
+            {
+                TestName = "Zero polynomial at the largest field element"
             };
 
             yield return new TestCaseData(CreateKzgTestInput(

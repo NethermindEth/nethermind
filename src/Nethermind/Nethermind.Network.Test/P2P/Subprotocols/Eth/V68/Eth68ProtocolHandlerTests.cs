@@ -16,6 +16,7 @@ using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -94,14 +95,17 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
-        Assert.That(_handler.Name, Is.EqualTo("eth68"));
-        Assert.That(_handler.ProtocolVersion, Is.EqualTo(68));
-        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
-        Assert.That(_handler.IncludeInTxPool, Is.True);
-        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
-        Assert.That(_handler.HeadHash, Is.Null);
-        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+            Assert.That(_handler.Name, Is.EqualTo("eth68"));
+            Assert.That(_handler.ProtocolVersion, Is.EqualTo(68));
+            Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+            Assert.That(_handler.IncludeInTxPool, Is.True);
+            Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+            Assert.That(_handler.HeadHash, Is.Null);
+            Assert.That(_handler.HeadNumber, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -166,6 +170,29 @@ public class Eth68ProtocolHandlerTests
         }
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void Retry_requests_a_hash_whether_or_not_a_delivery_consumed_its_announced_shape([Values] bool delivered)
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        if (delivered)
+        {
+            using PooledTransactionsMessage txsMsg = new(LastPooledRequestId(), new(new ArrayPoolList<Transaction>(1) { tx }));
+            HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+        }
+        _session.ClearReceivedCalls();
+
+        _handler.HandleMessages([tx.Hash!.ValueHash256]);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == tx.Hash));
     }
 
     [Test]
@@ -273,6 +300,61 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public void should_disconnect_if_transactions_broadcast_contains_blob_tx()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction legacyTx = Build.A.Transaction.SignedAndResolved().TestObject;
+        using TransactionsMessage msg = new(new ArrayPoolList<Transaction>(2) { legacyTx, BuildFullBlobTransaction() });
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+
+        _session.Received(1).InitiateDisconnect(DisconnectReason.InvalidTxOrUncle, "blob transaction in a Transactions broadcast");
+        _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+    }
+
+    public enum AnnouncedShape { None, Matching, WrongSize, WrongType }
+
+    [Test]
+    public void Known_broadcast_tx_is_settled_undecoded_only_when_it_matches_the_announced_shape([Values] AnnouncedShape announced)
+    {
+        IRecyclableTxPool recyclablePool = ReplaceWithRecyclableTxPool();
+        recyclablePool.TrySubmitKnown(Arg.Any<ValueHash256>()).Returns(true);
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().TestObject;
+        if (announced is not AnnouncedShape.None)
+        {
+            using NewPooledTransactionHashesMessage68 announcement = new(
+                new ArrayPoolList<byte>(1) { (byte)(announced is AnnouncedShape.WrongType ? TxType.AccessList : tx.Type) },
+                new ArrayPoolList<int>(1) { tx.GetLength() + (announced is AnnouncedShape.WrongSize ? 1 : 0) },
+                new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
+            HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
+        }
+
+        using TransactionsMessage broadcast = new(new ArrayPoolList<Transaction>(1) { tx });
+        HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
+
+        bool shapeMatches = announced is AnnouncedShape.None or AnnouncedShape.Matching;
+        recyclablePool.Received(shapeMatches ? 1 : 0).TrySubmitKnown(Arg.Any<ValueHash256>());
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
+        _session.Received(shapeMatches ? 0 : 1).InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void Known_broadcast_tx_from_a_closing_peer_is_not_settled()
+    {
+        IRecyclableTxPool recyclablePool = ReplaceWithRecyclableTxPool();
+        recyclablePool.TrySubmitKnown(Arg.Any<ValueHash256>()).Returns(true);
+        _session.IsClosing.Returns(true);
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().TestObject;
+
+        using TransactionsMessage broadcast = new(new ArrayPoolList<Transaction>(1) { tx });
+        HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
+
+        recyclablePool.DidNotReceive().TrySubmitKnown(Arg.Any<ValueHash256>());
+        recyclablePool.DidNotReceive().SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out _);
+    }
+
+    [Test]
     public void Should_validate_retained_shape_for_oversized_announcement([Values] bool correlated)
     {
         ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
@@ -375,13 +457,17 @@ public class Eth68ProtocolHandlerTests
         {
             ValueHash256 hash = Keccak.Compute(i.ToString()).ValueHash256;
             Assert.That(first.Set(in hash), Is.True);
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
             Assert.That(first.Set(in hash), Is.False);
+#pragma warning restore NUnit2045
             Assert.That(second.Set(in hash), Is.True);
             Assert.That(second.Set(in hash), Is.False);
         }
 
         ValueHash256 evicted = Keccak.Compute("0").ValueHash256;
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
         Assert.That(first.Set(in evicted), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(second.Set(in evicted), Is.True);
     }
 
@@ -395,7 +481,9 @@ public class Eth68ProtocolHandlerTests
         for (int i = 0; i < 64; i++)
         {
             ValueHash256 hash = Keccak.Compute(i.ToString()).ValueHash256;
+#pragma warning disable NUnit2045 // The assertions advance or mutate the same state before checking it; preserve fail-fast ordering.
             Assert.That(peer.Set(in hash), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(peer.Set(in active), Is.False);
         }
     }
@@ -1067,6 +1155,14 @@ public class Eth68ProtocolHandlerTests
         _handler.Dispose();
         _handler = CreateHandler(txPoolConfig);
         _handler.Init();
+    }
+
+    private IRecyclableTxPool ReplaceWithRecyclableTxPool()
+    {
+        _transactionPool = Substitute.For<ITxPool, IRecyclableTxPool>();
+        ReplaceHandler(Substitute.For<ITxPoolConfig>());
+        HandleIncomingStatusMessage();
+        return (IRecyclableTxPool)_transactionPool;
     }
 
     private void AssertResponseForUnrequestableAnnouncement(Transaction tx, NewPooledTransactionHashesMessage68 announcement, bool correlated)

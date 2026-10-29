@@ -492,6 +492,12 @@ The methods are named `XDPoS_*`, but the module is registered as `Xdc` — that 
 | `XDPoS_calculateBlockInfoByV1EpochNum(epoch)` | Epoch-switch block for a V1 epoch |
 | `XDPoS_getBlockInfoByEpochNum(epoch)` | Epoch-switch block, V1 or V2 |
 
+On XDC chains a block number argument given as a plain string also accepts the `committed` tag, an alias for
+`finalized`: the latest block committed by the three-chain rule. Of the methods above, `XDPoS_getMasternodesByNumber`,
+`XDPoS_getV2BlockByNumber` and `XDPoS_getMissedRoundsInEpochByBlockNum` resolve it, as in the reference client. The tag
+is not accepted by the log filter bounds of `eth_getLogs` and `eth_newFilter`, by `trace_filter`, or inside the
+`{"blockNumber": ...}` object form.
+
 ### `eth` extensions — [`IXdcExtendedEthRpcModule`](RPC/IXdcExtendedEthRpcModule.cs)
 
 | Method | Purpose |
@@ -773,8 +779,8 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
 - A relative `ChainSpecPath` resolves against the executable's directory, so either drop the chainspec into
   the build output's `chainspec/` folder or give an absolute path. Embedded chainspecs are probed before the
   filesystem — even for an absolute path — so give the file a name that doesn't collide with a shipped one
-  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` needs a path
-  (`./file.json`); a bare name is looked up among the built-in configs.
+  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` takes a path
+  to a file (`./file.json`); a value that is not an existing file is looked up among the built-in configs.
 - `Mining.Enabled` gates both block production and the signer — without it the node follows the chain but
   never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore; startup fails
   if that key cannot be loaded. When the account is unset, the node key is used, which

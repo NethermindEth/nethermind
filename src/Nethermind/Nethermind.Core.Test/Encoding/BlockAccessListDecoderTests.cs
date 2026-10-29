@@ -42,6 +42,27 @@ public class BlockAccessListDecoderTests
         Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
     }
 
+    // Block processing reuses WireHash as the header commitment of the generated BAL, which holds only
+    // if every encoding the decoder accepts is the canonical one.
+    [TestCaseSource(nameof(BlockAccessListEncodingFormsSource))]
+    public bool Decode_accepts_only_the_canonical_encoding(string rlp)
+    {
+        byte[] bytes = Bytes.FromHexString(rlp);
+
+        ReadOnlyBlockAccessList? decoded;
+        try
+        {
+            decoded = Rlp.Decode<ReadOnlyBlockAccessList>(bytes);
+        }
+        catch (RlpException)
+        {
+            return false;
+        }
+
+        Assert.That(Rlp.Encode(decoded).Bytes, Is.EqualTo(bytes), "accepted a non-canonical encoding");
+        return true;
+    }
+
     [Test]
     public void Decode_handles_envelope_with_trailing_bytes_and_hashes_only_the_bal_slice()
     {
@@ -223,15 +244,62 @@ public class BlockAccessListDecoderTests
         Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
     }
 
+    /// <summary>A change at the pre-execution index, at every transaction index and at the post-execution one.</summary>
+    private static int MaxChangesPerList => BlockBodyDecoder.TransactionsCountLimit.Limit + 2;
+
     [Test]
-    public void Decode_slot_changes_rejects_storage_change_count_above_max_txs()
+    public void Decode_slot_changes_rejects_storage_change_count_above_limit()
     {
-        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(Eip7928Constants.MaxTxs + 1);
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(MaxChangesPerList + 1);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpLimitException>()
-                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+                .With.Message.Contains($"over limit {MaxChangesPerList}"));
+    }
+
+    [Test]
+    public void Decode_account_changes_rejects_change_count_above_limit([Range(2, 4)] int balanceNonceOrCodeField)
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, balanceNonceOrCodeField, MaxChangesPerList + 1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpLimitException>()
+                .With.Message.Contains($"over limit {MaxChangesPerList}"));
+    }
+
+    /// <summary>
+    /// One sender of 65,536 transactions has a balance, nonce, storage and code change at every index up to the post-execution one,
+    /// beyond the uint16 range of the old index.
+    /// </summary>
+    [Test]
+    public void Account_changes_with_more_changes_than_uint16_range_roundtrip()
+    {
+        const int changeCount = ushort.MaxValue + 2;
+        BalanceChange[] balanceChanges = new BalanceChange[changeCount];
+        NonceChange[] nonceChanges = new NonceChange[changeCount];
+        StorageChange[] storageChanges = new StorageChange[changeCount];
+        CodeChange[] codeChanges = new CodeChange[changeCount];
+        for (int i = 0; i < changeCount; i++)
+        {
+            uint index = (uint)i + 1;
+            balanceChanges[i] = new BalanceChange(index, index);
+            nonceChanges[i] = new NonceChange(index, index);
+            storageChanges[i] = new StorageChange(index, index);
+            codeChanges[i] = new CodeChange(index, [0xab]);
+        }
+
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(1, storageChanges)
+            .WithBalanceChanges(balanceChanges)
+            .WithNonceChanges(nonceChanges)
+            .WithCodeChanges(codeChanges)
+            .TestObject;
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        Assert.That(Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None), Is.EqualTo(accountChanges));
     }
 
     [Test]
@@ -273,7 +341,7 @@ public class BlockAccessListDecoderTests
     [TestCase(4, TestName = "code_changes")]
     public void Decode_account_changes_with_empty_list_element_in_field_throws_RlpException(int malformedFieldIndex)
     {
-        byte[] encoded = EncodeAccountChangesWithEmptyListElement(TestItem.AddressA, malformedFieldIndex);
+        byte[] encoded = EncodeAccountChangesWithEmptyListElements(TestItem.AddressA, malformedFieldIndex);
 
         Assert.That(
             () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
@@ -476,53 +544,6 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Decoding_block_access_list_with_unsorted_account_changes_throws()
-    {
-        // Use explicit, lexicographically-ordered addresses (low < high) — TestItem.Address* are
-        // derived from public keys and don't have a predictable ordering.
-        Address low = new("0x0000000000000000000000000000000000000001");
-        Address high = new("0x0000000000000000000000000000000000000002");
-
-        ReadOnlyAccountChanges accountChangesLow = Build.An.AccountChanges.WithAddress(low).TestObject;
-        ReadOnlyAccountChanges accountChangesHigh = Build.An.AccountChanges.WithAddress(high).TestObject;
-        // produce an out-of-order encoding by hand: high before low
-        ReadOnlyBlockAccessList badBal = new([accountChangesHigh, accountChangesLow], 2);
-        byte[] encoded = Rlp.Encode(badBal, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Account changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_account_changes_with_unsorted_storage_changes_throws()
-    {
-        UInt256 slot1 = UInt256.One;
-        UInt256 slot2 = new(2);
-        // Pass slot changes in descending order so encoding emits unsorted RLP.
-        // Each SlotChanges must have at least one StorageChange (per EIP-7928 / geth bal-devnet-4
-        // "empty storage_changes" rejection), so add a real change to each.
-        ReadOnlySlotChanges[] storageChanges =
-        [
-            new ReadOnlySlotChanges(slot2, [new StorageChange(0, 2)]),
-            new ReadOnlySlotChanges(slot1, [new StorageChange(0, 1)])
-        ];
-        ReadOnlyAccountChanges accountChanges = new(
-            TestItem.AddressA,
-            storageChanges,
-            [],
-            [],
-            [],
-            []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order."));
-    }
-
-    [Test]
     public void Decoding_account_changes_with_unsorted_or_duplicate_storage_reads_throws([Values(1UL, 2UL)] ulong firstSlot)
     {
         UInt256[] storageReads = [new UInt256(firstSlot), UInt256.One];
@@ -559,93 +580,28 @@ public class BlockAccessListDecoderTests
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Invalid storage read, already in storage changes."));
     }
 
-    [Test]
-    public void Decoding_account_changes_with_unsorted_balance_changes_throws()
-    {
-        BalanceChange[] balanceChanges = [new(2, UInt256.Zero), new(1, UInt256.One)];
-        ReadOnlyAccountChanges accountChanges = new(
-            TestItem.AddressA,
-            [],
-            [],
-            balanceChanges,
-            [],
-            []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
+    // Verify-only validation compares the decoded BAL with execution instead of hashing the generated BAL,
+    // so the decoder must reject a duplicate rather than keep one of its values.
+    [TestCaseSource(nameof(UnsortedOrDuplicateEntrySource))]
+    public void Decoding_block_access_list_with_unsorted_or_duplicate_entry_throws(byte[] encoded, string expectedMessage) =>
         Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
-    }
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedMessage));
 
-    [Test]
-    public void Decoding_account_changes_with_duplicate_balance_change_indices_throws()
-    {
-        BalanceChange[] balanceChanges = [new(1, UInt256.One), new(1, UInt256.Zero)];
-        ReadOnlyAccountChanges accountChanges = new(
-            TestItem.AddressA,
-            [],
-            [],
-            balanceChanges,
-            [],
-            []);
+    private const string CanonicalBlockAccessListRlp = "0xe2e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0";
 
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
+    // The wire hash is the header commitment, so every accepted encoding must be the one the BAL re-encodes to.
+    // Each case is a single-field mutation of CanonicalBlockAccessListRlp.
+    [TestCase("0xe2e1940000000000000000000000000000000000000001c0c0c4c3008180c3c20105c0", "Non-canonical integer at position 27", TestName = "zero_index_as_0x00")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c5c480820080c3c20105c0", "Non-canonical integer at position 28", TestName = "value_with_leading_zero")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3810105c0", "Non-canonical integer at position 32", TestName = "single_byte_index_as_string")]
+    [TestCase("0xe3e2940000000000000000000000000000000000000001c0c0c4c3808180c4c3018105c0", "Non-canonical integer at position 33", TestName = "single_byte_value_as_string")]
+    [TestCase("0xf822e1940000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Expected length greater than or equal to 56 and was 34", TestName = "short_list_with_long_header")]
+    [TestCase("0xe3e2b8140000000000000000000000000000000000000001c0c0c4c3808180c3c20105c0", "Unexpected RLP prefix of 184 when decoding Address at position 3 in the message of length 36.", TestName = "short_address_with_long_header")]
+    public void Decoding_non_canonical_encoding_of_valid_block_access_list_throws(string nonCanonicalRlp, string expectedMessage) =>
         Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
-    {
-        NonceChange[] nonceChanges = [new(2, 2), new(1, 1)];
-        ReadOnlyAccountChanges accountChanges = new(
-            TestItem.AddressA,
-            [],
-            [],
-            [],
-            nonceChanges,
-            []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Nonce changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_account_changes_with_unsorted_code_changes_throws()
-    {
-        CodeChange[] codeChanges = [new(2, [0x02]), new(1, [0x01])];
-        ReadOnlyAccountChanges accountChanges = new(
-            TestItem.AddressA,
-            [],
-            [],
-            [],
-            [],
-            codeChanges);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Code changes were in incorrect order."));
-    }
-
-    [Test]
-    public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
-    {
-        StorageChange[] storageChanges = [new(2, UInt256.Zero), new(1, UInt256.One)];
-        ReadOnlySlotChanges slotChanges = new(UInt256.One, storageChanges);
-        byte[] encoded = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
-
-        Assert.That(
-            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
-            Throws.TypeOf<RlpException>().With.Message.EqualTo("Storage changes were in incorrect order. index=1, lastIndex=2"));
-    }
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(Bytes.FromHexString(nonCanonicalRlp)),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo(expectedMessage));
 
     private static IEnumerable<TestCaseData> BlockAccessListTestSource
     {
@@ -689,8 +645,123 @@ public class BlockAccessListDecoderTests
                 .TestObject;
             string balanceChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(expected).Bytes);
             yield return new TestCaseData(balanceChangesRlp, expected) { TestName = "balance_changes" };
+
+            ReadOnlyBlockAccessList canonical = Build.A.BlockAccessList
+                .WithAccountChanges(
+                    Build.An.AccountChanges
+                        .WithAddress(new("0x0000000000000000000000000000000000000001"))
+                        .WithBalanceChanges([new(0, 0x80)])
+                        .WithNonceChanges([new(1, 5)])
+                        .TestObject)
+                .TestObject;
+            yield return new TestCaseData(CanonicalBlockAccessListRlp, canonical) { TestName = "canonical" };
         }
     }
+
+    private static IEnumerable<TestCaseData> UnsortedOrDuplicateEntrySource
+    {
+        get
+        {
+            // Explicit addresses, as TestItem.Address* have no predictable ordering.
+            Address low = new("0x0000000000000000000000000000000000000001");
+            Address high = new("0x0000000000000000000000000000000000000002");
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithAddress(high).TestObject, Build.An.AccountChanges.WithAddress(low).TestObject),
+                "Account changes were in incorrect order.")
+            { TestName = "unsorted_account" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(new ReadOnlyAccountChanges(
+                    TestItem.AddressA,
+                    [new ReadOnlySlotChanges(2, [new StorageChange(0, 2)]), new ReadOnlySlotChanges(1, [new StorageChange(0, 1)])],
+                    [], [], [], [])),
+                "Storage changes were in incorrect order.")
+            { TestName = "unsorted_storage_slot" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithStorageChanges(1, new StorageChange(2, 0), new StorageChange(1, 1)).TestObject),
+                "Storage changes were in incorrect order. index=1, lastIndex=2")
+            { TestName = "unsorted_storage_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(2, 0), new BalanceChange(1, 1)).TestObject),
+                "Balance changes were in incorrect order.")
+            { TestName = "unsorted_balance_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithNonceChanges(new NonceChange(2, 2), new NonceChange(1, 1)).TestObject),
+                "Nonce changes were in incorrect order.")
+            { TestName = "unsorted_nonce_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithCodeChanges(new CodeChange(2, [0x02]), new CodeChange(1, [0x01])).TestObject),
+                "Code changes were in incorrect order.")
+            { TestName = "unsorted_code_change_index" };
+
+            yield return new TestCaseData(
+                EncodeBlockAccessList(
+                    Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(1, 1)).TestObject,
+                    Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(1, 2)).TestObject),
+                "Account changes were in incorrect order.")
+            { TestName = "duplicate_account" };
+
+            ReadOnlyAccountChanges duplicateSlot = Build.An.AccountChanges
+                .WithStorageChanges(1, new StorageChange(1, 1))
+                .WithStorageChanges(2, new StorageChange(1, 2))
+                .TestObject;
+            // ReadOnlyAccountChanges indexes slots by key, so the duplicate is swapped in after construction.
+            duplicateSlot.StorageChanges[1] = new ReadOnlySlotChanges(1, [new StorageChange(1, 2)]);
+            yield return new TestCaseData(EncodeBlockAccessList(duplicateSlot), "Storage changes were in incorrect order.")
+            { TestName = "duplicate_storage_slot" };
+
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithStorageChanges(1, new StorageChange(1, 1), new StorageChange(1, 2)).TestObject),
+                "Storage changes were in incorrect order. index=1, lastIndex=1")
+            { TestName = "duplicate_storage_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithBalanceChanges(new BalanceChange(1, 1), new BalanceChange(1, 0)).TestObject),
+                "Balance changes were in incorrect order.")
+            { TestName = "duplicate_balance_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithNonceChanges(new NonceChange(1, 1), new NonceChange(1, 2)).TestObject),
+                "Nonce changes were in incorrect order.")
+            { TestName = "duplicate_nonce_change_index" };
+            yield return new TestCaseData(
+                EncodeBlockAccessList(Build.An.AccountChanges.WithCodeChanges(new CodeChange(1, [0x01]), new CodeChange(1, [0x02])).TestObject),
+                "Code changes were in incorrect order.")
+            { TestName = "duplicate_code_change_index" };
+
+            // Encoded per account, as ReadOnlyBlockAccessList indexes accounts by address and rejects a duplicate.
+            static byte[] EncodeBlockAccessList(params ReadOnlyAccountChanges[] accounts) =>
+                Rlp.Encode([.. accounts.Select(static a => Rlp.Encode(a))]).Bytes;
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BlockAccessListEncodingFormsSource
+    {
+        get
+        {
+            string address = "94" + TestItem.AddressA.ToString(false, false);
+            string Account(string balanceChange, string codeChanges = "c0", string extraField = "")
+                => RlpList(address, "c0", "c0", RlpList(balanceChange), "c0", codeChanges, extraField);
+            string Bal(string balanceChange, string codeChanges = "c0", string extraField = "")
+                => RlpList(Account(balanceChange, codeChanges, extraField));
+
+            yield return new TestCaseData(Bal(RlpList("01", "64"))).Returns(true).SetName("canonical");
+            yield return new TestCaseData(Bal(RlpList("01", "64"), extraField: "80")).Returns(false).SetName("extra_account_field");
+            yield return new TestCaseData(Bal(RlpList("01", "64", "80"))).Returns(false).SetName("extra_balance_change_field");
+            yield return new TestCaseData(Bal(RlpList("01", "8164"))).Returns(false).SetName("single_byte_with_0x81_prefix");
+            yield return new TestCaseData(Bal(RlpList("01", "820064"))).Returns(false).SetName("integer_with_leading_zero");
+            yield return new TestCaseData(Bal(RlpList("820001", "64"))).Returns(false).SetName("index_with_leading_zero");
+            yield return new TestCaseData(Bal(RlpList("01", "00"))).Returns(false).SetName("zero_as_0x00");
+            yield return new TestCaseData(Bal(RlpList("01", "64"), RlpList(RlpList("01", "82abcd", "a0" + TestItem.KeccakA.ToString(false))))).Returns(false).SetName("adopted_code_change_with_code");
+            yield return new TestCaseData(RlpList(InLongForm(Account(RlpList("01", "64"))))).Returns(false).SetName("short_list_in_long_form");
+        }
+    }
+
+    private static string RlpList(params string[] items)
+    {
+        string content = string.Concat(items);
+        int length = content.Length / 2;
+        return length < 56 ? $"{0xc0 + length:x2}{content}" : $"f8{length:x2}{content}";
+    }
+
+    private static string InLongForm(string shortList) => $"f8{shortList.Length / 2 - 1:x2}{shortList[2..]}";
 
     private static IEnumerable<TestCaseData> AccountChangesTestSource
     {
@@ -737,10 +808,11 @@ public class BlockAccessListDecoderTests
         return bytes;
     }
 
-    private static byte[] EncodeAccountChangesWithEmptyListElement(Address address, int malformedFieldIndex)
+    private static byte[] EncodeAccountChangesWithEmptyListElements(Address address, int malformedFieldIndex, int elementCount = 1)
     {
         const int fieldCount = 5;
-        int malformedFieldLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+        int malformedFieldContentLength = elementCount * Rlp.OfEmptyList.Length;
+        int malformedFieldLength = Rlp.LengthOfSequence(malformedFieldContentLength);
 
         int contentLength = Rlp.LengthOfAddressRlp;
         for (int i = 0; i < fieldCount; i++)
@@ -756,8 +828,11 @@ public class BlockAccessListDecoderTests
         {
             if (i == malformedFieldIndex)
             {
-                writer.StartSequence(Rlp.OfEmptyList.Length);
-                writer.Encode(Rlp.OfEmptyList);
+                writer.StartSequence(malformedFieldContentLength);
+                for (int j = 0; j < elementCount; j++)
+                {
+                    writer.Encode(Rlp.OfEmptyList);
+                }
             }
             else
             {

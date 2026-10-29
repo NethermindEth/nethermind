@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using System;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
@@ -20,6 +22,9 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
+    /// <summary>Creates the owned-deadline failure for cross-assembly transport tests.</summary>
+    public static Exception CreateTraceDeadlineException() => new GethTraceDeadlineException();
+
     public static void AssertSuccess(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<IResultWrapper>(), GetFailureMessage(response));
@@ -71,16 +76,20 @@ public static class RpcTest
         return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
-    public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
+    public static Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule =>
+        TestSerializedRequest(
+            module,
+            module is IContextAwareRpcModule { Context: not null } contextAwareModule ? contextAwareModule.Context : new JsonRpcContext(RpcEndpoint.Http),
+            method,
+            parameters);
+
+    public static async Task<string> TestSerializedRequest<T>(T module, JsonRpcContext context, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        using JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
-            ? contextAwareModule.Context
-            : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
         if (response.TryGetStreamableResult(out _))
@@ -102,23 +111,28 @@ public static class RpcTest
         string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        Assert.That(writer.WrittenCount, Is.EqualTo(serialized.Length));
+        Assert.That(writer.WrittenCount, Is.EqualTo(Encoding.UTF8.GetByteCount(serialized)));
 
         return serialized;
     }
 
     /// <summary>Sends a request whose result is streamed and writes the response into <paramref name="writer"/>.</summary>
-    public static async Task TestStreamedRequest<T>(T module, PipeWriter writer, string method, params object?[]? parameters) where T : class, IRpcModule
+    public static Task TestStreamedRequest<T>(T module, PipeWriter writer, string method, params object?[]? parameters) where T : class, IRpcModule =>
+        TestStreamedRequest(module, writer, CancellationToken.None, null, method, parameters);
+
+    internal static async Task TestStreamedRequest<T>(T module, PipeWriter writer, CancellationToken cancellationToken,
+        IStreamedResultObserver? observer, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
-        using JsonRpcContext context = new(RpcEndpoint.Http);
+        JsonRpcContext context = new(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context);
 
         Assert.That(response.TryGetStreamableResult(out _), Is.True, $"precondition: {method} must return a streamed result");
-        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
-        await writer.FlushAsync();
+        if (observer is not null) response.ObserveStreamedResult(observer, Nethermind.Logging.NullLogger.Instance);
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
+        await writer.FlushAsync(cancellationToken);
     }
 
     private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule => new ContainerBuilder()

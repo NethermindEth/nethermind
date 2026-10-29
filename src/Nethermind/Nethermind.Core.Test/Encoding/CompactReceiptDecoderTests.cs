@@ -148,21 +148,33 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Decode_computes_bloom_unless_eip7668([Values] bool eip7668)
+        public void Decode_defers_bloom_unless_eip7668([Values] bool eip7668, [Values] bool withLogs)
         {
-            TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+            ReceiptBuilder builder = Build.A.Receipt.WithAllFieldsFilled;
+            if (!withLogs)
+            {
+                builder.WithLogs();
+            }
+
+            TxReceipt txReceipt = builder.WithCalculatedBloom().TestObject;
             CompactReceiptStorageDecoder decoder = new();
             RlpReader ctx = new(decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes);
             RlpBehaviors behaviors = eip7668 ? RlpBehaviors.Storage | RlpBehaviors.Eip7668Receipts : RlpBehaviors.Storage;
 
-            AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.ZeroLength : txReceipt.Bloom);
+            AssertDecodedBloom(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.ZeroLength : null, eip7668 ? Bloom.ZeroLength : txReceipt.Bloom);
         }
 
-        /// <remarks>The bloom is set by the decoder itself, not computed lazily by a later reader.</remarks>
-        public static void AssertBloomSetOnDecode(TxReceipt decoded, Bloom expected)
+        /// <param name="decoded">The receipt returned by the decoder.</param>
+        /// <param name="expectedSetOnDecode">The bloom the decoder itself sets, or <c>null</c> when it is left for a later reader to compute.</param>
+        /// <param name="expected">The bloom the receipt exposes.</param>
+        public static void AssertDecodedBloom(TxReceipt decoded, Bloom? expectedSetOnDecode, Bloom expected)
         {
             FieldInfo bloomField = typeof(TxReceipt).GetField("_bloom", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            Assert.That(bloomField.GetValue(decoded), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bloomField.GetValue(decoded), Is.SameAs(expectedSetOnDecode));
+                Assert.That(decoded.Bloom, Is.EqualTo(expected));
+            }
         }
 
         [Test]

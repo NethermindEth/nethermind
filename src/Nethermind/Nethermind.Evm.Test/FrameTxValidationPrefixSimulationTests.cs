@@ -304,9 +304,9 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheDefaultBudget_RejectedAsOverBudget")]
-    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheDefaultBudget_ResolvesPayerUnderARaisedBudget")]
-    public void Simulate_PrefixAboveTheDefaultBudget_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
+    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheSharedFloor_RejectedAsOverBudget")]
+    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheSharedFloor_ResolvesPayerUnderARaisedBudget")]
+    public void Simulate_PrefixAboveTheSharedFloor_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
     {
         byte[] countdownFrom15400 = [0x61, 0x3c, 0x28, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x03, 0x57, 0x50];
         DeployContract(Sender, [.. countdownFrom15400, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
@@ -458,7 +458,20 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
-    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, 0x4C is
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
+    }
+
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, SETCODEFROM is
     // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
     [Test]
     public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)
@@ -486,6 +499,42 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
             Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
         }
+    }
+
+    // With EIP-8360 off, 0xF6 is undefined, so the prefix must fare exactly as with another undefined opcode (0x0C).
+    [Test]
+    public void Simulate_PrefixUsesTcreate_BannedOnlyUnderEip8360([Values] bool eip8360)
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip8360Enabled = eip8360 });
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = SimulateOpcodeBeforeApprove((byte)Instruction.TCREATE);
+
+        if (eip8360)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ViolationReason, Is.EqualTo("banned opcode TCREATE in validation prefix"));
+                Assert.That(tracer.Payer, Is.Null);
+            }
+            return;
+        }
+
+        (TransactionResult undefinedResult, FrameTxValidationTracer undefinedTracer) = SimulateOpcodeBeforeApprove(0x0c);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.EqualTo(undefinedTracer.ViolationReason));
+            Assert.That(tracer.Payer, Is.EqualTo(undefinedTracer.Payer));
+            Assert.That(result.TransactionExecuted, Is.EqualTo(undefinedResult.TransactionExecuted));
+            Assert.That(result.ErrorDescription, Is.EqualTo(undefinedResult.ErrorDescription));
+        }
+    }
+
+    /// <summary>Runs <paramref name="opcode"/> on four zero operands in a self-verify frame that then approves.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateOpcodeBeforeApprove(byte opcode)
+    {
+        byte[] operands = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).Done;
+        DeployContract(Sender, [.. operands, opcode, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        return SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
     }
 
     /// <summary>Runs <paramref name="opcode"/> on <see cref="TestItem.AddressC"/> in deploy-frame initcode or a self-verify frame.</summary>
@@ -1173,19 +1222,17 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [TestCase(0, true, TestName = "a payer covering the EIP-7623 floor resolves")]
-    [TestCase(-1, false, TestName = "a payer one wei short of the EIP-7623 floor does not")]
-    public void Simulate_PricesTheApproveGateOnTheSameBudgetExecutionEscrows(int balanceDelta, bool resolves)
+    [TestCase(0, true, TestName = "a payer covering max_fee resolves")]
+    [TestCase(-1, false, TestName = "a payer one wei short of max_fee does not")]
+    public void Simulate_PricesTheApproveGateAtTheMaxFee(int balanceDelta, bool resolves)
     {
-        // A calldata-heavy prefix prices on the EIP-7623 floor, so the simulated APPROVE gate must use
-        // the budget the main path escrows on.
-        Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
-                CalldataOf(30_000)));
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
-        Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
+        // The base fees at inclusion are unknown here, so the simulated APPROVE gate prices max_cost at its bound,
+        // max_fee, as the admission exposure gate does.
+        const ulong maxFee = 1_000_000;
+        Transaction tx = FrameTx(nonce: 0, new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero, default));
+        tx.MaxFee = maxFee;
 
-        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), (UInt256)(maxFee + (ulong)(long)balanceDelta));
 
         (_, FrameTxValidationTracer tracer) = Simulate(tx);
 
@@ -1263,13 +1310,6 @@ public class FrameTxValidationPrefixSimulationTests
         raw[32] = 1; // r = 1
         raw[64] = 1; // s = 1
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, raw);
-    }
-
-    private static byte[] CalldataOf(int length)
-    {
-        byte[] data = new byte[length];
-        data.AsSpan().Fill(0xff);
-        return data;
     }
 
     private static TestCaseData ParityCase(string name, byte param, bool approveWhenZero, bool expectedValid) =>
@@ -1413,6 +1453,6 @@ public class FrameTxValidationPrefixSimulationTests
             Frames = frames,
             FrameSignatures = [],
             GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
+            MaxFee = 1.Ether,
         };
 }

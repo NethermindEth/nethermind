@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
-using Nethermind.JsonRpc;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -67,10 +66,6 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             // Crypto
             .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(NullTxSender.Instance)
-
-            // Rpc
-            .AddSingleton<IJsonRpcService, JsonRpcService>()
             ;
 
 

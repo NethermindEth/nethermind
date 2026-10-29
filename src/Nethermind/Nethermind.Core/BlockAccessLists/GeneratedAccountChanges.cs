@@ -40,7 +40,7 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
     public IReadOnlyCollection<GeneratedSlotChanges> StorageChanges => _storageChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
+    public IReadOnlySet<UInt256> StorageReads => _storageReads;
 
     /// <summary>
     /// Slot-key-sorted snapshot; pooled, dispose after use.
@@ -63,6 +63,9 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
         result.AsSpan().Sort(GenericComparer.GetOptimized<UInt256>());
         return result;
     }
+
+    /// <summary>Whether <paramref name="key"/> is already an item of this account, as a storage change or a storage read.</summary>
+    internal bool HasStorageKey(in UInt256 key) => _storageChanges.ContainsKey(key) || _storageReads.Contains(key);
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);

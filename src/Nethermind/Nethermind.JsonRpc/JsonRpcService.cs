@@ -114,18 +114,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(
-            request,
-            methodName,
-            method,
-            out object?[]? parameters,
-            out int parameterCount,
-            out bool returnParametersToPool);
-        if (value is not null)
-        {
-            return value;
-        }
-
+        // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
@@ -136,12 +125,34 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            object? invocationResult = parameterCount switch
+            JsonRpcErrorResponse? value;
+            object?[]? parameters;
+            int parameterCount;
+            bool returnParametersToPool;
+            try
             {
-                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
-                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
-                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
-            };
+                value = PrepareParameters(
+                    request,
+                    methodName,
+                    method,
+                    out parameters,
+                    out parameterCount,
+                    out returnParametersToPool);
+            }
+            catch (Exception ex)
+            {
+                // Binding failures are answered inside; anything escaping is a node fault, not an invocation error.
+                returnImmediately = true;
+                return ReturnErrorResponse(request, ex);
+            }
+
+            if (value is not null)
+            {
+                returnImmediately = true;
+                return value;
+            }
+
+            object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
             ReturnParameters(parameters, returnParametersToPool);
 
             switch (invocationResult)
@@ -194,6 +205,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
+    }
+
+    /// <summary>Invokes the method with <paramref name="context"/> as <see cref="JsonRpcContext.Current"/> until it returns or yields.</summary>
+    private static object? Invoke(ResolvedMethodInfo method, IRpcModule rpcModule, object?[]? parameters, int parameterCount, JsonRpcContext context)
+    {
+        JsonRpcContext? outerContext = JsonRpcContext.Current;
+        JsonRpcContext.Current = context;
+        try
+        {
+            return parameterCount switch
+            {
+                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+            };
+        }
+        finally
+        {
+            JsonRpcContext.Current = outerContext;
+        }
     }
 
     // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
@@ -273,7 +304,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         parameters = [];
         if (HasUnexpectedZeroParameterArray(useUtf8Parameters, providedParametersUtf8, providedParameters))
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(0), null, in request.IdRef);
         }
 
         return null;
@@ -333,7 +364,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
             // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
             if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
-            string message = GetSafePublicMessage(e) ?? "Invalid params";
+            string? reason = GetSafePublicMessage(e, out bool omitArgumentPosition);
+            string message = e switch
+            {
+                InvalidArgumentException when omitArgumentPosition => reason!,
+                InvalidArgumentException { Index: int index } when reason is not null => $"invalid argument {index}: {reason}",
+                InvalidArgumentException { Index: int index } => $"invalid argument {index}",
+                _ => reason ?? "Invalid params"
+            };
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
     }
@@ -520,7 +558,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // over-long request has to be rejected here rather than indexing past the end.
         if (providedParametersLength > expectedParameters.Length || missingParamsCount < 0)
         {
-            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in requestId);
+            return GetErrorResponse(methodName, ErrorCodes.InvalidParams, TooManyArguments(expectedParameters.Length), null, in requestId);
         }
 
         if (missingRequiredParameterIndex >= 0)
@@ -610,16 +648,21 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
+            TraceDurationFormatException when isStreaming =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, null, in request.IdRef, returnAction),
+
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
-
-            GethTraceDeadlineException or TargetInvocationException { InnerException: GethTraceDeadlineException }
-                when methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceBlockByNumber) =>
-                GetErrorResponse(methodName, ErrorCodes.InvalidInput, "execution timeout", null, in request.IdRef, returnAction),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
+
+            RpcErrorException error =>
+                GetErrorResponse(methodName, error.Code, error.Message, null, in request.IdRef, returnAction),
+
+            TargetInvocationException { InnerException: RpcErrorException error } =>
+                GetErrorResponse(methodName, error.Code, error.Message, null, in request.IdRef, returnAction),
 
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
@@ -968,7 +1011,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             }
             catch (Exception e)
             {
-                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(e);
+                parameterDeserializationException ??= ExceptionDispatchInfo.Capture(new InvalidArgumentException(providedParametersLength, e));
                 reader.Skip();
             }
 
@@ -1026,7 +1069,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     ThrowMissingParameterBytes();
                 }
 
-                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                object? parameter;
+                try
+                {
+                    parameter = DeserializeParameter(enumerator.Current, expectedParameter, providedParameterUtf8);
+                }
+                catch (Exception e)
+                {
+                    throw new InvalidArgumentException(i, e);
+                }
+
                 executionParameters[i] = parameter;
                 i++;
             }
@@ -1040,13 +1092,27 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             throw new JsonException("Missing JSON-RPC parameter bytes.");
     }
 
-    private static string? GetSafePublicMessage(Exception e)
+    // Geth's wording, so clients can match the -32602 messages of either client.
+    private static string TooManyArguments(int expectedCount) => $"too many arguments, want at most {expectedCount}";
+
+    /// <summary>A parameter that failed to bind, with its zero-based position in the request.</summary>
+    private sealed class InvalidArgumentException(int index, Exception innerException) : Exception(null, innerException)
+    {
+        public int Index { get; } = index;
+    }
+
+    private static string? GetSafePublicMessage(Exception e, out bool omitArgumentPosition)
     {
         for (Exception? ex = e; ex is not null; ex = ex.InnerException)
         {
-            if (ex is IExceptionWithSafePublicMessage)
+            if (ex is IExceptionWithSafePublicMessage safe)
+            {
+                omitArgumentPosition = safe.OmitArgumentPosition;
                 return ex.Message;
+            }
         }
+
+        omitArgumentPosition = false;
         return null;
     }
 
@@ -1155,10 +1221,16 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         /// <summary>The outcome of the error that replaced a failed deferred result, if any.</summary>
         internal JsonRpcResponseWriteOutcome? Replacement { get; set; }
 
-        /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
+        /// <summary>Maps a deferred error to its JSON-RPC response.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
-        internal JsonRpcErrorResponse MapException(Exception exception) =>
-            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+        internal JsonRpcErrorResponse MapException(Exception exception)
+        {
+            if (methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction)
+                && exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException)
+                return service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null);
+
+            return service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+        }
 
         /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
         /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>

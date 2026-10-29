@@ -26,6 +26,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -68,7 +69,7 @@ public class AdminModuleTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
-        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
+        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
 
@@ -417,7 +418,9 @@ public class AdminModuleTests
                 : () => _existingSession1.MsgDelivered += Raise.EventWith(new object(), peerEventArgs),
             out string firstSubscriptionId,
             disposeSubscription: true);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(firstResult.Response, Is.Not.Null, "the subscription must notify on the first existing session");
+#pragma warning restore NUnit2045
         Assert.That(
             BuildExpectedMessageNotification(firstSubscriptionId, expectedType, peerHash),
             Is.EqualTo(RpcTest.SerializeResponse(firstResult.Response)),
@@ -429,7 +432,9 @@ public class AdminModuleTests
                 : () => _existingSession2.MsgDelivered += Raise.EventWith(new object(), peerEventArgs),
             out string secondSubscriptionId,
             disposeSubscription: true);
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(secondResult.Response, Is.Not.Null, "the subscription must also notify on the second existing session");
+#pragma warning restore NUnit2045
         Assert.That(
             BuildExpectedMessageNotification(secondSubscriptionId, expectedType, peerHash),
             Is.EqualTo(RpcTest.SerializeResponse(secondResult.Response)),
@@ -580,8 +585,11 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
-        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(68), "fallback protocol info should use the highest advertised eth capability");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
+            Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(68), "fallback protocol info should use the highest advertised eth capability");
+        }
     }
 
     [Test]
@@ -594,8 +602,11 @@ public class AdminModuleTests
         ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         PeerInfo peerInfo = result.Data[0];
-        Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
-        Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(72), "an active eth handler exposes the negotiated protocol version");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.Protocols, Does.ContainKey("eth").And.ContainKey("snap"), "both protocols are advertised");
+            Assert.That(GetProtocolVersion(peerInfo.Protocols["eth"]), Is.EqualTo(72), "an active eth handler exposes the negotiated protocol version");
+        }
     }
 
     [Test]

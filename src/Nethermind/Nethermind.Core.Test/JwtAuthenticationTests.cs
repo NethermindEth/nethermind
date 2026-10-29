@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -55,7 +56,27 @@ public class JwtAuthenticationTests
             log.Contains(secretPath) && log.Contains("automatically created"));
 
         Assert.That(secret, Has.Length.EqualTo(64));
-        Assert.That(secret, Does.Match("^[0-9a-fA-F]{64}$"));
-        Assert.That(hasCreatedLog, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secret, Does.Match("^[0-9a-fA-F]{64}$"));
+            Assert.That(hasCreatedLog, Is.True);
+        }
+    }
+
+    [Test]
+    public void FromFile_creates_the_secret_readable_by_the_owner_only()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Ignore("Unix file modes only");
+            return;
+        }
+
+        using TempPath tempDirectory = TempPath.GetTempDirectory();
+        string secretPath = Path.Combine(tempDirectory.Path, "jwt.hex");
+
+        JwtAuthentication.FromFile(secretPath, Timestamper.Default, NullLogger.Instance);
+
+        Assert.That(File.GetUnixFileMode(secretPath), Is.EqualTo(UnixFileMode.UserRead | UnixFileMode.UserWrite));
     }
 }

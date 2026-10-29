@@ -44,10 +44,13 @@ public class KeyedNonceManagerTests
         StorageCell slotA2 = KeyedNonceManager.StorageSlot(TestItem.AddressA, (UInt256)2);
         StorageCell slotB1 = KeyedNonceManager.StorageSlot(TestItem.AddressB, (UInt256)1);
 
-        Assert.That(slotA1.Address, Is.EqualTo(Eip8250Constants.NonceManagerAddress));
-        Assert.That(slotA1Again.Index, Is.EqualTo(slotA1.Index), "same inputs must yield the same slot");
-        Assert.That(slotA2.Index, Is.Not.EqualTo(slotA1.Index), "distinct keys must yield distinct slots");
-        Assert.That(slotB1.Index, Is.Not.EqualTo(slotA1.Index), "distinct senders must yield distinct slots");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slotA1.Address, Is.EqualTo(Eip8250Constants.NonceManagerAddress));
+            Assert.That(slotA1Again.Index, Is.EqualTo(slotA1.Index), "same inputs must yield the same slot");
+            Assert.That(slotA2.Index, Is.Not.EqualTo(slotA1.Index), "distinct keys must yield distinct slots");
+            Assert.That(slotB1.Index, Is.Not.EqualTo(slotA1.Index), "distinct senders must yield distinct slots");
+        }
     }
 
     // Pins the slot preimage (12 zero bytes || sender || big-endian key) byte for byte. The second case
@@ -161,9 +164,12 @@ public class KeyedNonceManagerTests
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5, (UInt256)9], nonceSeq: 42);
 
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(43UL));
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)9), Is.EqualTo(43UL));
-        Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(3UL), "keyed consumption must not touch the account nonce");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(43UL));
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)9), Is.EqualTo(43UL));
+            Assert.That(_state.GetNonce(TestItem.AddressA), Is.EqualTo(3UL), "keyed consumption must not touch the account nonce");
+        }
     }
 
     [Test]
@@ -173,8 +179,11 @@ public class KeyedNonceManagerTests
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)7], nonceSeq: 0);
 
-        Assert.That(KeyedNonceManager.IsFirstUse(_state, TestItem.AddressA, (UInt256)7), Is.False);
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)7), Is.EqualTo(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.IsFirstUse(_state, TestItem.AddressA, (UInt256)7), Is.False);
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)7), Is.EqualTo(1UL));
+        }
     }
 
     [Test]
@@ -233,9 +242,12 @@ public class KeyedNonceManagerTests
     {
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1);
 
-        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue),
-            "the slot must sit at MAX_NONCE_SEQ for the bound to be what rejects this");
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue),
+                "the slot must sit at MAX_NONCE_SEQ for the bound to be what rejects this");
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+        }
     }
 
     [Test]
@@ -243,8 +255,11 @@ public class KeyedNonceManagerTests
     {
         _state.SetNonce(TestItem.AddressA, 4);
 
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 4), Is.True);
-        Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 5), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 4), Is.True);
+            Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [UInt256.Zero], nonceSeq: 5), Is.False);
+        }
     }
 
     [TestCase(Eip8250Constants.MaxNonceKeys, true)]

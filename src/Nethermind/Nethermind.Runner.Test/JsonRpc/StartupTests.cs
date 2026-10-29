@@ -9,9 +9,11 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -26,14 +28,18 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Nethermind.Core;
-using Nethermind.Blockchain.Tracing.GethStyle;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Exceptions;
@@ -42,6 +48,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -54,6 +61,8 @@ public class StartupTests
 {
     private const string GetBlobsV1Method = "engine_getBlobsV1";
     private const string GetBlobsV2Method = "engine_getBlobsV2";
+    private const string AllowedOrigin = "https://app.example";
+    private const string OtherOrigin = "https://evil.example";
 
     private static readonly GCKeeper GcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
     private static readonly Startup Startup;
@@ -68,6 +77,7 @@ public class StartupTests
         IEngineRpcModule? engineModule = null,
         JsonRpcConfig? rpcConfig = null,
         IJsonRpcLocalStats? jsonRpcLocalStats = null,
+        ILogManager? processorLogManager = null,
         IDebugRpcModule? debugModule = null)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
@@ -81,7 +91,7 @@ public class StartupTests
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
         JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, GcKeeper);
-        JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), processorLogManager ?? LimboLogs.Instance);
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
     }
@@ -196,8 +206,11 @@ public class StartupTests
 
         AssertJsonResponse(response, static root =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(root.GetArrayLength(), Is.EqualTo(3));
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
@@ -315,8 +328,11 @@ public class StartupTests
 
         (int statusCode, string body) = await host.SendRawAsync(request);
 
-        Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
-        Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusCode, Is.EqualTo(expectedStatusCode));
+            Assert.That(body, Is.Not.Empty, "Expected a framed JSON-RPC error body");
+        }
         AssertErrorCodeResponse(body, ErrorCodes.InvalidRequest);
         // Kestrel authors its own text for these - "Bad chunk size data." for "zzz", a MinRequestBodyDataRate
         // message for the 408. This endpoint serves unauthenticated callers, so what reaches them has to be a
@@ -371,8 +387,11 @@ public class StartupTests
         AssertJsonResponse(response, static root =>
         {
             JsonElement error = root.GetProperty("error");
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(error.GetProperty("data").ValueKind, Is.EqualTo(JsonValueKind.Array));
+            }
         });
     }
 
@@ -392,11 +411,17 @@ public class StartupTests
         AssertJsonResponse(response, static root =>
         {
             JsonElement result = root.GetProperty("result");
-            Assert.That(result.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.GetArrayLength(), Is.EqualTo(1));
+                Assert.That(result[0].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
         });
-        Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
-        Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamableResult.WriteCount, Is.EqualTo(1));
+            Assert.That(streamableResult.DisposeCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -627,6 +652,139 @@ public class StartupTests
         stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == GetBlobsV2Method && report.Success), Arg.Any<long>(), Arg.Any<long?>());
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_DebugDeadlineReportsFailureThroughKestrel(
+        [Values(nameof(IDebugRpcModule.debug_traceBlockByNumber), nameof(IDebugRpcModule.debug_traceBlockByHash))] string method,
+        [Values] bool bufferResponse, [Values] bool flush, [Values] bool batch,
+        [Values(0, 32 * 1024)] int payloadSize, [Values(true, false)] bool ownedDeadline)
+    {
+        using CancellationTokenSource resultCancellation = new();
+        using GethLikeTxTraceStreamingBlockResult result = new((writer, pipe, token) =>
+        {
+            if (!ownedDeadline)
+            {
+                using GethLikeBlockEnvelopeStreamingTracer tracer = new(GethTraceOptions.Default, writer, pipe, token);
+                using (((IBlockTracer)tracer).StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("memory", new string('a', payloadSize == 0 ? 1 : payloadSize));
+                    writer.WriteEndObject();
+                    writer.Flush();
+                    if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("sentinel control");
+                }
+            }
+            writer.WriteStringValue(new string('x', payloadSize));
+            writer.Flush();
+            if (flush) pipe!.FlushAsync(token).GetAwaiter().GetResult();
+            throw RpcTest.CreateTraceDeadlineException();
+        }, resultCancellation, NullLogger.Instance) { PropagateExecutionTimeout = true };
+        IDebugRpcModule debugModule = Substitute.For<IDebugRpcModule>();
+        debugModule.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>())
+            .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(result));
+        debugModule.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>())
+            .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(result));
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        TaskCompletionSource<RpcReport> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        stats.When(value => value.ReportCall(Arg.Any<RpcReport>(), Arg.Any<long>(), Arg.Any<long?>()))
+            .Do(call =>
+            {
+                RpcReport report = call.ArgAt<RpcReport>(0);
+                if (report.Method == method) reported.TrySetResult(report);
+            });
+        Startup startup = CreateStartup(rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine, ModuleType.Debug], BufferResponses = bufferResponse
+        }, jsonRpcLocalStats: stats, debugModule: debugModule);
+        string selector = method == nameof(IDebugRpcModule.debug_traceBlockByNumber)
+            ? ownedDeadline ? "\"latest\"" : "\"0x1\""
+            : JsonSerializer.Serialize(TestItem.KeccakA.ToString());
+        string request = ownedDeadline
+            ? CreateJsonRpcRequest(method, paramsJson: "[" + selector + ",{\"streamMode\":true}]")
+            : CreateJsonRpcRequest(method, idJson: "7", paramsJson: "[" + selector + "]");
+        if (batch) request = "[" + CreateJsonRpcRequest(idJson: ownedDeadline ? "2" : "1") + "," + request + "]";
+        long successes = JsonRpcMetrics.JsonRpcSuccesses;
+        long errors = JsonRpcMetrics.JsonRpcErrors;
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine, ModuleType.Debug]);
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        await using (KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url))
+        {
+            if (!ownedDeadline)
+            {
+                (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+                using JsonDocument document = JsonDocument.Parse(response);
+                if (batch)
+                {
+                    Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+                }
+                JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+                Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.True);
+                Assert.That(traces.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+                    Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(7));
+                    Assert.That(envelope.TryGetProperty("error", out _), Is.False);
+                    Assert.That(traces[0].GetProperty("txHash").GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
+                    Assert.That(traces[0].GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
+                    Assert.That(traces[0].GetProperty("result").GetProperty("structLogs").GetArrayLength(), Is.EqualTo(1));
+                    Assert.That(traces[1].GetProperty("errorCode").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+                    Assert.That(traces[1].GetProperty("error").GetString(), Does.Contain("sentinel control"));
+                    if (batch)
+                    {
+                        Assert.That(document.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
+                        Assert.That(document.RootElement[0].TryGetProperty("result", out _), Is.True);
+                    }
+                }
+            }
+            else if (bufferResponse || payloadSize == 0)
+            {
+                (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+                using JsonDocument document = JsonDocument.Parse(response);
+                if (batch)
+                {
+                    Assert.That(document.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                    Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(2));
+                }
+                JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+                Assert.That(envelope.TryGetProperty("error", out JsonElement error), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(statusCode, Is.EqualTo(StatusCodes.Status200OK));
+                    Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(1));
+                    Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                    Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
+                    Assert.That(envelope.TryGetProperty("result", out _), Is.False);
+                    if (batch) Assert.That(document.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(2));
+                }
+            }
+            else if (flush) await Assert.ThrowsAsync<HttpRequestException>(() => host.PostAsync(request, deadline.Token));
+            else
+            {
+                (int statusCode, string response) = await host.PostWithStatusAsync(request, deadline.Token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(statusCode, Is.EqualTo(StatusCodes.Status500InternalServerError));
+                    Assert.That(response, Is.Empty);
+                }
+            }
+            RpcReport report = await reported.Task.WaitAsync(deadline.Token);
+            Assert.That(report.Success, Is.EqualTo(!ownedDeadline));
+        }
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == method && report.Success == !ownedDeadline), Arg.Any<long>(), Arg.Any<long?>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => resultCancellation.Token, Throws.TypeOf<ObjectDisposedException>(),
+                "the pipeline must release the result's source before fixture cleanup");
+            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo((batch ? 1 : 0) + (ownedDeadline ? 0 : 1)));
+            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(ownedDeadline ? 1 : 0));
+        }
+    }
+
     private static Startup CreateStreamingStartup(ProbeBlobStreamableResult result, bool bufferResponse, IJsonRpcLocalStats? stats = null)
     {
         IEngineRpcModule engineModule = CreateEngineModule();
@@ -694,58 +852,6 @@ public class StartupTests
             Assert.That(fixture.Context.Response.ContentLength, expectedContentLength ? Is.EqualTo(bytesWritten) : Is.Null);
             Assert.That(fixture.ResponseBody.Length, Is.EqualTo(bytesWritten));
         }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task ProcessJsonRpcRequest_ByNumberDeadline_respects_commitment(
-        [Values] bool bufferResponse, [Values] bool largeTrace, [Values] bool batch, [Values] bool ownedDeadline)
-    {
-        using GethLikeTxTraceStreamingBlockResult trace = JsonRpcResponseWriterStreamingIdTests.CreateByNumberStreamingFailure(largeTrace, ownedDeadline);
-        IDebugRpcModule debugModule = Substitute.For<IDebugRpcModule>();
-        debugModule.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>())
-            .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(trace));
-        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
-        stats.IsEnabled.Returns(true);
-        Startup startup = CreateStartup(rpcConfig: new JsonRpcConfig
-        {
-            EnabledModules = [ModuleType.Engine, ModuleType.Debug],
-            BufferResponses = bufferResponse
-        }, jsonRpcLocalStats: stats, debugModule: debugModule);
-        const string call = "{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceBlockByNumber\",\"params\":[\"0x1\"],\"id\":7}";
-        string request = batch ? "[" + CreateJsonRpcRequest() + "," + call + "]" : call;
-        long successes = JsonRpcMetrics.JsonRpcSuccesses;
-        long errors = JsonRpcMetrics.JsonRpcErrors;
-        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine, ModuleType.Debug]);
-        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url);
-        string response = await host.PostAsync(request, CancellationToken.None);
-
-        using JsonDocument document = JsonDocument.Parse(response);
-        JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
-        bool partial = !ownedDeadline || largeTrace && !bufferResponse;
-        Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.EqualTo(partial), response);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(7));
-            if (partial)
-            {
-                Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
-                Assert.That(traces[0].GetProperty("txHash").GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
-                Assert.That(traces[0].GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
-                Assert.That(traces[0].GetProperty("result").GetProperty("structLogs").GetArrayLength(), Is.EqualTo(1));
-                Assert.That(traces[1].GetProperty("errorCode").GetInt32(), Is.EqualTo(ownedDeadline ? -32000 : ErrorCodes.InternalError));
-                Assert.That(traces[1].GetProperty("error").GetString(), ownedDeadline ? Is.EqualTo("execution timeout") : Does.Contain("sentinel control"));
-            }
-            else
-            {
-                Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32000));
-                Assert.That(envelope.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
-            }
-            if (batch) Assert.That(document.RootElement[0].TryGetProperty("result", out _), Is.True);
-            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo((batch ? 1 : 0) + (ownedDeadline ? 0 : 1)));
-            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(ownedDeadline ? 1 : 0));
-        }
-        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == "debug_traceBlockByNumber" && report.Success == !ownedDeadline), Arg.Any<long>(), Arg.Any<long?>());
     }
 
     [Test]
@@ -819,8 +925,11 @@ public class StartupTests
     {
         Startup.TrustedCidr[] networks = Startup.ParseTrustedNetworks(["100.64.0.0/10"], LimboLogs.Instance.GetClassLogger<StartupTests>());
 
-        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
-        Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.64.1.2"), networks), Is.True);
+            Assert.That(Startup.IsTrustedSource(IPAddress.Parse("100.128.1.2"), networks), Is.False);
+        }
     }
 
     [Test]
@@ -843,8 +952,11 @@ public class StartupTests
 
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(engineUrl), [], out JsonRpcUrl? resolvedUrl);
 
-        Assert.That(usesFastLane, Is.True);
-        Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(usesFastLane, Is.True);
+            Assert.That(resolvedUrl, Is.SameAs(engineUrl));
+        }
         Assert.That(resolvedUrl!.IsAuthenticated, Is.True);
     }
 
@@ -889,8 +1001,11 @@ public class StartupTests
             return Task.CompletedTask;
         }, new TestJsonRpcUrlCollection(jsonRpcUrl));
 
-        Assert.That(nextCalled, Is.True);
-        Assert.That(ctx.Response.HasStarted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextCalled, Is.True);
+            Assert.That(ctx.Response.HasStarted, Is.False);
+        }
     }
 
     [TestCase(null, false)]
@@ -905,6 +1020,119 @@ public class StartupTests
         bool isJson = Startup.IsJsonContentType(contentType);
 
         Assert.That(isJson, Is.EqualTo(expected));
+    }
+
+    [TestCase(null, "")]
+    [TestCase(new[] { "198.51.100.1" }, " (X-Forwarded-For: 198.51.100.1)")]
+    [TestCase(new[] { "198.51.100.1", "192.0.2.4" }, " (X-Forwarded-For: 198.51.100.1,192.0.2.4)", TestName = "Repeated X-Forwarded-For header lines are all logged")]
+    public async Task Http_request_debug_log_includes_remote_address(string[]? forwardedFor, string expectedForwardedSuffix)
+    {
+        TestLogger logger = new();
+        byte[] request = Encoding.UTF8.GetBytes(CreateJsonRpcRequest());
+
+        await ProcessJsonRpcRequestWithStatus(
+            new MemoryStream(request),
+            request.Length,
+            startup: CreateStartup(processorLogManager: new OneLoggerLogManager(new(logger))),
+            configureContext: ctx =>
+            {
+                ctx.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
+                if (forwardedFor is not null) ctx.Request.Headers["X-Forwarded-For"] = new StringValues(forwardedFor);
+            });
+
+        Assert.That(logger.LogList, Has.Member($"JSON RPC request {GetBlobsV1Method} from 203.0.113.7{expectedForwardedSuffix}"),
+            string.Join(" | ", logger.LogList));
+    }
+
+    [TestCase(new[] { AllowedOrigin }, AllowedOrigin, ExpectedResult = true, TestName = "WebSocket origin: accepts an allowed origin")]
+    [TestCase(new[] { AllowedOrigin }, OtherOrigin, ExpectedResult = false, TestName = "WebSocket origin: rejects another origin")]
+    [TestCase(new[] { AllowedOrigin }, "", ExpectedResult = true, TestName = "WebSocket origin: accepts a request without an origin")]
+    [TestCase(new[] { "https://App.Example" }, AllowedOrigin, ExpectedResult = true, TestName = "WebSocket origin: ignores the case of a configured origin")]
+    [TestCase(new[] { "*" }, OtherOrigin, ExpectedResult = true, TestName = "WebSocket origin: accepts any origin with the wildcard")]
+    [TestCase(new string[0], OtherOrigin, ExpectedResult = false, TestName = "WebSocket origin: rejects every origin with no CORS origins")]
+    public bool WebSocketOriginFilter_follows_the_cors_policy(string[] corsOrigins, string origin) =>
+        WebSocketOriginFilter.IsAllowed(origin, Startup.CreateCorsPolicy(new JsonRpcConfig { CorsOrigins = corsOrigins }));
+
+    [Test]
+    public async Task UseJsonRpcWebSockets_refuses_another_origin_before_the_socket_is_accepted()
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
+        TestLogger logger = new();
+        await using WebApplication app = await StartWebSocketHostAsync(new JsonRpcConfig { CorsOrigins = [AllowedOrigin] }, logger, deadline.Token);
+        Uri uri = new UriBuilder(ServerUri(app)) { Scheme = "ws" }.Uri;
+
+        using (ClientWebSocket allowed = await ConnectWebSocketAsync(uri, AllowedOrigin, deadline.Token))
+        {
+            Assert.That(allowed.State, Is.EqualTo(WebSocketState.Open));
+        }
+
+        using (ClientWebSocket nonBrowser = await ConnectWebSocketAsync(uri, origin: null, deadline.Token))
+        {
+            Assert.That(nonBrowser.State, Is.EqualTo(WebSocketState.Open));
+        }
+
+        Assert.That(logger.LogList, Is.Empty);
+
+        WebSocketException? refused = await Assert.ThrowsAsync<WebSocketException>(() => ConnectWebSocketAsync(uri, OtherOrigin, deadline.Token));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused!.Message, Does.Contain("403"));
+            // The node logs the refused origin before it answers, so the line is there once the client sees 403.
+            Assert.That(logger.LogList, Has.Exactly(1).Items);
+        }
+        Assert.That(logger.LogList[0], Does.Contain(OtherOrigin).And.Contain("JsonRpc.CorsOrigins"));
+    }
+
+    /// <summary>
+    /// Serves WebSockets through <see cref="Startup.UseJsonRpcWebSockets"/>, the pipeline <see cref="Startup"/> builds,
+    /// with a module that accepts every socket.
+    /// </summary>
+    private static async Task<WebApplication> StartWebSocketHostAsync(IJsonRpcConfig config, TestLogger logger, CancellationToken cancellationToken)
+    {
+        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
+        builder.Services.AddLogging();
+        builder.Services.AddSingleton(AcceptingWebSocketsManager());
+        builder.WebHost.UseKestrelCore().ConfigureKestrel(static options => options.Listen(IPAddress.Loopback, 0));
+
+        WebApplication app = builder.Build();
+        TestJsonRpcUrlCollection urls = new();
+        Startup.UseJsonRpcWebSockets(app, config, urls, new ILogger(logger));
+
+        await app.StartAsync(cancellationToken);
+        // The port is known only once Kestrel has bound it; the pipeline looks it up per request.
+        int port = ServerUri(app).Port;
+        urls.Add(port, new JsonRpcUrl(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), port, RpcEndpoint.Ws, false, [ModuleType.Eth]));
+        return app;
+    }
+
+    private static IWebSocketsManager AcceptingWebSocketsManager()
+    {
+        ISocketsClient client = Substitute.For<ISocketsClient>();
+        client.Id.Returns("test");
+        IWebSocketsModule module = Substitute.For<IWebSocketsModule>();
+        module.CreateClient(Arg.Any<WebSocket>(), Arg.Any<string>(), Arg.Any<HttpContext>()).Returns(ValueTask.FromResult(client));
+        IWebSocketsManager manager = Substitute.For<IWebSocketsManager>();
+        manager.GetModule(Arg.Any<string>()).Returns(module);
+        return manager;
+    }
+
+    private static Uri ServerUri(WebApplication app) =>
+        new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
+
+    private static async Task<ClientWebSocket> ConnectWebSocketAsync(Uri uri, string? origin, CancellationToken cancellationToken)
+    {
+        ClientWebSocket socket = new();
+        if (origin is not null) socket.Options.SetRequestHeader("Origin", origin);
+        try
+        {
+            await socket.ConnectAsync(uri, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     private static async Task<string> ProcessJsonRpcRequest(
@@ -935,7 +1163,8 @@ public class StartupTests
         long? contentLength,
         long? maxRequestBodySize = null,
         Startup? startup = null,
-        bool isAuthenticated = false)
+        bool isAuthenticated = false,
+        Action<DefaultHttpContext>? configureContext = null)
     {
         DefaultHttpContext ctx = new()
         {
@@ -949,6 +1178,7 @@ public class StartupTests
         if (contentLength is not null) ctx.Request.ContentLength = contentLength;
 
         ctx.Request.Headers.Authorization = "Bearer test";
+        configureContext?.Invoke(ctx);
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
@@ -988,8 +1218,11 @@ public class StartupTests
     private static void AssertBatchArrayResultResponse(string response, int expectedCount, bool assertItemResults = true) =>
         AssertJsonResponse(response, root =>
         {
-            Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
-            Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.ValueKind, Is.EqualTo(JsonValueKind.Array));
+                Assert.That(root.GetArrayLength(), Is.EqualTo(expectedCount));
+            }
             for (int i = 0; assertItemResults && i < expectedCount; i++)
             {
                 AssertArrayResult(root[i], i + 1);
@@ -1268,13 +1501,11 @@ public class StartupTests
 
     private sealed class TestJsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
     {
-        public TestJsonRpcUrlCollection(JsonRpcUrl url)
-            : base(capacity: 1)
-        {
-            Add(url.Port, url);
-            Urls = [url.ToString()];
-        }
+        public TestJsonRpcUrlCollection() { }
 
-        public string[] Urls { get; }
+        public TestJsonRpcUrlCollection(JsonRpcUrl url)
+            : base(capacity: 1) => Add(url.Port, url);
+
+        public string[] Urls => Values.Select(static url => url.ToString()).ToArray();
     }
 }
