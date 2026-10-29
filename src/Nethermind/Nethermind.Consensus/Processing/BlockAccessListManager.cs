@@ -100,8 +100,8 @@ public partial class BlockAccessListManager(
     /// </summary>
     public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
-    // Set on the parallel-validation path, where the merged list is only compared with the suggested one.
-    private bool VerifyOnly { get; set; }
+    // True on the parallel-validation path, where the merged list is only compared with the suggested one.
+    private bool VerifyOnly => ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
@@ -126,7 +126,6 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
-            VerifyOnly = ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList;
             if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
                 _readPlan = new BalReadStoragePlan(bal);
             // The parallel path executes on the suggested list, so it always checks it.
