@@ -117,8 +117,14 @@ def overlay_off_options(entry):
     for name in ('redirect_dir', 'metacopy', 'index'):
         values = [option.split('=', 1)[1] for option in options if option.startswith(name + '=')]
         if values:
-            if values != ['off'] and not (name == 'redirect_dir' and values == ['nofollow']):
-                raise RuntimeError(f'unsafe overlay option: {name}')
+            if name == 'redirect_dir' and values == ['follow']:
+                # redirect_dir=off maps to follow when this kernel policy is enabled.
+                value = Path('/sys/module/overlay/parameters/redirect_always_follow').read_text().strip()
+                defaults['redirect_always_follow'] = value
+                if value not in ('Y', '1'):
+                    raise RuntimeError('redirect_dir=follow lacks verified kernel off→follow policy')
+            elif values != ['off'] and not (name == 'redirect_dir' and values == ['nofollow']):
+                raise RuntimeError(f'unsafe overlay option: {name}={values}')
         else:
             value = Path('/sys/module/overlay/parameters', name).read_text().strip()
             defaults[name] = value
@@ -160,8 +166,9 @@ def toy(root):
             f'lowerdir={lower},upperdir={base}/upper,workdir={base}/work,{OPTIONS}', merged, root=True)
         run('mount', '-o', 'remount,ro', merged, root=True)
         reported_mount = mounted(merged, True)
+        print('Kernel explicit-off overlay mount: ' + json.dumps(reported_mount, sort_keys=True), flush=True)
         reported_defaults = overlay_off_options(reported_mount)
-        print('Kernel explicit-off overlay evidence: ' + json.dumps({'mount': reported_mount, 'omitted_option_defaults': reported_defaults}, sort_keys=True), flush=True)
+        print('Kernel explicit-off overlay defaults: ' + json.dumps(reported_defaults, sort_keys=True), flush=True)
         if (merged / 'deleted').exists() or (merged / 'directory' / 'hidden').exists() or (merged / 'replaced').read_text() != 'new':
             raise RuntimeError('overlay persistence/whiteout/opaque-dir semantics failed')
         run('mount', '-o', 'remount,rw', merged, root=True)
@@ -348,7 +355,7 @@ def recovery_preflight(root, evidence, oracle):
     busy = subprocess.run(['sudo', '-n', 'fuser', '-m', str(root / 'merged')], capture_output=True, timeout=30)
     if busy.returncode != 1:
         raise RuntimeError('quarantine has busy processes or cannot establish quiescence')
-    return {'producer_run': '40815701914', 'artifact_id': '12881330426',
+    return {'producer_run': '40815701914', 'producer_source_sha': '8a867cce8953d3d8f18821586db336aef19bafaa', 'artifact_id': '12881330426',
             'artifact_zip_sha256': '9e220699c61df86cbdb83968d0c71208bb1a8ccf1f709f52794ed79d21e9afe9',
             'artifact_contents_sha256': digest(encoded(files)), 'old_runtime': old_identity,
             'old_source_tripwire': before, 'old_mount': mount, 'omitted_option_defaults': defaults}

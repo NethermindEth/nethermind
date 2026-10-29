@@ -72,7 +72,9 @@ class PreparedTests(unittest.TestCase):
             ('ro', 'N', True), ('ro', '0', True), ('ro', 'Y', False), ('ro', '', False),
             ('ro', 'unknown', False), ('ro,volatile', 'N', False), ('ro,index=on', 'N', False),
             ('ro,metacopy=on', 'N', False), ('ro,redirect_dir=on', 'N', False),
-            ('ro,redirect_dir=follow', 'N', False),
+            ('ro,redirect_dir=follow,metacopy=off,index=off', 'N', False),
+            ('ro,redirect_dir=follow,metacopy=off,index=off', 'Y', True),
+            ('ro,redirect_dir=follow,metacopy=off,index=off', 'unknown', False),
             ('ro,redirect_dir=nofollow,metacopy=off,index=off', 'Y', True),
             ('ro,redirect_dir=off,metacopy=off,index=off', 'Y', True),
         ]:
