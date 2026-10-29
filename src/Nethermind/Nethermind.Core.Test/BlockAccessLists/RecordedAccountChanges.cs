@@ -79,8 +79,12 @@ public static class BlockAccessIndexRecorderTestExtensions
 
         private GeneratedBlockAccessList Merge()
         {
+            // The current index keeps its changes until it ends, so they merge from a log of their own.
+            BlockAccessListLog current = new();
+            recorder.AddChanges(current);
             recorder.Log.Seal();
-            return GeneratedBlockAccessList.Merge([recorder.Log]);
+            current.Seal();
+            return GeneratedBlockAccessList.Merge([recorder.Log, current]);
         }
     }
 

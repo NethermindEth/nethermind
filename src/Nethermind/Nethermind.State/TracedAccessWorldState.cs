@@ -336,7 +336,11 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         _hasLastReadStorageCell = false;
     }
 
-    public void IncrementIndex() => SetIndex(GeneratingBlockAccessList.Index + 1);
+    public void IncrementIndex()
+    {
+        GeneratingBlockAccessList.End();
+        SetIndex(GeneratingBlockAccessList.Index + 1);
+    }
 
     public void Clear()
     {

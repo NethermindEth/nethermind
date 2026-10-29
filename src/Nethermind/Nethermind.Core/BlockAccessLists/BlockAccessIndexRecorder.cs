@@ -17,16 +17,20 @@ namespace Nethermind.Core.BlockAccessLists;
 /// and answers the index's own reads of what it wrote.
 /// </summary>
 /// <remarks>
-/// Each written key maps to its latest entry, which also points to the key's value from before the index. A write
-/// overwrites that entry in place when no snapshot was taken since, so a loop writing one slot keeps one entry per
-/// snapshot. <see cref="Restore"/> marks the writes after the snapshot as reverted, which keeps them as accesses, since
-/// EIP-7928 lists the accesses of reverted calls. The lookups report a key only while its latest value differs from the
-/// value before the index, except nonces, which only move forward.
+/// A key goes to the log as an access when the index first touches it, and the writes stay with the recorder until
+/// <see cref="End"/> adds the net changes, so the accesses of reverted calls stay listed, as EIP-7928 requires. Each
+/// written key maps to its latest write, which also points to the key's value from before the index. A write overwrites
+/// that entry in place when no snapshot was taken since, so a loop writing one slot keeps one entry per snapshot.
+/// <see cref="Restore"/> marks the writes after the snapshot as reverted. The lookups report a key only while its latest
+/// value differs from the value before the index, except nonces, which only move forward.
 /// </remarks>
 public sealed class BlockAccessIndexRecorder : IJournal<int>
 {
     private readonly Dictionary<EntryKey, int> _latestWrites = [];
     private readonly Dictionary<StorageCell, UInt256> _seededPreTxStorage = new(StorageCell.EqualityComparer);
+    private readonly List<Entry> _writes = [];
+    private readonly List<UInt256> _preTxValues = [];
+    private readonly List<CodeWrite> _codeWrites = [];
     private int _start;
     private Address? _lastAccount;
     private ulong _snapshotEpoch;
@@ -38,6 +42,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     public uint Index { get; private set; }
 
     /// <summary>Starts recording <paramref name="index"/> at the end of <see cref="Log"/>.</summary>
+    /// <remarks>The changes of a previous index that did not <see cref="End"/> are dropped.</remarks>
     public void Begin(uint index)
     {
         ClearIndexState();
@@ -55,6 +60,51 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
         ClearIndexState();
     }
 
+    /// <summary>Adds the net changes of the current index to <see cref="Log"/>; call once the index has executed.</summary>
+    public void End()
+    {
+        AddChanges(Log);
+        ClearIndexState();
+    }
+
+    /// <summary>Adds the net changes of the current index to <paramref name="log"/>.</summary>
+    /// <remarks>
+    /// A key's latest write is its last one that was not reverted. It is a change only when its value differs from the
+    /// value before the index; a slot set back to its value, or whose writes all reverted, stays the read its first write
+    /// logged.
+    /// </remarks>
+    internal void AddChanges(BlockAccessListLog log)
+    {
+        ReadOnlySpan<Entry> writes = CollectionsMarshal.AsSpan(_writes);
+        foreach (KeyValuePair<EntryKey, int> latest in _latestWrites)
+        {
+            EntryKey key = latest.Key;
+            ref readonly Entry write = ref writes[latest.Value];
+            Section section;
+            UInt256 value = write.Value;
+            switch (key.Kind)
+            {
+                case EntryKind.Balance when write.Value != _preTxValues[write.PreTxValuePosition]:
+                    section = Section.Balance;
+                    break;
+                case EntryKind.Nonce when write.HasValue:
+                    section = Section.Nonce;
+                    break;
+                case EntryKind.Code when write.HasValue && IsCodeChanged(_codeWrites[(int)write.Value.u0]):
+                    section = Section.Code;
+                    value = (ulong)log.AddCodeChange(_codeWrites[(int)write.Value.u0].Change);
+                    break;
+                case EntryKind.Storage when write.HasValue && write.Value != _preTxValues[write.PreTxValuePosition]:
+                    section = Section.Storage;
+                    break;
+                default:
+                    continue;
+            }
+
+            log.AddEntry(new Item(key.Cell.Address, section, in key.Cell.Index, in value, Index, isChange: true));
+        }
+    }
+
     /// <summary>The account's existence as last recorded by <see cref="RecordAccountExistence"/>, or null if never recorded.</summary>
     public bool? GetAccountExists(Address address)
         => TryGetLatest(new EntryKey(address, EntryKind.Existence), out Entry entry) && entry.HasValue ? !entry.Value.IsZero : null;
@@ -62,7 +112,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <summary>Gets the balance the index changed the account to.</summary>
     public bool TryGetBalance(Address address, out UInt256 balance)
     {
-        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != Log.GetPreTxValue(entry.PreTxValuePosition);
+        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != _preTxValues[entry.PreTxValuePosition];
         balance = found ? entry.Value : default;
         return found;
     }
@@ -70,8 +120,8 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <summary>Gets the account's balance from before the index, if the index changed it.</summary>
     public bool TryGetPreTxBalance(Address address, out UInt256 balance)
     {
-        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != Log.GetPreTxValue(entry.PreTxValuePosition);
-        balance = found ? Log.GetPreTxValue(entry.PreTxValuePosition) : default;
+        bool found = TryGetLatest(new EntryKey(address, EntryKind.Balance), out Entry entry) && entry.Value != _preTxValues[entry.PreTxValuePosition];
+        balance = found ? _preTxValues[entry.PreTxValuePosition] : default;
         return found;
     }
 
@@ -102,7 +152,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <summary>Gets the slot value the index changed the slot to.</summary>
     public bool TryGetStorage(in StorageCell cell, out UInt256 value)
     {
-        bool found = TryGetLatest(new EntryKey(cell, EntryKind.Storage), out Entry entry) && entry.HasValue && entry.Value != Log.GetPreTxValue(entry.PreTxValuePosition);
+        bool found = TryGetLatest(new EntryKey(cell, EntryKind.Storage), out Entry entry) && entry.HasValue && entry.Value != _preTxValues[entry.PreTxValuePosition];
         value = found ? entry.Value : default;
         return found;
     }
@@ -112,7 +162,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     {
         if (TryGetLatest(new EntryKey(cell, EntryKind.Storage), out Entry entry))
         {
-            value = Log.GetPreTxValue(entry.PreTxValuePosition);
+            value = _preTxValues[entry.PreTxValuePosition];
             return true;
         }
         return _seededPreTxStorage.TryGetValue(cell, out value);
@@ -141,7 +191,11 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
 
     public void AddAccountRead(Address address) => AddAccount(address);
 
-    public void AddStorageRead(in StorageCell cell) => AddEntry(new EntryKey(cell, EntryKind.StorageRead));
+    public void AddStorageRead(in StorageCell cell)
+    {
+        AddAccount(cell.Address);
+        Log.AddEntry(new Item(cell.Address, Section.Storage, in cell.Index, default, Index, isChange: false));
+    }
 
     /// <summary>Records physical account existence for execution and snapshot restoration.</summary>
     public void RecordAccountExistence(Address address, bool exists)
@@ -190,11 +244,12 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
 
         EntryKey key = new(address, EntryKind.Code);
         ReadOnlyMemory<byte> preTxCode = TryGetLatest(key, out Entry latest)
-            ? Log.GetCodeWrite((int)latest.Value.u0).PreTxCode
+            ? _codeWrites[(int)latest.Value.u0].PreTxCode
             : before.IsNull() ? Array.Empty<byte>() : before;
         // EIP-8298: the form follows whichever write left the code, so a later adoption makes the change hash-only.
         CodeChange change = adoptedCodeHash is { } codeHash ? CodeChange.Adopted(Index, in codeHash, after.ToArray()) : new CodeChange(Index, after.ToArray());
-        int position = Log.AddCodeWrite(new CodeWrite(preTxCode, change));
+        _codeWrites.Add(new CodeWrite(preTxCode, change));
+        int position = _codeWrites.Count - 1;
 
         ref Entry entry = ref AddWrite(key, default);
         entry.Value = (ulong)position;
@@ -224,7 +279,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
         AddAccount(address);
 
         using ArrayPoolListRef<EntryKey> deleted = new(0);
-        Span<Entry> entries = Log.Entries;
+        Span<Entry> entries = CollectionsMarshal.AsSpan(_writes);
         foreach (KeyValuePair<EntryKey, int> latest in _latestWrites)
         {
             EntryKey key = latest.Key;
@@ -247,17 +302,17 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     public int TakeSnapshot()
     {
         _snapshotEpoch++;
-        return Log.Count;
+        return _writes.Count;
     }
 
     public void Restore(int snapshot)
     {
         _snapshotEpoch++;
-        Span<Entry> entries = Log.Entries;
-        for (int position = entries.Length - 1; position >= int.Max(_start, snapshot); position--)
+        Span<Entry> entries = CollectionsMarshal.AsSpan(_writes);
+        for (int position = entries.Length - 1; position >= int.Max(0, snapshot); position--)
         {
             ref Entry entry = ref entries[position];
-            if (entry.Reverted || !IsWrite(entry.Key.Kind)) continue;
+            if (entry.Reverted) continue;
 
             if (entry.Previous >= 0) _latestWrites[entry.Key] = entry.Previous;
             else _latestWrites.Remove(entry.Key);
@@ -269,27 +324,26 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     {
         _latestWrites.ClearAndTrim();
         _seededPreTxStorage.ClearAndTrim();
+        _writes.ClearAndTrim();
+        _preTxValues.ClearAndTrim();
+        _codeWrites.ClearAndTrim();
         _lastAccount = null;
         _snapshotEpoch = 0;
     }
 
     private void AddAccount(Address address)
     {
-        if (!address.Equals(_lastAccount)) AddEntry(new EntryKey(address, EntryKind.AccountRead));
-    }
-
-    private void AddEntry(in EntryKey key)
-    {
-        Log.AddEntry(new Entry { Key = key, Index = Index, Previous = -1 });
-        _lastAccount = key.Cell.Address;
+        if (address.Equals(_lastAccount)) return;
+        Log.AddEntry(new Item(address, Section.Account, default, default, Index, isChange: false));
+        _lastAccount = address;
     }
 
     private bool TryGetCodeWrite(Address address, out CodeWrite codeWrite)
     {
         if (TryGetLatest(new EntryKey(address, EntryKind.Code), out Entry entry) && entry.HasValue)
         {
-            codeWrite = Log.GetCodeWrite((int)entry.Value.u0);
-            if (!codeWrite.Change.Code.AsSpan().SequenceEqual(codeWrite.PreTxCode.Span)) return true;
+            codeWrite = _codeWrites[(int)entry.Value.u0];
+            if (IsCodeChanged(codeWrite)) return true;
         }
         codeWrite = default;
         return false;
@@ -299,7 +353,7 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     {
         if (_latestWrites.TryGetValue(key, out int position))
         {
-            entry = Log.Entries[position];
+            entry = _writes[position];
             return true;
         }
         entry = default;
@@ -311,21 +365,68 @@ public sealed class BlockAccessIndexRecorder : IJournal<int>
     /// <param name="preTxValue">The key's value from before the index, used when the index has not written it yet.</param>
     private ref Entry AddWrite(in EntryKey key, in UInt256 preTxValue)
     {
-        _lastAccount = key.Cell.Address;
+        AddAccount(key.Cell.Address);
         ref int latest = ref CollectionsMarshal.GetValueRefOrAddDefault(_latestWrites, key, out bool exists);
+        Span<Entry> writes = CollectionsMarshal.AsSpan(_writes);
         if (exists)
         {
-            ref Entry previous = ref Log.Entries[latest];
+            ref Entry previous = ref writes[latest];
             if (previous.Epoch == _snapshotEpoch) return ref previous;
 
-            // Adding to the log leaves the dictionary alone, so the ref into it stays valid.
-            latest = Log.AddEntry(previous with { Epoch = _snapshotEpoch, Previous = latest });
+            // Adding to the writes leaves the dictionary alone, so the ref into it stays valid.
+            _writes.Add(previous with { Epoch = _snapshotEpoch, Previous = latest });
         }
         else
         {
-            latest = Log.AddEntry(new Entry { Key = key, PreTxValuePosition = Log.AddPreTxValue(in preTxValue), Epoch = _snapshotEpoch, Index = Index, Previous = -1 });
+            // The write's access, which stays a read if the index leaves the slot as it found it.
+            if (key.Kind == EntryKind.Storage)
+                Log.AddEntry(new Item(key.Cell.Address, Section.Storage, in key.Cell.Index, default, Index, isChange: false));
+            _preTxValues.Add(preTxValue);
+            _writes.Add(new Entry { Key = key, PreTxValuePosition = _preTxValues.Count - 1, Epoch = _snapshotEpoch, Previous = -1 });
         }
 
-        return ref Log.Entries[latest];
+        latest = _writes.Count - 1;
+        return ref CollectionsMarshal.AsSpan(_writes)[latest];
     }
+
+    private static bool IsCodeChanged(in CodeWrite codeWrite) => !codeWrite.Change.Code.AsSpan().SequenceEqual(codeWrite.PreTxCode.Span);
+
+    private enum EntryKind : byte
+    {
+        Storage,
+        Balance,
+        Nonce,
+        Code,
+        Existence,
+    }
+
+    private readonly struct EntryKey(in StorageCell cell, EntryKind kind) : IEquatable<EntryKey>
+    {
+        public readonly StorageCell Cell = cell;
+        public readonly EntryKind Kind = kind;
+
+        public EntryKey(Address address, EntryKind kind) : this(new StorageCell(address, UInt256.Zero), kind) { }
+
+        public bool Equals(EntryKey other) => Kind == other.Kind && Cell.Equals(in other.Cell);
+        public override bool Equals(object? obj) => obj is EntryKey other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Cell.GetHashCode(), Kind);
+    }
+
+    private struct Entry
+    {
+        public EntryKey Key;
+        /// <summary>The position of the key's value from before the index.</summary>
+        public int PreTxValuePosition;
+        /// <summary>The written value; for code, the position of its <see cref="CodeWrite"/>.</summary>
+        public UInt256 Value;
+        public ulong Epoch;
+        /// <summary>The key's previous write, restored by a revert, or -1.</summary>
+        public int Previous;
+        /// <summary>False once a SELFDESTRUCT dropped the change.</summary>
+        public bool HasValue;
+        /// <summary>Whether a revert undid the write.</summary>
+        public bool Reverted;
+    }
+
+    private readonly record struct CodeWrite(ReadOnlyMemory<byte> PreTxCode, CodeChange Change);
 }

@@ -199,6 +199,7 @@ public partial class BlockAccessListManager
             TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
+            processor.Recorder.End();
             processor.WorldState.SetGeneratingBlockAccessList(null);
             processor.DetachParentReader();
             _inUse[idx] = null;
@@ -384,6 +385,7 @@ public partial class BlockAccessListManager
 
         public ReadOnlySpan<BlockAccessListLog> SealLogs()
         {
+            _txProcessorWithWorldState.Recorder.End();
             _log[0].Seal();
             return _log;
         }

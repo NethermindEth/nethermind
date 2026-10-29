@@ -81,6 +81,7 @@ public class BlockAccessListLogBenchmarks
             sealing.Log = _sealedLogs[tx % Workers];
             sealing.Begin((uint)tx);
             RecordTransaction(sealing, tx);
+            sealing.End();
         }
         foreach (BlockAccessListLog log in _sealedLogs) log.Seal();
 
@@ -96,6 +97,7 @@ public class BlockAccessListLogBenchmarks
             BlockAccessIndexRecorder recorder = _recorders[tx % Workers];
             recorder.Begin((uint)tx);
             RecordTransaction(recorder, tx);
+            recorder.End();
         }
         foreach (BlockAccessIndexRecorder recorder in _recorders) recorder.Log.Seal();
     }

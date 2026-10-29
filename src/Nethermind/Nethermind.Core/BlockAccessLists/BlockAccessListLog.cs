@@ -14,20 +14,19 @@ using Nethermind.Int256;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// The state accesses of one or more block access indexes, appended by a <see cref="BlockAccessIndexRecorder"/> and
-/// then sealed into a sorted run that <see cref="GeneratedBlockAccessList"/> merges with the runs of other logs.
+/// The state accesses and changes of one or more block access indexes, appended by a <see cref="BlockAccessIndexRecorder"/>
+/// and then sealed into a sorted run that <see cref="GeneratedBlockAccessList"/> merges with the runs of other logs.
 /// </summary>
 /// <remarks>
-/// A log is shared by the indexes that run one after another on the same thread, so a block needs one log per
-/// worker rather than one per transaction, and the merge works over that many runs. Each entry carries its index, and
-/// <see cref="Seal"/> collapses each key's entries per index. <see cref="Clear"/> keeps the collections, so a reused
-/// instance stops allocating once warm.
+/// A log is kept by one recorder for a block, so it holds the indexes that recorder ran, in the order it ran them, and
+/// the merge works over one run per recorder. An index adds an access when it first touches a key and its net changes
+/// when it ends, so an item may repeat; the merge and <see cref="Matches"/> both take repeated accesses as one.
+/// <see cref="Clear"/> keeps the collections, so a reused instance stops allocating once warm.
 /// </remarks>
 public sealed class BlockAccessListLog : IResettable
 {
-    private readonly List<Entry> _entries = [];
-    private readonly List<CodeWrite> _codeWrites = [];
-    private readonly List<UInt256> _preTxValues = [];
+    private readonly List<Item> _entries = [];
+    private readonly List<CodeChange> _codeChanges = [];
     private readonly List<int> _sortedEntries = [];
     private readonly List<Item> _items = [];
     private readonly Comparison<int> _compareEntries;
@@ -40,29 +39,13 @@ public sealed class BlockAccessListLog : IResettable
     /// <summary>The sorted run <see cref="Seal"/> built.</summary>
     internal ReadOnlySpan<Item> Items => CollectionsMarshal.AsSpan(_items);
 
-    internal Span<Entry> Entries => CollectionsMarshal.AsSpan(_entries);
+    internal void AddEntry(in Item item) => _entries.Add(item);
 
-    internal int AddEntry(in Entry entry)
+    internal int AddCodeChange(CodeChange change)
     {
-        _entries.Add(entry);
-        return _entries.Count - 1;
+        _codeChanges.Add(change);
+        return _codeChanges.Count - 1;
     }
-
-    internal int AddCodeWrite(in CodeWrite codeWrite)
-    {
-        _codeWrites.Add(codeWrite);
-        return _codeWrites.Count - 1;
-    }
-
-    internal ref readonly CodeWrite GetCodeWrite(int position) => ref CollectionsMarshal.AsSpan(_codeWrites)[position];
-
-    internal int AddPreTxValue(in UInt256 value)
-    {
-        _preTxValues.Add(value);
-        return _preTxValues.Count - 1;
-    }
-
-    internal ref readonly UInt256 GetPreTxValue(int position) => ref CollectionsMarshal.AsSpan(_preTxValues)[position];
 
     /// <summary>Drops the entries from <paramref name="count"/> on, such as those of a transaction left out of a block.</summary>
     public void Truncate(int count) => CollectionsMarshal.SetCount(_entries, count);
@@ -71,10 +54,10 @@ public sealed class BlockAccessListLog : IResettable
     /// <remarks>A storage key comes with its slot; any other key with <see langword="null"/>.</remarks>
     internal void VisitAccesses<TVisitor>(int start, ref TVisitor visit) where TVisitor : struct, IAccessVisitor
     {
-        foreach (ref readonly Entry entry in Entries[start..])
+        foreach (ref readonly Item entry in CollectionsMarshal.AsSpan(_entries)[start..])
         {
-            if (entry.Key.Kind is EntryKind.Storage or EntryKind.StorageRead) visit.Storage(in entry.Key.Cell);
-            else visit.Account(entry.Key.Cell.Address);
+            if (entry.Section == Section.Storage) visit.Storage(new StorageCell(entry.Address, entry.Slot));
+            else visit.Account(entry.Address);
         }
     }
 
@@ -84,12 +67,10 @@ public sealed class BlockAccessListLog : IResettable
         void Storage(in StorageCell cell);
     }
 
-    /// <summary>Builds the sorted run of the logged changes and accesses; call once every index has executed.</summary>
+    /// <summary>Builds the sorted run of the logged changes and accesses; call once every index has ended.</summary>
     /// <remarks>
-    /// The log is sorted by key, index and position, so each key's entries at one index are adjacent and the last
-    /// write that was not reverted holds the final value. A write counts as a change only when that value differs
-    /// from the value before the index, so a slot set back to its original value is a read, as is a slot whose writes
-    /// all reverted. A slot changed at no index becomes one read item.
+    /// The run is sorted by address, section, slot and index, so each address leads with its account item of the lowest
+    /// index. Repeated accesses stay in the run.
     /// </remarks>
     public void Seal()
     {
@@ -99,73 +80,12 @@ public sealed class BlockAccessListLog : IResettable
         Span<int> sorted = CollectionsMarshal.AsSpan(_sortedEntries);
         sorted.Sort(_compareEntries);
 
-        ReadOnlySpan<Entry> entries = CollectionsMarshal.AsSpan(_entries);
-        Address? address = null;
-        int accountItem = 0;
-        uint firstIndex = 0;
-        for (int keyStart = 0, keyEnd; keyStart < sorted.Length; keyStart = keyEnd)
-        {
-            ref readonly EntryKey key = ref entries[sorted[keyStart]].Key;
-            for (keyEnd = keyStart + 1; keyEnd < sorted.Length && CompareKeys(in key, in entries[sorted[keyEnd]].Key) == 0; keyEnd++) { }
-
-            if (!key.Cell.Address.Equals(address))
-            {
-                if (address is not null) SetAccountItem(accountItem, address, firstIndex);
-                address = key.Cell.Address;
-                accountItem = _items.Count;
-                firstIndex = uint.MaxValue;
-                _items.Add(default);
-            }
-
-            // Each key's entries are ordered by index, so its first entry has its lowest.
-            firstIndex = uint.Min(firstIndex, entries[sorted[keyStart]].Index);
-
-            Section section = SectionOf(key.Kind);
-            if (section == Section.Account) continue;
-
-            bool changed = false;
-            for (int indexStart = keyStart, indexEnd; indexStart < keyEnd; indexStart = indexEnd)
-            {
-                uint index = entries[sorted[indexStart]].Index;
-                int latest = -1;
-                for (indexEnd = indexStart; indexEnd < keyEnd && entries[sorted[indexEnd]].Index == index; indexEnd++)
-                {
-                    ref readonly Entry entry = ref entries[sorted[indexEnd]];
-                    if (!entry.Reverted && IsWrite(entry.Key.Kind)) latest = sorted[indexEnd];
-                }
-
-                if (latest < 0) continue;
-                ref readonly Entry write = ref entries[latest];
-                bool isChange = section switch
-                {
-                    Section.Balance => write.Value != GetPreTxValue(write.PreTxValuePosition),
-                    Section.Code => write.HasValue && IsCodeChanged(in GetCodeWrite((int)write.Value.u0)),
-                    Section.Nonce => write.HasValue,
-                    _ => write.HasValue && write.Value != GetPreTxValue(write.PreTxValuePosition),
-                };
-
-                if (!isChange) continue;
-                changed = true;
-                _items.Add(new Item(address, section, in key.Cell.Index, in write.Value, index, isChange: true));
-            }
-
-            if (section == Section.Storage && !changed)
-            {
-                _items.Add(new Item(address, section, in key.Cell.Index, default, entries[sorted[keyStart]].Index, isChange: false));
-            }
-        }
-
-        if (address is not null) SetAccountItem(accountItem, address, firstIndex);
-
-        static bool IsCodeChanged(in CodeWrite codeWrite) => !codeWrite.Change.Code.AsSpan().SequenceEqual(codeWrite.PreTxCode.Span);
+        ReadOnlySpan<Item> entries = CollectionsMarshal.AsSpan(_entries);
+        foreach (int position in sorted) _items.Add(entries[position]);
     }
 
-    // The account item precedes its sections but takes the lowest index of all of them, known only once they are done.
-    private void SetAccountItem(int position, Address address, uint firstIndex)
-        => CollectionsMarshal.AsSpan(_items)[position] = new Item(address, Section.Account, default, default, firstIndex, isChange: false);
-
     /// <summary>The code change a sealed <see cref="Section.Code"/> item refers to.</summary>
-    internal CodeChange GetCodeChange(in Item item) => GetCodeWrite((int)item.Value.u0).Change;
+    internal CodeChange GetCodeChange(in Item item) => _codeChanges[(int)item.Value.u0];
 
     /// <summary>Whether the sealed runs of <paramref name="logs"/> together hold exactly the accounts and changes of
     /// <paramref name="suggested"/>, and only storage reads it declares.</summary>
@@ -293,8 +213,7 @@ public sealed class BlockAccessListLog : IResettable
     public void Clear()
     {
         _entries.ClearAndTrim();
-        _codeWrites.ClearAndTrim();
-        _preTxValues.ClearAndTrim();
+        _codeChanges.ClearAndTrim();
         _sortedEntries.ClearAndTrim();
         _items.ClearAndTrim();
     }
@@ -308,9 +227,6 @@ public sealed class BlockAccessListLog : IResettable
         return cmp != 0 ? cmp : x.Index.CompareTo(y.Index);
     }
 
-    private static int CompareKeys(in EntryKey x, in EntryKey y)
-        => CompareKeys(x.Cell.Address, SectionOf(x.Kind), in x.Cell.Index, y.Cell.Address, SectionOf(y.Kind), in y.Cell.Index);
-
     private static int CompareKeys(Address xAddress, Section xSection, in UInt256 xSlot, Address yAddress, Section ySection, in UInt256 ySlot)
     {
         int cmp = ReferenceEquals(xAddress, yAddress) ? 0 : xAddress.Bytes.SequenceCompareTo(yAddress.Bytes);
@@ -321,25 +237,10 @@ public sealed class BlockAccessListLog : IResettable
 
     private int CompareEntries(int left, int right)
     {
-        ReadOnlySpan<Entry> entries = CollectionsMarshal.AsSpan(_entries);
-        ref readonly Entry x = ref entries[left];
-        ref readonly Entry y = ref entries[right];
-        int cmp = CompareKeys(in x.Key, in y.Key);
-        if (cmp != 0) return cmp;
-        cmp = x.Index.CompareTo(y.Index);
+        ReadOnlySpan<Item> entries = CollectionsMarshal.AsSpan(_entries);
+        int cmp = CompareItems(in entries[left], in entries[right]);
         return cmp != 0 ? cmp : left - right;
     }
-
-    internal static bool IsWrite(EntryKind kind) => kind is not (EntryKind.AccountRead or EntryKind.StorageRead);
-
-    private static Section SectionOf(EntryKind kind) => kind switch
-    {
-        EntryKind.AccountRead or EntryKind.Existence => Section.Account,
-        EntryKind.StorageRead or EntryKind.Storage => Section.Storage,
-        EntryKind.Balance => Section.Balance,
-        EntryKind.Nonce => Section.Nonce,
-        _ => Section.Code,
-    };
 
     /// <summary>A section of an account's EIP-7928 entry, in encoding order.</summary>
     internal enum Section : byte
@@ -363,46 +264,4 @@ public sealed class BlockAccessListLog : IResettable
         public readonly Section Section = section;
         public readonly bool IsChange = isChange;
     }
-
-    internal enum EntryKind : byte
-    {
-        AccountRead,
-        StorageRead,
-        Storage,
-        Balance,
-        Nonce,
-        Code,
-        Existence,
-    }
-
-    internal readonly struct EntryKey(in StorageCell cell, EntryKind kind) : IEquatable<EntryKey>
-    {
-        public readonly StorageCell Cell = cell;
-        public readonly EntryKind Kind = kind;
-
-        public EntryKey(Address address, EntryKind kind) : this(new StorageCell(address, UInt256.Zero), kind) { }
-
-        public bool Equals(EntryKey other) => Kind == other.Kind && Cell.Equals(in other.Cell);
-        public override bool Equals(object? obj) => obj is EntryKey other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Cell.GetHashCode(), Kind);
-    }
-
-    internal struct Entry
-    {
-        public EntryKey Key;
-        /// <summary>The position of the key's value from before the index, for <see cref="GetPreTxValue"/>.</summary>
-        public int PreTxValuePosition;
-        /// <summary>The written value; for code, the position of its <see cref="CodeWrite"/>.</summary>
-        public UInt256 Value;
-        public ulong Epoch;
-        /// <summary>The key's previous write at the same index, restored by a revert, or -1.</summary>
-        public int Previous;
-        public uint Index;
-        /// <summary>False once a SELFDESTRUCT dropped the change.</summary>
-        public bool HasValue;
-        /// <summary>Whether a revert undid the write, which leaves only the access.</summary>
-        public bool Reverted;
-    }
-
-    internal readonly record struct CodeWrite(ReadOnlyMemory<byte> PreTxCode, CodeChange Change);
 }

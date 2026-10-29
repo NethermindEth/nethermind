@@ -61,6 +61,7 @@ public class BlockAccessListLogTests
 
             BlockAccessListAtIndex slice = new() { Index = index };
             world = ExecuteIndex(random, world, slice, recorder);
+            recorder.End();
             expected.Merge(slice);
         }
 
@@ -129,6 +130,8 @@ public class BlockAccessListLogTests
         if (mutation == Mutation.UndeclaredRead) second.AddStorageRead(new StorageCell(a3, 3));
         if (mutation != Mutation.MissingLastAccount) second.AddAccountRead(a4);
 
+        first.End();
+        second.End();
         first.Log.Seal();
         second.Log.Seal();
         return [first.Log, second.Log];
