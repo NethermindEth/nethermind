@@ -33,7 +33,7 @@ public static class Metrics
     public static long GcKeeperDecommitIdleWaitsCancelled;
 
     [CounterMetric]
-    [Description("Number of throwaway no-GC regions entered and ended at once right after a decommit collection, to keep the region's budget committed for the next engine_newPayload.")]
+    [Description("Number of throwaway no-GC regions entered and ended at once right after a GC keeper collection, to keep the region's budget linked and committed for the next engine_newPayload.")]
     public static long NoGcRegionRecommits;
 
     [GaugeMetric]

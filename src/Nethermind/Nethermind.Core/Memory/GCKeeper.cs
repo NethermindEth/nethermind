@@ -100,7 +100,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    /// <summary>Cancels the delayed collection if it has not yet been claimed for execution.</summary>
+    /// <summary>Cancels the delayed collection if it has not yet been claimed for execution, and the re-commit or decommit still to follow it.</summary>
     public void CancelPendingGC()
     {
         lock (_lock)
@@ -261,7 +261,7 @@ public class GCKeeper : IDisposable
             bool started = false;
             try
             {
-                // Waits for a re-commit after decommit to end its region (see RecommitAfterDecommit).
+                // Waits for a re-commit after a collection to end its region (see RecommitAfterCollection).
                 lock (keeper._runtimeLock)
                 {
                     started = keeper._runtime.TryStart(_defaultSize, _lohSize);
@@ -372,26 +372,29 @@ public class GCKeeper : IDisposable
     private long? _lastGcTimeMs;
 
     /// <summary>
-    /// Enters and at once ends a no-GC region right after a decommit, so the next payload's entry finds its budget
-    /// committed rather than committing it inside its own suspension.
+    /// Enters and at once ends a no-GC region right after a keeper collection, so the next payload's entry finds its
+    /// budget linked and committed rather than linking and committing it inside its own suspension.
     /// </summary>
     /// <remarks>
-    /// <para>The aggressive collection decommits every free region, so the entry after it commits the whole budget
-    /// while every thread is suspended, on the payload's path. Ending a region leaves the regions it linked committed
-    /// until the next collection (dotnet/runtime v10.0.0, gc.cpp: extend_soh_for_no_gc commits without touching the
-    /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
-    /// grow until they are allocated in. The decommit still returns everything else.</para>
-    /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
-    /// when the strategy disallows regions or payloads enter none (<see cref="NoGcRegionMode.Never"/>), and on shutdown. A payload admitted meanwhile queues its entry, which waits
-    /// on <see cref="_runtimeLock"/> until the throwaway region has ended.</para>
+    /// <para>A collection releases the gen0 regions the last entry linked, and the aggressive one also decommits every
+    /// free region, so the entry after either links the whole budget again (after a decommit, committing it too) while
+    /// every thread is suspended, on the payload's path; without a collection in between, an entry links only what the
+    /// last payload allocated. Ending a region leaves the regions it linked committed until the next collection
+    /// (dotnet/runtime v10.0.0, gc.cpp: extend_soh_for_no_gc commits without touching the pages, and decommit only
+    /// takes regions a collection released), so the next entry reuses them and RSS does not grow until they are
+    /// allocated in. The decommit still returns everything else.</para>
+    /// <para>Skipped once the next payload has cancelled the pending collection, while a payload is in processing or a
+    /// region is pending or active, when the strategy disallows regions or payloads enter none
+    /// (<see cref="NoGcRegionMode.Never"/>), and on shutdown. A payload admitted meanwhile queues its entry, which waits
+    /// on <see cref="_runtimeLock"/> until the throwaway region has ended. The pending collection stays attached, so a
+    /// decommit still to come keeps its idle wait cancellable.</para>
     /// </remarks>
-    private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
+    private void RecommitAfterCollection(CancellationTokenSource pendingGcCts)
     {
         bool allowed = _entersRegion && _gcStrategy.CanStartNoGCRegion();
         lock (_lock)
         {
-            if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
-            if (!allowed || pendingGcCts.IsCancellationRequested || _disposed || _region is not null || _runtime.IsActive) return;
+            if (!allowed || pendingGcCts.IsCancellationRequested || _disposed || _payloadsInProcessing > 0 || _region is not null || _runtime.IsActive) return;
             // Taken under the keeper's lock, so no entry can be between its admission and its runtime call here.
             _runtimeLock.Enter();
         }
@@ -482,7 +485,7 @@ public class GCKeeper : IDisposable
     /// processing may find the <see cref="GCScheduler"/> already paused and so not hold it, and without a region of its
     /// own (<see cref="NoGcRegionMode.Never"/>, or a third overlapping payload) nothing else keeps the collection out of it.
     /// </remarks>
-    /// <param name="keepCancellable">Leaves the pending collection cancellable, for a decommit still to come or running.</param>
+    /// <param name="keepCancellable">Leaves the pending collection cancellable, for a re-commit or decommit still to come or running.</param>
     /// <param name="exemptFromSpacing">Skips the minimum spacing, for a decommit that follows its own ordinary collection.</param>
     private CollectionClaim ClaimCollection(CancellationTokenSource pendingGcCts, bool throttle, bool keepCancellable, bool exemptFromSpacing)
     {
@@ -595,15 +598,23 @@ public class GCKeeper : IDisposable
                     if (!decommit || remainingIdleMs > 0)
                     {
                         // A throttled collection does not hold up the decommit, whose idle wait is longer than the spacing.
-                        CollectionClaim claim = ClaimCollection(pendingGcCts, throttle, keepCancellable: decommit, exemptFromSpacing: false);
+                        // Cancellable while payloads enter a region, so the next payload still calls off the re-commit.
+                        CollectionClaim claim = ClaimCollection(pendingGcCts, throttle, keepCancellable: decommit || _entersRegion, exemptFromSpacing: false);
                         CountPostBlockClaim(claim);
                         if (claim is CollectionClaim.Cancelled or CollectionClaim.Busy) return;
                         if (claim == CollectionClaim.Granted)
                         {
                             if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
                             // Declined by the scheduler: another collection is running, or forced ones are excluded.
-                            if (_runtime.Collect(generation, GCCollectionMode.Forced, compacting)) Interlocked.Increment(ref Metrics.GcKeeperPostBlockCollections);
-                            else Interlocked.Increment(ref Metrics.GcKeeperPostBlockSkipped);
+                            if (_runtime.Collect(generation, GCCollectionMode.Forced, compacting))
+                            {
+                                Interlocked.Increment(ref Metrics.GcKeeperPostBlockCollections);
+                                RecommitAfterCollection(pendingGcCts);
+                            }
+                            else
+                            {
+                                Interlocked.Increment(ref Metrics.GcKeeperPostBlockSkipped);
+                            }
                         }
                     }
 
@@ -633,7 +644,7 @@ public class GCKeeper : IDisposable
                     {
                         Interlocked.Increment(ref Metrics.GcKeeperDecommits);
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
-                        RecommitAfterDecommit(pendingGcCts);
+                        RecommitAfterCollection(pendingGcCts);
                         // Only now: a payload can cancel the idle wait above, and the retry may run under another decision.
                         LogDecommitDecision(decommitCheck);
                     }
