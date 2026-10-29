@@ -607,6 +607,97 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Specified_javascript_prefix_borrows_no_deadline_while_selected_and_direct_owners_expire(
+        [Values("prefix", "selected", "direct")] string ownership,
+        [Values(0, -1)] int timeout, [Values] bool deliver, [Values("step", "result")] string callback)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        DeadlineExecution clock = new();
+        using GethTraceDeadline owner = new(clock: clock);
+        using Engine engine = new(Prague.Instance);
+        Action expire = () => { if (deliver) clock.Advance(0); };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.expirePrefixTest=action;}}"))
+            installer.InvokeMethod("install", expire);
+        GethTraceDeadlineScope? scope = ownership == "direct" ? null : new() { Current = ownership == "selected" ? owner : null };
+        using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
+            "{fault:function(){},step:function(){" + (callback == "step" ? "expirePrefixTest();" : "")
+                + "},result:function(){" + (callback == "result" ? "expirePrefixTest();" : "") + "return 7;}}", scope, timeout);
+        Assert.That(clock.Timers, ownership == "direct" ? Has.Count.EqualTo(1) : Is.Empty,
+            "a scoped prefix has no owner and must not create a standalone watchdog; a selected child borrows its unarmed owner");
+        if (ownership == "selected") owner.Start(TimeSpan.FromSeconds(timeout));
+        void Trace()
+        {
+            if (callback == "step") tracer.SetOperationStack(default);
+            using GethLikeTxTrace result = tracer.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TraceError, Is.Null);
+                Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("7"));
+            }
+        }
+        if (deliver && ownership != "prefix") Assert.Throws<GethTraceDeadlineException>(Trace);
+        else Assert.DoesNotThrow(Trace);
+        tracer.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers, ownership == "prefix" ? Is.Empty : Has.Count.EqualTo(1));
+            Assert.That(owner.Expired, Is.EqualTo(deliver && ownership == "selected"));
+            if (ownership != "prefix") Assert.That(clock.Timers[0].Disposed, Is.EqualTo(ownership == "direct"));
+            if (scope is not null) Assert.That(scope.Current, Is.SameAs(ownership == "selected" ? owner : null));
+        }
+        owner.Dispose();
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+    }
+
+    [Test]
+    public async Task ByNumber_filtered_javascript_prefix_never_owns_execution_deadline(
+        [Values("blockOverrides", "noBaseFee", "stateOverrides")] string replay,
+        [Values("0s", "-1s")] string timeout, [Values("prefix", "selected", "none")] string delivery)
+    {
+        DeadlineExecution clock = new() { DeliverOnlyAtTarget = delivery != "prefix" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        clock.Target = delivery == "none" ? ulong.MaxValue : block.Transactions[2].Nonce;
+        clock.Enabled = true;
+        const string script = "{fault:function(){},result:function(){return {ok:true};}}";
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = "muxTracer",
+            ["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } },
+            ["txHash"] = block.Transactions[2].Hash!,
+            ["timeout"] = timeout,
+            ["streamMode"] = false
+        };
+        if (replay != "noBaseFee") options[replay] = new { };
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock, noBaseFee: replay == "noBaseFee"),
+            "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        if (delivery == "none") Assert.That(json["result"], Is.TypeOf<JArray>(), response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (delivery == "none")
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((JArray)json["result"]!, Has.Count.EqualTo(1), response);
+                Assert.That((string?)json["result"]?[0]?["txHash"], Is.EqualTo(block.Transactions[2].Hash!.ToString()), response);
+                Assert.That((bool?)json["result"]?[0]?["result"]?[script]?["ok"], Is.True, response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            Assert.That(clock.Calls, Is.EqualTo(3), "both prefixes execute before the selected owner's watcher can expire");
+            Assert.That(clock.Timers, Has.Count.EqualTo(1), "only the selected transaction may arm an execution deadline");
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Specified_javascript_scoped_deadline_propagates_actual_external_cancellation(
         [Values("step", "result")] string callback, [Values] bool hasOwner)
     {
@@ -615,16 +706,18 @@ public partial class DebugRpcModuleTests
         DeadlineExecution clock = new();
         using GethTraceDeadline owner = new(external.Token, clock);
         using Engine engine = new(Prague.Instance);
+        bool continued = false;
         Action cancel = () => external.Cancel();
-        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.cancelTrace=action;}}"))
-            installer.InvokeMethod("install", cancel);
+        Action afterCancellation = () => continued = true;
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer(
+            "{install:function(cancel,after){globalThis.cancelTrace=cancel;globalThis.afterScopedCancellation=after;}}"))
+            installer.InvokeMethod("install", cancel, afterCancellation);
         GethTraceDeadlineScope scope = new() { Current = hasOwner ? owner : null, External = external.Token };
-        string body = "cancelTrace();for(let i=0;i<10000;i++){};";
+        string body = "cancelTrace();for(let i=0;i<10000;i++){};afterScopedCancellation();";
         using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
             "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
                 + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}", scope);
-        Assert.That(clock.Timers, hasOwner ? Is.Empty : Has.Count.EqualTo(1),
-            "borrow a selected owner or start a local watchdog when the scope has no owner");
+        Assert.That(clock.Timers, Is.Empty, "a scoped child never starts a standalone watchdog");
         if (hasOwner) owner.Start(TimeSpan.FromSeconds(1));
         OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
         {
@@ -633,17 +726,17 @@ public partial class DebugRpcModuleTests
         })!;
         Assert.That(failure, Is.Not.Null);
         tracer.Dispose();
-        Assert.That(clock.Timers, Has.Count.EqualTo(1));
+        Assert.That(clock.Timers, hasOwner ? Has.Count.EqualTo(1) : Is.Empty);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(failure.CancellationToken, Is.EqualTo(external.Token));
+            Assert.That(continued, Is.False, "external cancellation must interrupt V8 before the callback continues");
             Assert.That(owner.Expired, Is.False, "external cancellation is not owned execution expiry");
-            Assert.That(clock.Timers[0].Disposed, Is.EqualTo(!hasOwner),
-                "the child releases its local watchdog but does not dispose a borrowed owner");
+            if (hasOwner) Assert.That(clock.Timers[0].Disposed, Is.False, "the child does not dispose a borrowed owner");
             Assert.That(scope.Current, Is.SameAs(hasOwner ? owner : null));
         }
         owner.Dispose();
-        Assert.That(clock.Timers[0].Disposed, Is.True);
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
     }
 
     [Test]
@@ -735,16 +828,23 @@ public partial class DebugRpcModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
         DeadlineExecution clock = new() { FailTimerChange = true };
-        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() =>
+        void Construct()
         {
             using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
                 "{fault:function(){},result:function(){return {};}}", emptyScope ? new GethTraceDeadlineScope() : null);
-        })!;
-        Assert.That(failure, Is.Not.Null);
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.Null);
+        }
+        if (emptyScope) Assert.DoesNotThrow(Construct);
+        else
+        {
+            InvalidOperationException failure = Assert.Throws<InvalidOperationException>(Construct)!;
+            Assert.That(failure, Is.Not.Null);
+            Assert.That(failure.Message, Is.EqualTo("timer change failure"));
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(failure.Message, Is.EqualTo("timer change failure"));
-            Assert.That(clock.Timers, Has.Count.EqualTo(1));
+            Assert.That(clock.Timers, emptyScope ? Is.Empty : Has.Count.EqualTo(1));
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }
@@ -853,15 +953,18 @@ public partial class DebugRpcModuleTests
             "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
                 + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}",
             emptyScope ? new GethTraceDeadlineScope() : null);
-        Assert.Throws<GethTraceDeadlineException>(() =>
+        void Trace()
         {
             if (callback == "step") tracer.SetOperationStack(default);
             using GethLikeTxTrace result = tracer.BuildResult();
-        });
+            Assert.That(result.TraceError, Is.Null);
+        }
+        if (emptyScope) Assert.DoesNotThrow(Trace);
+        else Assert.Throws<GethTraceDeadlineException>(Trace);
         tracer.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(clock.Timers, Has.Count.EqualTo(1));
+            Assert.That(clock.Timers, emptyScope ? Is.Empty : Has.Count.EqualTo(1));
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }
@@ -1042,11 +1145,15 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock)
+    private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock, bool noBaseFee = false)
     {
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
         module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
-            inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));
+            inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with
+            {
+                DeadlineClock = clock,
+                NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
+            }));
         return module;
     }
 
