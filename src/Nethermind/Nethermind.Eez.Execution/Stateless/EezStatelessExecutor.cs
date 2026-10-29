@@ -16,7 +16,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.Eez.Execution.Stateless;
 
@@ -27,8 +26,6 @@ namespace Nethermind.Eez.Execution.Stateless;
 /// </summary>
 public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, EezChainRules rules, ILogManager logManager)
 {
-    private static readonly IRlpDecoder<TxReceipt> ReceiptTrieDecoder = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
-
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
     private readonly EezTransactionProcessorFactory _transactionProcessorFactory = new(rules);
 
@@ -190,11 +187,12 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
     private EezTransactionCheckpoint[] CreateCheckpoints(Block block, TxReceipt[] receipts, int[] indices, Hash256[] stateRoots)
     {
         EnsureCandidatesDefined(block.Header);
-        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        using CandidatePrefix prefix = new(specProvider.GetSpec(block.Header), block.Transactions.Length);
         EezTransactionCheckpoint[] checkpoints = new EezTransactionCheckpoint[indices.Length];
         for (int i = 0; i < indices.Length; i++)
         {
-            checkpoints[i] = new EezTransactionCheckpoint(indices[i], stateRoots[i], CandidateBlockHash(block, receipts, indices[i], stateRoots[i], spec));
+            prefix.Extend(block.Transactions, receipts, indices[i] + 1);
+            checkpoints[i] = new EezTransactionCheckpoint(indices[i], stateRoots[i], CandidateBlockHash(block, receipts, prefix, stateRoots[i]));
         }
 
         if (indices[^1] == block.Transactions.Length - 1 && stateRoots[^1] != block.Header.StateRoot)
@@ -210,20 +208,14 @@ public sealed partial class EezStatelessExecutor(ISpecProvider specProvider, Eez
     /// A candidate block commits to the transaction prefix; every other field is copied from the executed block. The
     /// empty prefix has empty transaction and receipt tries, an empty bloom and no gas used.
     /// </summary>
-    private static Hash256 CandidateBlockHash(Block block, TxReceipt[] receipts, int lastIndex, Hash256 stateRoot, IReleaseSpec spec)
+    private static Hash256 CandidateBlockHash(Block block, TxReceipt[] receipts, CandidatePrefix prefix, Hash256 stateRoot)
     {
-        int count = lastIndex + 1;
         BlockHeader candidate = block.Header.Clone();
         candidate.StateRoot = stateRoot;
-        candidate.TxRoot = TxTrie.CalculateRoot(block.Transactions.AsSpan(0, count));
-        candidate.ReceiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts.AsSpan(0, count), ReceiptTrieDecoder);
-        candidate.Bloom = new Bloom();
-        for (int i = 0; i < count; i++)
-        {
-            candidate.Bloom.Accumulate(receipts[i].Bloom);
-        }
-
-        candidate.GasUsed = count == 0 ? 0 : receipts[lastIndex].GasUsedTotal;
+        candidate.TxRoot = prefix.TxRoot;
+        candidate.ReceiptsRoot = prefix.ReceiptsRoot;
+        candidate.Bloom = prefix.Bloom.Clone();
+        candidate.GasUsed = prefix.Count == 0 ? 0 : receipts[prefix.Count - 1].GasUsedTotal;
         return candidate.CalculateHash();
     }
 
