@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AckEip8MessageSerializer(IMessagePad messagePad) : IZeroMessageSerializer<AckEip8Message>
+    public class AckEip8MessageSerializer : IMessageSerializer<AckEip8Message>
     {
-        private readonly IMessagePad _messagePad = messagePad;
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
         public const int NonceLength = 32;
@@ -17,25 +16,26 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
 
-        public void Serialize(IByteBuffer byteBuffer, AckEip8Message msg)
-        {
-            int totalLength = Rlp.LengthOf(msg.EphemeralPublicKey.Bytes);
-            totalLength += Rlp.LengthOf(msg.Nonce);
-            totalLength += Rlp.LengthOf(msg.Version);
+        public int GetLength(AckEip8Message msg) => Rlp.LengthOfSequence(GetContentLength(msg));
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(totalLength);
+        public int Serialize(Span<byte> destination, AckEip8Message msg)
+        {
+            RlpWriter writer = new(destination);
+            writer.StartSequence(GetContentLength(msg));
             writer.Encode(msg.EphemeralPublicKey.Bytes);
             writer.Encode(msg.Nonce);
             writer.Encode(msg.Version);
+            return writer.Position;
         }
 
-        public AckEip8Message Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+        private static int GetContentLength(AckEip8Message msg) =>
+            Rlp.LengthOf(msg.EphemeralPublicKey.Bytes)
+            + Rlp.LengthOf(msg.Nonce)
+            + Rlp.LengthOf(msg.Version);
 
-        private static AckEip8Message Deserialize(ref RlpReader ctx)
+        public AckEip8Message Deserialize(ReadOnlySpan<byte> msgBytes)
         {
+            RlpReader ctx = new(msgBytes);
             AckEip8Message authEip8Message = new();
             ctx.ReadSequenceLength();
             authEip8Message.EphemeralPublicKey = new PublicKey(ctx.DecodeByteArraySpan(RlpLimit.L64));

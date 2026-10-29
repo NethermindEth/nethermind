@@ -389,6 +389,22 @@ public class BlockAccessListJournalTests
     }
 
     [Test]
+    public void Clear_keeps_at_most_max_pooled_account_changes_for_reuse([Values(0, 1, 4)] int maxPooledAccountChanges)
+    {
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF];
+        BlockAccessListAtIndex slice = new(8, maxPooledAccountChanges);
+        HashSet<AccountChangesAtIndex> firstRun = new(ReferenceEqualityComparer.Instance);
+        foreach (Address address in addresses) firstRun.Add(slice.RecordReadAndGet(address));
+
+        slice.Clear();
+
+        int reused = 0;
+        foreach (Address address in addresses)
+            if (firstRun.Contains(slice.RecordReadAndGet(address))) reused++;
+        Assert.That(reused, Is.EqualTo(maxPooledAccountChanges));
+    }
+
+    [Test]
     public void Storage_overwrites_preserve_snapshot_and_read_membership([Values] bool returnToOriginal)
     {
         BlockAccessListAtIndex slice = new() { Index = 3 };

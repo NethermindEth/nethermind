@@ -1853,10 +1853,13 @@ public partial class DebugRpcModuleTests
         Assert.That(chain.BlockTree.FindHash(orphan.Number), Is.EqualTo(canonical.Hash));
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", orphan.Hash!);
         JToken actual = JToken.Parse(response);
+        JToken? result = actual["result"];
+        Assert.That(result, Is.TypeOf<JArray>(), response);
+        JArray traces = (JArray)result!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual["error"], Is.Null, response);
-            Assert.That((JArray)actual["result"]!, Is.Empty);
+            Assert.That(traces, Is.Empty);
         }
     }
 

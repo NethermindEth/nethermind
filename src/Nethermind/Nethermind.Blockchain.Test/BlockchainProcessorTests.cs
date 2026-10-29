@@ -901,11 +901,15 @@ public class BlockchainProcessorTests
             Assert.That(removedWhenExecutedCopyCompletes.IsCompleted, Is.False);
         }
 
-        Assert.That(removeCopy(processed), Is.True);
+        bool lastCopyRemoved = removeCopy(processed);
 
         bool removedWhenExecutedCopyCompleted = await removedWhenExecutedCopyCompletes.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(removedWhenExecutedCopyCompleted, Is.True,
-            "a last-copy executed waiter must already observe all copies removed when it resumes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lastCopyRemoved, Is.True);
+            Assert.That(removedWhenExecutedCopyCompleted, Is.True,
+                "a last-copy executed waiter must already observe all copies removed when it resumes");
+        }
     }
 
     [Test]
@@ -923,10 +927,9 @@ public class BlockchainProcessorTests
             Assert.That(removed.IsCompleted, Is.False);
         }
 
-        bool lastCopyRemoved = removeCopy(false);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lastCopyRemoved, Is.True);
+            Assert.That(removeCopy(false), Is.True);
             Assert.That(removed.IsCompleted, Is.True);
         }
     }

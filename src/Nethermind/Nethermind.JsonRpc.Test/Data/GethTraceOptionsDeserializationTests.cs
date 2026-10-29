@@ -325,13 +325,11 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(options.TracerConfig, Is.Not.Null);
             Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndObject));
         }
-        Assert.That(reader.Read(), Is.True);
-        int trailingNumber = reader.GetInt32();
-        Assert.That(trailingNumber, Is.EqualTo(17));
-        bool readEnd = reader.Read();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(readEnd, Is.True);
+            Assert.That(reader.Read(), Is.True);
+            Assert.That(reader.GetInt32(), Is.EqualTo(17));
+            Assert.That(reader.Read(), Is.True);
             Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
         }
     }
