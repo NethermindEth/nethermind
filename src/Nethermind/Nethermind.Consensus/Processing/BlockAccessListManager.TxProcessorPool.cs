@@ -61,14 +61,19 @@ public partial class BlockAccessListManager
         // recipient existence and balance, and coinbase balance.
         private const int SmallBalChangeCapacity = 8;
 
-        // Sized for a block of plain transfers, whose slices all wait for the in-order merge.
-        private const int SmallBalPoolSize = 4096;
+        // A plain ETH transfer touches three accounts: sender, recipient and coinbase. Reads add no journal
+        // entries, so a small slice must cap its spares itself to bound what the small pool retains.
+        private const int SmallBalMaxPooledAccountChanges = 4;
+
+        // Plain-transfer slices wait for the in-order merge, so far more than BalPoolSize are rented at once.
+        private const int SmallBalPoolSize = 1024;
 
         private static readonly ObjectPool<BlockAccessListAtIndex> SmallBalPool =
-            new DefaultObjectPool<BlockAccessListAtIndex>(new BalPooledObjectPolicy(SmallBalChangeCapacity), SmallBalPoolSize);
+            new DefaultObjectPool<BlockAccessListAtIndex>(
+                new BalPooledObjectPolicy(static () => new(SmallBalChangeCapacity, SmallBalMaxPooledAccountChanges)), SmallBalPoolSize);
 
         private static readonly ObjectPool<BlockAccessListAtIndex> LargeBalPool =
-            new DefaultObjectPool<BlockAccessListAtIndex>(new BalPooledObjectPolicy(BlockAccessListAtIndex.InitialChangeCapacity), BalPoolSize);
+            new DefaultObjectPool<BlockAccessListAtIndex>(new BalPooledObjectPolicy(static () => new()), BalPoolSize);
 
         static ParallelTxProcessorWithWorldStateManager()
         {
@@ -580,9 +585,9 @@ public partial class BlockAccessListManager
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private sealed class BalPooledObjectPolicy(int changeCapacity) : IPooledObjectPolicy<BlockAccessListAtIndex>
+    private sealed class BalPooledObjectPolicy(Func<BlockAccessListAtIndex> create) : IPooledObjectPolicy<BlockAccessListAtIndex>
     {
-        public BlockAccessListAtIndex Create() => new(changeCapacity);
+        public BlockAccessListAtIndex Create() => create();
 
         public bool Return(BlockAccessListAtIndex obj)
         {

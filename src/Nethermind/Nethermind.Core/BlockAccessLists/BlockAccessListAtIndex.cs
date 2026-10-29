@@ -19,12 +19,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// record every state mutation a tx performs. Many of these are produced as the block runs;
 /// they are then merged into a <see cref="GeneratedBlockAccessList"/>.
 /// Supports <see cref="IJournal{TSnapshot}"/> for tx-level revert and <see cref="IResettable"/>
-/// for pooling via <see cref="Caching.StaticPool{T}"/>.
+/// for pooling.
 /// </summary>
 /// <param name="initialChangeCapacity">Undo-journal entries preallocated for the slice.</param>
-public class BlockAccessListAtIndex(int initialChangeCapacity) : IJournal<int>, IResettable
+/// <param name="maxPooledAccountChanges">Spare account entries <see cref="Clear"/> keeps for reuse.</param>
+public class BlockAccessListAtIndex(int initialChangeCapacity, int maxPooledAccountChanges) : IJournal<int>, IResettable
 {
-    public const int InitialChangeCapacity = 64;
+    private const int InitialChangeCapacity = 64;
 
     // Caps pool retention so a one-off oversized block doesn't permanently inflate the slice.
     private const int MaxPooledAccountChanges = 4096;
@@ -47,7 +48,7 @@ public class BlockAccessListAtIndex(int initialChangeCapacity) : IJournal<int>, 
     private Address? _lastReadAddress;
     private AccountChangesAtIndex? _lastReadChanges;
 
-    public BlockAccessListAtIndex() : this(InitialChangeCapacity) { }
+    public BlockAccessListAtIndex() : this(InitialChangeCapacity, MaxPooledAccountChanges) { }
 
     /// <summary>Undo-journal entries the slice holds without growing; <see cref="Clear"/> keeps it.</summary>
     public int ChangeCapacity => _changes.Capacity;
@@ -75,7 +76,7 @@ public class BlockAccessListAtIndex(int initialChangeCapacity) : IJournal<int>, 
         int spareCount = _accountChangesPool.Count;
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {
-            if (spareCount >= MaxPooledAccountChanges) break;
+            if (spareCount >= maxPooledAccountChanges) break;
             value.Reset(value.Address);
             _accountChangesPool.Push(value);
             spareCount++;
