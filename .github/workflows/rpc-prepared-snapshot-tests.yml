@@ -1,0 +1,24 @@
+name: RPC prepared snapshot tests
+on:
+  push:
+    branches: [perf/getlogs-prepared-snapshot-20261029]
+    paths:
+      - scripts/rpc-bench/prepared-snapshot.py
+      - scripts/rpc-bench/test-prepared-snapshot.py
+      - scripts/rpc-bench/prepared-snapshot-oracle.json
+      - .github/workflows/rpc-prepared-snapshot-tests.yml
+      - .github/workflows/run-rpc-benchmarks.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/rpc-bench
+      - name: Unit and real-kernel durable overlay tests
+        env:
+          RUN_OVERLAY_TESTS: '1'
+        run: python3 scripts/rpc-bench/test-prepared-snapshot.py

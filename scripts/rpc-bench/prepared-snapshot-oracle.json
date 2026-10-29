@@ -1,0 +1,2302 @@
+{
+  "run": 40721023855,
+  "image_source": "14f76051399f72d923ce668ed77521616635e8b7",
+  "original_manifest_sha256": "40f814fa5b17ab14c6ede0c7aa6489b95526d01f8123fbf290d45c242141dc06",
+  "artifact_sha256": "d6a4ea01c622f945d9340f18c1b35574fdad55c304a1144bedc150ba37702ba5",
+  "hash_format": "SHA256 of UTF8 JSON full result array; sort_keys=True, separators comma/colon; array order retained",
+  "scope": "Single baseline observation; not candidate parity or independent mainnet truth.",
+  "cases": [
+    {
+      "call": {
+        "name": "22m-empty-zero-256",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb081",
+            "toBlock": "0x14fb180",
+            "address": "0x0000000000000000000000000000000000000000",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-weth-transfer-1",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb180",
+            "toBlock": "0x14fb180",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 21,
+        "ordered_result_sha256": "120d90fbe8126857d27dd3dbf6ac979245f3a2427aa5c80d8f9c6213fbf96149"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-usdc-transfer-32",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb161",
+            "toBlock": "0x14fb180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 538,
+        "ordered_result_sha256": "401f41ea96409a41febdf827a2419ffdf4165287e6b0efde041c217cd1b68337"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-weth-transfer-128",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb101",
+            "toBlock": "0x14fb180",
+            "address": [
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            ],
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 2966,
+        "ordered_result_sha256": "e817443e0e956c1416d6a06af656bb3b1cc5a9d717842e7907540c87f712b1ef"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-erc1155-single-256",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb081",
+            "toBlock": "0x14fb180",
+            "topics": [
+              "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 71,
+        "ordered_result_sha256": "9a4d7f46e167e798f8626bf71dd87af7337bbb103a2469b140c219c014e7a77c"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-topic-or-32",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb161",
+            "toBlock": "0x14fb180",
+            "topics": [
+              [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+              ]
+            ],
+            "address": [
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1279,
+        "ordered_result_sha256": "026f1daf533c33e5e1ae47b2c744edc80525cf793ab8d522317bf5a1a061c267"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-address-array-32",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb161",
+            "toBlock": "0x14fb180",
+            "address": [
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+            ],
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1279,
+        "ordered_result_sha256": "026f1daf533c33e5e1ae47b2c744edc80525cf793ab8d522317bf5a1a061c267"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-dense-unfiltered-1",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb180",
+            "toBlock": "0x14fb180"
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 225,
+        "ordered_result_sha256": "26d0206dd1028967d0f5811b751fda64649c938654509d91495f3ebd3d541b34"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-empty-zero-256",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f0ed",
+            "toBlock": "0x184f1ec",
+            "address": "0x0000000000000000000000000000000000000000",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-weth-transfer-1",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1ec",
+            "toBlock": "0x184f1ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 48,
+        "ordered_result_sha256": "a42aacc30a8da53088f05aa384f66df72b412813aebdb2eae0e08e69b48c7de7"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-usdc-transfer-32",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1cd",
+            "toBlock": "0x184f1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 3155,
+        "ordered_result_sha256": "b60542ebcc07f9a06b101d07249707e32538b4c64f7560a22e3f93ed8deb340c"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-weth-transfer-128",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f16d",
+            "toBlock": "0x184f1ec",
+            "address": [
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            ],
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 4575,
+        "ordered_result_sha256": "c5f09ea561d819928b0fda8c5e09a0a0b9a44978d7ccc5ae6e710d1d3153fbd4"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-erc1155-single-256",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f0ed",
+            "toBlock": "0x184f1ec",
+            "topics": [
+              "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 47,
+        "ordered_result_sha256": "f33e0fd0848de059e856a19c14a490883396c381e0d76ded0b724300b7d9ea07"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-topic-or-32",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1cd",
+            "toBlock": "0x184f1ec",
+            "topics": [
+              [
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62"
+              ]
+            ],
+            "address": [
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 4147,
+        "ordered_result_sha256": "75369a41027a021d9b8be85206b8f1dfb767af8a6c5942c5b42867b2eccd7bf9"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-address-array-32",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1cd",
+            "toBlock": "0x184f1ec",
+            "address": [
+              "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+              "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+            ],
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 4147,
+        "ordered_result_sha256": "75369a41027a021d9b8be85206b8f1dfb767af8a6c5942c5b42867b2eccd7bf9"
+      }
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-dense-unfiltered-1",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1ec",
+            "toBlock": "0x184f1ec"
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 861,
+        "ordered_result_sha256": "285a8da2166d89e3fc624652317c1ede7b3a4b481397cd35fcd86a27e0763e0e"
+      }
+    },
+    {
+      "call": {
+        "name": "22m-canonical-blockhash",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "blockHash": "0xfc429da12e414c0e8348fd9bb760b1a118b4dcf73419f021d4ccc2c3b793e05c"
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 225,
+        "ordered_result_sha256": "26d0206dd1028967d0f5811b751fda64649c938654509d91495f3ebd3d541b34"
+      },
+      "notes": "Same canonical block as unfiltered range anchor; does not prove behavior under a reorg."
+    },
+    {
+      "call": {
+        "name": "22m-erc721-shaped-contract",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb180",
+            "toBlock": "0x14fb180",
+            "address": "0xcd2267adbbebf13dd41fbce5403eee747005aa66",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1,
+        "ordered_result_sha256": "420cd719508439b284e3fa980c52b967e718d0bc633f6cadedc0f80c15750747"
+      },
+      "notes": "ERC721-shaped Transfer logs, not ERC165-certified token classification."
+    },
+    {
+      "call": {
+        "name": "22m-address-only",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb180",
+            "toBlock": "0x14fb180",
+            "address": "0xcd2267adbbebf13dd41fbce5403eee747005aa66"
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1,
+        "ordered_result_sha256": "420cd719508439b284e3fa980c52b967e718d0bc633f6cadedc0f80c15750747"
+      },
+      "notes": ""
+    },
+    {
+      "call": {
+        "name": "22m-owner-from",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb161",
+            "toBlock": "0x14fb180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000807cf9a772d5a3f9cefbc1192e939d62f0d9bd38"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 4,
+        "ordered_result_sha256": "16401bb42ac8ef6ce1e4fbb732947d68ac35620d9c0d89d913f6559851fae215"
+      },
+      "notes": ""
+    },
+    {
+      "call": {
+        "name": "22m-owner-to-wildcard",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb161",
+            "toBlock": "0x14fb180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              null,
+              "0x000000000000000000000000aac50245579282b45ba9ecdde902b2ac622ddc5e"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1,
+        "ordered_result_sha256": "c6b183a54e713457230bf163eb85041fc1a23f6eb0343cb8335911bb54e53de6"
+      },
+      "notes": ""
+    },
+    {
+      "call": {
+        "name": "22m-erc1155-batch-discovery",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb081",
+            "toBlock": "0x14fb180",
+            "topics": [
+              "0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 11,
+        "ordered_result_sha256": "971e2d84f21cdde6eb6b7eb78e5eb3d1ce51a0423d8873b892951debe9344c3a"
+      },
+      "notes": "Positive coverage not established. Classify separately if empty; never advertise empty results as positive ERC1155 Batch coverage."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-canonical-blockhash",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "blockHash": "0x48ef0c167334e0ab1b92c134b080795de872d0e6ec24ecb16b3da21673250886"
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 861,
+        "ordered_result_sha256": "285a8da2166d89e3fc624652317c1ede7b3a4b481397cd35fcd86a27e0763e0e"
+      },
+      "notes": "Same canonical block as unfiltered range anchor; does not prove behavior under a reorg."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-erc721-shaped-contract",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1ec",
+            "toBlock": "0x184f1ec",
+            "address": "0x6658260fa5eb870b36d8465619065907f84e41ad",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 15,
+        "ordered_result_sha256": "e1b764a3ec4afbbf526a1438641548706b5776e715e5ce5c3b0e7f5c0bf0a7fd"
+      },
+      "notes": "ERC721-shaped Transfer logs, not ERC165-certified token classification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-address-only",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1ec",
+            "toBlock": "0x184f1ec",
+            "address": "0x6658260fa5eb870b36d8465619065907f84e41ad"
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 15,
+        "ordered_result_sha256": "e1b764a3ec4afbbf526a1438641548706b5776e715e5ce5c3b0e7f5c0bf0a7fd"
+      },
+      "notes": ""
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-owner-from",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1cd",
+            "toBlock": "0x184f1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000000000000004444c5dc75cb358380d2e3de08a90"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 68,
+        "ordered_result_sha256": "298b722d58b684fad5e745cf0d95a90e97fb0a94991fd60b0e02611307045587"
+      },
+      "notes": ""
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-owner-to-wildcard",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1cd",
+            "toBlock": "0x184f1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              null,
+              "0x00000000000000000000000074de5d4fcbf63e00296fd95d33236b9794016631"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 9,
+        "ordered_result_sha256": "72264cbe1430686ca341404bb8ce3b50f9b632837d1673e6a654896aac234bb9"
+      },
+      "notes": ""
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-erc1155-batch-discovery",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f0ed",
+            "toBlock": "0x184f1ec",
+            "topics": [
+              "0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 15,
+        "ordered_result_sha256": "1368f04962d72e17c955a0b0a931e957e4a714775d6538526b18fac07f967d45"
+      },
+      "notes": "Positive coverage not established. Classify separately if empty; never advertise empty results as positive ERC1155 Batch coverage."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0000",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14faf71",
+            "toBlock": "0x14faf80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 281,
+        "ordered_result_sha256": "a1a0bfcff345f8d4d12d041ffa5c1145e2bfd86de0efd96167c1595ecb30a730"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0001",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fad71",
+            "toBlock": "0x14fad80",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 386,
+        "ordered_result_sha256": "3d41289e3ab213f3166376d51fab0b86e523d15477b886f1451629a2e1665615"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0002",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fab71",
+            "toBlock": "0x14fab80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 466,
+        "ordered_result_sha256": "9d63c27e8d48bc05ef3a2032c21a4e4222d2e08e01bdff36c2bbcd3d7dbdccd3"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0003",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fa971",
+            "toBlock": "0x14fa980",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 492,
+        "ordered_result_sha256": "a8c5f04bb35cb1d28ff3ab20ac52bf796fe6a4d5989b7319da37d86c6d025f6e"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0004",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fa771",
+            "toBlock": "0x14fa780",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 944,
+        "ordered_result_sha256": "9878178063f1215149fb1b10b239ce24bd94fd9df320bc28d272f7fc1e18600d"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0005",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fa571",
+            "toBlock": "0x14fa580",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 792,
+        "ordered_result_sha256": "bbf099be6e04d303f1a2a7636254ace7f75eadfe620bd91a274c51aa33c1d038"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0006",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fa371",
+            "toBlock": "0x14fa380",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 664,
+        "ordered_result_sha256": "f44e1c95f788858c369d35ee21ec10cff7ae0355447f9068169ecf46b090ee76"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0007",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fa171",
+            "toBlock": "0x14fa180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 557,
+        "ordered_result_sha256": "d28196275d3985441ced941a07e06b2d4f5b82fbe6e2a16d9838586e35ae4ded"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0008",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9f71",
+            "toBlock": "0x14f9f80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 579,
+        "ordered_result_sha256": "88729ff58e3c48c4b9b24a53db0fb089b6562160fd1a69d977ccc1e885bc8679"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0009",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9d71",
+            "toBlock": "0x14f9d80",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 459,
+        "ordered_result_sha256": "fbbc39baee88337e74d2815c89dd18a18fe919fdcb42868b5a16af3f2ad0cc92"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0010",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9b71",
+            "toBlock": "0x14f9b80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 387,
+        "ordered_result_sha256": "4f244db9dcb8a467581a7ea2fea364e2dadc72ac29e213314bc1cbde546a6da8"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0011",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9971",
+            "toBlock": "0x14f9980",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 447,
+        "ordered_result_sha256": "e4b203b47dc1e6a35a87a583ff5b02c4aee0f5fa45971b615cb49f206f7c9caa"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0012",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9771",
+            "toBlock": "0x14f9780",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 492,
+        "ordered_result_sha256": "bb5af57184ce52420c1b70ffcab6919b936ed91b45a7d61a7b9a33ccd0bb72b7"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0013",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9571",
+            "toBlock": "0x14f9580",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 359,
+        "ordered_result_sha256": "f1459c4b2bb7018efe2cebd4fda01b4338c0ad11058547eee79709902f36babe"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0014",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9371",
+            "toBlock": "0x14f9380",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 467,
+        "ordered_result_sha256": "bc41714e1f42172de6ec3118de44aabdc91a6b3ff2611342bf4b30e595a8ddd1"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0015",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f9171",
+            "toBlock": "0x14f9180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 661,
+        "ordered_result_sha256": "a2195eca1fd9dab1fa44cbce79d9ea7f3d8469d62c2924f2ea9d2ffad0873fd1"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0016",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8f71",
+            "toBlock": "0x14f8f80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 530,
+        "ordered_result_sha256": "b9eebdf8681db128bdf1b5f3d689f69fb4b03408fe95ea724426a7aac259c364"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0017",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8d71",
+            "toBlock": "0x14f8d80",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 527,
+        "ordered_result_sha256": "e47d694842a14dcc010fe94890a3c561655fde6f9af0183aafb413b3cc4cbbb3"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0018",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8b71",
+            "toBlock": "0x14f8b80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 491,
+        "ordered_result_sha256": "854573952fe8cc57534a1589d5faf88f000adb82cad41eccf7415f06d2ebf418"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0019",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8971",
+            "toBlock": "0x14f8980",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 439,
+        "ordered_result_sha256": "210c9e884c9dc9bb096dc4cb113e1da98e5cf77ad3f4fb82b96e46bd602645b1"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0020",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8771",
+            "toBlock": "0x14f8780",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 642,
+        "ordered_result_sha256": "06757f4be8785bc6182ba63ca94273fd359ff731bc28d8673ed8512c930ed4f7"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0021",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8571",
+            "toBlock": "0x14f8580",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 597,
+        "ordered_result_sha256": "5a9b8391f92394f1db990e5fdf0d0ba534de8103821da610343fc62763a342f7"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0022",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8371",
+            "toBlock": "0x14f8380",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 557,
+        "ordered_result_sha256": "593e0dd2b2e6377fac7e5722ddd97da51c60835a4d7f5ee855c21dd99fc40f6f"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0023",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f8171",
+            "toBlock": "0x14f8180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 472,
+        "ordered_result_sha256": "f0dfb40bca9007ebac58e050f841ac61d90b583c92834d962b5c26e382bd8340"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0024",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7f71",
+            "toBlock": "0x14f7f80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 897,
+        "ordered_result_sha256": "d80d0511cf34ada54ae63dcafd2bf613bf9a1ffb7a8f4ec9f324d92616d7068b"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0025",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7d71",
+            "toBlock": "0x14f7d80",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 466,
+        "ordered_result_sha256": "e1c074f7160a407350d92a423f601bc79740f5a2d26a7f2164681d9edf184895"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0026",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7b71",
+            "toBlock": "0x14f7b80",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 467,
+        "ordered_result_sha256": "7949c2d17efab5d2a8c108086e26e229745a0cf1e6e7445a48b9dbc75ad68af2"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0027",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7971",
+            "toBlock": "0x14f7980",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 344,
+        "ordered_result_sha256": "cfb932a6dfe991bd38cc90fa7f72a5d04f8aa5047753b06093e906d8cbcfb063"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0028",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7771",
+            "toBlock": "0x14f7780",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 490,
+        "ordered_result_sha256": "490fba7cfbc13cfe04dc85dedbfd370056ed871bc3f6d5230330b249cfbb5fd6"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0029",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7571",
+            "toBlock": "0x14f7580",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 425,
+        "ordered_result_sha256": "0655e0b93e9c8600e9b5a3d97aa8b9b5a431c01ed9d594fba18b41c5c1e6c11d"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0030",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7371",
+            "toBlock": "0x14f7380",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 495,
+        "ordered_result_sha256": "1619ab17932e50150bc860914e08dac8a48f670cc6161adb701bceeae8a1c84c"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-rotate-0031",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14f7171",
+            "toBlock": "0x14f7180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 497,
+        "ordered_result_sha256": "2e4895071ed7a8af9543427e4b5a05dad03e5cfc043c0f7a9c9bb9ffa3eed66d"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0000",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184efdd",
+            "toBlock": "0x184efec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 568,
+        "ordered_result_sha256": "8203ea8a2b28e6b34e2486befb2a5f43b3e4d6a894a69c3110bd0c437bcd6e31"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0001",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184eddd",
+            "toBlock": "0x184edec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 2231,
+        "ordered_result_sha256": "62d9c5b77030f16ecb31bbe2b4a42f8c5c16dc072141e77e04061f13b1ff7b00"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0002",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184ebdd",
+            "toBlock": "0x184ebec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 619,
+        "ordered_result_sha256": "7a5fbfb3a202c015297ce6ec15c8700358080645b785fc1f087d401039745142"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0003",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184e9dd",
+            "toBlock": "0x184e9ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1293,
+        "ordered_result_sha256": "bc8f50bf000658907a43d77ea17e53092f1fc705017a176010719d43a94a8cd5"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0004",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184e7dd",
+            "toBlock": "0x184e7ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 649,
+        "ordered_result_sha256": "e23d13d3e1b6ade2a387b1481c867ab39de77cd02ac2e3644d4689e998e56eff"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0005",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184e5dd",
+            "toBlock": "0x184e5ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1987,
+        "ordered_result_sha256": "e58ab79d5c700734093c9cb72c427ac84203cdb332d43dd0e8dd448694fc2e5b"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0006",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184e3dd",
+            "toBlock": "0x184e3ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 677,
+        "ordered_result_sha256": "3d19cbdc0717afbaea4d9258a2dbdea282b06903c99218b95f2e161f66267fc9"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0007",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184e1dd",
+            "toBlock": "0x184e1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1330,
+        "ordered_result_sha256": "61fb067f167a4c24845076d73edd05f0091698e72ffd81f50a5ee78606422d2d"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0008",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184dfdd",
+            "toBlock": "0x184dfec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1359,
+        "ordered_result_sha256": "174f599f561cae439fa1d4f2153f6b41b7da71570522644a8b91d3381e9c94f3"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0009",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184dddd",
+            "toBlock": "0x184ddec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1546,
+        "ordered_result_sha256": "249346346753a217a79dabc39044d4c4d6be79c66e71f8bfd64fa9bffb66208e"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0010",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184dbdd",
+            "toBlock": "0x184dbec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 900,
+        "ordered_result_sha256": "4c1d0cb407d3ad43bd57a9eb723058f27c3bcbcc113ddae2e42033db4476180b"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0011",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184d9dd",
+            "toBlock": "0x184d9ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1042,
+        "ordered_result_sha256": "b20b9761f820965ae159641bc6ff2172633e8d0f665976875d892f655565f5ea"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0012",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184d7dd",
+            "toBlock": "0x184d7ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 551,
+        "ordered_result_sha256": "aaa80af4f7dde651efdfc30e3ae0945207393b3ec409273c7e03aafdfaecb985"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0013",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184d5dd",
+            "toBlock": "0x184d5ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1355,
+        "ordered_result_sha256": "203e250691396882b92fc2473c78ad24cfe078c13f292f687952b4e11517cbcb"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0014",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184d3dd",
+            "toBlock": "0x184d3ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 542,
+        "ordered_result_sha256": "d4b5ed2c82edf3d9e7720de735db71d9abf00bae8abbbe0cf37a2b47a661bec0"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0015",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184d1dd",
+            "toBlock": "0x184d1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 3038,
+        "ordered_result_sha256": "82664564540a77aceefc997412fd1745fd4bf495544bd8e25e8f613d0947df5d"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0016",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184cfdd",
+            "toBlock": "0x184cfec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 415,
+        "ordered_result_sha256": "7c6e9668995dac91c363f5769aab4582f1685cc27b61f1bf305d9eb3c820aebd"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0017",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184cddd",
+            "toBlock": "0x184cdec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1754,
+        "ordered_result_sha256": "ba21545e0776f40cc407e226b564485ddacfb1313fa79b5f4184d920b79372da"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0018",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184cbdd",
+            "toBlock": "0x184cbec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 471,
+        "ordered_result_sha256": "3d9a014723157a39c59ad2ab5500c30bf3bf8aa2e82bc32928cac44ff6849bbf"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0019",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184c9dd",
+            "toBlock": "0x184c9ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 2178,
+        "ordered_result_sha256": "9128a200ba68e4aeac63537f7e26ec3da0d678888753085c3f8ad36bcbd79ae2"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0020",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184c7dd",
+            "toBlock": "0x184c7ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 435,
+        "ordered_result_sha256": "688b82b29854d3929833fd32ae6c1ac4f1feae1c1ecc5d8e5e0bc1ad869fea58"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0021",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184c5dd",
+            "toBlock": "0x184c5ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1242,
+        "ordered_result_sha256": "17b876588ebd59091d786f51e59c44a71827b7900c1ea5b058d90cfe21331485"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0022",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184c3dd",
+            "toBlock": "0x184c3ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 376,
+        "ordered_result_sha256": "2f658a11b8386982e2d8f896936c4332c5f94b91fa82806cdfca5806f4a240e6"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0023",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184c1dd",
+            "toBlock": "0x184c1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1175,
+        "ordered_result_sha256": "b22d78f064fce5b3115d036dac2f7866c38ceff4e7e1e88e0eb8f4786adc1153"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0024",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184bfdd",
+            "toBlock": "0x184bfec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 486,
+        "ordered_result_sha256": "e28d29f16f60ddedff84cadb8798bd381f68c37a859f9e84f416acab06fbfc90"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0025",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184bddd",
+            "toBlock": "0x184bdec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 2257,
+        "ordered_result_sha256": "a8b4a9a0716223a1cdea73adf256231d51e68f12f79453ecc0eb9b2d5de260f0"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0026",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184bbdd",
+            "toBlock": "0x184bbec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 521,
+        "ordered_result_sha256": "14a9941a9a2a2a2bcbc3a348be18db96b9bead9bb28aac050609da4e46706ce5"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0027",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184b9dd",
+            "toBlock": "0x184b9ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 2838,
+        "ordered_result_sha256": "4120b9b7108de572be372961a1b63a653fc67aad339874c28bee8920ebed4c0f"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0028",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184b7dd",
+            "toBlock": "0x184b7ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 623,
+        "ordered_result_sha256": "125e23bd90865d8e77eae039e8cbd5d06ff9f677f7e8a6037adb5ad5befa2f54"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0029",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184b5dd",
+            "toBlock": "0x184b5ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1585,
+        "ordered_result_sha256": "d1a2bc55e11c6dcc9fae00f9ebeeaf47e3e07a88eb1edeaa9341f509a30fc3cb"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0030",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184b3dd",
+            "toBlock": "0x184b3ec",
+            "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 695,
+        "ordered_result_sha256": "2091dea5e895986e9fcc853509f7e688b145a41c79d98e383b751f32f8816b87"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-rotate-0031",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184b1dd",
+            "toBlock": "0x184b1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1394,
+        "ordered_result_sha256": "050efe176101295381f380ebbef1c178ee897749ccf7419546dce5df9b387408"
+      },
+      "notes": "New 16-block window, disjoint from every other rotation window; requires both-arm history/nonempty qualification."
+    },
+    {
+      "call": {
+        "name": "22m-owner-page-0",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb161",
+            "toBlock": "0x14fb168",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000d20ac1794726edcf07bce3b116bc745fb6ca6c6d"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "22m-owner-page-1",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb169",
+            "toBlock": "0x14fb170",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000d20ac1794726edcf07bce3b116bc745fb6ca6c6d"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "22m-owner-page-2",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb171",
+            "toBlock": "0x14fb178",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000d20ac1794726edcf07bce3b116bc745fb6ca6c6d"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "22m-owner-page-3",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x14fb179",
+            "toBlock": "0x14fb180",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000d20ac1794726edcf07bce3b116bc745fb6ca6c6d"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1,
+        "ordered_result_sha256": "b851680a19918750dbc1cd9c55c3e642a3519215bbd08d2358b2dea0eaf95f98"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-owner-page-0",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1cd",
+            "toBlock": "0x184f1d4",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000755bf354c13d8ffb9ee74f512882d7020771702f"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-owner-page-1",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1d5",
+            "toBlock": "0x184f1dc",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000755bf354c13d8ffb9ee74f512882d7020771702f"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-owner-page-2",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1dd",
+            "toBlock": "0x184f1e4",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000755bf354c13d8ffb9ee74f512882d7020771702f"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 0,
+        "ordered_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    },
+    {
+      "call": {
+        "name": "snapshot-tail-owner-page-3",
+        "method": "eth_getLogs",
+        "weight": 1,
+        "params": [
+          {
+            "fromBlock": "0x184f1e5",
+            "toBlock": "0x184f1ec",
+            "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000755bf354c13d8ffb9ee74f512882d7020771702f"
+            ]
+          }
+        ]
+      },
+      "expectation": {
+        "status": "observed-baseline-only-after-positive-migration-gate",
+        "exact_count": 1,
+        "ordered_result_sha256": "16df60b7e5996879c7c48387151ae562334bda01b286c1d6bc2e6be15cce1b85"
+      },
+      "notes": "Bounded owner pages; pool alone does not guarantee sequential sessions."
+    }
+  ]
+}

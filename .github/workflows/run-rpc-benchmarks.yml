@@ -8,6 +8,11 @@ name: Run RPC Benchmarks
 on:
   workflow_dispatch:
     inputs:
+      prepare_snapshot:
+        description: 'Opt-in baseline-only durable migration preparation; no benchmark or private corpus. Fixed 2026-10-29 cutoff.'
+        required: false
+        type: boolean
+        default: false
       benchmark_tool:
         description: >-
           corpus-ab = private eth_call corpus: docker_image vs baseline_image (seeded requests, per-record replay, parity).
@@ -213,8 +218,29 @@ permissions:
   contents: read
 
 jobs:
+  prepare-snapshot:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.prepare_snapshot }}
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 270
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: prepared-snapshot-${{ github.run_id }}
+          sparse-checkout: scripts/rpc-bench
+      - name: Guarded baseline preparation only
+        env:
+          PREPARED_OUTPUT: ${{ runner.temp }}/prepared-results-${{ github.run_id }}
+        run: |
+          python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py prepare --output "$PREPARED_OUTPUT" --finish 2026-10-29T05:47:34Z
+      - name: Preserve preparation evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepared-snapshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/prepared-results-${{ github.run_id }}
+          if-no-files-found: warn
   resolve:
-    if: ${{ github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ !inputs.prepare_snapshot && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
