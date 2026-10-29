@@ -1782,7 +1782,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 code = ref stack.Code;
                 sp = ref SlotAt(ref stack.Bottom, head);
                 ip = ref Unsafe.Add(ref ip, 1);
-                nint next = AlignedTable(handlers)[PairAt(ref ip)];
+                nint next = HandlerAt(handlers, PairAt(ref ip));
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
 
             OutOfGas:
