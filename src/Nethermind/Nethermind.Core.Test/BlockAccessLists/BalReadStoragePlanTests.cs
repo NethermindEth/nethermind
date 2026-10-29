@@ -40,8 +40,7 @@ public class BalReadStoragePlanTests
         covered.Begin(0);
         plan.RecordCoveredReads(covered);
         covered.Log.Seal();
-        MergedBlockAccessList merged = new();
-        merged.Merge([covered.Log]);
+        GeneratedBlockAccessList merged = GeneratedBlockAccessList.Merge([covered.Log]);
 
         using (Assert.EnterMultipleScope())
         {

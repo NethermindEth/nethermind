@@ -25,7 +25,6 @@ internal class CoreJsonMetadataCoverage() : JsonMetadataCoverageBase(TestOnly)
         [typeof(IPAddress)] = "converter round trip",
         [typeof(StorageCell)] = "converter round trip",
         [typeof(Nethermind.Core.BlockAccessLists.ReadOnlySlotChanges)] = "converter round trip",
-        [typeof(Nethermind.Core.BlockAccessLists.GeneratedSlotChanges)] = "converter round trip",
         [typeof(Nethermind.Core.BlockAccessLists.BalanceChange)] = "converter round trip",
         [typeof(Nethermind.Core.BlockAccessLists.SlotChangeAtIndex)] = "converter round trip",
     };

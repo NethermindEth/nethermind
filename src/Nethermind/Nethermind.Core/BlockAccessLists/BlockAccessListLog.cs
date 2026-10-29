@@ -15,7 +15,7 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// The state accesses of one or more block access indexes, appended by a <see cref="BlockAccessIndexRecorder"/> and
-/// then sealed into a sorted run that <see cref="MergedBlockAccessList"/> merges with the runs of other logs.
+/// then sealed into a sorted run that <see cref="GeneratedBlockAccessList"/> merges with the runs of other logs.
 /// </summary>
 /// <remarks>
 /// A log is shared by the indexes that run one after another on the same thread, so a block needs one log per

@@ -481,9 +481,9 @@ public class TracedAccessWorldStateTests(bool parallel)
             ReadSlot(tws, 3);
             WriteSlot(tws, 3, 7);
             ReadSlot(tws, 4);
-            GeneratedBlockAccessList block = tws.GetGeneratingBlockAccessList()!.ToGeneratedBlockAccessList();
+            ReadOnlyBlockAccessList block = tws.GetGeneratingBlockAccessList()!.ToGeneratedBlockAccessList().ToReadOnly();
 
-            GeneratedAccountChanges account = block.GetAccountChanges(TestItem.AddressA)!;
+            ReadOnlyAccountChanges account = block.GetAccountChanges(TestItem.AddressA)!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(account.StorageChanges.Select(static s => (s.Key, s.Changes.Single())),

@@ -16,7 +16,7 @@ using Nethermind.Serialization.Rlp.Eip7928;
 namespace Nethermind.Benchmarks.Core;
 
 /// <summary>
-/// Records one synthetic block into <see cref="BlockAccessListLog"/> runs and merges them into a <see cref="MergedBlockAccessList"/>.
+/// Records one synthetic block into <see cref="BlockAccessListLog"/> runs and merges them into a <see cref="GeneratedBlockAccessList"/>.
 /// </summary>
 /// <remarks>
 /// The <c>Record</c> benchmark covers what the workers do per transaction, sealing included, and the <c>Merge</c> ones
@@ -37,7 +37,6 @@ public class BlockAccessListLogBenchmarks
     private BlockAccessIndexRecorder[] _recorders = null!;
     private BlockAccessListLog[] _sealedLogs = null!;
     private ReadOnlyBlockAccessList _suggested = null!;
-    private readonly MergedBlockAccessList _merged = new();
 
     [Params(200, 1000)]
     public int TxCount { get; set; }
@@ -102,18 +101,10 @@ public class BlockAccessListLogBenchmarks
     }
 
     [Benchmark]
-    public byte[] Merge_LogsAndEncode()
-    {
-        _merged.Merge(_sealedLogs);
-        return MergedBlockAccessListEncoder.EncodeToBytes(_merged);
-    }
+    public byte[] Merge_LogsAndEncode() => BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList.Merge(_sealedLogs));
 
     [Benchmark]
-    public bool Merge_LogsAndMatch()
-    {
-        _merged.Merge(_sealedLogs);
-        return _merged.Matches(_suggested, out _);
-    }
+    public bool Merge_LogsAndMatch() => GeneratedBlockAccessList.Merge(_sealedLogs).Matches(_suggested, out _);
 
     /// <summary>A value transfer plus a contract call that reads then writes its slots; every eighth call reverts.</summary>
     private void RecordTransaction(BlockAccessIndexRecorder recorder, int tx)
