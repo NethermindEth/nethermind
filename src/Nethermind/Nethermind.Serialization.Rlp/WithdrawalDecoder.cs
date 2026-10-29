@@ -11,18 +11,21 @@ namespace Nethermind.Serialization.Rlp;
 public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+
+    private static Withdrawal? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
         if (reader.TryReadEmptySequence()) return null;
 
-        RlpReader fields = reader.EnterSequence(out int itemLength);
+        RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
         Withdrawal withdrawal = new()
         {
-            Index = fields.DecodeULong(),
-            ValidatorIndex = fields.DecodeULong(),
+            Index = fields.DecodeULong<TCanonicalChecks>(),
+            ValidatorIndex = fields.DecodeULong<TCanonicalChecks>(),
             Address = fields.DecodeAddress(),
-            AmountInGwei = fields.DecodeULong()
+            AmountInGwei = fields.DecodeULong<TCanonicalChecks>()
         };
-        reader.ExitSequence(in fields, itemLength);
+        reader.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         return withdrawal;
     }

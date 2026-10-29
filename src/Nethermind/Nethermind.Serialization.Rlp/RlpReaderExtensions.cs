@@ -21,6 +21,8 @@ namespace Nethermind.Serialization.Rlp;
 /// <remarks>
 /// Every read is canonical, as for <see cref="RlpReader"/>, and malformed input throws <see cref="RlpReaderException"/>.
 /// A read that is named <c>...OrNull</c> also accepts the empty byte string (<c>0x80</c>) and returns <see langword="null"/>.
+/// The reads that have a <c>TCanonicalChecks</c> type parameter skip the checks of the canonical form with
+/// <see cref="OffFlag"/>, as the reads of <see cref="RlpReader"/> do; see <see cref="RlpBehaviors.TrustedInput"/>.
 /// </remarks>
 public static class RlpReaderExtensions
 {
@@ -58,6 +60,29 @@ public static class RlpReaderExtensions
         if (reader.HasNext) ThrowInvalid("RLP has trailing bytes");
     }
 
+    /// <summary>Ends a sequence that <see cref="RlpReader.EnterSequence"/> started, and moves past it.</summary>
+    /// <remarks>
+    /// With <see cref="RlpBehaviors.AllowExtraBytes"/>, the unread items of the sequence are skipped as
+    /// <see cref="RlpReader.ExitSequenceIgnoringRest"/> does; without it, they throw as <see cref="RlpReader.ExitSequence"/> does.
+    /// </remarks>
+    /// <param name="reader">The reader that holds the sequence.</param>
+    /// <param name="items">The reader that <see cref="RlpReader.EnterSequence"/> returned.</param>
+    /// <param name="itemLength">The item length that <see cref="RlpReader.EnterSequence"/> returned.</param>
+    /// <param name="rlpBehaviors">The behaviors of the decode.</param>
+    /// <exception cref="RlpReaderException">Unread items are left without <see cref="RlpBehaviors.AllowExtraBytes"/>, or an unread item has a malformed prefix.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ExitSequence(this scoped ref RlpReader reader, scoped in RlpReader items, int itemLength, RlpBehaviors rlpBehaviors)
+    {
+        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0)
+        {
+            reader.ExitSequenceIgnoringRest(in items, itemLength);
+        }
+        else
+        {
+            reader.ExitSequence(in items, itemLength);
+        }
+    }
+
     /// <summary>Moves past the next <paramref name="count"/> items without decoding them.</summary>
     /// <exception cref="RlpReaderException">An item prefix is malformed or truncated.</exception>
     public static void SkipItems(this scoped ref RlpReader reader, int count)
@@ -72,19 +97,28 @@ public static class RlpReaderExtensions
     /// <param name="limit">The maximum count; <see langword="null"/> means <see cref="RlpLimit.DefaultLimit"/>.</param>
     /// <exception cref="RlpLimitException">There are more items than <paramref name="limit"/> allows.</exception>
     /// <exception cref="RlpReaderException">An item prefix is malformed or truncated.</exception>
-    public static int CountItems(this scoped in RlpReader reader, RlpLimit? limit)
+    public static int CountItems(this scoped in RlpReader reader, RlpLimit? limit) => reader.CountItems<OnFlag>(limit);
+
+    /// <inheritdoc cref="CountItems(in RlpReader, RlpLimit?)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    public static int CountItems<TCanonicalChecks>(this scoped in RlpReader reader, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
     {
         RlpLimit l = limit ?? RlpLimit.DefaultLimit;
-        return reader.CountItems(l.Limit, l);
+        return reader.CountItems<TCanonicalChecks>(l.Limit, l);
     }
 
     /// <summary>Counts the items left in <paramref name="reader"/>, and throws with the message of <paramref name="limit"/> when there are more than <paramref name="maxCount"/>.</summary>
     /// <remarks>For a bound that is tighter than <paramref name="limit"/>, for example one that the remaining bytes set.</remarks>
     internal static int CountItems(this scoped in RlpReader reader, int maxCount, RlpLimit limit)
+        => reader.CountItems<OnFlag>(maxCount, limit);
+
+    /// <inheritdoc cref="CountItems(in RlpReader, int, RlpLimit)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    internal static int CountItems<TCanonicalChecks>(this scoped in RlpReader reader, int maxCount, RlpLimit limit) where TCanonicalChecks : struct, IFlag
     {
         try
         {
-            return reader.CountItems(maxCount);
+            return reader.CountItems<TCanonicalChecks>(maxCount);
         }
         catch (RlpLimitException)
         {
@@ -100,8 +134,14 @@ public static class RlpReaderExtensions
     /// <exception cref="RlpReaderException">The item is not a canonical byte string, or does not have <paramref name="size"/> bytes.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ReadOnlySpan<byte> DecodeByteArraySpan(this scoped ref RlpReader reader, RlpLimit? limit = null, int size = -1)
+        => reader.DecodeByteArraySpan<OnFlag>(limit, size);
+
+    /// <inheritdoc cref="DecodeByteArraySpan(ref RlpReader, RlpLimit?, int)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ReadOnlySpan<byte> DecodeByteArraySpan<TCanonicalChecks>(this scoped ref RlpReader reader, RlpLimit? limit = null, int size = -1) where TCanonicalChecks : struct, IFlag
     {
-        ReadOnlySpan<byte> value = reader.ReadBytes();
+        ReadOnlySpan<byte> value = reader.ReadBytes<TCanonicalChecks>();
         if (value.Length > 1) Rlp.GuardLimit(value.Length, reader.Remaining + value.Length, limit);
         Rlp.GuardSize(value.Length, size);
         return value;
@@ -111,8 +151,13 @@ public static class RlpReaderExtensions
     /// <remarks>An empty or single-byte value can return a shared array, so do not change the result.</remarks>
     /// <inheritdoc cref="DecodeByteArraySpan" path="/param|/exception"/>
     public static byte[] DecodeByteArray(this scoped ref RlpReader reader, RlpLimit? limit = null, int size = -1)
+        => reader.DecodeByteArray<OnFlag>(limit, size);
+
+    /// <inheritdoc cref="DecodeByteArray(ref RlpReader, RlpLimit?, int)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    public static byte[] DecodeByteArray<TCanonicalChecks>(this scoped ref RlpReader reader, RlpLimit? limit = null, int size = -1) where TCanonicalChecks : struct, IFlag
     {
-        ReadOnlySpan<byte> span = reader.DecodeByteArraySpan(limit, size);
+        ReadOnlySpan<byte> span = reader.DecodeByteArraySpan<TCanonicalChecks>(limit, size);
         if (span.Length == 0) return [];
         if (span.Length == 1 && span[0] < Rlp.EmptyByteArrayByte) return SingleByteArrays[span[0]];
         return span.ToArray();
@@ -175,53 +220,93 @@ public static class RlpReaderExtensions
 
     /// <summary>Reads a non-negative integer of at most 8 bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong DecodeULong(this scoped ref RlpReader reader) => reader.ReadWord(sizeof(ulong));
+    public static ulong DecodeULong(this scoped ref RlpReader reader) => reader.DecodeULong<OnFlag>();
+
+    /// <inheritdoc cref="DecodeULong(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong DecodeULong<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => reader.ReadWord<TCanonicalChecks>(sizeof(ulong));
 
     /// <summary>Reads an integer of at most 8 bytes as a <see cref="long"/>.</summary>
     /// <remarks>A value above <see cref="long.MaxValue"/> comes out negative, as with the bytes of <c>RlpWriterExtensions.Encode(long)</c>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long DecodeLong(this scoped ref RlpReader reader) => (long)reader.ReadWord(sizeof(ulong));
+    public static long DecodeLong(this scoped ref RlpReader reader) => reader.DecodeLong<OnFlag>();
+
+    /// <inheritdoc cref="DecodeLong(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long DecodeLong<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (long)reader.ReadWord<TCanonicalChecks>(sizeof(ulong));
 
     /// <summary>Reads a non-negative integer of at most 4 bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint DecodeUInt(this scoped ref RlpReader reader) => (uint)reader.ReadWord(sizeof(uint));
+    public static uint DecodeUInt(this scoped ref RlpReader reader) => reader.DecodeUInt<OnFlag>();
+
+    /// <inheritdoc cref="DecodeUInt(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint DecodeUInt<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (uint)reader.ReadWord<TCanonicalChecks>(sizeof(uint));
 
     /// <summary>Reads an integer of at most 4 bytes as an <see cref="int"/>.</summary>
     /// <remarks>A value above <see cref="int.MaxValue"/> comes out negative.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int DecodeInt(this scoped ref RlpReader reader) => (int)reader.ReadWord(sizeof(uint));
+    public static int DecodeInt(this scoped ref RlpReader reader) => reader.DecodeInt<OnFlag>();
+
+    /// <inheritdoc cref="DecodeInt(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int DecodeInt<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (int)reader.ReadWord<TCanonicalChecks>(sizeof(uint));
 
     /// <summary>Reads an integer of at most <see cref="int.MaxValue"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int DecodePositiveInt(this scoped ref RlpReader reader)
+    public static int DecodePositiveInt(this scoped ref RlpReader reader) => reader.DecodePositiveInt<OnFlag>();
+
+    /// <inheritdoc cref="DecodePositiveInt(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int DecodePositiveInt<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
-        ulong value = reader.ReadWord(sizeof(int));
+        ulong value = reader.ReadWord<TCanonicalChecks>(sizeof(int));
         if (value > int.MaxValue) ThrowInvalid("RLP integer is too large");
         return (int)value;
     }
 
     /// <summary>Reads an integer of at most <see cref="long.MaxValue"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long DecodePositiveLong(this scoped ref RlpReader reader)
+    public static long DecodePositiveLong(this scoped ref RlpReader reader) => reader.DecodePositiveLong<OnFlag>();
+
+    /// <inheritdoc cref="DecodePositiveLong(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long DecodePositiveLong<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
-        ulong value = reader.ReadWord(sizeof(long));
+        ulong value = reader.ReadWord<TCanonicalChecks>(sizeof(long));
         if (value > long.MaxValue) ThrowInvalid("RLP integer is too large");
         return (long)value;
     }
 
     /// <summary>Reads a non-negative integer of at most 2 bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ushort DecodeUShort(this scoped ref RlpReader reader) => (ushort)reader.ReadWord(sizeof(ushort));
+    public static ushort DecodeUShort(this scoped ref RlpReader reader) => reader.DecodeUShort<OnFlag>();
+
+    /// <inheritdoc cref="DecodeUShort(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ushort DecodeUShort<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (ushort)reader.ReadWord<TCanonicalChecks>(sizeof(ushort));
 
     /// <summary>Reads a non-negative integer of at most 1 byte.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte DecodeByte(this scoped ref RlpReader reader) => (byte)reader.ReadWord(sizeof(byte));
+    public static byte DecodeByte(this scoped ref RlpReader reader) => reader.DecodeByte<OnFlag>();
+
+    /// <inheritdoc cref="DecodeByte(ref RlpReader)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte DecodeByte<TCanonicalChecks>(this scoped ref RlpReader reader) where TCanonicalChecks : struct, IFlag => (byte)reader.ReadWord<TCanonicalChecks>(sizeof(byte));
 
     /// <summary>Reads a canonical integer of at most <paramref name="maxLength"/> bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ReadWord(this scoped ref RlpReader reader, int maxLength)
+    private static ulong ReadWord<TCanonicalChecks>(this scoped ref RlpReader reader, int maxLength) where TCanonicalChecks : struct, IFlag
     {
-        ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes();
+        ReadOnlySpan<byte> bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
         if (bytes.Length > maxLength) ThrowInvalid("RLP integer is too large");
         return Word(bytes, 0, bytes.Length);
     }
@@ -232,19 +317,24 @@ public static class RlpReaderExtensions
     /// allowed, as for EIP-2930 storage keys.
     /// </param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static UInt256 DecodeUInt256(this scoped ref RlpReader reader, int length = -1)
+    public static UInt256 DecodeUInt256(this scoped ref RlpReader reader, int length = -1) => reader.DecodeUInt256<OnFlag>(length);
+
+    /// <inheritdoc cref="DecodeUInt256(ref RlpReader, int)"/>
+    /// <typeparam name="TCanonicalChecks"><see cref="OnFlag"/> to check the canonical form; <see cref="OffFlag"/> to skip it, for trusted input only.</typeparam>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UInt256 DecodeUInt256<TCanonicalChecks>(this scoped ref RlpReader reader, int length = -1) where TCanonicalChecks : struct, IFlag
     {
         ReadOnlySpan<byte> bytes;
         if (length == -1)
         {
-            bytes = reader.ReadIntegerBytes();
+            bytes = reader.ReadIntegerBytes<TCanonicalChecks>();
             if (bytes.Length > UInt256Bytes) ThrowInvalid("RLP integer is too large");
         }
         else
         {
             if ((uint)length > UInt256Bytes) ThrowInvalid("RLP integer is too large");
-            bytes = reader.ReadBytes(length);
-            if (length == 1 && bytes[0] == 0) ThrowInvalid("RLP integer has leading zero bytes");
+            bytes = reader.ReadBytes<TCanonicalChecks>(length);
+            if (TCanonicalChecks.IsActive && length == 1 && bytes[0] == 0) ThrowInvalid("RLP integer has leading zero bytes");
         }
 
         return ToUInt256(bytes);
@@ -497,7 +587,7 @@ public static class RlpReaderExtensions
     /// Most values are shorter than 32 bytes. The <see cref="UInt256"/> constructor runs eight iterations per word for
     /// every length, so the words are built here instead, with one pass over the bytes.
     /// </remarks>
-    private static UInt256 ToUInt256(ReadOnlySpan<byte> bytes)
+    internal static UInt256 ToUInt256(ReadOnlySpan<byte> bytes)
     {
         int length = bytes.Length;
         if (length <= sizeof(ulong))
@@ -517,7 +607,7 @@ public static class RlpReaderExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Word(ReadOnlySpan<byte> bytes, int start, int end)
+    internal static ulong Word(ReadOnlySpan<byte> bytes, int start, int end)
     {
         ulong word = 0;
         for (int i = start; i < end; i++)
@@ -534,7 +624,7 @@ public static class RlpReaderExtensions
     internal const ulong EmptyTreeHashFirstWord = 0xa655cc1b171fe856;
 
     /// <summary>Returns the shared instance for the two hashes that are most common in accounts.</summary>
-    private static Hash256 InternKeccak(ReadOnlySpan<byte> span)
+    internal static Hash256 InternKeccak(ReadOnlySpan<byte> span)
     {
         ulong first = FirstWord(span);
         if (first == OfAnEmptyStringFirstWord)

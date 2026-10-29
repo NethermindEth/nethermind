@@ -48,5 +48,13 @@ public enum RlpBehaviors
     /// the receipt message decoder accepts a zero-length bloom and the compact storage decoder sets
     /// <c>Bloom.ZeroLength</c> instead of computing the bloom.
     /// </summary>
-    Eip7668Receipts = 1024
+    Eip7668Receipts = 1024,
+
+    /// <summary>
+    /// The input is canonical RLP that this node encoded and stored, or that was checked against a consensus hash
+    /// before it was stored. The decode skips the checks of the canonical form, but keeps every bounds check, so that
+    /// corrupted input still throws.
+    /// </summary>
+    /// <remarks>Never set it for input from the network, from RPC or from the Engine API.</remarks>
+    TrustedInput = 2048
 }

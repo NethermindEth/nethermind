@@ -107,19 +107,25 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0
+                ? DecodeArrayPool<T, OffFlag>(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
+                : DecodeArrayPool<T, OnFlag>(ref decoderContext, rlpDecoder, rlpBehaviors, limit);
+
+        private static ArrayPoolList<T> DecodeArrayPool<T, TCanonicalChecks>(ref RlpReader decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors, RlpLimit? limit)
+            where TCanonicalChecks : struct, IFlag
         {
             ArrayPoolList<T>? result = null;
             try
             {
-                RlpReader items = decoderContext.EnterSequence(out int itemLength);
-                int length = items.CountItems(limit);
+                RlpReader items = decoderContext.EnterSequence<TCanonicalChecks>(out int itemLength);
+                int length = items.CountItems<TCanonicalChecks>(limit);
                 result = new(length);
                 for (int i = 0; i < length; i++)
                 {
                     result.Add(rlpDecoder.DecodeGuardNotNull(ref items, rlpBehaviors));
                 }
 
-                decoderContext.ExitSequence(in items, itemLength);
+                decoderContext.ExitSequence(in items, itemLength, rlpBehaviors);
                 return result;
             }
             catch (RlpReaderException)

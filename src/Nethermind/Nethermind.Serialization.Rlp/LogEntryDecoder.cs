@@ -34,31 +34,42 @@ namespace Nethermind.Serialization.Rlp
         /// rejected is not scanned to its end.
         /// </remarks>
         /// <param name="logs">Reader over the payload of the log sequence; the caller ends the sequence.</param>
+        /// <param name="rlpBehaviors">The behaviors of the decode; only <see cref="RlpBehaviors.TrustedInput"/> applies.</param>
         /// <exception cref="RlpLimitException">The declared count exceeds what the bytes or the gas ceiling allow.</exception>
-        public static LogEntry[] DecodeLogs(ref RlpReader logs)
+        public static LogEntry[] DecodeLogs(ref RlpReader logs, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeLogs<OffFlag>(ref logs) : DecodeLogs<OnFlag>(ref logs);
+
+        private static LogEntry[] DecodeLogs<TCanonicalChecks>(ref RlpReader logs) where TCanonicalChecks : struct, IFlag
         {
             RlpLimit logsRlpLimit = RlpLimit.ReceiptLogs;
             int maxLogs = Math.Min(logsRlpLimit.Limit, logs.Remaining / MinNonNullEncodedLength);
-            int logCount = logs.CountItems(maxLogs, logsRlpLimit);
+            int logCount = logs.CountItems<TCanonicalChecks>(maxLogs, logsRlpLimit);
 
             LogEntry[] result = logCount == 0 ? [] : new LogEntry[logCount];
             for (int i = 0; i < logCount; i++)
             {
-                result[i] = Instance.DecodeGuardNotNull(ref logs);
+                result[i] = Decode<TCanonicalChecks>(ref logs) ?? ThrowNullLog();
             }
 
             return result;
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static LogEntry ThrowNullLog() => throw new RlpReaderException($"{nameof(LogEntry)} decoding returned null");
+
         protected override LogEntry? DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader) : Decode<OnFlag>(ref reader);
+
+        private static LogEntry? Decode<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
         {
             if (reader.TryReadEmptySequence()) return null;
 
-            RlpReader fields = reader.EnterSequence(out int logEntryLength);
+            RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int logEntryLength);
             Rlp.GuardLimit(fields.Remaining, fields.Remaining, RlpLimit);
 
             Address address = fields.DecodeAddress();
-            RlpReader topicsReader = fields.EnterSequence(out int topicsLength);
+            RlpReader topicsReader = fields.EnterSequence<TCanonicalChecks>(out int topicsLength);
             int topicCount = topicsReader.Remaining / Rlp.LengthOfKeccakRlp;
             Rlp.GuardLimit(topicCount, topicsReader.Remaining, RlpLimit.L4);
 
@@ -74,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             fields.ExitSequence(in topicsReader, topicsLength);
-            byte[] data = fields.DecodeByteArray();
+            byte[] data = fields.DecodeByteArray<TCanonicalChecks>();
             reader.ExitSequence(in fields, logEntryLength);
 
             return new LogEntry(address, data, topics);
@@ -140,16 +151,28 @@ namespace Nethermind.Serialization.Rlp
 
         public static void DecodeStructRef(scoped ref RlpReader reader, RlpBehaviors storage, out LogEntryStructRef item)
         {
+            if ((storage & RlpBehaviors.TrustedInput) != 0)
+            {
+                DecodeStructRef<OffFlag>(ref reader, out item);
+            }
+            else
+            {
+                DecodeStructRef<OnFlag>(ref reader, out item);
+            }
+        }
+
+        private static void DecodeStructRef<TCanonicalChecks>(scoped ref RlpReader reader, out LogEntryStructRef item) where TCanonicalChecks : struct, IFlag
+        {
             if (reader.TryReadEmptySequence())
             {
                 item = default;
                 return;
             }
 
-            RlpReader fields = reader.EnterSequence(out int logEntryLength);
+            RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int logEntryLength);
             fields.DecodeAddressStructRefNonNull(out AddressStructRef address);
-            ReadOnlySpan<byte> topics = fields.ReadEncodedItem();
-            ReadOnlySpan<byte> data = fields.DecodeByteArraySpan();
+            ReadOnlySpan<byte> topics = fields.ReadEncodedItem<TCanonicalChecks>();
+            ReadOnlySpan<byte> data = fields.DecodeByteArraySpan<TCanonicalChecks>();
             reader.ExitSequence(in fields, logEntryLength);
 
             item = new LogEntryStructRef(address, data, topics);

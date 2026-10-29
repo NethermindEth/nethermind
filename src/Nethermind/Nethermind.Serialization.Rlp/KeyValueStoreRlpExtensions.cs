@@ -117,9 +117,8 @@ public static class KeyValueStoreRlpExtensions
                 return null;
             }
 
-            // A stored value can have extra bytes after it, so it is read as a leading item, as RlpCodec.ReadLeading does.
             RlpReader reader = new(data);
-            return valueDecoder.Decode(ref reader, rlpBehaviors);
+            return valueDecoder.Decode(ref reader, rlpBehaviors | RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput);
         }
         finally
         {
@@ -142,9 +141,8 @@ public static class KeyValueStoreRlpExtensions
                 return null;
             }
 
-            // A stored value can have extra bytes after it, so it is read as a leading item, as RlpCodec.ReadLeading does.
             RlpReader reader = new(data);
-            return valueDecoder.Decode(ref reader, rlpBehaviors);
+            return valueDecoder.Decode(ref reader, rlpBehaviors | RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput);
         }
         finally
         {

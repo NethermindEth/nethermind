@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.FluentRlp;
 
@@ -71,23 +72,29 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
     }
 
     public virtual T?[] DecodeArray(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeArray<OnFlag>(ref reader, rlpBehaviors, limit);
+
+    private T?[] DecodeArray<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
     {
-        RlpReader items = reader.EnterSequence(out int itemLength);
-        T?[] result = new T?[items.CountItems(limit)];
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        T?[] result = new T?[items.CountItems<TCanonicalChecks>(limit)];
         for (int i = 0; i < result.Length; i++)
         {
             result[i] = Decode(ref items, rlpBehaviors);
         }
 
-        reader.ExitSequence(in items, itemLength);
+        reader.ExitSequence(in items, itemLength, rlpBehaviors);
         return result;
     }
 
     /// <inheritdoc/>
     public virtual T[] DecodeNonNullArray(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? DecodeNonNullArray<OffFlag>(ref reader, rlpBehaviors, limit) : DecodeNonNullArray<OnFlag>(ref reader, rlpBehaviors, limit);
+
+    private T[] DecodeNonNullArray<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors, RlpLimit? limit) where TCanonicalChecks : struct, IFlag
     {
-        RlpReader items = reader.EnterSequence(out int itemLength);
-        T[] result = new T[items.CountItems(limit)];
+        RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        T[] result = new T[items.CountItems<TCanonicalChecks>(limit)];
         for (int i = 0; i < result.Length; i++)
         {
             if (items.IsNextItemEmptyList())
@@ -98,7 +105,7 @@ public abstract class RlpDecoder<T> : IRlpDecoder<T>
             result[i] = DecodeGuardNotNull(ref items, rlpBehaviors);
         }
 
-        reader.ExitSequence(in items, itemLength);
+        reader.ExitSequence(in items, itemLength, rlpBehaviors);
         return result;
     }
 

@@ -21,6 +21,11 @@ AccessListItem decoded = RlpCodec.Read(rlp, static (scoped ref RlpReader r) => r
 - Unread items in a sequence, and trailing bytes after the top-level item.
 - Nesting that is too deep for the remaining stack.
 
+For bytes that are known to be canonical, such as bytes that the node stored itself, the reads with a
+`TCanonicalChecks` type parameter (`ReadBytes<OffFlag>()`, `EnterSequence<OffFlag>(out _)` and others) skip the
+checks of the canonical form in the first three items above. They keep every bounds check, so truncated input still
+throws. The reads without the type parameter, and `OnFlag`, do all the checks.
+
 `Optional` returns `null` only at the end of the input. `Choice` catches only `RlpReaderException`.
 
 ## Encoding

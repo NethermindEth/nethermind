@@ -16,15 +16,18 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
     public static readonly AuthorizationTupleDecoder Instance = new();
 
     protected override AuthorizationTuple DecodeInternal(ref RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+
+    private static AuthorizationTuple Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
     {
-        RlpReader fields = reader.EnterSequence(out int itemLength);
-        UInt256 chainId = fields.DecodeUInt256();
+        RlpReader fields = reader.EnterSequence<TCanonicalChecks>(out int itemLength);
+        UInt256 chainId = fields.DecodeUInt256<TCanonicalChecks>();
         Address codeAddress = fields.DecodeAddress();
-        ulong nonce = fields.DecodeULong();
-        byte yParity = fields.DecodeByte();
-        UInt256 r = fields.DecodeUInt256();
-        UInt256 s = fields.DecodeUInt256();
-        reader.ExitSequence(in fields, itemLength);
+        ulong nonce = fields.DecodeULong<TCanonicalChecks>();
+        byte yParity = fields.DecodeByte<TCanonicalChecks>();
+        UInt256 r = fields.DecodeUInt256<TCanonicalChecks>();
+        UInt256 s = fields.DecodeUInt256<TCanonicalChecks>();
+        reader.ExitSequence(in fields, itemLength, rlpBehaviors);
 
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }

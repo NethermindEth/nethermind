@@ -9,9 +9,8 @@
         <PackageReference Include="Nethermind.Numerics.Int256" />
     </ItemGroup>
 
-    <!-- The zkEVM guest has no thread-local storage, as for the projects that get this alias from Directory.Build.targets. -->
-    <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
-        <Using Include="Nethermind.Serialization.FluentRlp.NoopThreadStaticAttribute" Alias="ThreadStaticAttribute" />
+    <ItemGroup>
+        <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     </ItemGroup>
 
 </Project>

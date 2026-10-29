@@ -19,18 +19,21 @@ namespace Nethermind.Serialization.Rlp.Eip2930
         protected override AccessList? DecodeInternal(
             ref RlpReader reader,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            => (rlpBehaviors & RlpBehaviors.TrustedInput) != 0 ? Decode<OffFlag>(ref reader, rlpBehaviors) : Decode<OnFlag>(ref reader, rlpBehaviors);
+
+        private static AccessList? Decode<TCanonicalChecks>(ref RlpReader reader, RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
             if (reader.TryReadEmptySequence())
             {
                 return null;
             }
 
-            RlpReader items = reader.EnterSequence(out int length);
+            RlpReader items = reader.EnterSequence<TCanonicalChecks>(out int length);
 
             AccessList.Builder accessListBuilder = new();
             while (items.HasNext)
             {
-                RlpReader item = items.EnterSequence(out int accessListItemLength);
+                RlpReader item = items.EnterSequence<TCanonicalChecks>(out int accessListItemLength);
                 Address address = item.DecodeAddress();
                 accessListBuilder.AddAddress(address);
 
@@ -39,18 +42,18 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                     throw new RlpReaderException("Invalid tx access list format - storage keys missing");
                 }
 
-                RlpReader storages = item.EnterSequence(out int storagesLength);
+                RlpReader storages = item.EnterSequence<TCanonicalChecks>(out int storagesLength);
                 while (storages.HasNext)
                 {
-                    UInt256 index = storages.DecodeUInt256(IndexLength);
+                    UInt256 index = storages.DecodeUInt256<TCanonicalChecks>(IndexLength);
                     accessListBuilder.AddStorage(index);
                 }
 
-                item.ExitSequence(in storages, storagesLength);
-                items.ExitSequence(in item, accessListItemLength);
+                item.ExitSequence(in storages, storagesLength, rlpBehaviors);
+                items.ExitSequence(in item, accessListItemLength, rlpBehaviors);
             }
 
-            reader.ExitSequence(in items, length);
+            reader.ExitSequence(in items, length, rlpBehaviors);
             return accessListBuilder.Build();
         }
 
