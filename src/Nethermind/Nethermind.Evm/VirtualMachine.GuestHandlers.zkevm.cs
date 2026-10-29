@@ -894,7 +894,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>ADDMOD or MULMOD, as <typeparamref name="TOperation"/> computes it, with its operands and result in their stack slots.</summary>
         /// <remarks>
         /// The shared handler copies the three operands out and the result back. A zero modulus leaves the zero its
-        /// slot holds. A short stack or gas runs the shared handler instead, which faults on it.
+        /// slot holds, except for ADDMOD outside ZisK, which the shared handler then computes. A short stack or gas runs
+        /// the shared handler instead, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -944,7 +945,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             ZiskArithmetic.MulMod(m + 2 * LimbsPerWord, m + LimbsPerWord, m, (ulong*)&result);
                         *(UInt256*)m = result;
                     }
-                    else if (Sp1Flag.IsActive)
+                    else if (Sp1Flag.IsActive && typeof(TOperation) == typeof(EvmInstructions.OpMulMod))
                     {
                         Sp1MulModInSlots(ref modulus);
                     }

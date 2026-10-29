@@ -406,7 +406,8 @@ public class GuestDispatchDifferentialTests
 
     /// <remarks>
     /// Addends below the modulus take the guest's inline ADDMOD: their sums fall on both sides of the modulus, and above
-    /// 2^256 for a modulus above 2^255. An addend at or above the modulus takes the general path.
+    /// 2^256 for a modulus above 2^255, and one with the largest addend sums to the modulus exactly. An addend at or
+    /// above the modulus takes the general path.
     /// </remarks>
     [Test]
     public void Addition_below_the_modulus_matches_the_shared_handlers([Range(0, 3)] int seed)
@@ -429,11 +430,13 @@ public class GuestDispatchDifferentialTests
             List<byte> code = [(byte)Instruction.PUSH32, .. modulus.ToBigEndian()];
             for (int operand = 0; operand < 2; operand++)
             {
-                UInt256 addend = random.Next(6) switch
+                UInt256 addend = random.Next(8) switch
                 {
                     0 => largest,
                     1 => UInt256.Zero,
-                    2 => modulus,
+                    2 => UInt256.One,
+                    3 => modulus,
+                    4 => modulus > UInt256.MaxValue - 300 ? UInt256.MaxValue : modulus + (ulong)random.Next(1, 300),
                     _ => modulus.IsZero ? RandomWord(random) : RandomWord(random) % modulus,
                 };
                 code.AddRange([(byte)Instruction.PUSH32, .. addend.ToBigEndian()]);
