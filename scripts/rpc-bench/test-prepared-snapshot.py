@@ -124,6 +124,61 @@ class PreparedTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory, self.subTest(state=state, text=text), patch.object(p, 'run'), patch.object(p, 'inspect', return_value={'State': state}), patch.object(p, 'logs', return_value=text), self.assertRaises(RuntimeError):
                 p.stop('owned', Path(directory))
 
+    def test_early_attempt_failure_preserves_request_and_subprocess_details(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(action='recover', output=directory, root=Path('/missing'))
+            error = p.subprocess.CalledProcessError(1, ['findmnt', '-M', '/missing'], output=b'query output', stderr=b'query error')
+            def fail(_):
+                self.assertTrue((Path(directory) / 'attempt.json').exists())
+                raise error
+            with patch.object(p, 'prepare', side_effect=fail), self.assertRaises(p.subprocess.CalledProcessError):
+                p.execute_attempt(args)
+            record = json.loads((Path(directory) / 'exception.json').read_text())
+            self.assertEqual((record['status'], record['stdout'], record['stderr']), (1, 'query output', 'query error'))
+            self.assertEqual(json.loads((Path(directory) / 'attempt.json').read_text())['request']['root'], '/missing')
+        with self.assertRaises(ValueError):
+            p.execute_attempt(SimpleNamespace(action='inventory', output=p.SOURCE / 'artifacts'))
+
+    def test_inventory_probe_preserves_missing_mount_query_error_and_timeout(self):
+        for status, stdout, stderr in [(1, b'', b''), (1, b'', b'query error'), (0, b'{"filesystems": []}', b'')]:
+            with tempfile.TemporaryDirectory() as directory, self.subTest(status=status, stderr=stderr):
+                with patch.object(p.subprocess, 'run', return_value=SimpleNamespace(returncode=status, stdout=stdout, stderr=stderr)):
+                    result = p.inventory_probe(Path(directory), 'probe', 'findmnt', '-M', '/fixture')
+                self.assertEqual((result['status'], result['stdout'], result['stderr']), (status, stdout.decode(), stderr.decode()))
+        with tempfile.TemporaryDirectory() as directory, patch.object(p.subprocess, 'run', side_effect=p.subprocess.TimeoutExpired(['findmnt'], 30, output=b'partial', stderr=b'err')):
+            result = p.inventory_probe(Path(directory), 'probe', 'findmnt')
+            self.assertEqual((result['type'], result['stdout'], result['stderr']), ('TimeoutExpired', 'partial', 'err'))
+
+    def test_inventory_is_read_only_and_missing_upper_is_observed_not_recreated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / 'quarantine'
+            root.mkdir()
+            evidence = parent / 'old'
+            evidence.mkdir()
+            (evidence / 'container-start.json').write_text('{"State":{"Pid":0}}')
+            args = SimpleNamespace(action='inventory', output=str(parent / 'output'), root=root, finish='2026-10-30T00:06:04Z',
+                                   recovery_evidence=evidence, oracle=parent / 'oracle')
+            captured = []
+            def probe(output, name, *command):
+                captured.append((name, command))
+                if name == 'mount-namespaces':
+                    return {'status': 0, 'stdout': '{"namespaces":[{"pid":123,"ns":456,"nprocs":1}]}'}
+                return {'status': 1, 'stdout': '', 'stderr': ''}
+            with patch.object(p.time, 'time', return_value=0), patch.object(p, 'producer_provenance', return_value={'old_source_tripwire': 'same'}), patch.object(p, 'inventory_probe', side_effect=probe), patch.object(p, 'fingerprint', return_value='same'), patch.object(p, 'prepare') as prepare, patch.object(p, 'overlay') as overlay, patch.object(p, 'rpc') as rpc:
+                p.execute_attempt(args)
+                prepare.assert_not_called()
+                overlay.assert_not_called()
+                rpc.assert_not_called()
+            self.assertEqual(list(root.iterdir()), [])
+            result = json.loads((parent / 'output' / 'upper-shallow.json').read_text())
+            self.assertEqual(result['unavailable']['type'], 'FileNotFoundError')
+            self.assertTrue(json.loads((parent / 'output' / 'source-tripwire.json').read_text())['matches_old'])
+            self.assertIn(('namespace-0-mountinfo', ('sudo', '-n', 'head', '-c', '1048577', '/proc/123/mountinfo')) if os.geteuid() != 0 else ('namespace-0-mountinfo', ('head', '-c', '1048577', '/proc/123/mountinfo')), captured)
+            allowed = {'stat', 'df', 'findmnt', 'readlink', 'ps', 'sudo', 'head', 'lsns', 'docker'}
+            self.assertTrue(all(command[0] in allowed for _, command in captured))
+            self.assertEqual([command[1] for _, command in captured if command[0] == 'docker'], ['inspect', 'ps'])
+
     def test_recovery_requires_budget_and_never_falls_back_to_prepare(self):
         p.budget(0, 7800, gate=3600)
         with self.assertRaises(RuntimeError):

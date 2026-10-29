@@ -67,7 +67,7 @@ tests.Case("prepared snapshots are opt-in and preparation cannot run ordinary be
 {
     Contains(WorkflowTest.Text(workflow.Job("resolve"), "if"), "!inputs.prepare_snapshot");
     Contains(WorkflowTest.Text(workflow.Job("prepare-snapshot"), "if"), "inputs.prepare_snapshot", "workflow_dispatch");
-    Contains(WorkflowTest.Text(workflow.Step("prepare-snapshot", "Guarded baseline preparation only"), "run"), "prepared-snapshot.py \"$action\"", "action=prepare", "action=recover", "--finish 2026-10-30T00:06:04Z", "--recovery-evidence");
+    Contains(WorkflowTest.Text(workflow.Step("prepare-snapshot", "Guarded baseline preparation only"), "run"), "prepared-snapshot.py \"$action\"", "action=prepare", "action=recover", "action=inventory", "--finish 2026-10-30T00:06:04Z", "--recovery-evidence", "inventory and recovery are mutually exclusive", "timeout --signal=TERM --kill-after=30s 20m");
     Contains(WorkflowTest.Text(WorkflowTest.Get(workflow.Step("prepare-snapshot", "Download reviewed quarantined producer evidence"), "with"), "artifact-ids"), "12881330426");
     Contains(WorkflowTest.Text(WorkflowTest.Get(workflow.Step("prepare-snapshot", "Download reviewed quarantined producer evidence"), "with"), "run-id"), "40815701914");
     Contains(StepText("Run RPC sweep"), "prepared_snapshot_root:PREPARED_SNAPSHOT_ROOT", "prepared_snapshot_sha256:PREPARED_SNAPSHOT_SHA256");

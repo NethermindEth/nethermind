@@ -300,7 +300,7 @@ def start_watchdog(check, output):
     return monitoring, watcher
 
 
-def recovery_preflight(root, evidence, oracle):
+def producer_provenance(root, evidence, oracle):
     """Only the independently reviewed failed producer is recoverable; no inferred provenance."""
     guard(root)
     if root != PARENT / 'getlogs-40815701914' or socket.gethostname() != 'core-ethereum-mainnet-snapshots-0':
@@ -339,7 +339,16 @@ def recovery_preflight(root, evidence, oracle):
                         'client': 'Nethermind/v2.3.0-preview+14f76051-f/linux-x64/dotnet10.0.14'}:
         raise RuntimeError('old runtime identity mismatch')
     before = load('source-before.json')
-    if before != load('source-after.json') or fingerprint(SOURCE) != before:
+    if before != load('source-after.json'):
+        raise RuntimeError('old source tripwires differ')
+    return {'producer_run': '40815701914', 'producer_source_sha': '8a867cce8953d3d8f18821586db336aef19bafaa', 'artifact_id': '12881330426',
+            'artifact_zip_sha256': '9e220699c61df86cbdb83968d0c71208bb1a8ccf1f709f52794ed79d21e9afe9',
+            'artifact_contents_sha256': digest(encoded(files)), 'old_runtime': old_identity, 'old_source_tripwire': before}
+
+
+def recovery_preflight(root, evidence, oracle):
+    provenance = producer_provenance(root, evidence, oracle)
+    if fingerprint(SOURCE) != provenance['old_source_tripwire']:
         raise RuntimeError('protected source differs from old producer tripwire')
     mount = mounted(root / 'merged', True)
     defaults = overlay_off_options(mount)
@@ -355,10 +364,114 @@ def recovery_preflight(root, evidence, oracle):
     busy = subprocess.run(['sudo', '-n', 'fuser', '-m', str(root / 'merged')], capture_output=True, timeout=30)
     if busy.returncode != 1:
         raise RuntimeError('quarantine has busy processes or cannot establish quiescence')
-    return {'producer_run': '40815701914', 'producer_source_sha': '8a867cce8953d3d8f18821586db336aef19bafaa', 'artifact_id': '12881330426',
-            'artifact_zip_sha256': '9e220699c61df86cbdb83968d0c71208bb1a8ccf1f709f52794ed79d21e9afe9',
-            'artifact_contents_sha256': digest(encoded(files)), 'old_runtime': old_identity,
-            'old_source_tripwire': before, 'old_mount': mount, 'omitted_option_defaults': defaults}
+    return dict(provenance, old_mount=mount, omitted_option_defaults=defaults)
+
+
+def inventory_probe(output, name, *command, timeout=30):
+    started = time.monotonic()
+    try:
+        result = subprocess.run(list(map(str, command)), capture_output=True, timeout=timeout)
+        record = {'command': list(map(str, command)), 'status': result.returncode,
+                  'stdout': result.stdout[:1048576].decode(errors='replace'),
+                  'stderr': result.stderr[:65536].decode(errors='replace'),
+                  'truncated': len(result.stdout) > 1048576 or len(result.stderr) > 65536}
+    except (OSError, subprocess.TimeoutExpired) as error:
+        record = exception_record(error)
+        record['command'] = list(map(str, command))
+    record['elapsed_seconds'] = time.monotonic() - started
+    atomic(output / (name + '.json'), record)
+    return record
+
+
+def inventory(args):
+    """Read-only observation only; never invokes preparation, recovery or mount operations."""
+    output = Path(args.output).resolve()
+    finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
+    if time.time() + 1800 > finish:
+        raise RuntimeError('insufficient 20m inventory +10m evidence budget')
+    root = args.root
+    provenance = producer_provenance(root, Path(args.recovery_evidence), Path(args.oracle))
+    atomic(output / 'producer-provenance.json', provenance)
+    sudo = [] if os.geteuid() == 0 else ['sudo', '-n']
+    probe = lambda name, *cmd: inventory_probe(output, name, *cmd)
+    paths = [SOURCE, PARENT, root, *(root / name for name in ('owner.json', 'upper', 'work', 'merged', 'ready.json'))]
+    for number, path in enumerate(paths):
+        probe(f'path-{number}', 'stat', '--printf=%n\t%F\t%d:%i\t%s\t%y\t%a\t%u:%g\n', '--', path)
+        if path.is_symlink():
+            raise RuntimeError(f'inventory control path is a symlink: {path}')
+    probe('disk', 'df', '-B1', SOURCE, root, '/')
+    probe('inodes', 'df', '-i', SOURCE, root, '/')
+    probe('statfs', 'stat', '-f', '--', SOURCE, root, '/')
+    probe('findmnt-exact', 'findmnt', '-J', '-M', root / 'merged', '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS')
+    probe('findmnt-containing', 'findmnt', '-J', '-T', root / 'merged', '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS')
+    probe('findmnt-all', 'findmnt', '-J', '-o', 'TARGET,SOURCE,FSTYPE,OPTIONS')
+    atomic(output / 'observer-process.json', {'pid': os.getpid(), 'parent_pid': os.getppid()})
+    probe('self-namespace', 'readlink', f'/proc/{os.getpid()}/ns/mnt')
+    probe('processes', 'ps', '-eo', 'pid,ppid,lstart,comm')
+    relevant = probe('runner-docker-processes', 'ps', '-C', 'Runner.Listener,Runner.Worker,dockerd,containerd', '-o', 'pid=,ppid=,comm=')
+    if relevant.get('status') == 0 and not relevant.get('truncated'):
+        for line in relevant['stdout'].splitlines()[:32]:
+            pid = int(line.split()[0])
+            probe(f'process-{pid}-namespace', *sudo, 'readlink', f'/proc/{pid}/ns/mnt')
+            probe(f'process-{pid}-identity', *sudo, 'ps', '-p', pid, '-o', 'pid,ppid,lstart,comm')
+    namespaces = probe('mount-namespaces', *sudo, 'lsns', '-t', 'mnt', '-J', '-o', 'NS,PID,NPROCS')
+    if namespaces.get('status') == 0 and not namespaces.get('truncated'):
+        entries = json.loads(namespaces['stdout'])['namespaces']
+        atomic(output / 'namespace-coverage.json', {'reported': len(entries), 'cap': 64, 'complete': len(entries) <= 64,
+                                                  'scope': 'visible mount namespaces; inaccessible/exited processes remain unknown; no nsenter'})
+        for number, entry in enumerate(entries[:64]):
+            pid = int(entry['pid'])
+            probe(f'namespace-{number}-identity', *sudo, 'readlink', f'/proc/{pid}/ns/mnt')
+            probe(f'namespace-{number}-process', *sudo, 'ps', '-p', pid, '-o', 'pid,ppid,lstart,comm')
+            probe(f'namespace-{number}-mountinfo', *sudo, 'head', '-c', '1048577', f'/proc/{pid}/mountinfo')
+    # One level only, with an explicit cap; never descend into database payload trees.
+    for name in ('upper', 'work', 'upper/mainnet', 'upper/mainnet/receipts'):
+        directory = root / name
+        if any(part.is_symlink() for part in (directory, *list(directory.parents)[:len(Path(name).parts)])):
+            raise RuntimeError(f'inventory shallow path is symlinked: {directory}')
+        record = {'entries': [], 'cap': 128, 'scope': 'direct children only; no DB payload reads or size summation'}
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if len(record['entries']) == 128:
+                        break
+                    info = entry.stat(follow_symlinks=False)
+                    record['entries'].append({'name': entry.name, 'mode': info.st_mode, 'bytes': info.st_size,
+                                              'mtime_ns': info.st_mtime_ns, 'device': info.st_dev, 'inode': info.st_ino,
+                                              'symlink': entry.is_symlink()})
+            record['possibly_truncated'] = len(record['entries']) == 128
+        except OSError as error:
+            record['unavailable'] = exception_record(error)
+        atomic(output / (name.replace('/', '-') + '-shallow.json'), record)
+    for name in ('upper/mainnet', 'upper/mainnet/receipts', 'upper/mainnet/receipts/CURRENT',
+                 'upper/mainnet/receipts/IDENTITY', 'work/work'):
+        path = root / name
+        if any(part.is_symlink() for part in (path, *list(path.parents)[:len(Path(name).parts)])):
+            raise RuntimeError(f'inventory known control path is symlinked: {path}')
+        probe('control-' + name.replace('/', '-'), *sudo, 'stat', '--', path)
+    probe('old-container', 'docker', 'inspect', 'prepared-getlogs-40815701914')
+    probe('docker-status', 'docker', 'ps', '-a', '--no-trunc', '--format', '{{.ID}}\t{{.Names}}\t{{.Status}}')
+    old = json.loads((Path(args.recovery_evidence) / 'container-start.json').read_text())
+    old_pid = int(old['State']['Pid'])
+    atomic(output / 'old-process-reference.json', {'producer_container_state': old['State'],
+                                                'caveat': 'current same-number PID may be reused; namespace identity was not recorded by old producer'})
+    if old_pid > 0:
+        probe('old-pid-namespace', *sudo, 'readlink', f'/proc/{old_pid}/ns/mnt')
+        probe('old-pid-current-identity', *sudo, 'ps', '-p', old_pid, '-o', 'pid,ppid,lstart,comm')
+    started = time.monotonic()
+    tripwire = {'scope': 'established recursive metadata plus CURRENT/IDENTITY/MANIFEST/OPTIONS hashes; NOT full DB hash',
+                'find_timeouts_seconds': [300, 300], 'old': provenance['old_source_tripwire']}
+    try:
+        tripwire['current'] = fingerprint(SOURCE)
+        tripwire['matches_old'] = tripwire['current'] == tripwire['old']
+    except Exception as error:
+        tripwire['unavailable'] = exception_record(error)
+    tripwire['elapsed_seconds'] = time.monotonic() - started
+    atomic(output / 'source-tripwire.json', tripwire)
+    atomic(output / 'INVENTORY.json', {'status': 'observations collected; NOT ready or recovery authorization',
+                                     'root': str(root), 'host': socket.gethostname(), 'source_sha': os.environ.get('GITHUB_SHA'),
+                                     'namespace_caveat': 'PID reuse/access failures/truncation do not prove old namespace absence; review raw probes',
+                                     'data_caveat': 'shallow metadata cannot establish complete migrated data or DB correctness'})
 
 
 def prepare(args):
@@ -623,9 +736,37 @@ def gate(args):
                                              'qualified_cases': 100 if args.action == 'gate' else None, 'phase': args.action})
 
 
+def exception_record(error):
+    text = lambda value: value.decode(errors='replace') if isinstance(value, bytes) else value
+    return {'type': type(error).__name__, 'message': str(error),
+            'command': getattr(error, 'cmd', None), 'status': getattr(error, 'returncode', None),
+            'stdout': text(getattr(error, 'stdout', None)), 'stderr': text(getattr(error, 'stderr', None)),
+            'timeout_seconds': getattr(error, 'timeout', None)}
+
+
+def execute_attempt(args):
+    output = Path(args.output).resolve()
+    if output.is_relative_to(SOURCE) or output.is_relative_to(PARENT):
+        raise ValueError('attempt artifacts must be outside protected source/quarantine trees')
+    output.mkdir(parents=True, exist_ok=True)
+    request = {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
+    atomic(output / 'attempt.json', {'request': request, 'host': socket.gethostname(),
+                                   'run': os.environ.get('GITHUB_RUN_ID'), 'source_sha': os.environ.get('GITHUB_SHA'),
+                                   'started_utc': dt.datetime.now(dt.timezone.utc).isoformat()})
+    started = time.monotonic()
+    try:
+        if args.action == 'inventory':
+            inventory(args)
+        else:
+            prepare(args)
+    except Exception as error:
+        atomic(output / 'exception.json', dict(exception_record(error), elapsed_seconds=time.monotonic() - started))
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'recover', 'verify', 'qualify', 'gate', 'running', 'stopped'])
+    parser.add_argument('action', choices=['prepare', 'recover', 'inventory', 'verify', 'qualify', 'gate', 'running', 'stopped'])
     parser.add_argument('--root', type=Path)
     parser.add_argument('--manifest-sha256')
     parser.add_argument('--image', default=BASELINE)
@@ -640,8 +781,8 @@ def main():
     global RPC_PORT
     RPC_PORT = args.rpc_port
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(RuntimeError('termination requested')))
-    if args.action in ('prepare', 'recover'):
-        prepare(args)
+    if args.action in ('prepare', 'recover', 'inventory'):
+        execute_attempt(args)
     elif args.action == 'qualify':
         qualify(args)
     elif args.action in ('gate', 'running', 'stopped'):

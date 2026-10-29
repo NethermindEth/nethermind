@@ -221,7 +221,7 @@ jobs:
   prepare-snapshot:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.prepare_snapshot }}
     runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 270
+    timeout-minutes: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_inventory == true && 25 || 270 }}
     permissions:
       contents: read
       actions: read
@@ -231,7 +231,7 @@ jobs:
           path: prepared-snapshot-${{ github.run_id }}
           sparse-checkout: scripts/rpc-bench
       - name: Download reviewed quarantined producer evidence
-        if: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_recover == true }}
+        if: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_recover == true || fromJSON(inputs.node_config || '{}').prepared_snapshot_inventory == true }}
         uses: actions/download-artifact@v4
         with:
           artifact-ids: 12881330426
@@ -244,14 +244,21 @@ jobs:
           PREPARED_OUTPUT: ${{ runner.temp }}/prepared-results-${{ github.run_id }}
           OLD_EVIDENCE: ${{ runner.temp }}/prepared-old-${{ github.run_id }}
           RECOVER: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_recover == true }}
+          INVENTORY: ${{ fromJSON(inputs.node_config || '{}').prepared_snapshot_inventory == true }}
         run: |
           action=prepare
           extra=()
-          if [[ "$RECOVER" == true ]]; then
+          limit=()
+          if [[ "$INVENTORY" == true ]]; then
+            [[ "$RECOVER" != true ]] || { echo '::error::inventory and recovery are mutually exclusive'; exit 1; }
+            action=inventory
+            extra=(--root /mnt/sda/expb-data/rpc-prepared/getlogs-40815701914 --recovery-evidence "$OLD_EVIDENCE")
+            limit=(timeout --signal=TERM --kill-after=30s 20m)
+          elif [[ "$RECOVER" == true ]]; then
             action=recover
             extra=(--root /mnt/sda/expb-data/rpc-prepared/getlogs-40815701914 --recovery-evidence "$OLD_EVIDENCE")
           fi
-          python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py "$action" "${extra[@]}" --output "$PREPARED_OUTPUT" --finish 2026-10-30T00:06:04Z
+          "${limit[@]}" python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py "$action" "${extra[@]}" --output "$PREPARED_OUTPUT" --finish 2026-10-30T00:06:04Z
       - name: Preserve preparation evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
