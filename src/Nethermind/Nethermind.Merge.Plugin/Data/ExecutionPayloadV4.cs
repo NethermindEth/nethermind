@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using BlockchainMetrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -17,6 +20,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<ExecutionPayloadV4>
 {
+    private static readonly StringLabel DecodeLabel = new("decode");
     private byte[]? _decodedBlockAccessListSource;
     private ReadOnlyBlockAccessList? _decodedBlockAccessList;
 
@@ -97,8 +101,10 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     {
         try
         {
+            long start = Stopwatch.GetTimestamp();
             blockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encodedBlockAccessList)
                 ?? throw new RlpException("Block access list decoded as null.");
+            BlockchainMetrics.BlockAccessListProcessingTimeMicros.Observe(Stopwatch.GetElapsedTime(start).TotalMicroseconds, DecodeLabel);
             error = null;
             return true;
         }

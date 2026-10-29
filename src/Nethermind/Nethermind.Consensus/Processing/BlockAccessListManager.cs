@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -124,6 +125,7 @@ public partial class BlockAccessListManager(
 
         if (Enabled)
         {
+            long start = Stopwatch.GetTimestamp();
             Reset();
             if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
                 _readPlan = new BalReadStoragePlan(bal);
@@ -141,6 +143,7 @@ public partial class BlockAccessListManager(
                 _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
             }
             _gasRemaining = suggestedBlock.GasUsed;
+            ObserveTime(start, PrepareLabel);
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);

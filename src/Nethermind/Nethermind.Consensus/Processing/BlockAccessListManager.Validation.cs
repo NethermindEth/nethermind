@@ -35,6 +35,7 @@ public partial class BlockAccessListManager
     public void IncrementalValidation(Block block, GasValidationResult[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         CheckInitialized();
+        long start = Stopwatch.GetTimestamp();
 
         int len = block.Transactions.Length;
 
@@ -84,6 +85,7 @@ public partial class BlockAccessListManager
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_execution, sum_state)
         _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
         _blockExecutionContext.Value.Header.GasUsedPerDimension = (totalExecutionGas, totalStateGas);
+        ObserveTime(start, GasValidationLabel);
 
         static void CheckGasUsed(int index, Block block, ulong effectiveGas)
         {

@@ -186,4 +186,9 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
     [Description("Histogram of block processing time")]
     public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [ExponentialPowerHistogramMetric(LabelNames = ["part"], Start = 1, Factor = 1.5, Count = 40)]
+    [Description("Histogram of block access list processing time in microseconds, by part")]
+    public static IMetricObserver BlockAccessListProcessingTimeMicros { get; set; } = new NoopMetricObserver();
 }
