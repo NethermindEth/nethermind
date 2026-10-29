@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Consensus.Processing;
+using Nethermind.Crypto;
 
 namespace Nethermind.Api
 {
@@ -22,6 +23,7 @@ namespace Nethermind.Api
         public string StaticNodesPath { get; set; } = "static-nodes.json";
         public string TrustedNodesPath { get; set; } = "trusted-nodes.json";
         public string? KzgSetupPath { get; set; } = null;
+        public int KzgPrecompute { get; set; } = KzgPolynomialCommitments.DefaultPrecompute;
         public string LogDirectory { get; set; } = "logs";
         public string? LogRules { get; set; } = null;
         public bool MaskIpsInLogs { get; set; } = false;

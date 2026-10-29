@@ -37,6 +37,12 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The path to KZG trusted setup file.", DefaultValue = "null")]
     string? KzgSetupPath { get; set; }
 
+    [ConfigItem(
+        Description = "[TECHNICAL] The c-kzg precompute level for the KZG trusted setup, from 0 to 15. Higher levels load slower and use more memory, but compute cell proofs faster. Verification is unaffected.",
+        DefaultValue = "8",
+        HiddenFromDocs = true)]
+    int KzgPrecompute { get; set; }
+
     [ConfigItem(Description = "The hash of the genesis block. If not specified, the genesis block validity is not checked which is useful in the case of ad hoc test/private networks.", DefaultValue = "null")]
     string? GenesisHash { get; set; }
 

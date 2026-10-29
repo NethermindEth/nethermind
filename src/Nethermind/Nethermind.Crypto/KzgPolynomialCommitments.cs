@@ -22,6 +22,16 @@ public static partial class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
 
     /// <summary>
+    /// The c-kzg precompute level used unless configured otherwise.
+    /// </summary>
+    public const int DefaultPrecompute = 8;
+
+    /// <summary>
+    /// The highest precompute level c-kzg accepts.
+    /// </summary>
+    public const int MaxPrecompute = 15;
+
+    /// <summary>
     /// The loaded trusted setup handle.
     /// </summary>
     /// <remarks>
@@ -63,19 +73,28 @@ public static partial class KzgPolynomialCommitments
 
     public static bool IsInitialized => Volatile.Read(ref _ckzgSetup) != nint.Zero;
 
-    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null)
+    /// <param name="logger">Logs the load.</param>
+    /// <param name="setupFilePath">The trusted setup file, or <c>null</c> for the bundled one.</param>
+    /// <param name="precompute">
+    /// The c-kzg precompute level, from 0 to <see cref="MaxPrecompute"/>. It only speeds up computing cell proofs;
+    /// higher levels load slower. Checked on every call, but ignored when the setup is already loading or loaded.
+    /// </param>
+    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null, int precompute = DefaultPrecompute)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(precompute);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(precompute, MaxPrecompute);
+
         if (_initializeTask is not null)
             return _initializeTask;
 
         lock (_initializeLock)
         {
-            _initializeTask ??= Task.Run(() => LoadTrustedSetup(logger, setupFilePath));
+            _initializeTask ??= Task.Run(() => LoadTrustedSetup(logger, setupFilePath, precompute));
             return _initializeTask;
         }
     }
 
-    private static void LoadTrustedSetup(ILogger logger, string? setupFilePath)
+    private static void LoadTrustedSetup(ILogger logger, string? setupFilePath, int precompute)
     {
         if (_ckzgSetup != nint.Zero)
             return;
@@ -84,11 +103,11 @@ public static partial class KzgPolynomialCommitments
             Path.Combine(AppContext.BaseDirectory, "kzg_trusted_setup.txt");
 
         if (logger.IsInfo)
-            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
+            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation} with precompute {precompute}");
 
         try
         {
-            Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8));
+            Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, precompute));
 
             if (_ckzgSetup == nint.Zero)
                 throw new InvalidOperationException("Failed to load trusted setup");

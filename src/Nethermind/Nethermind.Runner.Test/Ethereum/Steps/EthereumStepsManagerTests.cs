@@ -8,10 +8,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using CkzgLib;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
@@ -84,6 +86,54 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 exitSource.Exit(ExitCodes.Ok);
                 context.Unload();
             }
+        }
+
+        [Test]
+        [CancelAfter(60_000)]
+        public async Task Kzg_precompute_from_the_config_reaches_the_setup_load()
+        {
+            // Isolate the process-wide setup state from other tests that already loaded it.
+            AssemblyLoadContext context = new(nameof(Kzg_precompute_from_the_config_reaches_the_setup_load), isCollectible: true);
+            Type kzg = context.LoadFromAssemblyPath(typeof(KzgPolynomialCommitments).Assembly.Location)
+                .GetType(typeof(KzgPolynomialCommitments).FullName!, throwOnError: true)!;
+            try
+            {
+                Type stepType = context.LoadFromAssemblyPath(typeof(InitializePrecompiles).Assembly.Location)
+                    .GetType(typeof(InitializePrecompiles).FullName!, throwOnError: true)!;
+                InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+                logger.IsInfo.Returns(true);
+                IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+                consensusPlugin.ApiType.Returns(typeof(NethermindApi));
+                using IContainer container = CreateCommonBuilder(new StepInfo(stepType))
+                    .AddSingleton(consensusPlugin)
+                    .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                    .AddSingleton<IInitConfig>(new InitConfig { KzgPrecompute = 0 })
+                    .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                    .Build();
+
+                await container.Resolve<EthereumStepsManager>().InitializeAll(TestContext.CurrentContext.CancellationToken);
+
+                logger.Received(1).Info(Arg.Is<string>(message => message.EndsWith("with precompute 0")));
+            }
+            finally
+            {
+                // Unloading the context does not release the native setup.
+                nint setup = (nint)kzg.GetField("_ckzgSetup", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+                if (setup != nint.Zero) Ckzg.FreeTrustedSetup(setup);
+                context.Unload();
+            }
+        }
+
+        [TestCase(-1)]
+        [TestCase(KzgPolynomialCommitments.MaxPrecompute + 1)]
+        public void Kzg_precompute_outside_the_supported_range_is_a_configuration_error(int precompute)
+        {
+            InitializePrecompiles step = new(MainnetSpecProvider.Instance, new InitConfig { KzgPrecompute = precompute },
+                LimboLogs.Instance, Substitute.For<IProcessExitSource>());
+
+            Assert.That(() => step.Execute(CancellationToken.None), Throws.InstanceOf<InvalidConfigurationException>()
+                .With.Message.Contains("Init.KzgPrecompute")
+                .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
         }
 
         [Test]

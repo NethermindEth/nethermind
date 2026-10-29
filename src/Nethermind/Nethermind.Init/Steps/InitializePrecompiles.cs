@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -19,6 +20,11 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
     private static bool _wasSetup = false;
     public async Task Execute(CancellationToken cancellationToken)
     {
+        if (initConfig.KzgPrecompute is < 0 or > KzgPolynomialCommitments.MaxPrecompute)
+            throw new InvalidConfigurationException(
+                $"Init.KzgPrecompute must be from 0 to {KzgPolynomialCommitments.MaxPrecompute}, not {initConfig.KzgPrecompute}.",
+                ExitCodes.ForbiddenOptionValue);
+
         if (specProvider!.GetFinalSpec().IsEip4844Enabled)
         {
             ILogger logger = logManager.GetClassLogger<InitializePrecompiles>();
@@ -28,7 +34,7 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
             {
                 if (!_wasSetup)
                 {
-                    await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
+                    await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath, initConfig.KzgPrecompute);
                     _wasSetup = true;
                 }
             }

@@ -17,6 +17,32 @@ namespace Nethermind.Core.Test.Crypto;
 public class KzgPolynomialCommitmentsTests
 {
     private delegate bool VerifyProof(ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> proof);
+    private delegate void ComputeCellProofs(ReadOnlySpan<byte> blob, Span<byte> cellProofs);
+
+    [Test]
+    public void Precompute_does_not_change_cell_proofs()
+    {
+        byte[] blob = new byte[Ckzg.BytesPerBlob];
+        new Random(42).NextBytes(blob);
+        // Keep every field element below the BLS modulus.
+        for (int i = 0; i < blob.Length; i += Ckzg.BytesPerFieldElement) blob[i] = 0;
+
+        byte[] withoutTable = CellProofs(blob, precompute: 0);
+        byte[] withDefaultTable = CellProofs(blob, KzgPolynomialCommitments.DefaultPrecompute);
+
+        Assert.That(withoutTable, Is.EqualTo(withDefaultTable));
+    }
+
+    [TestCase(-1)]
+    [TestCase(KzgPolynomialCommitments.MaxPrecompute + 1)]
+    public void Precompute_outside_the_supported_range_is_rejected(int precompute) => WithFreshSetupState(kzg =>
+    {
+        Assert.That(() => StartLoad(kzg, setupFilePath: null, precompute), Throws.InstanceOf<TargetInvocationException>()
+            .With.InnerException.TypeOf<ArgumentOutOfRangeException>()
+            .And.InnerException.Property(nameof(ArgumentOutOfRangeException.ParamName)).EqualTo("precompute"));
+        // The rejected call must not leave a failed load behind.
+        Assert.That(() => StartLoad(kzg, setupFilePath: null, precompute: 0).GetAwaiter().GetResult(), Throws.Nothing);
+    });
 
     [Test]
     public void Setup_waits_for_the_in_flight_load() => WithFreshSetupState(kzg =>
@@ -91,8 +117,19 @@ public class KzgPolynomialCommitmentsTests
     private static bool IsSetupUnavailable(Exception? exception) =>
         exception?.GetType().FullName == typeof(KzgSetupUnavailableException).FullName;
 
-    private static Task StartLoad(Type kzg, string? setupFilePath) =>
-        (Task)kzg.GetMethod(nameof(KzgPolynomialCommitments.InitializeAsync))!.Invoke(null, [default(ILogger), setupFilePath])!;
+    private static Task StartLoad(Type kzg, string? setupFilePath, int precompute = KzgPolynomialCommitments.DefaultPrecompute) =>
+        (Task)kzg.GetMethod(nameof(KzgPolynomialCommitments.InitializeAsync))!.Invoke(null, [default(ILogger), setupFilePath, precompute])!;
+
+    private static byte[] CellProofs(byte[] blob, int precompute)
+    {
+        byte[] proofs = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
+        WithFreshSetupState(kzg =>
+        {
+            StartLoad(kzg, setupFilePath: null, precompute).GetAwaiter().GetResult();
+            kzg.GetMethod(nameof(KzgPolynomialCommitments.ComputeCellProofs))!.CreateDelegate<ComputeCellProofs>()(blob, proofs);
+        });
+        return proofs;
+    }
 
     private static nint ReadSetup(Type kzg) =>
         (nint)kzg.GetProperty(nameof(KzgPolynomialCommitments.CkzgSetup), BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
