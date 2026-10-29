@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -292,6 +292,18 @@ public class RlpWriterTest
             Assert.That(Rlp.LengthOf(value), Is.EqualTo(integer.Length));
             Assert.That(Instances.UInt256RlpConverter.GetLength(big), Is.EqualTo(uint256.Length));
             Assert.That(Instances.UInt256RlpConverter.GetLength((UInt256)value), Is.EqualTo(Rlp.Write((UInt256)value, static (ref RlpWriter w, UInt256 v) => w.Write(v)).Length));
+        }
+    }
+
+    [Test]
+    public void LengthOfSignedIntegerMatchesWrittenLength([Values(0, 1, 0x7f)] int value)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Rlp.LengthOf((sbyte)value), Is.EqualTo(Rlp.Write((sbyte)value, static (ref RlpWriter w, sbyte v) => w.Write(v)).Length));
+            Assert.That(Rlp.LengthOf((short)value), Is.EqualTo(Rlp.Write((short)value, static (ref RlpWriter w, short v) => w.Write(v)).Length));
+            Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.Write(value, static (ref RlpWriter w, int v) => w.Write(v)).Length));
+            Assert.That(Rlp.LengthOf((long)value), Is.EqualTo(Rlp.Write((long)value, static (ref RlpWriter w, long v) => w.Write(v)).Length));
         }
     }
 

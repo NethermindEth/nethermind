@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -83,7 +83,8 @@ public static class Rlp
     public static unsafe int LengthOf<T>(T value) where T : unmanaged, IBinaryInteger<T>
     {
         int byteCount = (int.CreateTruncating(T.Log2(value)) + 8) / 8;
-        return value < T.CreateTruncating(RlpPrefix.ShortString) ? 1 : LengthOfString(byteCount);
+        // Saturating, as 0x80 does not fit a signed byte: truncated, it would be -128.
+        return value <= T.CreateSaturating(RlpPrefix.ShortString - 1) ? 1 : LengthOfString(byteCount);
     }
 
     /// <summary>Gets the encoded length of a byte string of <paramref name="length"/> bytes, other than a single byte below <c>0x80</c>.</summary>
