@@ -25,9 +25,16 @@ AccessListItem decoded = Rlp.Read(rlp, static (scoped ref RlpReader r) => r.Read
 
 ## Encoding
 
-`Rlp.Write` runs the write action once. It writes to a pooled buffer and inserts the long sequence prefixes when it
-copies the buffer to the output. `RlpWriter.LengthWriter` and `RlpWriter.ContentWriter` measure and write to a fixed
-span in two passes instead.
+`Rlp.Write(value, action)` runs the write action once. It writes to a per-thread buffer and inserts the long sequence
+prefixes when it copies the buffer to the output.
+
+A converter that also implements `IRlpLengthConverter<T>` computes the encoded length first. Then
+`Rlp.Write<TConverter, T>(value)` allocates the exact output and writes it in one pass, without a buffer or a copy.
+Hand-written code gets the same with `RlpWriter.StartSequence(payloadLength)` and `EndSequence`, which check the
+declared length. `RlpReader.ReadBytes(length)` reads a byte string of an exact length, and `UInt256RlpConverter`
+has `ReadFixed` and `WriteFixed` for 32-byte values.
+
+`RlpWriter.LengthWriter` and `RlpWriter.ContentWriter` measure and write to a fixed span.
 
 ## Generated converters
 
@@ -47,4 +54,5 @@ A parameter of another type `T` uses the `ReadT()` and `Write(T)` extension meth
 
 `[RlpFixedLength(n)]` on such a type, or on a parameter, declares that its value is always a byte string of `n`
 bytes. A record or list made only of values with a known length then writes its exact prefix at once, without a pass
-over the values. A write that does not match the declared length throws.
+over the values, and the generated converter implements `IRlpLengthConverter<T>` when every field has a computable
+length. A read or write that does not match the declared length throws.

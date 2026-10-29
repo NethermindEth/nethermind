@@ -155,15 +155,14 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         if (diagnostics.Count > 0) return new Output(hintName, null, diagnostics.ToImmutable());
 
-        // A record whose fields all have a known length writes its prefix at once and skips its fields when measured.
-        List<string> lengths = [];
-        for (int i = 0; i < parameters.Count; i++)
+        // A record whose field lengths can be computed gets GetLength and writes its prefix at once, without a delegate.
+        string? payloadLength = null;
+        if (CanMeasure(symbol, null, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)))
         {
-            if (StaticLength(parameters[i].Type, parameterSymbols[i], $"value.{parameters[i].Name}") is not { } length) break;
-            lengths.Add(length);
+            payloadLength = string.Join(" + ", Enumerable.Range(0, parameters.Count)
+                .Select(i => mapper.Length(parameters[i].Type, parameterSymbols[i], $"value.{parameters[i].Name}")));
         }
 
-        string? payloadLength = !isNewtype && lengths.Count == parameters.Count ? string.Join(" + ", lengths) : null;
         string source = GenerateConverterClass(symbol, recordDecl, readCalls, writeCalls, isNewtype, constLength, parameters.Count > 0 ? parameters[0].Name : "", payloadLength, mapper.Helpers, fixedLengths);
         return new Output(hintName, source, ImmutableArray<Diagnostic>.Empty);
     }
@@ -218,20 +217,39 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             ? length
             : null;
 
-    /// <summary>An expression for the encoded length of <paramref name="value"/> that needs no pass over it, or <see langword="null"/>.</summary>
-    private static string? StaticLength(ITypeSymbol type, IParameterSymbol? parameter, string value)
+    /// <summary>Whether the encoded length of a value of <paramref name="type"/> can be computed without writing it.</summary>
+    private static bool CanMeasure(ITypeSymbol type, IParameterSymbol? parameter, HashSet<ITypeSymbol> visiting)
     {
-        if (FixedLength(type, parameter) is { } length) return length.ToString();
+        if (FixedLength(type, parameter) is not null || IsByteArray(type) || TypeMapper.IsInteger(type) || IsUInt256(type)) return true;
 
-        (ITypeSymbol? itemType, string? count) = type switch
+        switch (type)
         {
-            IArrayTypeSymbol { Rank: 1 } array when !IsByteArray(type) => (array.ElementType, "Length"),
-            INamedTypeSymbol { Name: "List", Arity: 1 } list when list.ContainingNamespace.ToDisplayString() == "System.Collections.Generic" => (list.TypeArguments[0], "Count"),
-            _ => (null, null),
-        };
-
-        return itemType is not null && FixedLength(itemType, null) is { } itemLength ? $"SequenceLength({value}.{count} * {itemLength})" : null;
+            case IArrayTypeSymbol { Rank: 1 } array:
+                return CanMeasure(array.ElementType, null, visiting);
+            case INamedTypeSymbol { IsTupleType: true } tuple when tuple.TupleElements.Length == 2:
+                return CanMeasure(tuple.TupleElements[0].Type, null, visiting) && CanMeasure(tuple.TupleElements[1].Type, null, visiting);
+            case INamedTypeSymbol named when TypeMapper.IsCollection(named, "List", 1):
+                return CanMeasure(named.TypeArguments[0], null, visiting);
+            case INamedTypeSymbol { IsGenericType: false } named when IsSerializable(named):
+                // A record that contains itself through a collection has a finite length for any value.
+                if (!visiting.Add(named)) return true;
+                IMethodSymbol? constructor = PrimaryConstructor(named);
+                bool result = constructor is not null && constructor.Parameters.All(p => CanMeasure(p.Type, p, visiting));
+                visiting.Remove(named);
+                return result;
+            default:
+                return false;
+        }
     }
+
+    private static bool IsSerializable(INamedTypeSymbol type)
+        => type.GetAttributes().Any(static a => a.AttributeClass?.ToDisplayString() == AttributeMetadataName);
+
+    private static IMethodSymbol? PrimaryConstructor(INamedTypeSymbol type)
+        => type.InstanceConstructors.FirstOrDefault(static c => c.DeclaringSyntaxReferences.Any(static r => r.GetSyntax() is RecordDeclarationSyntax));
+
+    private static bool IsUInt256(ITypeSymbol type)
+        => type is INamedTypeSymbol { Name: "UInt256", ContainingNamespace.Name: "Int256", ContainingNamespace.ContainingNamespace.Name: "Nethermind" };
 
     private static string Indent(IEnumerable<string> lines, int spaces)
         => string.Join("\n", lines.Select(line => new string(' ', spaces) + line));
@@ -292,12 +310,33 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         string writeBody = isNewtype
             ? Indent(writeLines, 8)
-            : $$"""
-                        w.WriteSequence({{(payloadLength is null ? "" : payloadLength + ", ")}}value, static (ref {{Library}}.RlpWriter w, {{fullTypeName}} value) =>
-                        {
-                {{Indent(writeLines, 12)}}
-                        });
-                """;
+            : payloadLength is not null
+                ? $$"""
+                            {{Library}}.RlpSequence sequence = w.StartSequence(GetPayloadLength(value));
+                    {{Indent(writeLines, 8)}}
+                            w.EndSequence(sequence);
+                    """
+                : $$"""
+                            w.WriteSequence(value, static (ref {{Library}}.RlpWriter w, {{fullTypeName}} value) =>
+                            {
+                    {{Indent(writeLines, 12)}}
+                            });
+                    """;
+
+        string converterInterface = payloadLength is null ? "IRlpConverter" : "IRlpLengthConverter";
+        string lengthMembers = payloadLength is null
+            ? ""
+            : isNewtype
+                ? $$"""
+                        public static int GetLength({{fullTypeName}} value) => {{payloadLength}};
+
+                    """
+                : $$"""
+                        public static int GetLength({{fullTypeName}} value) => {{Library}}.Rlp.LengthOfSequence(GetPayloadLength(value));
+
+                        private static int GetPayloadLength({{fullTypeName}} value) => {{payloadLength}};
+
+                    """;
 
         // Reading through EnterSequence and ExitSequence instead of ReadSequence needs no delegate.
         if (!isNewtype) readLines.Insert(readLines.Count - 1, "outer.ExitSequence(in r, itemLength);");
@@ -313,17 +352,14 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                  {{(@namespace is null ? "" : $"namespace {@namespace};")}}
 
                  {{GeneratedCodeAttribute}}
-                 {{accessibility}} abstract class {{recordName}}RlpConverter : {{Library}}.IRlpConverter<{{fullTypeName}}>
+                 {{accessibility}} abstract class {{recordName}}RlpConverter : {{Library}}.{{converterInterface}}<{{fullTypeName}}>
                  {
                      public static void Write(ref {{Library}}.RlpWriter w, {{fullTypeName}} value)
                      {
                  {{writeBody}}
                      }
 
-                     private static int SequenceLength(int payloadLength)
-                         => payloadLength + (payloadLength < 56 ? 1 : payloadLength < 0x100 ? 2 : payloadLength < 0x10000 ? 3 : payloadLength < 0x1000000 ? 4 : 5);
-
-                 {{string.Join("\n", helpers)}}
+                 {{lengthMembers + string.Join("\n", helpers)}}
                      public static {{fullTypeName}} Read(ref {{Library}}.RlpReader outer)
                      {
                  {{readBody}}
@@ -403,7 +439,11 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
             string name = $"ReadItems{_helperCount++}";
             string itemTypeName = Name(itemType);
             string read = Read(itemType, member);
-            string add = FixedLength(itemType, null) is { } itemLength
+            int? fixedItemLength = FixedLength(itemType, null);
+
+            // Items of a fixed length need no pass over their prefixes to size the list.
+            string capacity = fixedItemLength is { } length ? $"r.Remaining / {length}" : "r.CountItems()";
+            string add = fixedItemLength is { } itemLength
                 ? $$"""
                             int start = r.BytesRead;
                             items.Add({{read}});
@@ -414,7 +454,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
                     private static global::System.Collections.Generic.List<{{itemTypeName}}> {{name}}(ref {{Library}}.RlpReader outer)
                     {
                         {{Library}}.RlpReader r = outer.EnterSequence(out int itemLength);
-                        global::System.Collections.Generic.List<{{itemTypeName}}> items = new(r.CountItems());
+                        global::System.Collections.Generic.List<{{itemTypeName}}> items = new({{capacity}});
                         while (r.HasNext)
                         {
                 {{add}}
@@ -429,7 +469,74 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         }
 
         private string WriteItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value)
-            => $"w.WriteSequence({(FixedLength(itemType, null) is { } itemLength ? $"{value}.{(type is IArrayTypeSymbol ? "Length" : "Count")} * {itemLength}, " : "")}{value}, static (ref {Library}.RlpWriter w, {Name(type)} items) => {{ foreach ({Name(itemType)} item in items) {{ {Write(itemType, member, "item")}; }} }})";
+        {
+            if (!CanMeasure(itemType, null, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)))
+            {
+                return $"w.WriteSequence({value}, static (ref {Library}.RlpWriter w, {Name(type)} items) => {{ foreach ({Name(itemType)} item in items) {{ {Write(itemType, member, "item")}; }} }})";
+            }
+
+            string name = $"WriteItems{_helperCount++}";
+            string write = Write(itemType, member, "item");
+            Helpers.Add($$"""
+                    private static void {{name}}(ref {{Library}}.RlpWriter w, {{Name(type)}} items)
+                    {
+                        {{Library}}.RlpSequence sequence = w.StartSequence({{PayloadOfItems(type, itemType, member, "items")}});
+                        foreach ({{Name(itemType)}} item in items)
+                        {
+                            {{write}};
+                        }
+
+                        w.EndSequence(sequence);
+                    }
+
+                """);
+            return $"{name}(ref w, {value})";
+        }
+
+        /// <summary>An expression for the encoded length of <paramref name="value"/>; the type must pass <c>CanMeasure</c>.</summary>
+        public string Length(ITypeSymbol type, IParameterSymbol? parameter, string value)
+        {
+            if (FixedLength(type, parameter) is { } fixedLength) return fixedLength.ToString();
+            if (IsByteArray(type)) return $"{Library}.Rlp.LengthOf({value})";
+            if (IsInteger(type)) return $"{Library}.Rlp.LengthOf<{Name(type)}>({value})";
+            if (IsUInt256(type)) return $"{Instances}.UInt256RlpConverter.GetLength({value})";
+
+            switch (type)
+            {
+                case IArrayTypeSymbol { Rank: 1 } array:
+                    return $"{Library}.Rlp.LengthOfSequence({PayloadOfItems(type, array.ElementType, value, value)})";
+                case INamedTypeSymbol named when IsCollection(named, "List", 1):
+                    return $"{Library}.Rlp.LengthOfSequence({PayloadOfItems(type, named.TypeArguments[0], value, value)})";
+                case INamedTypeSymbol { IsTupleType: true } tuple:
+                    return $"({Length(tuple.TupleElements[0].Type, null, $"{value}.Item1")} + {Length(tuple.TupleElements[1].Type, null, $"{value}.Item2")})";
+                default:
+                    string ns = type.ContainingNamespace.IsGlobalNamespace ? "global::" : $"global::{type.ContainingNamespace.ToDisplayString()}.";
+                    return $"{ns}{type.Name}RlpConverter.GetLength({value})";
+            }
+        }
+
+        private string PayloadOfItems(ITypeSymbol type, ITypeSymbol itemType, string member, string value)
+        {
+            string count = type is IArrayTypeSymbol ? "Length" : "Count";
+            if (FixedLength(itemType, null) is { } itemLength) return $"{value}.{count} * {itemLength}";
+
+            string name = $"PayloadOfItems{_helperCount++}";
+            string length = Length(itemType, null, "item");
+            Helpers.Add($$"""
+                    private static int {{name}}({{Name(type)}} items)
+                    {
+                        int payloadLength = 0;
+                        foreach ({{Name(itemType)}} item in items)
+                        {
+                            payloadLength += {{length}};
+                        }
+
+                        return payloadLength;
+                    }
+
+                """);
+            return $"{name}({value})";
+        }
 
         private string ReadLambda(ITypeSymbol type, string member)
             => $"static (scoped ref {Library}.RlpReader r) => {Read(type, member)}";
@@ -439,7 +546,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
 
         private static string Name(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        private static bool IsInteger(ITypeSymbol type)
+        internal static bool IsInteger(ITypeSymbol type)
             => type.SpecialType is SpecialType.System_Byte or SpecialType.System_Int16 or SpecialType.System_Int32 or SpecialType.System_Int64
                    or SpecialType.System_UInt16 or SpecialType.System_UInt32 or SpecialType.System_UInt64
                || type is INamedTypeSymbol { Name: "Int128" or "UInt128", ContainingNamespace.Name: "System", ContainingNamespace.ContainingNamespace.IsGlobalNamespace: true };
@@ -452,7 +559,7 @@ public sealed class RlpSourceGenerator : IIncrementalGenerator
         private static bool HasValueEquality(ITypeSymbol key)
             => key is not IArrayTypeSymbol && !(key is INamedTypeSymbol named && IsCollection(named, "List", 1));
 
-        private static bool IsCollection(INamedTypeSymbol type, string name, int arity)
+        internal static bool IsCollection(INamedTypeSymbol type, string name, int arity)
             => type.Name == name && type.Arity == arity && type.ContainingNamespace.ToDisplayString() == "System.Collections.Generic";
     }
 }

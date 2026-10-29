@@ -49,6 +49,9 @@ public ref struct RlpReader
     /// <summary>Gets whether unread bytes are left.</summary>
     public readonly bool HasNext => _position < _buffer.Length;
 
+    /// <summary>Gets the number of unread bytes.</summary>
+    public readonly int Remaining => _buffer.Length - _position;
+
     /// <summary>Gets the number of bytes read so far.</summary>
     public readonly int BytesRead => _position;
 
@@ -153,6 +156,29 @@ public ref struct RlpReader
         if ((long)start + length > buffer.Length) ThrowInvalid("RLP is truncated");
         _position = start + length;
         return buffer.Slice(start, length);
+    }
+
+    /// <summary>Reads a byte string of exactly <paramref name="length"/> bytes.</summary>
+    /// <exception cref="RlpReaderException">The item is not a canonical byte string of that length.</exception>
+    public ReadOnlySpan<byte> ReadBytes(int length)
+    {
+        // A string of 2 to 55 bytes has exactly one canonical prefix, so one byte compare checks prefix and length.
+        if (length is < 2 or > RlpPrefix.MaxShortLength)
+        {
+            ReadOnlySpan<byte> bytes = ReadBytes();
+            if (bytes.Length != length) ThrowInvalid("RLP byte string has another length than expected");
+            return bytes;
+        }
+
+        ReadOnlySpan<byte> buffer = _buffer;
+        int position = _position;
+        if ((long)position + 1 + length > buffer.Length || buffer[position] != RlpPrefix.ShortString + length)
+        {
+            ThrowInvalid("RLP byte string has another length than expected");
+        }
+
+        _position = position + 1 + length;
+        return buffer.Slice(position + 1, length);
     }
 
     /// <summary>Reads a sequence with <paramref name="func"/>, which must consume the whole payload of the sequence.</summary>

@@ -37,10 +37,7 @@ public ref struct RlpWriter
 
     // Buffers of the last buffered write on this thread. A nested write takes new ones while they are in use.
     [ThreadStatic]
-    private static byte[]? CachedBuffer;
-
-    [ThreadStatic]
-    private static int[]? CachedSequences;
+    private static Buffers? CachedBuffers;
 
     private Span<byte> _destination;
     private readonly bool _isContent;
@@ -48,6 +45,7 @@ public ref struct RlpWriter
 
     // Only for a buffering writer: the pooled buffer, and pairs of (prefix position, payload length) for the
     // sequences in the order they start. A position of -1 marks a short sequence, whose prefix is already written.
+    private Buffers? _buffers;
     private byte[]? _buffer;
     private int[]? _sequences;
     private int _sequenceCount;
@@ -76,14 +74,13 @@ public ref struct RlpWriter
 
     internal static RlpWriter BufferingWriter()
     {
-        byte[] buffer = CachedBuffer ?? new byte[MinBufferLength];
-        int[] sequences = CachedSequences ?? new int[MinBufferLength];
-        CachedBuffer = null;
-        CachedSequences = null;
-        return new RlpWriter(buffer, isContent: true)
+        Buffers buffers = CachedBuffers ?? new Buffers();
+        CachedBuffers = null;
+        return new RlpWriter(buffers.Bytes, isContent: true)
         {
-            _buffer = buffer,
-            _sequences = sequences
+            _buffers = buffers,
+            _buffer = buffers.Bytes,
+            _sequences = buffers.Sequences
         };
     }
 
@@ -113,8 +110,12 @@ public ref struct RlpWriter
 
     internal readonly void ReturnBuffers()
     {
-        if (_buffer!.Length <= MaxCachedBufferLength) CachedBuffer = _buffer;
-        if (_sequences!.Length * sizeof(int) <= MaxCachedBufferLength) CachedSequences = _sequences;
+        if (_buffer!.Length > MaxCachedBufferLength || _sequences!.Length * sizeof(int) > MaxCachedBufferLength) return;
+
+        Buffers buffers = _buffers!;
+        buffers.Bytes = _buffer;
+        buffers.Sequences = _sequences;
+        CachedBuffers = buffers;
     }
 
     /// <summary>Writes a non-negative integer.</summary>
@@ -259,47 +260,68 @@ public ref struct RlpWriter
         }
     }
 
-    /// <summary>Writes a sequence whose payload of <paramref name="payloadLength"/> bytes is written by <paramref name="action"/>.</summary>
+    /// <summary>Starts a sequence whose payload has <paramref name="payloadLength"/> bytes, and writes its prefix.</summary>
     /// <remarks>
-    /// A known payload length saves work: a <see cref="LengthWriter"/> does not run <paramref name="action"/>, and the
-    /// other writers write the exact prefix at once.
+    /// Write the payload items, then call <see cref="EndSequence"/>. A known payload length needs no delegate and no
+    /// prefix fix, so it is the fastest way to write a sequence.
     /// </remarks>
-    /// <exception cref="InvalidOperationException"><paramref name="action"/> writes another number of bytes.</exception>
-    public void WriteSequence<TContext>(int payloadLength, TContext ctx, RefRlpWriterAction<TContext> action)
+    /// <returns>The value to pass to <see cref="EndSequence"/>.</returns>
+    public RlpSequence StartSequence(int payloadLength)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
+        int depth = ++_openSequences;
+        if (depth % StackCheckInterval == 0) RuntimeHelpers.EnsureSufficientExecutionStack();
+
         int prefixLength = payloadLength > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(payloadLength) : 1;
-        if (!_isContent)
+        if (_isContent)
         {
-            _length += prefixLength + payloadLength;
-            return;
-        }
-
-        int openSequences = ++_openSequences;
-        if (openSequences % StackCheckInterval == 0) RuntimeHelpers.EnsureSufficientExecutionStack();
-
-        Span<byte> prefix = Reserve(prefixLength);
-        if (prefixLength == 1)
-        {
-            prefix[0] = (byte)(RlpPrefix.ShortList + payloadLength);
-        }
-        else
-        {
-            WriteLongPrefix(prefix, RlpPrefix.ShortList, payloadLength);
+            Span<byte> prefix = Reserve(prefixLength);
+            if (prefixLength == 1)
+            {
+                prefix[0] = (byte)(RlpPrefix.ShortList + payloadLength);
+            }
+            else
+            {
+                WriteLongPrefix(prefix, RlpPrefix.ShortList, payloadLength);
+            }
         }
 
         _length += prefixLength;
-        int payloadStart = _length;
-        int longPrefixBytes = _longPrefixBytes;
-        action(ref this, ctx);
+        return new RlpSequence(Length + payloadLength, depth);
+    }
 
-        if (_length - payloadStart + _longPrefixBytes - longPrefixBytes != payloadLength)
+    /// <summary>Ends a sequence that <see cref="StartSequence"/> started.</summary>
+    /// <exception cref="InvalidOperationException">The payload has another length than declared, or a nested sequence did not end.</exception>
+    public void EndSequence(RlpSequence sequence)
+    {
+        if (Length != sequence.End) throw new InvalidOperationException("RLP payload has another length than the sequence declares");
+        if (_openSequences != sequence.Depth) throw new InvalidOperationException("RLP write action did not end all sequences");
+        _openSequences = sequence.Depth - 1;
+    }
+
+    /// <summary>Writes the prefix of a byte string of <paramref name="length"/> bytes, at least 2.</summary>
+    /// <returns>The span for the bytes, which the caller must fill; empty for a <see cref="LengthWriter"/>.</returns>
+    internal Span<byte> WriteByteStringPrefix(int length)
+    {
+        int prefixLength = length > RlpPrefix.MaxShortLength ? 1 + LengthOfLength(length) : 1;
+        Span<byte> destination = default;
+        if (_isContent)
         {
-            throw new InvalidOperationException("RLP write action wrote another length than the sequence declares");
+            destination = Reserve(prefixLength + length);
+            if (prefixLength == 1)
+            {
+                destination[0] = (byte)(RlpPrefix.ShortString + length);
+            }
+            else
+            {
+                WriteLongPrefix(destination, RlpPrefix.ShortString, length);
+            }
+
+            destination = destination[prefixLength..];
         }
 
-        if (_openSequences != openSequences) throw new InvalidOperationException("RLP write action did not end all sequences");
-        _openSequences = openSequences - 1;
+        _length += prefixLength + length;
+        return destination;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -353,6 +375,12 @@ public ref struct RlpWriter
         _sequences = larger;
     }
 
+    private sealed class Buffers
+    {
+        public byte[] Bytes = new byte[MinBufferLength];
+        public int[] Sequences = new int[MinBufferLength];
+    }
+
     private static int LengthOfLength(int length) => sizeof(int) - BitOperations.LeadingZeroCount((uint)length) / 8;
 
     /// <returns>The number of bytes written.</returns>
@@ -372,4 +400,18 @@ public ref struct RlpWriter
             value >>= 8;
         }
     }
+}
+
+/// <summary>A sequence that <see cref="RlpWriter.StartSequence"/> started.</summary>
+public readonly struct RlpSequence
+{
+    internal RlpSequence(int end, int depth)
+    {
+        End = end;
+        Depth = depth;
+    }
+
+    internal int End { get; }
+
+    internal int Depth { get; }
 }

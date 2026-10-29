@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Numerics;
 
 namespace Nethermind.Serialization.FluentRlp;
 
@@ -44,6 +45,54 @@ public static class Rlp
         output.Advance(length);
         return length;
     }
+
+    /// <summary>Encodes <paramref name="value"/> with a converter that knows its length, in one pass and without a buffer copy.</summary>
+    /// <returns>A new array of the exact encoded length.</returns>
+    /// <exception cref="InvalidOperationException">The converter writes another length than it computes.</exception>
+    public static byte[] Write<TConverter, T>(T value) where TConverter : IRlpLengthConverter<T>
+    {
+        byte[] result = GC.AllocateUninitializedArray<byte>(TConverter.GetLength(value));
+        WriteExact<TConverter, T>(result, value);
+        return result;
+    }
+
+    /// <inheritdoc cref="Write{TConverter, T}(T)"/>
+    /// <returns>The number of bytes written to <paramref name="output"/>.</returns>
+    public static int Write<TConverter, T>(IBufferWriter<byte> output, T value) where TConverter : IRlpLengthConverter<T>
+    {
+        int length = TConverter.GetLength(value);
+        WriteExact<TConverter, T>(output.GetSpan(length)[..length], value);
+        output.Advance(length);
+        return length;
+    }
+
+    // The converter must fill all of the destination, so that no byte of an uninitialized array is left.
+    private static void WriteExact<TConverter, T>(Span<byte> destination, T value) where TConverter : IRlpLengthConverter<T>
+    {
+        RlpWriter writer = RlpWriter.ContentWriter(destination);
+        TConverter.Write(ref writer, value);
+        if (writer.Length != destination.Length) throw new InvalidOperationException("RLP converter wrote another length than it computed");
+    }
+
+    /// <summary>Gets the encoded length of a byte string.</summary>
+    public static int LengthOf(ReadOnlySpan<byte> value)
+        => value.Length == 1 && value[0] < RlpPrefix.ShortString ? 1 : LengthOfString(value.Length);
+
+    /// <summary>Gets the encoded length of a non-negative integer.</summary>
+    public static unsafe int LengthOf<T>(T value) where T : unmanaged, IBinaryInteger<T>
+    {
+        int byteCount = (int.CreateTruncating(T.Log2(value)) + 8) / 8;
+        return value < T.CreateTruncating(RlpPrefix.ShortString) ? 1 : LengthOfString(byteCount);
+    }
+
+    /// <summary>Gets the encoded length of a byte string of <paramref name="length"/> bytes, other than a single byte below <c>0x80</c>.</summary>
+    public static int LengthOfString(int length) => LengthOfPrefixed(length);
+
+    /// <summary>Gets the encoded length of a sequence whose payload has <paramref name="payloadLength"/> bytes.</summary>
+    public static int LengthOfSequence(int payloadLength) => LengthOfPrefixed(payloadLength);
+
+    private static int LengthOfPrefixed(int length)
+        => length + (length <= RlpPrefix.MaxShortLength ? 1 : length < 0x100 ? 2 : length < 0x10000 ? 3 : length < 0x1000000 ? 4 : 5);
 
     /// <summary>Decodes <paramref name="source"/> with <paramref name="func"/>, which must consume all of it.</summary>
     /// <exception cref="RlpReaderException">The input is malformed or has trailing bytes.</exception>

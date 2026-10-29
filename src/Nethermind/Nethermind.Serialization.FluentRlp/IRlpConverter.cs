@@ -17,3 +17,15 @@ public interface IRlpConverter<T> where T : allows ref struct
     /// <summary>Writes <paramref name="value"/> to <paramref name="writer"/>.</summary>
     public static abstract void Write(ref RlpWriter writer, T value);
 }
+
+/// <summary>An <see cref="IRlpConverter{T}"/> that also computes the encoded length of a value without writing it.</summary>
+/// <remarks>
+/// <see cref="Rlp.Write{TConverter, T}(T)"/> uses the length to allocate the exact output and write it in one pass,
+/// without a buffer copy. <see cref="RlpSerializableAttribute"/> generates it for a record whose field lengths can be
+/// computed.
+/// </remarks>
+public interface IRlpLengthConverter<T> : IRlpConverter<T> where T : allows ref struct
+{
+    /// <summary>Gets the number of bytes that <see cref="IRlpConverter{T}.Write"/> writes for <paramref name="value"/>.</summary>
+    public static abstract int GetLength(T value);
+}

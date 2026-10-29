@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp.Instances;
 using CoreAddress = Nethermind.Core.Address;
 using CurrentRlp = Nethermind.Serialization.Rlp;
-
-[module: SkipLocalsInit]
 
 // The namespace deliberately avoids nesting under `Nethermind.Serialization.Rlp`, which would shadow
 // FluentRlp's `RlpReader`/`RlpWriter` with the identically-named types in that namespace.
@@ -22,31 +20,13 @@ public readonly record struct StorageKey(UInt256 Value);
 
 public static class AccessListRlpConverters
 {
-    private const int StorageKeyLength = 32;
-
-    public static CoreAddress ReadAddress(this ref RlpReader reader)
-    {
-        ReadOnlySpan<byte> bytes = reader.ReadBytes();
-        if (bytes.Length != CoreAddress.Size) throw new RlpReaderException("RLP address must have 20 bytes");
-        return new CoreAddress(bytes);
-    }
+    public static CoreAddress ReadAddress(this ref RlpReader reader) => new(reader.ReadBytes(CoreAddress.Size));
 
     public static void Write(this ref RlpWriter writer, CoreAddress value) => writer.Write(value.Bytes);
 
-    public static StorageKey ReadStorageKey(this ref RlpReader reader)
-    {
-        ReadOnlySpan<byte> bytes = reader.ReadBytes();
-        if (bytes.Length != StorageKeyLength) throw new RlpReaderException("RLP storage key must have 32 bytes");
-        return new StorageKey(new UInt256(bytes, isBigEndian: true));
-    }
+    public static StorageKey ReadStorageKey(this ref RlpReader reader) => new(UInt256RlpConverter.ReadFixed(ref reader));
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Write(this ref RlpWriter writer, StorageKey value)
-    {
-        Span<byte> bytes = stackalloc byte[StorageKeyLength];
-        value.Value.ToBigEndian(bytes);
-        writer.Write(bytes);
-    }
+    public static void Write(this ref RlpWriter writer, StorageKey value) => UInt256RlpConverter.WriteFixed(ref writer, value.Value);
 }
 
 [RlpSerializable]
@@ -96,8 +76,7 @@ public class CurrentFluentBenchmark
 
     [Benchmark]
     [BenchmarkCategory("Encode")]
-    public byte[] EncodeFluent()
-        => Rlp.Write(_fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
+    public byte[] EncodeFluent() => Rlp.Write<AccessListRlpConverter, AccessList>(_fluent);
 
     [Benchmark(Baseline = true)]
     [BenchmarkCategory("EncodeToBuffer")]
@@ -115,7 +94,7 @@ public class CurrentFluentBenchmark
     public int EncodeToBufferFluent()
     {
         _bufferWriter.ResetWrittenCount();
-        return Rlp.Write(_bufferWriter, _fluent, static (ref RlpWriter writer, AccessList value) => writer.Write(value));
+        return Rlp.Write<AccessListRlpConverter, AccessList>(_bufferWriter, _fluent);
     }
 
     [Benchmark(Baseline = true)]

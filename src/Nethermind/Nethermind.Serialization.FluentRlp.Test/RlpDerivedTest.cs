@@ -24,6 +24,9 @@ public record PlayerWithFriends(int Id, string Username, List<string> Friends);
 public record PlayerWithScores(int Id, string Username, Dictionary<string, int> Scores);
 
 [RlpSerializable]
+public record Codes(int Id, int[] Values);
+
+[RlpSerializable]
 public record PlayerWithCodes(int Id, string Username, int[] Codes);
 
 [RlpSerializable]
@@ -218,6 +221,36 @@ public class RlpDerivedTest
             Assert.That(decoded.Keys.Select(static k => k.Bytes), Is.EqualTo(keys));
             Assert.That(() => Rlp.Write(entry with { Address = new byte[19] }, static (ref RlpWriter w, FixedEntry value) => w.Write(value)),
                 Throws.InvalidOperationException);
+        }
+    }
+
+    // A converter that knows its length writes the same bytes in one pass to an exact array.
+    [Test]
+    public void LengthConvertersWriteTheSameBytes()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDirect<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[20], [new FixedKey(new byte[32]), new FixedKey(Enumerable.Repeat((byte)7, 32).ToArray())]));
+            AssertDirect<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[20], []));
+            AssertDirect<IntegersRlpConverter, Integers>(new Integers(0, int.MaxValue, 0x80, Int128.MaxValue));
+            AssertDirect<UnsignedIntegersRlpConverter, UnsignedIntegers>(new UnsignedIntegers(0, 0x7f, 0x80, ulong.MaxValue, UInt128.MaxValue, UInt256.MaxValue));
+            AssertDirect<CodesRlpConverter, Codes>(new Codes(1, Enumerable.Range(0, 100).ToArray()));
+            AssertDirect<RawDataRlpConverter, RawData>(new RawData(5, new byte[300]));
+            AssertDirect<RawDataRlpConverter, RawData>(new RawData(5, [0x7f]));
+        }
+    }
+
+    [Test]
+    public void LengthConverterWithWrongFixedLength()
+        => Assert.That(static () => Rlp.Write<FixedEntryRlpConverter, FixedEntry>(new FixedEntry(new byte[19], [])), Throws.InvalidOperationException);
+
+    private static void AssertDirect<TConverter, T>(T value) where TConverter : IRlpLengthConverter<T>
+    {
+        byte[] expected = Rlp.Write(value, static (ref RlpWriter w, T value) => TConverter.Write(ref w, value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Rlp.Write<TConverter, T>(value), Is.EqualTo(expected), typeof(T).Name);
+            Assert.That(TConverter.GetLength(value), Is.EqualTo(expected.Length), typeof(T).Name);
         }
     }
 

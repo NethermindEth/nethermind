@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Serialization.FluentRlp.Instances;
 
@@ -236,25 +237,33 @@ public class RlpWriterTest
             writer.Write("dog");
         }, Throws.ArgumentException);
 
-    // Payload lengths around the short and long prefix forms.
+    // Payload lengths around the short and long prefix forms, in every writer mode.
     [Test]
     public void WriteSequenceWithDeclaredLength([Values(0, 2, 60, 300)] int stringLength)
     {
         byte[] value = new byte[stringLength];
-        int payloadLength = stringLength == 0 ? 0 : Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.Write(value)).Length;
-
         byte[] expected = Rlp.Write(value, static (ref RlpWriter w, byte[] value) => w.WriteSequence(value, WritePayload));
-        byte[] actual = Rlp.Write((value, payloadLength), static (ref RlpWriter w, (byte[] Value, int PayloadLength) ctx) =>
-            w.WriteSequence(ctx.PayloadLength, ctx.Value, WritePayload));
 
+        byte[] buffered = Rlp.Write(value, WriteDeclared);
         RlpWriter lengthWriter = RlpWriter.LengthWriter();
-        lengthWriter.WriteSequence(payloadLength, 0, static (ref RlpWriter _, int _) => throw new InvalidOperationException("A length writer must not run the action"));
+        WriteDeclared(ref lengthWriter, value);
+        byte[] direct = new byte[expected.Length];
+        RlpWriter contentWriter = RlpWriter.ContentWriter(direct);
+        WriteDeclared(ref contentWriter, value);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(buffered, Is.EqualTo(expected));
+            Assert.That(direct, Is.EqualTo(expected));
             Assert.That(lengthWriter.Length, Is.EqualTo(expected.Length));
         }
+    }
+
+    private static void WriteDeclared(ref RlpWriter w, byte[] value)
+    {
+        RlpSequence sequence = w.StartSequence(value.Length == 0 ? 0 : Rlp.LengthOf(value));
+        WritePayload(ref w, value);
+        w.EndSequence(sequence);
     }
 
     private static void WritePayload(ref RlpWriter w, byte[] value)
@@ -265,7 +274,26 @@ public class RlpWriterTest
     [Test]
     public void WriteSequenceWithWrongDeclaredLength()
         => Assert.That(static () => Rlp.Write(static (ref RlpWriter w) =>
-            w.WriteSequence(5, 0, static (ref RlpWriter w, int _) => w.Write("dog"))), Throws.InvalidOperationException);
+        {
+            RlpSequence sequence = w.StartSequence(5);
+            w.Write("dog");
+            w.EndSequence(sequence);
+        }), Throws.InvalidOperationException);
+
+    [Test]
+    public void LengthHelpersMatchWrittenLength([Values(0UL, 1UL, 0x7fUL, 0x80UL, 0xffUL, 0x100UL, ulong.MaxValue)] ulong value)
+    {
+        byte[] integer = Rlp.Write(value, static (ref RlpWriter w, ulong value) => w.Write(value));
+        UInt256 big = new(value, value, 0, 0);
+        byte[] uint256 = Rlp.Write(big, static (ref RlpWriter w, UInt256 value) => w.Write(value));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Rlp.LengthOf(value), Is.EqualTo(integer.Length));
+            Assert.That(Instances.UInt256RlpConverter.GetLength(big), Is.EqualTo(uint256.Length));
+            Assert.That(Instances.UInt256RlpConverter.GetLength((UInt256)value), Is.EqualTo(Rlp.Write((UInt256)value, static (ref RlpWriter w, UInt256 v) => w.Write(v)).Length));
+        }
+    }
 
     // A write action that swallows the exception of a nested sequence leaves that sequence without a prefix.
     [Test]
