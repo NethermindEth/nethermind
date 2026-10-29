@@ -57,6 +57,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
         private readonly bool _executionUsesAccessLists = blocksConfig.ParallelExecution || blocksConfig.ParallelExecutionBatchRead;
+        private readonly BlockAccessListServingWindow _balServingWindow = balServingWindow;
 
         /// <inheritdoc/>
         /// <remarks>
@@ -74,11 +75,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// <inheritdoc/>
         /// <remarks>
         /// A block that executes also takes its list when parallel execution or read warming uses it, as a block from
-        /// <c>engine_newPayload</c> does. Such a block executes without the list when peers do not serve it.
+        /// <c>engine_newPayload</c> does. Such a block executes without the list when peers do not serve it. Below the serving
+        /// window of the best known header, peers may have pruned the list, so the block does not wait for retries that fail.
         /// </remarks>
         protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
             base.ShouldDownloadAccessList(header, shouldProcess)
-            || (shouldProcess && _executionUsesAccessLists)
+            || (shouldProcess && _executionUsesAccessLists && _balServingWindow.Contains(header.Number, ulong.MaxValue))
             || finalizedBalPolicy?.CanReconstruct(header) == true;
 
         protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>

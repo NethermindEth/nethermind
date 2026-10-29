@@ -264,14 +264,21 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
-    public enum AccessListSource { Served, Withheld, NoEth71Peer }
+    public enum AccessListSource { Served, Withheld, NoEth71Peer, OutsideServingWindow }
 
     [Test]
     public async Task Full_sync_downloads_access_lists_of_executed_blocks_when_execution_uses_them(
         [Values] bool parallelExecution, [Values] bool batchRead, [Values] AccessListSource source)
     {
+        // A far beacon head puts the block below the serving window, where peers may have pruned its list.
+        IBlockTree farBeaconBlockTree = Substitute.For<IBlockTree>();
+        farBeaconBlockTree.BestKnownBeaconNumber.Returns(ulong.MaxValue);
         await using CatchUp catchUp = CreateCatchUp(1, reconstruct: false,
-            new BlocksConfig { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead });
+            new BlocksConfig { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead },
+            source == AccessListSource.OutsideServingWindow
+                ? builder => builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider, ITimestamper, IBlocksConfig>(
+                    (historyPruner, specProvider, timestamper, blocksConfig) => new(farBeaconBlockTree, historyPruner, specProvider, timestamper, blocksConfig))
+                : null);
         if (source == AccessListSource.NoEth71Peer) catchUp.Peer.SyncPeer.ProtocolVersion.Returns(EthVersions.Eth70);
         bool served = source == AccessListSource.Served;
         Block block = catchUp.Blocks[0];

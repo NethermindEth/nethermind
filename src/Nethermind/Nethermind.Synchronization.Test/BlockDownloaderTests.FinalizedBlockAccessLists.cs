@@ -153,15 +153,19 @@ public partial class BlockDownloaderTests
     }
 
     /// <summary>Creates a node whose finalized beacon chain holds <paramref name="blockCount"/> blocks awaiting catch-up.</summary>
-    private CatchUp CreateCatchUp(int blockCount, bool reconstruct = true, IBlocksConfig? blocksConfig = null)
+    private CatchUp CreateCatchUp(int blockCount, bool reconstruct = true, IBlocksConfig? blocksConfig = null, Action<ContainerBuilder>? configurer = null)
     {
         IForwardHeaderProvider headers = Substitute.For<IForwardHeaderProvider>();
         IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
         byte[] bal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
-        IContainer node = CreateMergeNode(builder => builder
-            .AddSingleton<IForwardHeaderProvider>(headers)
-            .AddSingleton<IBeaconSyncStrategy>(beacon)
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance)),
+        IContainer node = CreateMergeNode(builder =>
+            {
+                builder
+                    .AddSingleton<IForwardHeaderProvider>(headers)
+                    .AddSingleton<IBeaconSyncStrategy>(beacon)
+                    .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance));
+                configurer?.Invoke(builder);
+            },
             new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = reconstruct }, blocksConfig ?? new BlocksConfig());
         Context ctx = node.Resolve<Context>();
         TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
