@@ -220,7 +220,7 @@ internal static class TransactionLookupWorkload
         }
     }
 
-    internal static async Task QualifyReceiptEncodingAsync(JsonObject manifest, Func<string, JsonArray, Task<JsonNode?>> rpc, string reportPath, CancellationToken cancellationToken)
+    internal static async Task QualifyReceiptEncodingAsync(JsonObject manifest, Func<string, JsonArray, Task<JsonNode?>> rpc, string reportPath, CancellationToken cancellationToken, bool requireHashPrefixed = false)
     {
         var records = new JsonArray();
         foreach (var entry in manifest["entries"]!.AsArray())
@@ -246,12 +246,84 @@ internal static class TransactionLookupWorkload
                 126 => "compact-hash-prefixed",
                 _ => "noncompact-or-unknown"
             };
+            if (requireHashPrefixed) ValidateHashPrefix(bytes, entry!.AsObject());
             records.Add((JsonNode)new JsonObject { ["blockHash"] = hash, ["blockNumber"] = entry["blockNumber"]!.DeepClone(), ["keyLayout"] = layout,
                 ["encoding"] = encoding, ["byteLength"] = bytes.Length, ["prefixHex"] = Convert.ToHexStringLower(bytes.AsSpan(0, Math.Min(96, bytes.Length))),
                 ["valueSha256"] = Convert.ToHexStringLower(SHA256.HashData(bytes)) });
         }
         await File.WriteAllTextAsync(reportPath, new JsonObject { ["scope"] = "Stored receipt marker inspection; not proof of an executed recovery path",
             ["headNumber"] = manifest["headNumber"]!.DeepClone(), ["headHash"] = manifest["headHash"]!.DeepClone(), ["records"] = records }.ToJsonString(), cancellationToken);
+    }
+
+    private static void ValidateHashPrefix(byte[] bytes, JsonObject entry)
+    {
+        if (bytes.Length < 2 || bytes[0] != 126) throw new IOException("Stationary fixture requires compact hash-prefixed receipts");
+        int offset = 1;
+        int length = ReadRlpLength(bytes, ref offset, list: false);
+        long count = Quantity(entry["transactionIndex"]);
+        if (length <= 0 || length % 32 != 0 || length / 32 != entry["blockTransactionCount"]!.GetValue<int>() || count < 0 || count >= length / 32)
+            throw new IOException("Stored transaction hash count differs from canonical block");
+        if (!bytes.AsSpan(offset + checked((int)count * 32), 32).SequenceEqual(Convert.FromHexString(entry["txHash"]!.GetValue<string>()[2..])))
+            throw new IOException("Stored transaction hash differs from canonical lookup target");
+        offset += length;
+        int receiptLength = ReadRlpLength(bytes, ref offset, list: true);
+        if (offset + receiptLength != bytes.Length) throw new IOException("Malformed compact receipt list framing");
+    }
+
+    private static int ReadRlpLength(byte[] bytes, ref int offset, bool list)
+    {
+        if (offset >= bytes.Length) throw new IOException("Truncated receipt prefix");
+        int marker = bytes[offset++];
+        int shortBase = list ? 192 : 128;
+        int longBase = shortBase + 55;
+        if (marker < shortBase || !list && marker >= 192) throw new IOException("Invalid receipt RLP prefix type");
+        long length = marker - shortBase;
+        if (marker > longBase)
+        {
+            int lengthBytes = marker - longBase;
+            if (lengthBytes > 4 || offset + lengthBytes > bytes.Length || bytes[offset] == 0) throw new IOException("Invalid receipt RLP length");
+            length = 0;
+            for (int i = 0; i < lengthBytes; i++) length = length * 256 + bytes[offset++];
+            if (length < 56) throw new IOException("Noncanonical receipt RLP length");
+        }
+        if (length > bytes.Length - offset) throw new IOException("Truncated receipt RLP value");
+        return (int)length;
+    }
+
+    internal static void CompareReceiptEncoding(JsonObject manifest, JsonObject expected, JsonObject actual)
+    {
+        foreach (string field in new[] { "headNumber", "headHash" })
+            if (manifest[field] is null || !JsonNode.DeepEquals(manifest[field], expected[field]) || !JsonNode.DeepEquals(manifest[field], actual[field]))
+                throw new IOException("Receipt encoding snapshot head mismatch");
+        JsonArray entries = manifest["entries"] as JsonArray ?? throw new IOException("Missing lookup entries");
+        Dictionary<string, JsonObject> Index(JsonObject report)
+        {
+            if (report["records"] is not JsonArray records || records.Count != entries.Count || records.Count == 0) throw new IOException("Missing/extra receipt encoding records");
+            Dictionary<string, JsonObject> indexed = new(StringComparer.Ordinal);
+            foreach (JsonNode? node in records)
+            {
+                JsonObject record = node as JsonObject ?? throw new IOException("Missing receipt record");
+                string key = record["blockHash"]?.GetValue<string>() ?? throw new IOException("Missing receipt block hash");
+                if (!indexed.TryAdd(key, record)) throw new IOException("Duplicate receipt block");
+                foreach (string field in new[] { "blockNumber", "keyLayout", "encoding", "byteLength", "prefixHex", "valueSha256" })
+                    if (record[field] is null) throw new IOException("Missing receipt encoding field: " + field);
+                if (record["encoding"]!.GetValue<string>() != "compact-hash-prefixed" || record["keyLayout"]!.GetValue<string>() is not ("number-prefixed" or "legacy-hash") ||
+                    record["valueSha256"]!.GetValue<string>() is not { Length: 64 } digest) throw new IOException("Invalid stationary receipt encoding record");
+                foreach (char digit in digest)
+                    if (!char.IsAsciiHexDigit(digit)) throw new IOException("Invalid stationary receipt value digest");
+            }
+            return indexed;
+        }
+        Dictionary<string, JsonObject> oracle = Index(expected);
+        Dictionary<string, JsonObject> observed = Index(actual);
+        HashSet<string> blocks = new(StringComparer.Ordinal);
+        foreach (JsonNode? entry in entries)
+        {
+            string hash = entry?["blockHash"]?.GetValue<string>() ?? throw new IOException("Missing target block");
+            if (!blocks.Add(hash) || !oracle.TryGetValue(hash, out JsonObject? baseline) || !observed.TryGetValue(hash, out JsonObject? record) ||
+                !JsonNode.DeepEquals(entry!["blockNumber"], record["blockNumber"]) || !JsonNode.DeepEquals(baseline, record))
+                throw new IOException("Receipt bytes/key layout differ from preparation oracle");
+        }
     }
 
     internal static string Hash(string path) => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));

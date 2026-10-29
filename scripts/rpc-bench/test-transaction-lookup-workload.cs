@@ -97,6 +97,53 @@ foreach (var (primary, legacy, layout, encoding) in new (string?, string?, strin
         RpcScriptTests.Assert(record["keyLayout"]!.GetValue<string>() == layout && record["encoding"]!.GetValue<string>() == encoding, "encoding classification differs");
         RpcScriptTests.Assert(probes[0] == "0x00000000000026d0" + manifest["entries"]![0]!["blockHash"]!.GetValue<string>()[2..] && probes.Count == (layout == "legacy-hash" ? 2 : 1), "raw key or fallback differs");
     });
+var strictManifest = (JsonObject)manifest.DeepClone();
+strictManifest["entries"] = new JsonArray(manifest["entries"]![0]!.DeepClone(), manifest["entries"]![1]!.DeepClone());
+string RawReceipt(JsonNode entry) => "0x7eb860" + Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10)[2..] +
+    Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10 + 1)[2..] + Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10 + 2)[2..] + "c100";
+JsonObject CaptureStrict(string? raw = null, bool changedValue = false)
+{
+    var path = Path.Combine(tests.DirectoryPath, "strict-encoding.json");
+    Task<JsonNode?> Probe(string method, JsonArray parameters)
+    {
+        string key = parameters[1]!.GetValue<string>();
+        JsonNode entry = strictManifest["entries"]!.AsArray().First(entry => key.EndsWith(entry!["blockHash"]!.GetValue<string>()[2..], StringComparison.Ordinal))!;
+        return Task.FromResult<JsonNode?>(JsonValue.Create(raw ?? (changedValue ? RawReceipt(entry)[..^2] + "01" : RawReceipt(entry))));
+    }
+    TransactionLookupWorkload.QualifyReceiptEncodingAsync(strictManifest, Probe, path, CancellationToken.None, requireHashPrefixed: true).GetAwaiter().GetResult();
+    return JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+}
+var oracle = CaptureStrict();
+tests.Case("stationary oracle compares all value bytes by block identity regardless record order", () =>
+{
+    var actual = CaptureStrict();
+    var records = actual["records"]!.AsArray();
+    JsonNode first = records[0]!.DeepClone(); records.RemoveAt(0); records.Add(first);
+    TransactionLookupWorkload.CompareReceiptEncoding(strictManifest, oracle, actual);
+});
+foreach (string field in new[] { "headNumber", "headHash", "blockNumber", "blockHash", "keyLayout", "encoding", "byteLength", "prefixHex", "valueSha256", "missing", "extra", "duplicate", "missing-field" })
+    tests.Case("stationary oracle rejects " + field, () =>
+    {
+        var actual = CaptureStrict();
+        JsonArray records = actual["records"]!.AsArray();
+        if (field.StartsWith("head", StringComparison.Ordinal)) actual[field] = "wrong";
+        else if (field == "missing") records.RemoveAt(0);
+        else if (field == "extra") records.Add(records[0]!.DeepClone());
+        else if (field == "duplicate") records[1] = records[0]!.DeepClone();
+        else if (field == "missing-field") records[0]!.AsObject().Remove("valueSha256");
+        else records[0]![field] = field == "byteLength" ? JsonValue.Create(1) : JsonValue.Create(field == "valueSha256" ? new string('a', 64) : "wrong");
+        Reject(() => TransactionLookupWorkload.CompareReceiptEncoding(strictManifest, oracle, actual));
+    });
+foreach (string raw in new[] { "0x", "0x7fc0", "0x7e80c0", "0x7ec0", "0x7eb86000c0", "0x7ea0" + new string('0', 64) + "c0", "0x7ea1" + new string('0', 66) + "c0", "0x7eb90060" + new string('0', 192) + "c0", "0x7eb860" + new string('0', 192) + "c0" })
+    tests.Case("stationary prefix rejects missing/nohash/malformed/count/target " + raw[..Math.Min(20, raw.Length)], () => Reject(() => CaptureStrict(raw)));
+tests.Case("stationary oracle rejects changed value with identical encoding and prefix", () =>
+{
+    var actual = CaptureStrict(changedValue: true);
+    foreach (string field in new[] { "encoding", "byteLength", "prefixHex" })
+        RpcScriptTests.Assert(JsonNode.DeepEquals(oracle["records"]![0]![field], actual["records"]![0]![field]), "same-format fixture changed " + field);
+    RpcScriptTests.Assert(!JsonNode.DeepEquals(oracle["records"]![0]!["valueSha256"], actual["records"]![0]!["valueSha256"]), "full-value digest ignored suffix");
+    Reject(() => TransactionLookupWorkload.CompareReceiptEncoding(strictManifest, oracle, actual));
+});
 var manifestHash = TransactionLookupWorkload.Hash(manifestPath);
 var report = Path.Combine(tests.DirectoryPath, "validation.json");
 void Validate() => TransactionLookupWorkload.ValidateAsync(manifest, Rpc, report, manifestHash).GetAwaiter().GetResult();

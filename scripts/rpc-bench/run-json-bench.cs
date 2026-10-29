@@ -184,7 +184,7 @@ try
     if (lookup) await ValidateLookups("before");
     if (lookup && Get("LOOKUP_PREPARE_ONLY") == "true")
     {
-        await TransactionLookupWorkload.QualifyReceiptEncodingAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), Path.Combine(output, "receipt-encoding.json"), cancellation.Token);
+        await TransactionLookupWorkload.QualifyReceiptEncodingAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, url, method, parameters, cancellation.Token), Path.Combine(output, "receipt-encoding.json"), cancellation.Token, requireHashPrefixed: true);
         return 0;
     }
     await using (var sampler = new ResourceSamplerSession(Get("RESOURCE_SAMPLER_CONTAINER"), Get("RESOURCE_SAMPLER_OUT")))
@@ -272,7 +272,16 @@ try
     async Task ValidateLookups(string phase)
     {
         foreach (var (endpoint, name) in new[] { (url, "primary"), (reference, "reference") }.Where(pair => pair.Item1.Length > 0))
+        {
             await TransactionLookupWorkload.ValidateAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, endpoint, method, parameters, cancellation.Token), Path.Combine(output, $"transaction-lookup-validation-{phase}-{name}.json"), lookupHash, cancellation.Token);
+            if (Get("LOOKUP_PREPARE_ONLY") == "true") continue;
+            var encodingPath = Path.Combine(output, $"receipt-encoding-{phase}-{name}.json");
+            await TransactionLookupWorkload.QualifyReceiptEncodingAsync(lookupManifest!, (method, parameters) => TransactionLookupWorkload.RpcAsync(lookupHttp, endpoint, method, parameters, cancellation.Token), encodingPath, cancellation.Token, requireHashPrefixed: true);
+            var oraclePath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(lookupPath))!, "preparation", "receipt-encoding.json");
+            var oracle = JsonNode.Parse(await File.ReadAllTextAsync(oraclePath, cancellation.Token)) as JsonObject ?? throw new IOException("Missing receipt preparation oracle");
+            var observed = JsonNode.Parse(await File.ReadAllTextAsync(encodingPath, cancellation.Token)) as JsonObject ?? throw new IOException("Missing receipt encoding capture");
+            TransactionLookupWorkload.CompareReceiptEncoding(lookupManifest!, oracle, observed);
+        }
     }
     async Task<string> Required(string executable, IEnumerable<string> arguments)
     {

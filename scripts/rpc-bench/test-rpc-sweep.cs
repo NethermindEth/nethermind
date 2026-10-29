@@ -66,6 +66,26 @@ tests.Case("lookup protocol consumes opt-in tool config without workflow edits",
         throw new InvalidOperationException("invalid lookup protocol accepted: " + key);
     }
 });
+tests.Case("stationary three-arm lookup schedule balances every position with paired reversals", () =>
+{
+    var values = EnvironmentValues(); values["JB_BENCHMARK_CONFIG"] = "transaction-lookups-snapshot"; values["RPS_LIST"] = "100";
+    values["LOOKUP_PROTOCOL"] = "true"; values["CLIENTS"] = "nethermind@repo:A nethermind@repo:B nethermind@repo:C";
+    var config = new SweepConfiguration(key => values.GetValueOrDefault(key));
+    string Order(int round) => string.Concat(config.RoundArms(round).Select(arm => arm.Image[^1]));
+    string[] orders = Enumerable.Range(0, 6).Select(Order).ToArray();
+    RpcScriptTests.Assert(orders.SequenceEqual(new[] { "ABC", "CBA", "BCA", "ACB", "CAB", "BAC" }) && Order(6) == "ABC", "balanced cycle differs");
+    foreach (char arm in "ABC")
+        for (int position = 0; position < 3; position++) RpcScriptTests.Assert(orders.Count(order => order[position] == arm) == 2, "position confounded");
+    for (int round = 0; round < 6; round += 2) RpcScriptTests.Assert(orders[round].Reverse().SequenceEqual(orders[round + 1]), "pair is not reversed");
+});
+foreach (var (lookup, clients) in new[] { (false, "nethermind@repo:A nethermind@repo:B nethermind@repo:C"), (true, "nethermind@repo:A nethermind@repo:B"), (true, "nethermind@repo:A"), (true, "nethermind@repo:A nethermind@repo:B nethermind@repo:C nethermind@repo:D") })
+    tests.Case("other sweep schedules retain alternating reversal " + lookup + "/" + clients, () =>
+    {
+        var values = EnvironmentValues(); values["CLIENTS"] = clients;
+        if (lookup) { values["LOOKUP_PROTOCOL"] = "true"; values["JB_BENCHMARK_CONFIG"] = "transaction-lookups-snapshot"; values["RPS_LIST"] = "100"; }
+        var config = new SweepConfiguration(key => values.GetValueOrDefault(key));
+        for (int round = 0; round < 6; round++) RpcScriptTests.Assert(config.RoundArms(round).SequenceEqual(round % 2 == 0 ? config.Arms : config.Arms.Reverse()), "legacy schedule changed");
+    });
 tests.Case("explicit empty rates and tracer survive defaults", () =>
 {
     var values = EnvironmentValues(); values["CORPUS_TRACER"] = "";
@@ -82,6 +102,58 @@ foreach (var (client, contents, expected) in new[] { ("nethermind", "Nethermind 
         var log = tests.Write("private.log", contents);
         RpcScriptTests.Assert(SweepRunner.ScanNodeLog(log, client, "arm", true) == expected && !File.Exists(log), "health gate or private cleanup changed");
     });
+const string migrationComplete = "Transaction hashes added to stored receipts of 8193 blocks, 123456 bytes added.";
+foreach (var (logs, expected) in new[] { ("", (string?)null), ("Adding transaction hashes to stored receipts, blocks 1 to 8193.", null), ("Receipt hashes 8193 / 8193", null), ("Transaction hashes added to stored receipts of x blocks, 1 bytes added.", null), ("Transaction hashes added to stored receipts of 1 blocks, 1 bytes added", null), ("2026-10-29T16:00:00Z INFO " + migrationComplete, "2026-10-29T16:00:00Z INFO " + migrationComplete), ("\u001b[32m" + migrationComplete + "\u001b[0m", "\u001b[32m" + migrationComplete + "\u001b[0m"), ("Transaction hashes added to stored receipts of 0 blocks, 0 bytes added.", "Transaction hashes added to stored receipts of 0 blocks, 0 bytes added.") })
+    tests.Case("receipt migration completion classifier " + logs, () => RpcScriptTests.Assert(SweepRunner.ReceiptMigrationCompletion(logs) == expected, "accepted a noncompletion marker"));
+foreach (string signal in new[] { "Exception", "Invalid Block", "Invalid Blocks", "invalid_block", "Unhandled", "Fatal", "Excep\u001b[31mtion\u001b[0m" })
+    tests.Case("receipt migration readiness rejects unhealthy logs " + signal, () =>
+    {
+        try { SweepRunner.ReceiptMigrationCompletion(migrationComplete + "\n" + signal); }
+        catch (IOException) { return; }
+        throw new InvalidOperationException("unhealthy completion accepted");
+    });
+foreach (string signal in new[] { "ERROR", "error:Unknownerror-1" })
+    tests.Case("receipt migration completion with error log is readiness only, not clean health: " + signal, () =>
+        RpcScriptTests.Assert(SweepRunner.ReceiptMigrationCompletion(signal + "\n" + migrationComplete) == migrationComplete, "nonfatal fallback misclassified as absent migration completion"));
+if (!OperatingSystem.IsWindows())
+{
+    string migrationBin = Path.Combine(tests.DirectoryPath, "migration-bin"); Directory.CreateDirectory(migrationBin);
+    string migrationDocker = Path.Combine(migrationBin, "docker");
+    string? originalPath = Environment.GetEnvironmentVariable("PATH");
+    try
+    {
+        Environment.SetEnvironmentVariable("PATH", migrationBin + Path.PathSeparator + originalPath);
+        foreach (var (scenario, logs, code, stderr) in new[] { ("success", migrationComplete, 0, false), ("stderr-success", migrationComplete, 0, true), ("fallback-success", "error:Unknownerror-1\n" + migrationComplete, 0, true), ("timeout", "Receipt hashes 8193 / 8193", 0, false), ("docker-error", migrationComplete, 1, false), ("unhealthy", migrationComplete + "\nException", 0, true) })
+            tests.Case("receipt migration docker readiness wait " + scenario, () =>
+            {
+                File.WriteAllText(migrationDocker, "#!/bin/sh\n[ \"$#\" = 2 ] && [ \"$1\" = logs ] && [ \"$2\" = owned-test-container ] || exit 7\nprintf '%s\\n' '" + logs + "'" + (stderr ? " >&2" : "") + "\nexit " + code + "\n");
+                File.SetUnixFileMode(migrationDocker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                string ready = Path.Combine(tests.DirectoryPath, "receipt-migration-ready.json");
+                File.WriteAllText(ready, "stale");
+                try
+                {
+                    SweepRunner.WaitForReceiptMigrationAsync("owned-test-container", tests.DirectoryPath, "test-arm", CancellationToken.None,
+                        timeout: TimeSpan.FromMilliseconds(scenario == "timeout" ? 100 : 5000), interval: TimeSpan.FromMilliseconds(5)).GetAwaiter().GetResult();
+                    RpcScriptTests.Assert(scenario.EndsWith("success", StringComparison.Ordinal), "failed readiness passed");
+                    JsonNode report = JsonNode.Parse(File.ReadAllText(ready))!;
+                    RpcScriptTests.Assert(report["label"]!.GetValue<string>() == "test-arm" && report["container"]!.GetValue<string>() == "owned-test-container" &&
+                        report["completionMarker"]!.GetValue<string>() == migrationComplete && DateTimeOffset.TryParse(report["observedAtUtc"]!.GetValue<string>(), out _), "readiness evidence missing");
+                }
+                catch (IOException exception)
+                {
+                    RpcScriptTests.Assert(scenario switch { "timeout" => exception.Message.Contains("deadline", StringComparison.Ordinal), "docker-error" => exception.Message.Contains("exit code 1", StringComparison.Ordinal), "unhealthy" => exception.Message.Contains("Unhealthy", StringComparison.Ordinal), _ => false }, exception.Message);
+                    RpcScriptTests.Assert(!File.Exists(ready), "stale readiness evidence survived failure");
+                }
+            });
+        tests.Case("receipt migration wait propagates caller cancellation without readiness evidence", () =>
+        {
+            try { SweepRunner.WaitForReceiptMigrationAsync("owned-test-container", tests.DirectoryPath, "test-arm", new CancellationToken(true)).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { RpcScriptTests.Assert(!File.Exists(Path.Combine(tests.DirectoryPath, "receipt-migration-ready.json")), "cancelled readiness retained"); return; }
+            throw new InvalidOperationException("caller cancellation swallowed");
+        });
+    }
+    finally { Environment.SetEnvironmentVariable("PATH", originalPath); }
+}
 if (!OperatingSystem.IsLinux()) { Console.WriteLine("SKIP Linux sweep process harness"); tests.Complete(); return; }
 
 var scriptRoot = Path.Combine(tests.DirectoryPath, "scripts"); Directory.CreateDirectory(scriptRoot);
@@ -119,9 +191,9 @@ switch (args[0])
 }
 """);
 var bin = Path.Combine(tests.DirectoryPath, "bin"); Directory.CreateDirectory(bin);
-var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\necho sha256:fixture\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nif [ \"$1\" = logs ]; then [ \"$FAIL_RECEIPT_READY\" = true ] && exit 1; echo '" + migrationComplete + "'; else echo sha256:fixture; fi\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var identity = Path.Combine(bin, "id"); File.WriteAllText(identity, "#!/bin/sh\necho 0\n"); File.SetUnixFileMode(identity, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
+var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "FAIL_RECEIPT_READY", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
 var original = changedNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 try
 {
@@ -139,6 +211,23 @@ try
         var rows = File.ReadAllLines(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!).Select(line => JsonNode.Parse(line)!).ToArray();
         RpcScriptTests.Assert(rows.Length == 5 && rows.Select(row => Path.GetFileName(row["STATE_DIR"]!.ToString())).SequenceEqual(new[] { "lookup-preparation", "nethermind_same_a1", "nethermind_same_a2", "nethermind_same_a2_r2", "nethermind_same_a1_r2" }), "A/A ABBA state collision");
         File.Delete(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!);
+    });
+    tests.Case("receipt migration readiness failure stops the owned node before preparation or warmup", () =>
+    {
+        string phases = Environment.GetEnvironmentVariable("SWEEP_CAPTURE")! + ".phases"; File.Delete(phases);
+        var values = EnvironmentValues(); values["JB_BENCHMARK_CONFIG"] = "transaction-lookups-snapshot"; values["LOOKUP_PROTOCOL"] = "true"; values["RPS_LIST"] = "100";
+        Environment.SetEnvironmentVariable("FAIL_RECEIPT_READY", "true");
+        try
+        {
+            try { Run(values); }
+            catch (IOException exception)
+            {
+                RpcScriptTests.Assert(exception.Message.Contains("docker logs failed", StringComparison.Ordinal) && File.ReadAllLines(phases).SequenceEqual(new[] { "stop" }), "readiness failure escaped cleanup or started a cell");
+                return;
+            }
+            throw new InvalidOperationException("failed readiness accepted");
+        }
+        finally { Environment.SetEnvironmentVariable("FAIL_RECEIPT_READY", null); File.Delete(Environment.GetEnvironmentVariable("SWEEP_CAPTURE")!); }
     });
     tests.Case("ABBA schedule keeps arm flags and environments isolated", () =>
     {

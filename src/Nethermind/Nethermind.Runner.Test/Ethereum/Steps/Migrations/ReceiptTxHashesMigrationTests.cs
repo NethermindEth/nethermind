@@ -164,6 +164,24 @@ public class ReceiptTxHashesMigrationTests
         Assert.That(chain.Read(2), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(2), RlpBehaviors.Storage)));
     }
 
+    [TestCase(0UL, 0UL, null, 1UL)]
+    [TestCase(8192UL, 0UL, null, 1UL)]
+    [TestCase(8193UL, 0UL, null, 1UL)]
+    [TestCase(8194UL, 0UL, null, 2UL)]
+    [TestCase(20000UL, 0UL, null, 11808UL)]
+    [TestCase(20000UL, 15000UL, null, 15000UL)]
+    [TestCase(20000UL, 0UL, 15000UL, 16024UL)]
+    public void Benchmark_bound_preserves_history_pruning_floors(ulong head, ulong oldest, ulong? cutoff, ulong expected)
+    {
+        using Chain chain = new(1);
+        chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(oldest);
+        chain.HistoryPruner.CutoffBlockNumber.Returns(cutoff);
+        ReceiptTxHashesMigration migration = chain.RegisteredMigrations().OfType<ReceiptTxHashesMigration>().Single();
+        System.Reflection.MethodInfo method = typeof(ReceiptTxHashesMigration).GetMethod("GetLowestBlock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.That(method.Invoke(migration, [head]), Is.EqualTo(expected));
+    }
+
     [Test]
     public void Is_registered_as_a_database_migration()
     {

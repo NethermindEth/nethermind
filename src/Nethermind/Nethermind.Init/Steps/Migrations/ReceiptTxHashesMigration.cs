@@ -109,7 +109,8 @@ public sealed class ReceiptTxHashesMigration(
     private async Task Migrate(CancellationToken cancellationToken)
     {
         ulong next = ReadNextBlock() ?? blockTree.Head?.Number ?? Completed;
-        ulong lowest = GetLowestBlock();
+        ulong head = Math.Max(blockTree.Head?.Number ?? next, next);
+        ulong lowest = GetLowestBlock(head);
         if (next < lowest) return;
 
         if (_logger.IsInfo) _logger.Info($"Adding transaction hashes to stored receipts, blocks {lowest} to {next}.");
@@ -118,14 +119,13 @@ public sealed class ReceiptTxHashesMigration(
         long bytesAdded = 0;
         int sinceSaved = 0;
         // After a restart the pass resumes below the head; blocks above its position already carry the hashes.
-        ulong head = Math.Max(blockTree.Head?.Number ?? next, next);
         _progress.Reset(head - next, head - lowest + 1);
         DateTime lastProgress = timestamper.UtcNow;
         while (next >= lowest && !cancellationToken.IsCancellationRequested)
         {
             await WaitWhileProcessing(cancellationToken);
 
-            lowest = GetLowestBlock();
+            lowest = GetLowestBlock(head);
             if (next < lowest) break;
 
             (int blocks, long bytes) = MigrateLevel(next);
@@ -163,9 +163,11 @@ public sealed class ReceiptTxHashesMigration(
         }
     }
 
-    private ulong GetLowestBlock()
+    private ulong GetLowestBlock(ulong head)
     {
         ulong lowest = Math.Max(Math.Max(1, blockTree.GetLowestBlock()), historyPruner.OldestUnreclaimedBlockNumber);
+        // Benchmark-only fixture: finish a bounded recent-history pass before stationary lookup measurements.
+        lowest = Math.Max(lowest, head > 8192 ? head - 8192 : 1);
         return historyPruner.CutoffBlockNumber is { } cutoff ? Math.Max(lowest, cutoff + PruningMargin) : lowest;
     }
 

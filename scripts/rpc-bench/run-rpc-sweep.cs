@@ -145,6 +145,21 @@ internal sealed partial class SweepConfiguration
         if (LookupProtocol && (Rates.Length != 1 || Rates[0] > 500)) throw new ArgumentException("lookup protocol requires one rate, at most 500 rps, per fresh-node sweep");
     }
 
+    internal IEnumerable<SweepArm> RoundArms(long round)
+    {
+        if (!LookupProtocol || Arms.Length != 3) return round % 2 == 0 ? Arms : Arms.Reverse();
+        int[] order = (round % 6) switch
+        {
+            0 => [0, 1, 2],
+            1 => [2, 1, 0],
+            2 => [1, 2, 0],
+            3 => [0, 2, 1],
+            4 => [2, 0, 1],
+            _ => [1, 0, 2]
+        };
+        return order.Select(index => Arms[index]);
+    }
+
     internal static string[] Words(string value) => value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
     internal static long Integer(string name, string value, bool positive) => (positive ? PositiveIntegerRegex() : IntegerRegex()).IsMatch(value) && long.TryParse(value, out var number) ? number : throw new ArgumentException($"{name} must be a {(positive ? "positive" : "non-negative")} integer");
     internal static string CorpusLabel(string path)
@@ -220,7 +235,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var round = 0L; round < configuration.Number("ROUNDS"); round++)
         {
-            foreach (var arm in round % 2 == 0 ? configuration.Arms : configuration.Arms.Reverse())
+            foreach (var arm in configuration.RoundArms(round))
             {
                 seen[arm.Label] = seen.GetValueOrDefault(arm.Label) + 1;
                 var label = arm.Label + (seen[arm.Label] > 1 ? "_r" + seen[arm.Label] : "");
@@ -286,6 +301,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         if (!preparation) _labels.Add(label);
         try
         {
+            if (configuration.LookupProtocol) await WaitForReceiptMigrationAsync(container, state, label, cancellationToken);
             if (preparation)
             {
                 var cell = Path.Combine(Get("OUT_DIR"), "preparation");
@@ -326,6 +342,53 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             if (configuration.LookupProtocol && !File.Exists(Path.Combine(state, "node.log"))) Fail("missing lookup node log");
             if (ScanNodeLog(Path.Combine(state, "node.log"), arm.Client, label, configuration.Corpus)) Fail("node health issues");
             Console.WriteLine("::endgroup::");
+        }
+    }
+
+    internal static string? ReceiptMigrationCompletion(string logs)
+    {
+        string? completion = null;
+        using StringReader reader = new(logs);
+        while (reader.ReadLine() is { } raw)
+        {
+            string line = AnsiRegex().Replace(raw, "");
+            foreach (string signal in new[] { "Exception", "Invalid Block", "invalid_block", "Unhandled", "Fatal" })
+                if (line.Contains(signal, StringComparison.OrdinalIgnoreCase)) throw new IOException("Unhealthy node while waiting for receipt migration: " + signal);
+            if (ReceiptMigrationCompletionRegex().IsMatch(line)) completion = raw;
+        }
+        return completion;
+    }
+
+    [GeneratedRegex(@"Transaction hashes added to stored receipts of [0-9]+ blocks, [0-9]+ bytes added\.")]
+    private static partial Regex ReceiptMigrationCompletionRegex();
+
+    internal static async Task WaitForReceiptMigrationAsync(string container, string state, string label, CancellationToken cancellationToken, TimeSpan? timeout = null, TimeSpan? interval = null)
+    {
+        string report = Path.Combine(state, "receipt-migration-ready.json");
+        File.Delete(report);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout ?? TimeSpan.FromSeconds(120));
+        Stopwatch elapsed = Stopwatch.StartNew();
+        try
+        {
+            while (true)
+            {
+                deadline.Token.ThrowIfCancellationRequested();
+                var logs = await BenchmarkProcess.RunAsync("docker", ["logs", container], deadline.Token);
+                if (logs.Code != 0) throw new IOException($"docker logs failed while waiting for receipt migration on {label}: exit code {logs.Code}");
+                string? marker = ReceiptMigrationCompletion(logs.Output + "\n" + logs.Error);
+                if (marker is not null)
+                {
+                    await File.WriteAllTextAsync(report, new JsonObject { ["label"] = label, ["container"] = container, ["observedAtUtc"] = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                        ["completionMarker"] = marker, ["elapsedMilliseconds"] = elapsed.ElapsedMilliseconds }.ToJsonString(), deadline.Token);
+                    return;
+                }
+                await Task.Delay(interval ?? TimeSpan.FromSeconds(1), deadline.Token);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException($"Receipt migration did not complete within the readiness deadline on {label}");
         }
     }
 
