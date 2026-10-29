@@ -994,7 +994,8 @@ public class OtsRpcModuleTests
             SearchResult<bool[]>? proof = f.Container.Resolve<TraceAddressIndex>()
                 .TryMatchPositions(f.Blocks[4], destination, CancellationToken.None);
             Assert.That(proof.HasValue && !proof.Value.IsError, Is.True);
-            Assert.That(proof!.Value.Object, Is.EqualTo(new[] { true }));
+            bool[] matches = proof!.Value.Object!;
+            Assert.That(matches, Is.EqualTo(new[] { true }));
         }
         using ResultWrapper<OtsSearchResult> result = backwards
             ? f.Module.ots_searchTransactionsBefore(destination, 0, 25)
@@ -1074,7 +1075,8 @@ public class OtsRpcModuleTests
         await BuildIndex(f);
         using ResultWrapper<OtsSearchResult> result = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-        Assert.That(result.Data.Txs.Count, Is.EqualTo(kind == "reward" ? 0 : 1));
+        OtsSearchResult page = result.Data;
+        Assert.That(page.Txs.Count, Is.EqualTo(kind == "reward" ? 0 : 1));
     }
 
     [Test]
@@ -1161,8 +1163,11 @@ public class OtsRpcModuleTests
         else
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
-            Assert.That(result.Data.Txs.Select(t => t.BlockNumber), Is.EqualTo(new ulong?[] { 1, 1 }));
-            Assert.That(f.Container.Resolve<TraceAddressIndex>().FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data.Txs.Select(t => t.BlockNumber), Is.EqualTo(new ulong?[] { 1, 1 }));
+                Assert.That(f.Container.Resolve<TraceAddressIndex>().FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+            }
         }
     }
 
@@ -1225,9 +1230,12 @@ public class OtsRpcModuleTests
                 checkpoint[state == "range" ? 4 : ^1] ^= 1;
                 env.Database.GetColumnDb(LogIndexColumns.Meta).Set(TraceAddressIndex.CheckpointKey, checkpoint);
             }
-            Assert.That(env.Settings!.DbName, Is.EqualTo("TraceAddressIndex"));
-            Assert.That(env.Settings.DbPath, Is.EqualTo("traceAddressIndex"));
-            Assert.That(env.Settings.ColumnsMergeOperators, Has.Count.EqualTo(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(env.Settings!.DbName, Is.EqualTo("TraceAddressIndex"));
+                Assert.That(env.Settings.DbPath, Is.EqualTo("traceAddressIndex"));
+                Assert.That(env.Settings.ColumnsMergeOperators, Has.Count.EqualTo(5));
+            }
         }
         if (state == "repair") File.WriteAllText(Path.Combine(env.Path, "traceAddressIndex", "repaired.marker"), "test");
         await using Fixture reopened = new(env, fromBlock: state == "config" ? 2 : 1);
@@ -1235,8 +1243,11 @@ public class OtsRpcModuleTests
             .FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None);
         if (state == "valid")
         {
-            Assert.That(candidates!.Blocks, Is.EqualTo(new[] { 3, 1 }));
-            Assert.That(reopened.Serializer.Reads, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(candidates!.Blocks, Is.EqualTo(new[] { 3, 1 }));
+                Assert.That(reopened.Serializer.Reads, Is.Zero);
+            }
         }
         else Assert.That(candidates, Is.Null);
         using ResultWrapper<OtsSearchResult> result = reopened.Search(true, 0, 25);
@@ -1313,8 +1324,11 @@ public class OtsRpcModuleTests
             if (backwards ? result.Data.LastPage : result.Data.FirstPage) break;
             cursor = (backwards ? result.Data.Txs[^1].BlockNumber : result.Data.Txs[0].BlockNumber)!.Value;
         }
-        Assert.That(actual.Distinct().Count(), Is.EqualTo(44));
-        Assert.That(actual.Count, Is.EqualTo(44));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Distinct().Count(), Is.EqualTo(44));
+            Assert.That(actual.Count, Is.EqualTo(44));
+        }
     }
 
     [Test]
@@ -1330,12 +1344,19 @@ public class OtsRpcModuleTests
         await BuildIndex(f);
         using IEnumerator<int> found = events.GetEnumerator(TestItem.AddressF, 0, 200);
         Assert.That(found.MoveNext(), Is.True);
-        Assert.That(found.Current, Is.EqualTo(100));
-        Assert.That(events.MinBlockNumber, Is.EqualTo(100));
+        int foundBlock = found.Current;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundBlock, Is.EqualTo(100));
+            Assert.That(events.MinBlockNumber, Is.EqualTo(100));
+        }
         TraceAddressIndex.Candidates candidates = f.Container.Resolve<TraceAddressIndex>()
             .FindCandidates(TestItem.AddressF, 1, 3, true, 26, CancellationToken.None)!;
-        Assert.That(candidates.Blocks, Is.Empty);
-        Assert.That(candidates.Coverage.To, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(candidates.Blocks, Is.Empty);
+            Assert.That(candidates.Coverage.To, Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -1435,7 +1456,8 @@ public class OtsRpcModuleTests
         meta.Set(key, record);
         using ResultWrapper<OtsSearchResult> result = f.Search(true, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Txs.Count, Is.EqualTo(4));
+        OtsSearchResult page = result.Data;
+        Assert.That(page.Txs.Count, Is.EqualTo(4));
     }
 
     [Test]
@@ -1448,7 +1470,8 @@ public class OtsRpcModuleTests
         f.Save(2);
         using ResultWrapper<OtsSearchResult> result = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Txs, Is.Empty, "Covered negative routing does not inspect a changed unselected blob.");
+        OtsSearchResult page = result.Data;
+        Assert.That(page.Txs, Is.Empty, "Covered negative routing does not inspect a changed unselected blob.");
     }
 
     [Test, NonParallelizable]
@@ -1459,8 +1482,11 @@ public class OtsRpcModuleTests
         await BuildIndex(f);
         JsonSerializerOptions before = EthereumJsonSerializer.JsonOptions;
         EthereumJsonSerializer.AddTypeInfoResolver(new EmptyPositionResolver());
-        Assert.That(EthereumJsonSerializer.JsonOptions, Is.Not.SameAs(before));
-        Assert.That(f.Container.Resolve<TraceAddressIndex>().TryMatchPositions(f.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(EthereumJsonSerializer.JsonOptions, Is.Not.SameAs(before));
+            Assert.That(f.Container.Resolve<TraceAddressIndex>().TryMatchPositions(f.Blocks[1], TestItem.AddressA, CancellationToken.None), Is.Null);
+        }
         using ResultWrapper<OtsSearchResult> result = f.Search(true, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
     }
@@ -1674,7 +1700,8 @@ public class OtsRpcModuleTests
             Is.EqualTo(state is "valid" or "hint"));
         using ResultWrapper<OtsSearchResult> result = restarted.Search(true, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Txs.Count, Is.EqualTo(4));
+        OtsSearchResult page = result.Data;
+        Assert.That(page.Txs.Count, Is.EqualTo(4));
     }
 
     [Test]
@@ -1688,7 +1715,8 @@ public class OtsRpcModuleTests
         Assert.That(f.Container.Resolve<TraceAddressIndex>().TryMatchPositions(f.Blocks[2], TestItem.AddressC, CancellationToken.None), Is.Null);
         using ResultWrapper<OtsSearchResult> result = f.Module.ots_searchTransactionsBefore(TestItem.AddressC, 0, 25);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.Txs.Count, Is.EqualTo(1));
+        OtsSearchResult page = result.Data;
+        Assert.That(page.Txs.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -1703,8 +1731,12 @@ public class OtsRpcModuleTests
         TracePositionSidecar sidecar = new(env.Database!, source, new ParityLikeTraceSerializer(LimboLogs.Instance),
             f.Tree, f.TraceConfig, LimboLogs.Instance.GetClassLogger<TracePositionSidecar>());
         source.BeforeSpan = () => Assert.Throws<InvalidOperationException>(() => sidecar.BuildNext(coverage, CancellationToken.None));
-        Assert.That(sidecar.BuildNext(coverage, CancellationToken.None), Is.True);
-        Assert.That(source.Leases, Is.Zero);
+        bool built = sidecar.BuildNext(coverage, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.True);
+            Assert.That(source.Leases, Is.Zero);
+        }
     }
 
     [Test]
@@ -1741,8 +1773,12 @@ public class OtsRpcModuleTests
             .FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Coverage;
         TracePositionSidecar sidecar = new(env.Database!, f.Store, f.Serializer, f.Tree, f.TraceConfig,
             LimboLogs.Instance.GetClassLogger<TracePositionSidecar>());
-        Assert.That(sidecar.BuildNext(coverage, CancellationToken.None), Is.False);
-        Assert.That(env.Database!.GetColumnDb(LogIndexColumns.Meta).Get(TracePositionSidecar.SchemaKey), Is.Null);
+        bool built = sidecar.BuildNext(coverage, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(built, Is.False);
+            Assert.That(env.Database!.GetColumnDb(LogIndexColumns.Meta).Get(TracePositionSidecar.SchemaKey), Is.Null);
+        }
     }
 
     [Test]
@@ -1765,9 +1801,12 @@ public class OtsRpcModuleTests
         using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(
             new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_searchTransactionsBefore", Params = args.RootElement }, context);
         using JsonDocument json = Serialize(response);
-        Assert.That(json.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
-        Assert.That(proofReads, Is.EqualTo(1));
-        Assert.That(env.Controlled.Meta.Leases, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That(proofReads, Is.EqualTo(1));
+            Assert.That(env.Controlled.Meta.Leases, Is.Zero);
+        }
         env.Controlled.Meta.OnSpanKey = null;
         using ResultWrapper<OtsSearchResult> recovered = f.Search(true, 0, 25);
         Assert.That(recovered.Result.ResultType, Is.EqualTo(ResultType.Success));
@@ -1825,8 +1864,11 @@ public class OtsRpcModuleTests
         byte[]? hint = env.Controlled!.Meta.Get(TracePositionSidecar.ProgressKey);
         env.Controlled.FailHintWrite = true;
         Assert.Throws<IOException>(() => index.BuildPositionsNext(CancellationToken.None));
-        Assert.That(env.Controlled.Meta.Get(key), Is.Null);
-        Assert.That(env.Controlled.Meta.Get(TracePositionSidecar.ProgressKey), Is.EqualTo(hint));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Controlled.Meta.Get(key), Is.Null);
+            Assert.That(env.Controlled.Meta.Get(TracePositionSidecar.ProgressKey), Is.EqualTo(hint));
+        }
         env.Controlled.FailHintWrite = false;
         Assert.That(index.BuildPositionsNext(CancellationToken.None), Is.True);
     }
@@ -1929,8 +1971,11 @@ public class OtsRpcModuleTests
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await Task.Delay(100);
         await index.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(Volatile.Read(ref reads), Is.EqualTo(1));
-        Assert.That(source.Leases, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Volatile.Read(ref reads), Is.EqualTo(1));
+            Assert.That(source.Leases, Is.Zero);
+        }
     }
 
     private sealed class BulkWorkerSwitch : IDisposable
