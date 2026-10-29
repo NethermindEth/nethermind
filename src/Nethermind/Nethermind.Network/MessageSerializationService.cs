@@ -188,7 +188,8 @@ public class MessageSerializationService : IMessageSerializationService
             return true;
         }
 
-        ThrowInvalidSerializerType<T>(serializerObject);
+        // The constructor admits only the two kinds, so this is an IMessageSerializer<T>.
+        ThrowNotZeroSerializer<T>(serializerObject);
         // unreachable
         serializer = null!;
         return false;
@@ -211,8 +212,12 @@ public class MessageSerializationService : IMessageSerializationService
         => throw new InvalidOperationException($"No {serializerInterface} registered for {typeof(T).Name}.");
 
     [DoesNotReturn, StackTraceHidden]
+    private static void ThrowNotZeroSerializer<T>(object serializerObject) where T : MessageBase
+        => throw new InvalidOperationException($"{serializerObject.GetType().Name} for {typeof(T).Name} is not an {nameof(IZeroMessageSerializer<>)}; use {nameof(Deserialize)}<T>(ArraySegment<byte>) instead.");
+
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidSerializerType<T>(object? serializerObject)
-        => throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
+        => throw new InvalidOperationException($"Zero serializer for {typeof(T).Name} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
 
 }
 

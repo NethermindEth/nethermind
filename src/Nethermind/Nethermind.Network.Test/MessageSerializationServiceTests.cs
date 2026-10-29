@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -24,9 +25,24 @@ public class MessageSerializationServiceTests
     {
         MessageSerializationService service = new(SerializerInfo.Create(new SpanSerializer { LengthError = lengthError }));
         SpanMessage message = new();
+        IByteBuffer? rented = null;
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        allocator.Buffer(Arg.Any<int>()).Returns(c => rented = UnpooledByteBufferAllocator.Default.Buffer(c.Arg<int>()));
 
-        Action serialize = toByteBuffer ? () => service.ZeroSerialize(message) : () => service.Serialize(message);
-        Assert.That(serialize, Throws.InvalidOperationException);
+        Action serialize = toByteBuffer ? () => service.ZeroSerialize(message, allocator) : () => service.Serialize(message);
+        Assert.That(serialize, Throws.InvalidOperationException.With.Message.Contains("wrote"));
+        if (toByteBuffer)
+            Assert.That(rented!.ReferenceCount, Is.Zero);
+    }
+
+    [Test]
+    public void Deserialize_from_a_byte_buffer_points_a_span_serializer_to_the_byte_overload()
+    {
+        MessageSerializationService service = new(SerializerInfo.Create(new SpanSerializer()));
+        using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer().AsDisposable();
+
+        Assert.That(() => service.Deserialize<SpanMessage>(buffer), Throws.InvalidOperationException.With.Message.EqualTo(
+            $"{nameof(SpanSerializer)} for {nameof(SpanMessage)} is not an IZeroMessageSerializer; use Deserialize<T>(ArraySegment<byte>) instead."));
     }
 
     [Test]
