@@ -929,7 +929,7 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong PaddedLastWord(byte* end, nuint partial)
     {
-        if (StrictAlignmentFlag.IsActive && ((nuint)(end - partial) & 7) == 0)
+        if (StrictAlignmentFlag.IsActive && ((nuint)(end - partial) & (nuint)(sizeof(nuint) - 1)) == 0)
         {
             return PartialLane(ref *AlignedDown(end - partial), partial) | (0x01UL << (int)(partial << 3));
         }
@@ -939,7 +939,7 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>The <paramref name="partial"/> bytes at <paramref name="lane"/>, zero-extended to a lane.</summary>
-    /// <param name="lane">A word boundary.</param>
+    /// <param name="lane">Best on a word boundary: any address reads correctly, but where the JIT cannot prove it aligned, each piece gets an alignment test.</param>
     /// <param name="partial">0 to 7; a constant folds the aligned pieces to at most three loads.</param>
     /// <remarks>Reads no byte past the <paramref name="partial"/> ones.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
