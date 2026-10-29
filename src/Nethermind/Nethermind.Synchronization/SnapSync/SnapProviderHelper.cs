@@ -252,12 +252,22 @@ namespace Nethermind.Synchronization.SnapSync
 
                         moreChildrenToRight |= childPath.Path > limitHash;
 
-                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0)
                         {
-                            node.SetChild(0, child);
+                            if (dict.TryGetValue(childKeccak, out TrieNode child))
+                            {
+                                node.SetChild(0, child);
 
-                            proofNodesToProcess.Push((child, childPath));
-                            sortedBoundaryList.Add((child, childPath));
+                                proofNodesToProcess.Push((child, childPath));
+                                sortedBoundaryList.Add((child, childPath));
+                            }
+                            else if (childPath.CompareTo(rightBoundaryPath.Truncate(childPath.Length)) <= 0)
+                            {
+                                // The child's keys overlap [start, end], so the proof of the start or of the end passes
+                                // through it. Kept as a hash, the child would hide every key of the range under it: the
+                                // entries could leave them out and the root would still match.
+                                return (AddRangeResult.InvalidProof, null, true);
+                            }
                         }
                     }
                 }
