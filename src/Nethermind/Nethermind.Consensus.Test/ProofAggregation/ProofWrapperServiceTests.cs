@@ -1268,16 +1268,26 @@ public class ProofWrapperServiceTests
         }
     }
 
-    // A partly rejected wrapper is relayed only while the pool holds at least MinPooledShareToRelay of its transactions.
-    [TestCase(1, 3, false)]
-    [TestCase(2, 2, true)]
-    public async Task Partly_pool_rejected_wrapper_is_relayed_only_when_the_pool_holds_enough_of_it(int admittedCount, int rejectedCount, bool relayedExpected)
+    // A partly rejected wrapper is relayed only when it newly admitted at least as many transactions as were rejected; already
+    // pending ones, free for anyone to include, do not count.
+    [TestCase(1, 3, 3, false)]
+    [TestCase(2, 0, 2, true)]
+    [TestCase(1, 0, 2, false)]
+    public async Task Partly_pool_rejected_wrapper_is_relayed_only_when_newly_admitted_transactions_match_the_rejected(
+        int admittedCount, int pendingCount, int rejectedCount, bool relayedExpected)
     {
         Transaction[] admitted = [.. Enumerable.Range(0, admittedCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"admitted{i}")))];
+        Transaction[] pending = [.. Enumerable.Range(0, pendingCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"pending{i}")))];
         Transaction[] rejected = [.. Enumerable.Range(0, rejectedCount).Select(static i => CreateHashedTransaction(Keccak.Compute($"rejected{i}")))];
-        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, [.. admitted, .. rejected]);
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateWrapper(AcceptTxResult.InsufficientFunds, [.. admitted, .. pending, .. rejected]);
         HashSet<Hash256> accepted = [.. admitted.Select(static t => t.Hash!)];
         pool.SubmitTx(Arg.Is<Transaction>(t => accepted.Contains(t.Hash!)), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        foreach (Transaction transaction in pending)
+            pool.TryGetPendingTransaction(transaction.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+            {
+                call[1] = transaction;
+                return true;
+            });
         int relayed = 0;
         service.WrapperValidated += (_, _) => relayed++;
 
