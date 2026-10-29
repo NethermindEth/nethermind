@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -74,6 +75,18 @@ public class OtsRpcModuleTests
     }
 
     [Test]
+    public void Search_matches_sender_only_involvement([Values] bool backwards)
+    {
+        using Fixture f = new();
+        using ResultWrapper<OtsSearchResult> response = backwards
+            ? f.Module.ots_searchTransactionsBefore(TestItem.PrivateKeyB.Address, 0, 25)
+            : f.Module.ots_searchTransactionsAfter(TestItem.PrivateKeyB.Address, 0, 25);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs.Select(t => t.Hash), Is.EqualTo(f.Blocks
+            .SelectMany(b => b.Transactions).Reverse().Select(t => t.Hash)));
+    }
+
+    [Test]
     public void Search_includes_zero_value_reverted_internal_calls_and_deduplicates()
     {
         using Fixture f = new();
@@ -86,6 +99,37 @@ public class OtsRpcModuleTests
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
         OtsSearchResult page = response.Data;
         Assert.That(page.Txs.Count(t => t.Hash == trace.TransactionHash), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Search_clears_pending_actions_after_an_early_match([Values] bool backwards)
+    {
+        using Fixture f = new();
+        f.AddBlock(Call(TestItem.AddressC), Call(TestItem.AddressC));
+        ParityTraceAction root = f.Traces[4][0].Action!;
+        root.Subtraces = [Call(TestItem.AddressA), Call(TestItem.AddressA)];
+        f.Save(4);
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, backwards ? 0ul : 3ul, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { f.Blocks[4].Transactions[0].Hash }));
+    }
+
+    [Test]
+    public void Search_uses_each_scanned_blocks_precompile_spec([Values] bool backwards)
+    {
+        TestSpecProvider specs = new(Shanghai.Instance) { NextForkSpec = Cancun.Instance, ForkOnBlockNumber = 3 };
+        using Fixture f = new(specs);
+        using ResultWrapper<OtsSearchResult> beforeFork = backwards
+            ? f.Module.ots_searchTransactionsBefore(PrecompiledAddresses.PointEvaluation, 3, 25)
+            : f.Module.ots_searchTransactionsAfter(PrecompiledAddresses.PointEvaluation, 0, 25);
+        Assert.That(beforeFork.Result.ResultType, Is.EqualTo(backwards ? ResultType.Success : ResultType.Failure));
+        if (backwards) Assert.That(beforeFork.Data.Txs, Is.Empty);
+        else Assert.That(beforeFork.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+
+        using ResultWrapper<OtsSearchResult> atFork = backwards
+            ? f.Module.ots_searchTransactionsBefore(PrecompiledAddresses.PointEvaluation, 0, 25)
+            : f.Module.ots_searchTransactionsAfter(PrecompiledAddresses.PointEvaluation, 2, 25);
+        Assert.That(atFork.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
     }
 
     [Test]
@@ -186,6 +230,42 @@ public class OtsRpcModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
     }
 
+    [TestCase(true, 1)]
+    [TestCase(false, 3)]
+    public void Search_rejects_switch_and_back_reorgs_at_scan_boundaries(bool backwards, int expectedReads)
+    {
+        using Fixture f = new();
+        if (backwards)
+        {
+            f.Traces[2][0].Action = Call(TestItem.AddressA);
+            f.Save(2);
+        }
+        Block sibling = StoreNonmatchingSibling(f, backwards ? f.Blocks[1] : f.Blocks[2]);
+        Block tip = backwards ? Build.A.Block.WithParent(sibling).WithExtraData([1]).TestObject : sibling;
+        if (backwards) f.Tree.SuggestBlock(tip);
+        Block[] replacementBranch = backwards ? [sibling, tip] : [sibling];
+        Block[] originalBranch = backwards ? [f.Blocks[2], f.Blocks[3]] : [f.Blocks[3]];
+        int reads = 0;
+        int switchRead = backwards ? 1 : 2;
+        f.Serializer.BeforeRead = () =>
+        {
+            reads++;
+            if (reads == switchRead)
+                f.Tree.TryUpdateMainChain(tip.Header, true, true, replacementBranch);
+            else if (reads == switchRead + 1)
+                f.Tree.TryUpdateMainChain(f.Blocks[3].Header, true, true, originalBranch);
+        };
+
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, 0, 25);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(response.Result.Error, Is.EqualTo("Canonical chain changed during OTS search; retry the request."));
+            Assert.That(response.Data, Is.Null);
+            Assert.That(f.Serializer.Reads, Is.EqualTo(expectedReads));
+        }
+    }
+
     [Test]
     public void Trace_types_must_include_calls()
     {
@@ -199,9 +279,18 @@ public class OtsRpcModuleTests
     public void Search_honors_timeout()
     {
         using Fixture f = new();
-        f.RpcConfig.Timeout = 1;
-        f.Serializer.BeforeRead = () => Thread.Sleep(50);
-        Assert.Throws<OperationCanceledException>(() => f.Search(true, 0, 25));
+        using CancellationTokenSource timeout = new();
+        f.RpcConfig.Timeout = Timeout.Infinite;
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
+        try
+        {
+            f.Serializer.BeforeRead = timeout.Cancel;
+            Assert.Throws<OperationCanceledException>(() => f.Search(true, 0, 25));
+        }
+        finally
+        {
+            JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
+        }
     }
 
     [Test]
@@ -264,6 +353,15 @@ public class OtsRpcModuleTests
             Assert.That(entries[0].To, Is.EqualTo(recipient));
             Assert.That(entries[0].Output, Is.Empty);
         }
+
+        foreach (bool backwards in new[] { true, false })
+        {
+            using ResultWrapper<OtsSearchResult> history = backwards
+                ? f.Module.ots_searchTransactionsBefore(recipient, 0, 25)
+                : f.Module.ots_searchTransactionsAfter(recipient, 0, 25);
+            Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+            Assert.That(history.Data.Txs.Select(t => t.Hash), Does.Contain(tx.Hash));
+        }
     }
 
     [Test]
@@ -287,6 +385,23 @@ public class OtsRpcModuleTests
             Assert.That(receipt.GetProperty("timestamp").GetUInt64(), Is.EqualTo(f.Blocks[3].Timestamp));
             Assert.That(receipt.GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x1"));
             Assert.That(receipt.GetProperty("transactionHash").GetString(), Is.EqualTo(f.Blocks[3].Transactions[1].Hash!.ToString()));
+        }
+    }
+
+    [Test]
+    public void Search_log_indexes_include_logs_of_unmatched_preceding_transactions([Values] bool backwards)
+    {
+        using Fixture f = new();
+        f.AddBlock(Call(TestItem.AddressC), Call(TestItem.AddressA));
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, backwards ? 0ul : 3ul, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs, Has.Count.EqualTo(1));
+        using JsonDocument json = Serialize(response);
+        JsonElement receipt = json.RootElement.GetProperty("result").GetProperty("receipts")[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Txs[0].Hash, Is.EqualTo(f.Blocks[4].Transactions[1].Hash));
+            Assert.That(receipt.GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x1"));
         }
     }
 
@@ -498,6 +613,79 @@ public class OtsRpcModuleTests
     }
 
     [Test]
+    public async Task Executed_rejected_creations_without_destinations_do_not_fail_the_trace(
+        [ValueSource(nameof(ExecutionSpecs))] IReleaseSpec spec, [Values] bool create2)
+    {
+        using BasicTestBlockchain chain = await CreateExecutionChain(spec);
+        byte[] init = [(byte)Instruction.STOP];
+        Prepare root = create2 ? Prepare.EvmCode.Create2(init, [1], 1) : Prepare.EvmCode.Create(init, 1);
+        root.Call(TestItem.AddressD, 50_000).Op(Instruction.STOP);
+        Transaction tx = ExecutionTransaction(0, null, root.Done, 0);
+        Block block = await chain.AddBlock(tx);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        ParityTraceAction action = ReadExecutionTrace(chain, block).Action!;
+        Assert.That(action.Subtraces, Has.Count.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(action.Subtraces[0].Type, Is.EqualTo("create"));
+            Assert.That(action.Subtraces[0].CreationMethod, Is.EqualTo(create2 ? "create2" : "create"));
+            Assert.That(action.Subtraces[0].Error, Is.EqualTo("Insufficient balance for transfer"));
+            Assert.That(action.Subtraces[0].To, Is.Null);
+            Assert.That(action.Subtraces[0].Result, Is.Null);
+            Assert.That(chain.ReceiptStorage.Get(block)[0].StatusCode, Is.EqualTo(1));
+        }
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(tx.Hash!);
+        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Data.Select(e => e.Type), Is.EqualTo(new[] { "CREATE", "CALL" }));
+            Assert.That(trace.Data.Select(e => e.Depth), Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(trace.Data.Select(e => e.To), Is.EqualTo(new[] { ContractAddress.From(tx.SenderAddress, tx.Nonce), TestItem.AddressD }));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> PrecompileHistoryCases()
+    {
+        yield return new(Shanghai.Instance, PrecompiledAddresses.Identity, true);
+        yield return new(Osaka.Instance, PrecompiledAddresses.Identity, true);
+        yield return new(Shanghai.Instance, PrecompiledAddresses.PointEvaluation, false);
+        yield return new(Cancun.Instance, PrecompiledAddresses.PointEvaluation, true);
+    }
+
+    [TestCaseSource(nameof(PrecompileHistoryCases))]
+    public async Task Executed_zero_value_precompile_calls_cannot_certify_history(IReleaseSpec spec, Address destination, bool active)
+    {
+        using BasicTestBlockchain chain = await CreateExecutionChain(spec);
+        Transaction tx = ExecutionTransaction(0, null, Prepare.EvmCode.Call(destination, 50_000).Op(Instruction.STOP).Done, 0);
+        Block block = await chain.AddBlock(tx);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        ParityTraceAction root = ReadExecutionTrace(chain, block).Action!;
+        Assert.That(root.Subtraces, Has.Count.EqualTo(active ? 0 : 1));
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        foreach (bool backwards in new[] { true, false })
+        {
+            using ResultWrapper<OtsSearchResult> history = backwards
+                ? module.ots_searchTransactionsBefore(destination, 0, 25)
+                : module.ots_searchTransactionsAfter(destination, 0, 25);
+            if (active)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(history.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                    Assert.That(history.Result.Error, Does.Contain("precompile history"));
+                    Assert.That(history.Data, Is.Null);
+                }
+            }
+            else
+            {
+                Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+                Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
+            }
+        }
+    }
+
+    [Test]
     public async Task Executed_selfdestruct_records_beneficiary_even_when_code_is_retained(
         [ValueSource(nameof(ExecutionSpecs))] IReleaseSpec spec, [Values] bool createdInSameTransaction)
     {
@@ -529,6 +717,43 @@ public class OtsRpcModuleTests
             Assert.That(chain.StateReader.GetBalance(block.Header, TestItem.AddressF), Is.EqualTo((UInt256)10));
             Assert.That(chain.StateReader.GetCode(block.Header, contract), Is.EqualTo(!createdInSameTransaction && spec.IsEip6780Enabled ? code : []));
         }
+    }
+
+    private static ParityLikeTxTrace ReadExecutionTrace(BasicTestBlockchain chain, Block block)
+    {
+        IDb store = chain.Container.ResolveKeyed<IDb>(TraceStorePlugin.DbName);
+        Span<byte> bytes = store.GetSpan(block.Hash!);
+        try
+        {
+            Assert.That(bytes.IsEmpty, Is.False);
+            List<ParityLikeTxTrace>? traces = chain.Container.Resolve<ITraceSerializer<ParityLikeTxTrace>>().Deserialize(bytes);
+            Assert.That(traces, Is.Not.Null);
+            ParityLikeTxTrace trace = traces!.Single(t => t.TransactionHash == block.Transactions[0].Hash);
+            Assert.That(trace.Action, Is.Not.Null);
+            return trace;
+        }
+        finally
+        {
+            store.DangerousReleaseMemory(bytes);
+        }
+    }
+
+    private static Block StoreNonmatchingSibling(Fixture f, Block parent)
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(parent.Number * 10 + 1).WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithTransactions([tx]).WithExtraData([1]).TestObject;
+        f.Tree.SuggestBlock(block);
+        ParityLikeTxTrace trace = new()
+        {
+            BlockHash = block.Hash,
+            BlockNumber = block.Number,
+            TransactionHash = tx.Hash,
+            TransactionPosition = 0,
+            Action = Call(TestItem.AddressC)
+        };
+        f.Store.Set(block.Hash!, f.Serializer.Serialize(new[] { trace }));
+        return block;
     }
 
     private static Transaction ExecutionTransaction(ulong nonce, Address? to, byte[] data, UInt256 value) =>
@@ -574,14 +799,15 @@ public class OtsRpcModuleTests
         public List<Block> Blocks { get; } = [];
         public Dictionary<int, List<ParityLikeTxTrace>> Traces { get; } = [];
 
-        public Fixture()
+        public Fixture(ISpecProvider? specProvider = null)
         {
-            Container = new ContainerBuilder()
+            ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(TraceConfig, RpcConfig, new ReceiptConfig { StoreReceipts = true, TxLookupLimit = 0 }))
                 .AddModule(new TraceStorePlugin(TraceConfig, RpcConfig).Module)
                 .AddDecorator<ITraceSerializer<ParityLikeTxTrace>>((_, inner) => new RecordingSerializer(inner))
-                .AddSingleton<IJsonRpcService, JsonRpcService>()
-                .Build();
+                .AddSingleton<IJsonRpcService, JsonRpcService>();
+            if (specProvider is not null) builder.AddSingleton<ISpecProvider>(specProvider);
+            Container = builder.Build();
             Tree = Container.Resolve<IBlockTree>();
             Receipts = Container.Resolve<IReceiptStorage>();
             Store = Container.ResolveKeyed<IDb>(TraceStorePlugin.DbName);

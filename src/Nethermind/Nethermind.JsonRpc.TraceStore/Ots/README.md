@@ -19,7 +19,9 @@ A further matching block is read to determine whether another page exists. `firs
 
 ## Traces and limitations
 
-Transaction traces are depth-first call-tree entries, including creations and selfdestructs but excluding precompile entries. Searches still match precompile involvement. Reverted calls are included. `STATICCALL` and `DELEGATECALL` have a null value; creation output contains deployed code.
+Transaction traces are depth-first call-tree entries, including creations and selfdestructs but excluding precompile entries. Nested creations rejected by balance or call-depth prechecks have no destination and are omitted rather than assigned an invented address. Failed top-level creation destinations are reconstructed from the sender and transaction nonce. Reverted calls are included. `STATICCALL` and `DELEGATECALL` have a null value; creation output contains deployed code.
+
+Precompile account history is unsupported: stored Parity call trees omit nested zero-value precompile calls. A search returns `ResourceUnavailable` if the requested address is an active precompile in any scanned block, rather than certifying an incomplete page. Classification uses each scanned block's fork rules; searches confined to blocks before an address becomes a precompile remain supported.
 
 Searches scan blocks and deserialize stored traces without an address index. The initial Otterscan query for an address with at most 25 matching transactions, and any terminal page, must scan to genesis or head to establish the end of history. This common case is generally impractical on long chains without an address index and can occupy both bounded module instances until `JsonRpc.Timeout`. There is no guarantee that an arbitrary historical search completes within that timeout.
 
