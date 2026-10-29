@@ -55,6 +55,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         ReleaseDeadline();
+        _scope.HasRecoverableSetupFailure = false;
         _external.ThrowIfCancellationRequested();
         _scope.External = _external;
         if (tx is null || options.TxHash is { } target && target != tx.Hash)
@@ -65,6 +66,11 @@ internal sealed class GethLikeBlockDeadlineTracer(
         {
             _scope.Current = _deadline = new(_external, options.DeadlineClock);
             current = inner.StartNewTxTrace(tx);
+            if (current == NullTxTracer.Instance && _scope.HasRecoverableSetupFailure)
+            {
+                ReleaseDeadline();
+                return current.WithCancellation(_external);
+            }
             TimeSpan duration = options.ResolveTimeout() ?? GethTraceDeadline.DefaultTimeout;
             _deadline.Start(duration);
             CheckDeadline();
@@ -165,6 +171,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
 internal sealed class GethTraceDeadlineScope
 {
     internal GethTraceDeadline? Current { get; set; }
+    internal bool HasRecoverableSetupFailure { get; set; }
     internal CancellationToken External { get; set; }
 }
 

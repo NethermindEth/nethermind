@@ -350,7 +350,8 @@ public partial class DebugRpcModuleTests
             {
                 engine.AbortInput("deadline input marker");
                 engine.Interrupt();
-            },
+            }
+            ,
             _ => () => { }
         };
         using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failDeadlineTrace=action;}}"))
@@ -922,9 +923,10 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
         [Values("0s", "-1s", "121s", "5s")] string timeout,
-        [Values("error", "null", "primitive")] string failure)
+        [Values("error", "null", "primitive")] string failure, [Values] bool mux)
     {
         using Context context = await Context.Create();
+        DeadlineExecution clock = new();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         object selector = method switch
         {
@@ -933,8 +935,11 @@ public partial class DebugRpcModuleTests
             _ => Rlp.Encode(block).ToString()
         };
         string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
-            new { tracer = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}", timeout });
+        string script = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}";
+        Dictionary<string, object> options = new() { ["tracer"] = mux ? "muxTracer" : script, ["timeout"] = timeout };
+        if (mux) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, [script + " "] = new { } };
+        IDebugRpcModule module = method == "debug_traceBlockByNumber" ? WithDeadlineClock(context.DebugRpcModule, clock) : context.DebugRpcModule;
+        string response = await RpcTest.TestSerializedRequest(module, method, selector, options);
         JToken json = JToken.Parse(response);
         Assert.That(json["error"], Is.Null, response);
         JArray traces = (JArray)json["result"]!;
@@ -950,6 +955,7 @@ public partial class DebugRpcModuleTests
                 Assert.That(traces[i]["result"], Is.Null, response);
             }
         }
+        if (method == "debug_traceBlockByNumber") Assert.That(clock.Timers, Is.Empty, "a recovered setup failure must never arm an execution timer");
     }
 
     private static IEnumerable<TestCaseData> RawBlockTimeoutCases()
