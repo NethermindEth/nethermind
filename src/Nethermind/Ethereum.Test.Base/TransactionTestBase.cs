@@ -99,6 +99,13 @@ public abstract class TransactionTestBase
         try
         {
             byte[] bytes = Bytes.FromHexString(txBytesHex);
+            // An empty envelope fails before any RLP item is read, where the decoder gives only its generic wrapper message.
+            if (bytes.Length == 0)
+            {
+                error = "RLP data is truncated";
+                return false;
+            }
+
             tx = Rlp.Decode<Transaction>(bytes, RlpBehaviors.SkipTypedWrapping);
             return tx is not null;
         }
@@ -178,8 +185,7 @@ public abstract class TransactionTestBase
         ["TransactionException.ADDRESS_TOO_SHORT"] = ["Unexpected RLP prefix"],
         ["TransactionException.INVALID_CHAINID"] = ["InvalidTxChainId", "InvalidTxSignature"],
         ["TransactionException.INVALID_SIGNATURE_VRS"] = ["VRS is 0 length", "InvalidTxSignature"],
-        // An empty envelope fails before any RLP item is read, so only the decoder's wrapper message names it.
-        ["TransactionException.RLP_ERROR_EOF"] = ["RLP data is truncated", "Cannot decode stream of Transaction"],
+        ["TransactionException.RLP_ERROR_EOF"] = ["RLP data is truncated"],
         ["TransactionException.RLP_ERROR_SIZE"] = ["Data checkpoint failed"],
         ["TransactionException.RLP_ERROR_SIZE_LEADING_ZEROS"] = ["Length starts with 0"],
         ["TransactionException.RLP_INVALID_DATA"] = ["sequence prefix"],

@@ -31,9 +31,9 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
                 DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
             }
         }
-        catch (RlpException) when (TryGetWideVError(decoderContext.Data, start, decoderContext.Position, out string? error))
+        catch (RlpException e) when (TryGetWideVError(decoderContext.Data, start, decoderContext.Position, out string? error))
         {
-            throw new RlpException(error);
+            throw new RlpException(error, e);
         }
     }
 
