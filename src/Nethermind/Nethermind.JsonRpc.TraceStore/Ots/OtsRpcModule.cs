@@ -53,7 +53,7 @@ public sealed class OtsRpcModule(
         if (blockFinder.Head is not { } head)
             return ResultWrapper<OtsSearchResult>.Fail("Chain head is unavailable.", ErrorCodes.ResourceUnavailable);
 
-        using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = rpcConfig.RentTimeout();
         CancellationToken ct = timeout.Token;
         OtsSearchResult result = new();
         bool hasMore = false;
@@ -251,7 +251,7 @@ public sealed class OtsRpcModule(
         if (transactionHash is null)
             return ResultWrapper<List<OtsTraceEntry>>.Fail("A transaction hash is required.", ErrorCodes.InvalidParams);
 
-        using CancellationTokenSource timeout = rpcConfig.BuildTimeoutCancellationToken();
+        using RentedTimeout timeout = rpcConfig.RentTimeout();
         CancellationToken ct = timeout.Token;
         SearchResult<Hash256> blockHash = receiptFinder.SearchForReceiptBlockHash(transactionHash);
         if (blockHash.IsError) return ResultWrapper<List<OtsTraceEntry>>.Fail(blockHash);
@@ -284,7 +284,7 @@ public sealed class OtsRpcModule(
                     // Balance/depth prechecks reject nested creations before a destination exists.
                     if (to is null && frame.Depth > 0 && action.Type == "create" && action.From is not null
                         && action.Result is null && action.Subtraces.Count == 0
-                        && action.Error is "Insufficient balance for transfer" or "Max call depth exceeded")
+                        && action.Error is not null)
                         continue;
                     if (action.From is null || to is null)
                         return ResultWrapper<List<OtsTraceEntry>>.Fail("Stored trace lacks a call's sender or destination.", ErrorCodes.ResourceUnavailable);
