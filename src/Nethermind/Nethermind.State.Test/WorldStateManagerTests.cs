@@ -277,15 +277,8 @@ public class WorldStateManagerTests
 
         IScopedTrieStore scopedStore = readOnlyTrieStore.GetTrieStore(null);
         TrieNode rootNode = scopedStore.FindCachedOrUnknown(TreePath.Empty, stateRoot);
+        TreePath rootPath = TreePath.Empty;
 
-        if (rootNode.NodeType == NodeType.Unknown)
-        {
-            byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
-            Assert.That(rlp, Is.Not.Null, "state root trie node should be resolvable from read-only trie store");
-        }
-        else
-        {
-            Assert.That(rootNode.NodeType, Is.Not.EqualTo(NodeType.Unknown), "state root should be resolvable");
-        }
+        Assert.That(rootNode.TryResolveNode(scopedStore, ref rootPath), Is.True, "state root trie node should be resolvable from read-only trie store");
     }
 }

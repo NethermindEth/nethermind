@@ -513,7 +513,7 @@ public class FrameTxValidationTests
             static t => t.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, new byte[] { 0, 1 })],
             prefixAndIntrinsic + GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028);
         yield return Admission("OneAccessCostPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * Eip8250Constants.KeyedNonceAccessCost);
-        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [UInt256.Zero], prefixAndIntrinsic);
+        yield return Admission("AccountNonceAccessesNoNonceKey", static t => t.NonceKeys = [], prefixAndIntrinsic);
         yield return Admission("RecentRootFrameAtItsDeclaredLimit",
             static t => t.Frames = [RecentRootFrame(), SelfVerifyFrame()],
             prefixAndIntrinsic + (ulong)Eip8141Constants.PerFrameGasCost + 20_000 + Eip8272Constants.RecentRootTupleLength * GasCostOf.TxDataZero);
@@ -636,7 +636,8 @@ public class FrameTxValidationTests
         }
     }
 
-    [TestCase(new ulong[] { 0 }, 0ul)]
+    [TestCase(new ulong[] { }, 0ul)]
+    [TestCase(new ulong[] { 0 }, 12_100ul)]
     [TestCase(new ulong[] { 1 }, 12_100ul)]
     [TestCase(new ulong[] { 1, 2 }, 24_200ul)]
     public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong accessCost)
@@ -681,6 +682,33 @@ public class FrameTxValidationTests
             Assert.That(estimatedFloor, Is.EqualTo(actualFloor));
             Assert.That(estimatedMax, Is.EqualTo(actualMax));
             Assert.That(estimated, Is.GreaterThan(original));
+        }
+    }
+
+    [TestCase(0, true)]
+    [TestCase(32, false)]
+    public void TryCalculateGasBudget_CanonicalHashSignatureBytesPricedByLengthOnly(int msgLength, bool samePrice)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7623Enabled.Returns(true);
+        spec.IsEip7976Enabled.Returns(true);
+        byte[] msg = new byte[msgLength];
+        byte[] ones = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        Array.Fill(ones, (byte)0xff);
+        Transaction zeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, new byte[TxFrameSignature.Secp256k1SignatureLength])]);
+        Transaction nonZeros = CreateValidFrameTx(t => t.FrameSignatures =
+            [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, msg, ones)]);
+
+        bool zerosBudgeted = FrameTxValidation.TryCalculateGasBudget(zeros, spec, out ulong zerosIntrinsic, out ulong zerosFloor, out _);
+        bool nonZerosBudgeted = FrameTxValidation.TryCalculateGasBudget(nonZeros, spec, out ulong nonZerosIntrinsic, out ulong nonZerosFloor, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(zerosBudgeted, Is.True);
+            Assert.That(nonZerosBudgeted, Is.True);
+            Assert.That(zerosIntrinsic == nonZerosIntrinsic, Is.EqualTo(samePrice));
+            Assert.That(zerosFloor, Is.EqualTo(nonZerosFloor));
         }
     }
 }
