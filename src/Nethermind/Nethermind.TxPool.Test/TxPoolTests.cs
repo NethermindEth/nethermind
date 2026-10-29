@@ -5430,6 +5430,45 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // A key the sender's verify frame relies on takes a per-transaction slot even when the pay frame relies on it too.
+        [Test]
+        public void Signer_recovered_in_the_verify_and_the_pay_frame_takes_a_per_transaction_slot()
+        {
+            PrivateKey signer = TestItem.PrivateKeys[9];
+            Address paymaster = TestItem.AddressE;
+            List<(Address, byte[])> accounts =
+            [
+                (TestItem.AddressA, OwnerCheckCode(signer, FrameFlags.ApproveExecution)),
+                (paymaster, OwnerCheckCode(signer, FrameFlags.ApprovePayment)),
+                (TestItem.AddressB, OwnerCheckCode(signer)),
+            ];
+            using FrameTxPrefixSimulator simulator = CreatePoolWithEvmSimulator(Eip8151And8298SpecProvider(), accounts, maxPendingPerCode: 1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(OpaqueFrameTx(TestItem.AddressA, paymaster), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(OpaqueFrameTx(TestItem.AddressB), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameTxCodeDependencyLimitReached));
+            }
+        }
+
+        // A signer ecRecover withheld takes no slot: its regular code can't become empty code or a delegation.
+        [Test]
+        public void Prefix_recovering_a_withheld_signer_takes_no_code_dependency_slot([Values] bool withheld)
+        {
+            PrivateKey signer = TestItem.PrivateKeys[9];
+            byte[] recoverAndApprove = [.. EcRecoverCode(signer), .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)];
+            List<(Address, byte[])> accounts = [(TestItem.AddressA, recoverAndApprove), (TestItem.AddressB, recoverAndApprove)];
+            if (withheld) accounts.Add((signer.Address, [(byte)Instruction.STOP]));
+            using FrameTxPrefixSimulator simulator = CreatePoolWithEvmSimulator(Eip8151And8298SpecProvider(), accounts, maxPendingPerCode: 1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(OpaqueFrameTx(TestItem.AddressA), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(OpaqueFrameTx(TestItem.AddressB), TxHandlingOptions.None),
+                    Is.EqualTo(withheld ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxCodeDependencyLimitReached));
+            }
+        }
+
         // FrameTxMaxCodeDependencies counts returned signers and delegating helpers alike.
         [Test]
         public void Frame_transaction_relying_on_more_accounts_than_the_code_dependency_limit_is_rejected([Values] bool overTheLimit)
