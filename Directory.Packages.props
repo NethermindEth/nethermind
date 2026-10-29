@@ -69,11 +69,11 @@
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="4.30.0.119" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.12.0" />
-    <PackageVersion Include="Nethermind.OpenVM.Runtime" Version="[2.1.0.49]" />
+    <PackageVersion Include="Nethermind.OpenVM.Runtime" Version="[2.1.0.61]" />
     <PackageVersion Include="Nethermind.RocksDbBindings" Version="[11.12.0.197]" />
-    <PackageVersion Include="Nethermind.Sp1.Runtime" Version="[1.0.0-preview.8]" />
+    <PackageVersion Include="Nethermind.Sp1.Runtime" Version="[6.9.0.60]" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.2.0" />
-    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="[1.3.2-alpha.149]" />
+    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="[1.3.2-alpha.151]" />
     <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="[1.0.0-preview.8]" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NJsonSchema" Version="11.6.1" />

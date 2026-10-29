@@ -8,6 +8,7 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := sp1
+GUEST_PACKAGE := Nethermind.Sp1.Runtime
 
 # MUL on the uint256_mul precompile without the frame a call from managed code takes.
 GUEST_OBJECTS := mul.o
