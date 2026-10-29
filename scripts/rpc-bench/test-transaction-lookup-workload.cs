@@ -99,18 +99,19 @@ foreach (var (primary, legacy, layout, encoding) in new (string?, string?, strin
     });
 var strictManifest = (JsonObject)manifest.DeepClone();
 strictManifest["entries"] = new JsonArray(manifest["entries"]![0]!.DeepClone(), manifest["entries"]![1]!.DeepClone());
-string RawReceipt(JsonNode entry) => "0x7eb860" + Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10)[2..] +
-    Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10 + 1)[2..] + Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10 + 2)[2..] + "c100";
-JsonObject CaptureStrict(string? raw = null, bool changedValue = false)
+const string receiptItems = "c4018080c0c4018080c0c4018001c0";
+string RawReceipt(JsonNode entry, string? receipts = null) => "0x7eb860" + Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10)[2..] +
+    Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10 + 1)[2..] + Hash(Convert.ToInt64(entry["blockNumber"]!.GetValue<string>(), 16) * 10 + 2)[2..] + (receipts ?? "cf" + receiptItems);
+JsonObject CaptureStrict(string? raw = null, bool changedValue = false, string? receipts = null, JsonObject? probeManifest = null)
 {
     var path = Path.Combine(tests.DirectoryPath, "strict-encoding.json");
     Task<JsonNode?> Probe(string method, JsonArray parameters)
     {
         string key = parameters[1]!.GetValue<string>();
-        JsonNode entry = strictManifest["entries"]!.AsArray().First(entry => key.EndsWith(entry!["blockHash"]!.GetValue<string>()[2..], StringComparison.Ordinal))!;
-        return Task.FromResult<JsonNode?>(JsonValue.Create(raw ?? (changedValue ? RawReceipt(entry)[..^2] + "01" : RawReceipt(entry))));
+        JsonNode entry = (probeManifest ?? strictManifest)["entries"]!.AsArray().First(entry => key.EndsWith(entry!["blockHash"]!.GetValue<string>()[2..], StringComparison.Ordinal))!;
+        return Task.FromResult<JsonNode?>(JsonValue.Create(raw ?? (changedValue ? RawReceipt(entry, receipts)[..^4] + "02c0" : RawReceipt(entry, receipts))));
     }
-    TransactionLookupWorkload.QualifyReceiptEncodingAsync(strictManifest, Probe, path, CancellationToken.None, requireHashPrefixed: true).GetAwaiter().GetResult();
+    TransactionLookupWorkload.QualifyReceiptEncodingAsync(probeManifest ?? strictManifest, Probe, path, CancellationToken.None, requireHashPrefixed: true).GetAwaiter().GetResult();
     return JsonNode.Parse(File.ReadAllText(path))!.AsObject();
 }
 var oracle = CaptureStrict();
@@ -136,13 +137,91 @@ foreach (string field in new[] { "headNumber", "headHash", "blockNumber", "block
     });
 foreach (string raw in new[] { "0x", "0x7fc0", "0x7e80c0", "0x7ec0", "0x7eb86000c0", "0x7ea0" + new string('0', 64) + "c0", "0x7ea1" + new string('0', 66) + "c0", "0x7eb90060" + new string('0', 192) + "c0", "0x7eb860" + new string('0', 192) + "c0" })
     tests.Case("stationary prefix rejects missing/nohash/malformed/count/target " + raw[..Math.Min(20, raw.Length)], () => Reject(() => CaptureStrict(raw)));
-tests.Case("stationary oracle rejects changed value with identical encoding and prefix", () =>
+foreach (string outer in new[] { "cf", "ce" })
+    tests.Case("stationary oracle rejects changed valid receipt value with identical encoding and prefix: " + outer, () =>
 {
-    var actual = CaptureStrict(changedValue: true);
+    var before = CaptureStrict(receipts: outer + receiptItems);
+    var actual = CaptureStrict(changedValue: true, receipts: outer + receiptItems);
     foreach (string field in new[] { "encoding", "byteLength", "prefixHex" })
-        RpcScriptTests.Assert(JsonNode.DeepEquals(oracle["records"]![0]![field], actual["records"]![0]![field]), "same-format fixture changed " + field);
-    RpcScriptTests.Assert(!JsonNode.DeepEquals(oracle["records"]![0]!["valueSha256"], actual["records"]![0]!["valueSha256"]), "full-value digest ignored suffix");
-    Reject(() => TransactionLookupWorkload.CompareReceiptEncoding(strictManifest, oracle, actual));
+        RpcScriptTests.Assert(JsonNode.DeepEquals(before["records"]![0]![field], actual["records"]![0]![field]), "same-format fixture changed " + field);
+    RpcScriptTests.Assert(!JsonNode.DeepEquals(before["records"]![0]!["valueSha256"], actual["records"]![0]!["valueSha256"]), "full-value digest ignored suffix");
+    Reject(() => TransactionLookupWorkload.CompareReceiptEncoding(strictManifest, before, actual));
+});
+string ListHex(string payload, bool legacy = false)
+{
+    int length = payload.Length / 2 - (legacy ? 1 : 0);
+    string hex = length.ToString("x");
+    if (hex.Length % 2 != 0) hex = "0" + hex;
+    return length < 56 ? (192 + length).ToString("x2") + payload : (247 + hex.Length / 2).ToString("x2") + hex + payload;
+}
+foreach (bool legacy in new[] { false, true })
+{
+    tests.Case("production encoder-derived three compact receipt lists: legacy=" + legacy, () => CaptureStrict(receipts: ListHex(receiptItems, legacy)));
+    tests.Case("production missing-slot C0 unit fixture with one stored hash: legacy=" + legacy, () =>
+    {
+        JsonObject one = (JsonObject)strictManifest.DeepClone();
+        JsonNode entry = one["entries"]![0]!.DeepClone();
+        entry["blockTransactionCount"] = 1;
+        one["entries"] = new JsonArray(entry);
+        CaptureStrict("0x7ea0" + entry["txHash"]!.GetValue<string>()[2..] + (legacy ? "c0c0" : "c1c0"), probeManifest: one);
+    });
+    tests.Case("compact missing C0 slot counted between real receipt lists: legacy=" + legacy, () => CaptureStrict(receipts: ListHex("c4018080c0c0c4018001c0", legacy)));
+    foreach (int payloadLength in new[] { 0, 52, 53, 251, 252, 253 })
+        tests.Case($"receipt outer short/one-byte/two-byte length boundary payload={payloadLength} legacy={legacy}", () =>
+            CaptureStrict(receipts: ListHex(ListHex(new string('0', payloadLength * 2)) + "c0c0", legacy)));
+}
+foreach (var (name, receipts) in new[] {
+    ("scalar item", "c300c0c0"), ("string item", "c380c0c0"), ("string outer", "83c0c0c0"), ("missing items", "c2c0c0"), ("no items", "c0"),
+    ("appended scalar", "cf" + receiptItems + "00"), ("appended C0", "cf" + receiptItems + "c0"), ("appended two bytes", "cf" + receiptItems + "c0c0"),
+    ("adjusted legacy outer with extra C0", ListHex(receiptItems + "c0", legacy: true)), ("adjusted legacy outer with two extra C0", ListHex(receiptItems + "c0c0", legacy: true)), ("partial item", ListHex("c4018080c0c4018080c0c5018001c0")),
+    ("truncated item header", ListHex("c0c0f8")), ("oversized item", ListHex("c0c0f83b00")), ("overstated outer", "d0" + receiptItems), ("two-byte outer gap", "cd" + receiptItems),
+    ("noncanonical outer long length", "f80f" + receiptItems), ("outer leading zero length", "f9000f" + receiptItems),
+    ("noncanonical item long length", ListHex("f80100c0c0")), ("item leading zero length", ListHex("f9000100c0c0")) })
+    tests.Case("strict receipt framing rejects " + name, () => Reject(() => CaptureStrict(receipts: receipts)));
+foreach (string guard in new[] { "selected hash", "hash count", "ordinal" })
+    tests.Case("strict receipt framing retains hash guard: " + guard, () =>
+    {
+        JsonObject one = (JsonObject)strictManifest.DeepClone();
+        one["entries"] = new JsonArray(strictManifest["entries"]![0]!.DeepClone());
+        string raw = RawReceipt(one["entries"]![0]!);
+        if (guard == "selected hash") raw = raw[..8] + "f" + raw[9..];
+        else one["entries"]![0]![guard == "hash count" ? "blockTransactionCount" : "transactionIndex"] = guard == "hash count" ? JsonValue.Create(2) : JsonValue.Create("0x3");
+        Reject(() => CaptureStrict(raw, probeManifest: one));
+    });
+string failurePath = Path.Combine(tests.DirectoryPath, "strict-encoding.json.failure.json");
+tests.Case("first rejected raw receipt is retained and stale success report removed", () =>
+{
+    CaptureStrict(); File.Delete(failurePath);
+    string raw = RawReceipt(strictManifest["entries"]![0]!, "c380c0c0");
+    Reject(() => CaptureStrict(raw));
+    string first = File.ReadAllText(failurePath);
+    JsonNode failure = JsonNode.Parse(first)!;
+    RpcScriptTests.Assert(failure["rawHex"]!.GetValue<string>() == raw && failure["keyLayout"]!.GetValue<string>() == "number-prefixed" && failure["txHash"]!.GetValue<string>() == strictManifest["entries"]![0]!["txHash"]!.GetValue<string>(), "first failed probe identity/bytes missing");
+    RpcScriptTests.Assert(failure["valueSha256"]!.GetValue<string>() == Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Convert.FromHexString(raw[2..]))) && failure["reason"]!.GetValue<string>().Contains("prefix type", StringComparison.Ordinal), "failure digest/reason missing");
+    Reject(() => CaptureStrict("0x7fc0"));
+    RpcScriptTests.Assert(File.ReadAllText(failurePath) == first && !File.Exists(Path.Combine(tests.DirectoryPath, "strict-encoding.json")), "first failure overwritten or success report retained");
+});
+foreach (int byteCount in new[] { 262143, 262144, 300001 })
+    tests.Case("rejected raw receipt full-hex cap boundary retains length and full SHA: " + byteCount, () =>
+{
+    File.Delete(failurePath);
+    string raw = "0x7f" + new string('0', (byteCount - 1) * 2);
+    Reject(() => CaptureStrict(raw));
+    JsonNode failure = JsonNode.Parse(File.ReadAllText(failurePath))!;
+    RpcScriptTests.Assert(new FileInfo(failurePath).Length < 1048576 && (byteCount == 262143 ? failure["rawHex"]!.GetValue<string>() == raw : failure["rawHex"] is null) && failure["rawHexPrefix"]!.GetValue<string>().Length == 512 && failure["rawHexTail"]!.GetValue<string>().Length == 512 && failure["byteLength"]!.GetValue<int>() == byteCount, "large failure is unbounded or missing context");
+    RpcScriptTests.Assert(failure["valueSha256"]!.GetValue<string>() == Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Convert.FromHexString(raw[2..]))), "large failure SHA is not full-value");
+});
+tests.Case("invalid raw hex failure records unknown byte length and digest honestly", () =>
+{
+    File.Delete(failurePath);
+    try { CaptureStrict("0xzz"); }
+    catch (FormatException)
+    {
+        JsonNode failure = JsonNode.Parse(File.ReadAllText(failurePath))!;
+        RpcScriptTests.Assert(failure["rawHexPrefix"]!.GetValue<string>() == "0xzz" && failure["byteLength"] is null && failure["valueSha256"] is null, "invalid hex invented decoded bytes");
+        return;
+    }
+    throw new InvalidOperationException("invalid raw hex accepted");
 });
 var manifestHash = TransactionLookupWorkload.Hash(manifestPath);
 var report = Path.Combine(tests.DirectoryPath, "validation.json");
