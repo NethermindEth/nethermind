@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -57,7 +58,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ITrieNodeCache>(),
+                ctx.Resolve<INodeRecordBuffer>(),
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
@@ -67,7 +68,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            .AddSingleton<INodeRecordBuffer, IFlatDbConfig>(c => new NodeRecordBuffer(c.TrieNodeLogEnabled ? 0 : c.CompressedNodeRecordBufferMemoryBudget, NodeRecordBuffer.DefaultGenerationBytes))
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
