@@ -37,7 +37,9 @@ public static unsafe partial class EvmInstructions
         if (!ZiskFlag.IsActive)
         {
             // Only SP1's runtime exports zkvm_uint256_mulmod, and only OpenVM's the division hint and its check.
-            if (Sp1Flag.IsActive)
+            if (AirbenderFlag.IsActive)
+                AirbenderMulMod256(in a, in b, in m, out result);
+            else if (Sp1Flag.IsActive)
                 Sp1MulMod256(in a, in b, in m, out result);
             else if (!OpenVmFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
                 UInt256.MultiplyMod(in a, in b, in m, out result);
@@ -68,6 +70,29 @@ public static unsafe partial class EvmInstructions
     {
         public UInt256 Multiplier;
         public UInt256 Modulus;
+    }
+
+    /// <remarks>
+    /// The delegation forms the 512-bit product from 32-byte aligned copies of the factors, which can come from
+    /// unaligned locals, and <see cref="WordDivision"/> reduces it on 32-bit digits.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static void AirbenderMulMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
+    {
+        if (m.IsZero)
+        {
+            result = default;
+            return;
+        }
+
+        byte* buffer = stackalloc byte[3 * 32 + 31];
+        UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
+        words[0] = a;
+        words[1] = a;
+        words[2] = b;
+        AirbenderArithmetic.MultiplyLow(words, words + 2);
+        AirbenderArithmetic.MultiplyHigh(words + 1, words + 2);
+        WordDivision.Remainder((uint*)words, in m, out result);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

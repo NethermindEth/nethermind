@@ -27,17 +27,29 @@ internal static unsafe class WordDivision
         quotient = default;
         remainder = default;
         fixed (UInt256* u = &dividend, v = &divisor, q = &quotient, r = &remainder)
-            DivRem((uint*)u, (uint*)v, (uint*)q, (uint*)r);
+            DivRem((uint*)u, SignificantDigits((uint*)u), (uint*)v, (uint*)q, (uint*)r);
+    }
+
+    /// <summary>The remainder of the 512-bit <paramref name="dividend"/>, sixteen digits, by <paramref name="divisor"/>, which is not zero.</summary>
+    [SkipLocalsInit]
+    public static void Remainder(uint* dividend, in UInt256 divisor, out UInt256 remainder)
+    {
+        Debug.Assert(!divisor.IsZero);
+        uint* quotient = stackalloc uint[2 * Digits];
+        int high = SignificantDigits(dividend + Digits);
+        remainder = default;
+        fixed (UInt256* v = &divisor, r = &remainder)
+            DivRem(dividend, high > 0 ? Digits + high : SignificantDigits(dividend), (uint*)v, quotient, (uint*)r);
     }
 
     /// <summary>
-    /// Divides the eight digits at <paramref name="u"/> by the eight at <paramref name="v"/>, which are not all zero,
-    /// into the eight digits at <paramref name="q"/> and the eight at <paramref name="r"/>, which are all zero.
+    /// Divides the <paramref name="m"/> significant digits at <paramref name="u"/>, at most sixteen, by the eight at
+    /// <paramref name="v"/>, which are not all zero, into the digits at <paramref name="q"/>, room for <paramref name="m"/>,
+    /// and the eight at <paramref name="r"/>, which are all zero.
     /// </summary>
     [SkipLocalsInit]
-    private static void DivRem(uint* u, uint* v, uint* q, uint* r)
+    private static void DivRem(uint* u, int m, uint* v, uint* q, uint* r)
     {
-        int m = SignificantDigits(u);
         int n = SignificantDigits(v);
         Debug.Assert(n > 0);
 

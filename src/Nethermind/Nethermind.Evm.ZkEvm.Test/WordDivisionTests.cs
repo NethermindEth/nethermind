@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -30,6 +31,33 @@ public class WordDivisionTests
             UInt256.Mod(in dividend, in divisor, out UInt256 expectedRemainder);
             if (quotient != expectedQuotient || remainder != expectedRemainder)
                 mismatches.Add($"{dividend:x} / {divisor:x}: {quotient:x} r {remainder:x}, expected {expectedQuotient:x} r {expectedRemainder:x}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>The dividends are 512-bit products of such operands, as MULMOD forms them.</remarks>
+    [Test]
+    public unsafe void Remainder_matches_the_library_multiply_mod([Range(0, 7)] int seed)
+    {
+        Random random = new(seed);
+        List<string> mismatches = [];
+        uint* product = stackalloc uint[16];
+        for (int i = 0; i < 20_000 && mismatches.Count < 5; i++)
+        {
+            UInt256 a = Operand(random);
+            UInt256 b = Operand(random);
+            UInt256 modulus = Operand(random);
+            if (modulus.IsZero) modulus = UInt256.One;
+
+            byte[] productBytes = ((BigInteger)a * (BigInteger)b).ToByteArray(isUnsigned: true);
+            new Span<uint>(product, 16).Clear();
+            productBytes.CopyTo(new Span<byte>(product, 64));
+
+            WordDivision.Remainder(product, in modulus, out UInt256 remainder);
+            UInt256.MultiplyMod(in a, in b, in modulus, out UInt256 expected);
+            if (remainder != expected)
+                mismatches.Add($"{a:x} * {b:x} mod {modulus:x}: {remainder:x}, expected {expected:x}");
         }
 
         Assert.That(mismatches, Is.Empty);
