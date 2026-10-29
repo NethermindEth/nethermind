@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,6 +30,31 @@ public class PersistedSnapshotLoaderTests
     public void TearDown()
     {
         try { Directory.Delete(_testDir, recursive: true); } catch { /* best-effort */ }
+    }
+
+    [Test]
+    public void ConversionRegistersOnlyWhenTheArenaSucceeds([Values] bool failArena)
+    {
+        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(pool, buffer, content =>
+            content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA));
+        using ArenaManager realArena = TestFixtureHelpers.CreateArenaManager(Path.Combine(_testDir, "arena"));
+        IArenaManager arena = failArena ? Substitute.For<IArenaManager>() : realArena;
+        if (failArena)
+        {
+            arena.CreateWriter(Arg.Any<long>(), small: true).Returns(_ => throw new IOException("Injected arena allocation failure."));
+        }
+        ISnapshotCatalog catalog = Substitute.For<ISnapshotCatalog>();
+        using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs"), 64 * 1024);
+        using PersistedSnapshotLoader loader = new(Substitute.For<ISnapshotRepository>(), arena, blobs, catalog,
+            new FlatDbConfig { PersistedSnapshotBloomBitsPerKey = 0 }, LimboLogs.Instance);
+
+        if (failArena) Assert.That(() => loader.ConvertAndRegister(snapshot), Throws.TypeOf<IOException>());
+        else loader.ConvertAndRegister(snapshot);
+
+        if (failArena) catalog.DidNotReceive().Add(Arg.Any<CatalogEntry>());
+        else catalog.Received(1).Add(Arg.Any<CatalogEntry>());
     }
 
     [Test]

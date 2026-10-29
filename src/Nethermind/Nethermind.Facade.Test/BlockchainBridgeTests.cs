@@ -90,16 +90,22 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
-        Assert.That(result, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     // regression test - was throwing NRE before
@@ -151,12 +157,12 @@ public class BlockchainBridgeTests
         }
         _receiptStorage.Get(block).Returns(receipts);
         Assert.That(_blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result), Is.True);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((ulong)index));
             Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
             Assert.That(result.Value.Transaction.SenderAddress, Is.EqualTo(TestItem.Addresses[index]));
-        });
+        }
         Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
@@ -200,7 +206,9 @@ public class BlockchainBridgeTests
 
         chain.LookUpFullBlocks(true);
         (TxReceipt? fullReceipt, ulong fullTimestamp, TxGasInfo? fullGasInfo, int fullLogIndexStart) = chain.Bridge.GetTxReceiptInfo(tx.Hash!);
+#pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
         Assert.That(fullReceipt, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(chain.Bridge.TryGetTransaction(tx.Hash!, out TransactionLookupResult? full, checkTxnPool: false), Is.True);
         chain.BlockTree.Received().FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
 
@@ -471,24 +479,27 @@ public class BlockchainBridgeTests
         Transaction tx = new() { GasLimit = 50_000 };
         IBlockchainBridge bridge = container.Resolve<BlockchainBridge>();
 
-        switch (call)
+        string? error = call switch
         {
-            case OverrideCall.Call:
-                bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken: CancellationToken.None);
-                break;
-            case OverrideCall.EstimateGas:
-                bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, cancellationToken: CancellationToken.None);
-                break;
-            case OverrideCall.EstimateFrameGas:
-                bridge.EstimateFrameGas(header, tx, [], [], 0, 1, null, stateOverride, blockOverride, CancellationToken.None, out _);
-                break;
-        }
+            OverrideCall.Call => bridge.Call(header, tx, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken: CancellationToken.None).Error,
+            OverrideCall.EstimateGas => bridge.EstimateGas(header, tx, 1, stateOverride, blobBaseFeeOverride, blockOverride, 0, cancellationToken: CancellationToken.None).Error,
+            OverrideCall.EstimateFrameGas => bridge.EstimateFrameGas(header, tx, [], [], 0, 1, null, stateOverride, blockOverride, CancellationToken.None, out _).Error,
+            _ => throw new ArgumentOutOfRangeException(nameof(call))
+        };
 
-        // Fields not applied by these calls must not route to the override environment.
-        bool hasAppliedOverrides = input is not (OverrideInput.None or OverrideInput.Empty or OverrideInput.BeaconRoot or OverrideInput.Withdrawals);
-        shared.Received(hasAppliedOverrides ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
-        exclusive.Received(hasAppliedOverrides ? 1 : 0).TryBuildAndOverride(
-            Arg.Any<BlockHeader?>(), stateOverride, blockOverride, out Arg.Any<Scope<BlockchainBridge.BlockProcessingComponents>?>());
+        bool unsupported = input is OverrideInput.BeaconRoot or OverrideInput.Withdrawals;
+        using (Assert.EnterMultipleScope())
+        {
+            if (unsupported)
+            {
+                string field = input == OverrideInput.BeaconRoot ? "beaconRoot" : "withdrawals";
+                Assert.That(error, Is.EqualTo($"block override \"{field}\" is not supported for this RPC method"));
+            }
+            bool hasAppliedOverrides = !unsupported && input is not (OverrideInput.None or OverrideInput.Empty);
+            shared.Received(hasAppliedOverrides || unsupported ? 0 : 1).TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>());
+            exclusive.Received(hasAppliedOverrides ? 1 : 0).TryBuildAndOverride(
+                Arg.Any<BlockHeader?>(), stateOverride, blockOverride, out Arg.Any<Scope<BlockchainBridge.BlockProcessingComponents>?>());
+        }
     }
 
     [Test]
@@ -760,8 +771,11 @@ public class BlockchainBridgeTests
             [new StorageCell(TestItem.AddressC, UInt256.One)]);
 
         Assert.That(callOutput.AccessList, Is.Not.Null);
-        Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
-        Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover), Is.False);
+            Assert.That(callOutput.AccessList.Any(e => e.Address == TestItem.AddressC), Is.True);
+        }
     }
 
     [Test]
@@ -1696,8 +1710,11 @@ public class BlockchainBridgeTests
         if (expectRejected)
         {
             TransactionResult reason = Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason;
-            Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
-            Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+                Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
+            }
         }
         else
         {

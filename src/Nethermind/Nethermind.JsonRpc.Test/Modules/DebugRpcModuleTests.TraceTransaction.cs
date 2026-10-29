@@ -47,8 +47,11 @@ public partial class DebugRpcModuleTests
         Block block = await chain.AddBlock(transaction);
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
         chain.BlockTree.DeleteOldBlock(block.Number, block.Hash!);
-        Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
-        Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
+        }
         counter.Enabled = true;
         FlushRecordingPipeWriter pipe = new(keepOutput: true);
         using JsonRpcResponse rpcResponse = await RpcTest.TestRequest(chain.DebugRpcModule, "debug_traceTransaction", transaction.Hash!,

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
@@ -12,14 +11,12 @@ namespace Nethermind.Merge.AuRa.Withdrawals;
 
 public class WithdrawalContractFactory : IWithdrawalContractFactory
 {
-    private readonly IAbiEncoder _abiEncoder;
     private readonly Address _contractAddress;
 
-    public WithdrawalContractFactory(AuRaChainSpecEngineParameters parameters, IAbiEncoder abiEncoder)
+    public WithdrawalContractFactory(AuRaChainSpecEngineParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
-        _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
         _contractAddress = parameters.WithdrawalContractAddress;
     }
 
@@ -27,6 +24,6 @@ public class WithdrawalContractFactory : IWithdrawalContractFactory
     {
         ArgumentNullException.ThrowIfNull(processor);
 
-        return new WithdrawalContract(processor, _abiEncoder, _contractAddress);
+        return new WithdrawalContract(processor, _contractAddress);
     }
 }

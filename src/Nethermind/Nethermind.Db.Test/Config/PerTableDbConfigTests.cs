@@ -95,13 +95,13 @@ public class PerTableDbConfigTests
         IDictionary<string, string> receiptsBlocks = DbOnTheRocks.ExtractOptions(
             new PerTableDbConfig(dbConfig, DbNames.Receipts, nameof(ReceiptsColumns.Blocks)).RocksDbOptions);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(ulong.Parse(receiptsBlocks["write_buffer_size"]),
                 Is.GreaterThanOrEqualTo(ulong.Parse(generic["write_buffer_size"])));
             Assert.That(int.Parse(receiptsBlocks["max_write_buffer_number"]),
                 Is.GreaterThanOrEqualTo(int.Parse(generic["max_write_buffer_number"])));
-        });
+        }
     }
 
     [Test]

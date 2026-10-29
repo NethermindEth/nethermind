@@ -751,10 +751,13 @@ public class FrameTxReceiptDecoderTests
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 0, RepeatedLogs(secondFrameLogs))));
 
         RlpLimit.InitMaxBlockGas(EightLogBlockGas);
-        Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(EightLogBlockGasLimit), "the ceiling the frames are sized against");
-        // Otherwise the per-frame guard trips first and the rejection stops covering the shared budget.
-        Assert.That(Math.Max(firstFrameLogs, secondFrameLogs), Is.LessThanOrEqualTo(EightLogBlockGasLimit),
-            "each frame has to stay within the ceiling on its own");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RlpLimit.ReceiptLogs.Limit, Is.EqualTo(EightLogBlockGasLimit), "the ceiling the frames are sized against");
+            // Otherwise the per-frame guard trips first and the rejection stops covering the shared budget.
+            Assert.That(Math.Max(firstFrameLogs, secondFrameLogs), Is.LessThanOrEqualTo(EightLogBlockGasLimit),
+                "each frame has to stay within the ceiling on its own");
+        }
 
         if (rejected)
         {

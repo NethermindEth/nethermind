@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -62,8 +63,11 @@ namespace Ethereum.Test.Base
         protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-            Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+                Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
+            }
 
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
@@ -84,15 +88,13 @@ namespace Ethereum.Test.Base
             // run, and a fire-and-forget background convert from one test can race another test's files. Long
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
             flatDbConfig.EnableLongFinality = false;
-            // Every test builds its own container, so the default budget allocates a production-sized trie node
-            // cache on the large object heap per test.
-            flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
             // Some registered services (e.g. the main processing context) are IAsyncDisposable only;
             // disposing the container synchronously makes Autofac block on them and trace a warning per test.
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
+                .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();

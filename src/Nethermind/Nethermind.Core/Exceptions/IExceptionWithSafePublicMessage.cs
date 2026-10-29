@@ -8,4 +8,13 @@ namespace Nethermind.Core.Exceptions;
 /// </summary>
 public interface IExceptionWithSafePublicMessage
 {
+    /// <summary>
+    /// Whether <see cref="System.Exception.Message"/> is exposed without the <c>invalid argument N:</c> prefix that names
+    /// the position of the JSON-RPC argument that failed to bind.
+    /// </summary>
+    /// <remarks>
+    /// Set for checks that Geth performs in the method handler after the arguments are decoded, so its errors for them
+    /// carry no argument position.
+    /// </remarks>
+    bool OmitArgumentPosition => false;
 }

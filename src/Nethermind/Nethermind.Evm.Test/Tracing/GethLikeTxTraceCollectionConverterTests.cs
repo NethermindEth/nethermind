@@ -70,13 +70,13 @@ public class GethLikeTxTraceCollectionConverterTests
     {
         GethLikeTxTraceCollection result = _serializer.Deserialize<GethLikeTxTraceCollection>($"""[{json}]""");
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Count, Is.EqualTo(1));
             Assert.That(result.First().Gas, Is.EqualTo(expectedTrace.Gas));
             Assert.That(result.First().ReturnValue, Is.EqualTo(expectedTrace.ReturnValue));
             Assert.That(result.First().TxHash, Is.EqualTo(expectedTrace.TxHash));
-        });
+        }
     }
 
     private static IEnumerable<TestCaseData> TraceAndJsonSource()
