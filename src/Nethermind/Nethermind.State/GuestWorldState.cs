@@ -69,6 +69,9 @@ public sealed partial class GuestWorldState : IWorldState
     private int _slotCount;
     private int _lastSlot;
 
+    // Whether the entries of the last scope's block are still to be cleared; see EndScope.
+    private bool _blockChangesLeft;
+
     private readonly OptimizedDictionary<StorageCell, int> _transientIndex = [];
     private TransientEntry[] _transients = new TransientEntry[64];
     private int _transientCount;
@@ -149,6 +152,7 @@ public sealed partial class GuestWorldState : IWorldState
     private bool TryBeginScope(BlockHeader? block, bool atTarget, [NotNullWhen(true)] out IDisposable? scopeCloser)
     {
         if (_scope is not null) throw new InvalidOperationException("Cannot create nested worldstate scope.");
+        if (_blockChangesLeft) ResetBlockChanges();
 
         bool acquired = atTarget
             ? ScopeProvider.TryBeginScopeAtTarget(block!, _metrics, out IWorldStateScopeProvider.IScope? scope)
@@ -182,7 +186,10 @@ public sealed partial class GuestWorldState : IWorldState
         {
             if (_scope is not null)
             {
-                Reset();
+                // The block's entries are cleared when the next scope begins: the guest's last scope has no next one,
+                // and clearing every entry the block touched is most of the work left after it.
+                Reset(resetBlockChanges: false);
+                _blockChangesLeft = true;
                 _scope.Dispose();
             }
         }
@@ -1215,21 +1222,24 @@ public sealed partial class GuestWorldState : IWorldState
         _windowStartTick = _accessTick;
         _needsStateRootUpdate = false;
 
-        if (resetBlockChanges)
-        {
-            Array.Clear(_accountBuckets);
-            Array.Clear(_accounts, 0, _accountCount);
-            _accountCount = 0;
-            Array.Clear(_slotBuckets);
-            Array.Clear(_slots, 0, _slotCount);
-            _slotCount = 0;
-            _lastSlot = 0;
-            _accountsToFlush.Clear();
-            _storageToFlush.Clear();
-            _insertedCode?.Clear();
-            _lastAddress = null;
-            _checkedCode = default;
-        }
+        if (resetBlockChanges) ResetBlockChanges();
+    }
+
+    private void ResetBlockChanges()
+    {
+        _blockChangesLeft = false;
+        Array.Clear(_accountBuckets);
+        Array.Clear(_accounts, 0, _accountCount);
+        _accountCount = 0;
+        Array.Clear(_slotBuckets);
+        Array.Clear(_slots, 0, _slotCount);
+        _slotCount = 0;
+        _lastSlot = 0;
+        _accountsToFlush.Clear();
+        _storageToFlush.Clear();
+        _insertedCode?.Clear();
+        _lastAddress = null;
+        _checkedCode = default;
     }
 
     #endregion

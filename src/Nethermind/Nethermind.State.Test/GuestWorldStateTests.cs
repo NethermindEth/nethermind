@@ -254,6 +254,23 @@ public class GuestWorldStateTests
         }
     }
 
+    [Test]
+    public void Next_scope_does_not_see_the_changes_of_an_ended_one()
+    {
+        (IWorldState state, BlockHeader baseBlock) = CreatePreState(guest: true);
+        StorageCell cell = new(Addresses[0], 1);
+        using (state.BeginScope(baseBlock))
+        {
+            state.AddToBalance(Addresses[0], 5, Cancun.Instance);
+            state.Set(cell, 9);
+            state.Commit(Cancun.Instance, NullStateTracer.Instance, commitRoots: false);
+        }
+
+        using IDisposable scope = state.BeginScope(baseBlock);
+        state.Get(cell, out UInt256 value);
+        Assert.That((state.GetBalance(Addresses[0]), value), Is.EqualTo(((UInt256)0, (UInt256)2)));
+    }
+
     private static string Apply(IWorldState state, Func<IWorldState, string> operation)
     {
         try
