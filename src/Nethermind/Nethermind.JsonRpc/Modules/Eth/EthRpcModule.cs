@@ -403,7 +403,9 @@ public partial class EthRpcModule(
         if (await CheckAndFillSendTransaction(rpcTx) is { } sendError)
             return sendError;
 
-        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
+        // A frame transaction priced per gas buys max_gas at those prices, which only a fork can price.
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } head ? _specProvider.GetSpec(head) : null;
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(spec: frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
         {
             return ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput);
@@ -446,7 +448,8 @@ public partial class EthRpcModule(
             return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
         }
 
-        Result<Transaction> txResult = rpcTx.ToSignableTransaction();
+        IReleaseSpec? frameSpec = rpcTx is FrameTransactionForRpc && _blockFinder.Head?.Header is { } frameHead ? _specProvider.GetSpec(frameHead) : null;
+        Result<Transaction> txResult = rpcTx.ToSignableTransaction(frameSpec);
         if (!txResult.Success(out Transaction tx, out string error))
             return ResultWrapper<SignTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
 
@@ -1017,8 +1020,7 @@ public partial class EthRpcModule(
         if (filterId > int.MaxValue)
             return ResultWrapper<bool?>.Success(false);
 
-        _blockchainBridge.UninstallFilter((int)filterId);
-        return ResultWrapper<bool?>.Success(true);
+        return ResultWrapper<bool?>.Success(_blockchainBridge.UninstallFilter((int)filterId));
     }
 
     public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
@@ -1054,32 +1056,10 @@ public partial class EthRpcModule(
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
-        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-        bool timeoutTransferred = false;
-
-        try
-        {
-            int id = filterId <= int.MaxValue ? (int)filterId : -1;
-            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
-            if (id < 0 || !filterFound)
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput);
-            }
-
-            return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
-        }
-        catch (ResourceNotFoundException e)
-        {
-            return GetLogsFailure(e);
-        }
-        finally
-        {
-            if (!timeoutTransferred)
-            {
-                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-            }
-        }
+        LogFilter? logFilter = filterId <= int.MaxValue ? _blockchainBridge.GetLogFilter((int)filterId) : null;
+        return logFilter is null
+            ? ResultWrapper<IEnumerable<FilterLog>>.Fail(ErrorMessages.FilterNotFound, ErrorCodes.InvalidInput)
+            : GetLogs(logFilter, logFilter.FromBlock, logFilter.ToBlock);
     }
 
     public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
@@ -1087,6 +1067,17 @@ public partial class EthRpcModule(
         BlockParameter fromBlock = filter.FromBlock!;
         BlockParameter toBlock = filter.ToBlock!;
 
+        LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
+
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
+        if (logFilter is not null && filter is not null)
+            logFilter.UseIndex = filter.UseIndex;
+
+        return GetLogs(logFilter, fromBlock, toBlock);
+    }
+
+    private ResultWrapper<IEnumerable<FilterLog>> GetLogs(LogFilter logFilter, BlockParameter fromBlock, BlockParameter toBlock)
+    {
         ResultWrapper<IEnumerable<FilterLog>> FailWithNoHeadersSyncedYet(SearchResult<BlockHeader> blockResult)
             => GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(blockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
 
@@ -1132,12 +1123,6 @@ public partial class EthRpcModule(
 
             BlockHeader fromBlockHeader = fromResult.Object!;
             BlockHeader toBlockHeader = toResult.Object!;
-
-            LogFilter logFilter = _blockchainBridge.GetFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse - can be null in tests
-            if (logFilter is not null && filter is not null)
-                logFilter.UseIndex = filter.UseIndex;
 
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
@@ -1421,8 +1406,8 @@ public partial class EthRpcModule(
 
             return new ForkConfig
             {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
+                ActivationTime = fork.Value.Activation.Timestamp,
+                ActivationBlock = fork.Value.Activation.Timestamp is null ? fork.Value.Activation.BlockNumber : null,
                 BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
                 {
                     BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,

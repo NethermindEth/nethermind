@@ -134,9 +134,12 @@ public class PbtNodeGroupTests
     [TestCase(66, 528)]
     public void Key_families_enforce_capacity_without_changing_storage_bytes(int length, int depth)
     {
-        Assert.That(Unsafe.SizeOf<PbtPath>(), Is.EqualTo(34));
-        Assert.That(Unsafe.SizeOf<PbtStoragePath>(), Is.EqualTo(66));
-        Assert.That(Unsafe.SizeOf<PbtVariableTreeKey>(), Is.EqualTo(72));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unsafe.SizeOf<PbtPath>(), Is.EqualTo(34));
+            Assert.That(Unsafe.SizeOf<PbtStoragePath>(), Is.EqualTo(66));
+            Assert.That(Unsafe.SizeOf<PbtVariableTreeKey>(), Is.EqualTo(72));
+        }
         byte[] keyBytes = new byte[length];
         keyBytes[^1] = 1;
         PbtVariableTreeKey storageKey = new(keyBytes);
@@ -144,8 +147,11 @@ public class PbtNodeGroupTests
         if (length == PbtPath.KeyLength)
         {
             PbtPath key = (PbtPath)storageKey;
-            Assert.That(key.FirstDifferingBit(new PbtPath(new byte[length]), 0), Is.EqualTo(depth - 1));
-            Assert.That(((PbtVariableTreeKey)key).Bytes.ToArray(), Is.EqualTo(keyBytes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(key.FirstDifferingBit(new PbtPath(new byte[length]), 0), Is.EqualTo(depth - 1));
+                Assert.That(((PbtVariableTreeKey)key).Bytes.ToArray(), Is.EqualTo(keyBytes));
+            }
             Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtStoragePath)storageKey);
         }
         else
@@ -500,10 +506,13 @@ public class PbtNodeGroupTests
         PbtNodePath boundary = new(Bytes.FromHexString("0000"), 12);
         store.SetNode(boundary, null);
         byte[]? descendantGroup = store.GetPhysicalNodeGroup(boundary);
-        Assert.That(descendantGroup, Is.Not.Null);
-        Assert.That(store.GetNode(boundary), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(descendantGroup, Is.Not.Null);
+            Assert.That(store.GetNode(boundary), Is.Null);
 
-        Assert.That(() => store.Fold(root, [(PbtStoreTestExtensions.ZoneKey("00"), Value(0xF0))]), Throws.TypeOf<InvalidDataException>());
+            Assert.That(() => store.Fold(root, [(PbtStoreTestExtensions.ZoneKey("00"), Value(0xF0))]), Throws.TypeOf<InvalidDataException>());
+        }
     }
 
     [Test]
@@ -620,8 +629,11 @@ public class PbtNodeGroupTests
             Assert.That(tree.TryGetNode(new PbtNodePath(new byte[(depth + 7) / 8], depth), out _), Is.False, $"compressed prefix depth {depth}");
         foreach (PbtNodeRecord record in tree.Nodes)
         {
-            Assert.That(tree.TryGetNode(record.Path, out byte[]? encoding), Is.True);
-            Assert.That(encoding, Is.EqualTo(record.Encoding.ToArray()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.TryGetNode(record.Path, out byte[]? encoding), Is.True);
+                Assert.That(encoding, Is.EqualTo(record.Encoding.ToArray()));
+            }
         }
 
         int presentGroupDepth = (8 + sharedPrefixBits) / 3 * 3;
@@ -925,8 +937,11 @@ public class PbtNodeGroupTests
         Assert.That(written.Select(static entry => entry.Pointer).Distinct().Count(), Is.EqualTo(128));
         foreach ((ulong pointer, byte[] payload) in written)
         {
-            Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
+                Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            }
         }
         ulong retained = written.First().Pointer;
         for (int i = 0; i < 100; i++) buffer.TryLocate(retained, out _);

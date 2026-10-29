@@ -134,11 +134,14 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Hash256 root2;
         using (worldState.BeginScope(header1))
         {
-            // The world state must not read emptiness off the storage tree's placeholder root: taking it as proof
-            // that the account holds no slot answers every read after the first with zero, and hands the commit a
-            // storage clear that would mark the account self-destructed.
-            Assert.That(worldState.Get(new StorageCell(contract, 5)), Is.EqualTo((UInt256)0xAB));
-            Assert.That(worldState.Get(new StorageCell(contract, 1000)), Is.EqualTo((UInt256)0x1234));
+            using (Assert.EnterMultipleScope())
+            {
+                // The world state must not read emptiness off the storage tree's placeholder root: taking it as proof
+                // that the account holds no slot answers every read after the first with zero, and hands the commit a
+                // storage clear that would mark the account self-destructed.
+                Assert.That(worldState.Get(new StorageCell(contract, 5)), Is.EqualTo((UInt256)0xAB));
+                Assert.That(worldState.Get(new StorageCell(contract, 1000)), Is.EqualTo((UInt256)0x1234));
+            }
             Assert.That(worldState.Get(new StorageCell(contract, 5)), Is.EqualTo((UInt256)0xAB));
 
             worldState.AddToBalance(eoa, 5, spec, out _);
@@ -156,12 +159,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
         Hash256 root3;
         using (worldState.BeginScope(header2))
         {
-            Assert.That(worldState.GetBalance(eoa), Is.EqualTo((UInt256)105));
-            Assert.That(worldState.GetBalance(contract), Is.EqualTo((UInt256)52));
-            Assert.That(worldState.GetCode(contract).ToArray(), Is.EqualTo(ReferenceCode));
-            Assert.That(worldState.Get(new StorageCell(contract, 5)), Is.EqualTo(UInt256.Zero));
-            Assert.That(worldState.Get(new StorageCell(contract, 70)), Is.EqualTo((UInt256)0x07));
-            Assert.That(worldState.Get(new StorageCell(contract, 1000)), Is.EqualTo((UInt256)0x1234));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worldState.GetBalance(eoa), Is.EqualTo((UInt256)105));
+                Assert.That(worldState.GetBalance(contract), Is.EqualTo((UInt256)52));
+                Assert.That(worldState.GetCode(contract).ToArray(), Is.EqualTo(ReferenceCode));
+                Assert.That(worldState.Get(new StorageCell(contract, 5)), Is.EqualTo(UInt256.Zero));
+                Assert.That(worldState.Get(new StorageCell(contract, 70)), Is.EqualTo((UInt256)0x07));
+                Assert.That(worldState.Get(new StorageCell(contract, 1000)), Is.EqualTo((UInt256)0x1234));
+            }
 
             worldState.IncrementNonce(eoa, 1, out _);
             worldState.Commit(spec);

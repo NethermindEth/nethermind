@@ -66,8 +66,11 @@ public class PbtDbManagerTests
             {
                 IPbtPersistedSnapshotLoader loader = container.Resolve<IPbtPersistedSnapshotLoader>();
                 Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
-                Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
-                Assert.That(repository.Count, Is.EqualTo(1));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
+                    Assert.That(repository.Count, Is.EqualTo(1));
+                }
                 using (PbtReadOnlySnapshotBundle held = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(state, StateId.PreGenesis),
                     container.Resolve<IPbtPersistence>().CreateReader(), slotFilterBitsPerKey: 0))
                 {
@@ -83,8 +86,11 @@ public class PbtDbManagerTests
         await using (IContainer disabled = PersistedContainer(tempPath.Path, catalogDb, enabled: false))
         {
             disabled.Resolve<IPbtDbManager>();
-            Assert.That(disabled.Resolve<PbtSnapshotRepository>().HasState(state), Is.False);
-            Assert.That(disabled.Resolve<IPbtPersistedSnapshotLoader>(), Is.TypeOf<NullPbtPersistedSnapshotLoader>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disabled.Resolve<PbtSnapshotRepository>().HasState(state), Is.False);
+                Assert.That(disabled.Resolve<IPbtPersistedSnapshotLoader>(), Is.TypeOf<NullPbtPersistedSnapshotLoader>());
+            }
         }
         for (int i = 0; i < files.Length; i++) Assert.That(File.ReadAllBytes(files[i]), Is.EqualTo(before[i]));
         await using (IContainer reopened = PersistedContainer(tempPath.Path, catalogDb))
@@ -94,9 +100,12 @@ public class PbtDbManagerTests
             Assert.That(repository.HasState(state), Is.True);
             using PbtAssembledSnapshotResult assembled = repository.TryLeaseReadChain(state, StateId.PreGenesis);
             PbtPersistedSnapshot persisted = assembled.Persisted[0];
-            Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
-            Assert.That(persisted.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
-            Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(new byte[65537]));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+                Assert.That(persisted.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
+                Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(new byte[65537]));
+            }
         }
     }
 
@@ -203,8 +212,11 @@ public class PbtDbManagerTests
         using (snapshot)
         {
             Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Throws.InstanceOf<InvalidDataException>());
-            Assert.That(container.Resolve<PbtSnapshotRepository>().ContainsMemorySource(snapshot), Is.True);
-            Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(container.Resolve<PbtSnapshotRepository>().ContainsMemorySource(snapshot), Is.True);
+                Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
+            }
         }
     }
 
@@ -218,8 +230,11 @@ public class PbtDbManagerTests
         db.FailNext = true;
         Assert.That(() => catalog.Remove(state, SnapshotTier.PersistedBase), Throws.InstanceOf<IOException>());
         int before = db.SyncCalls;
-        Assert.That(catalog.Remove(state, SnapshotTier.PersistedBase), Is.False);
-        Assert.That(db.SyncCalls, Is.EqualTo(before + 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(catalog.Remove(state, SnapshotTier.PersistedBase), Is.False);
+            Assert.That(db.SyncCalls, Is.EqualTo(before + 1));
+        }
     }
 
     [Test]
@@ -260,8 +275,11 @@ public class PbtDbManagerTests
         using (snapshot)
         {
             Assert.That(() => container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot), Throws.InstanceOf<ObjectDisposedException>());
-            Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
-            Assert.That(snapshot.Content.Codes[TestItem.KeccakC.ValueHash256].CodeSpan.Length, Is.EqualTo(65537));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(new PbtSnapshotCatalog(db).Load(), Is.Empty);
+                Assert.That(snapshot.Content.Codes[TestItem.KeccakC.ValueHash256].CodeSpan.Length, Is.EqualTo(65537));
+            }
         }
     }
 
@@ -289,10 +307,13 @@ public class PbtDbManagerTests
             Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt), Is.Not.SameAs(container.Resolve<ISnapshotCatalog>()));
         }
         ConvertLoaderSnapshot(container, StateId.PreGenesis, new(1, TestItem.KeccakA.ValueHash256));
-        Assert.That(container.Resolve<ISnapshotCatalog>().Load(), Is.Empty);
-        Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt).Load().Count(), Is.EqualTo(1));
-        Assert.That(Directory.Exists(Path.Combine(tempPath.Path, DbNames.Pbt, "persistedSnapshot")), Is.True);
-        Assert.That(Directory.Exists(Path.Combine(tempPath.Path, "persistedSnapshot")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<ISnapshotCatalog>().Load(), Is.Empty);
+            Assert.That(container.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt).Load().Count(), Is.EqualTo(1));
+            Assert.That(Directory.Exists(Path.Combine(tempPath.Path, DbNames.Pbt, "persistedSnapshot")), Is.True);
+            Assert.That(Directory.Exists(Path.Combine(tempPath.Path, "persistedSnapshot")), Is.True);
+        }
     }
 
     [Test]
@@ -557,16 +578,22 @@ public class PbtDbManagerTests
 
         await using (PbtTestContext reopened = new(db))
         {
-            Assert.That(reopened.Manager.HasStateForBlock(new StateId(3, root3)), Is.True);
-            Assert.That(reopened.Manager.HasStateForBlock(new StateId(1, root1)), Is.False);
-            Assert.That(reopened.Manager.TryGatherReadOnlyBundle(new StateId(1, root1)), Is.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reopened.Manager.HasStateForBlock(new StateId(3, root3)), Is.True);
+                Assert.That(reopened.Manager.HasStateForBlock(new StateId(1, root1)), Is.False);
+                Assert.That(reopened.Manager.TryGatherReadOnlyBundle(new StateId(1, root1)), Is.Null);
+            }
 
             using IWorldStateScopeProvider.IScope scope = reopened.BeginScope(Header(3, root3));
             Account? account = scope.Get(Address);
             Assert.That(account, Is.Not.Null);
-            Assert.That(account!.Nonce, Is.EqualTo(3ul));
-            Assert.That(account.Balance, Is.EqualTo((UInt256)300));
-            Assert.That(scope.CreateStorageTree(Address).Get(Slot), Is.EqualTo((UInt256)3), "and the slot decodes out of its own persisted blob");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account!.Nonce, Is.EqualTo(3ul));
+                Assert.That(account.Balance, Is.EqualTo((UInt256)300));
+                Assert.That(scope.CreateStorageTree(Address).Get(Slot), Is.EqualTo((UInt256)3), "and the slot decodes out of its own persisted blob");
+            }
         }
     }
 
@@ -592,9 +619,12 @@ public class PbtDbManagerTests
             rootB = scopeB.CommitBlock(2, Address, 333, Slot);
         }
 
-        Assert.That(rootA, Is.Not.EqualTo(rootB));
-        Assert.That(ctx.Manager.HasStateForBlock(new StateId(2, rootA)), Is.True);
-        Assert.That(ctx.Manager.HasStateForBlock(new StateId(2, rootB)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rootA, Is.Not.EqualTo(rootB));
+            Assert.That(ctx.Manager.HasStateForBlock(new StateId(2, rootA)), Is.True);
+            Assert.That(ctx.Manager.HasStateForBlock(new StateId(2, rootB)), Is.True);
+        }
 
         using (IWorldStateScopeProvider.IScope onA = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(2, rootA), new LocalMetrics()))
         {
@@ -626,12 +656,15 @@ public class PbtDbManagerTests
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 5;
         await ctx.PersistenceManager.CheckPersistenceAsync(ctx.Repository.GetLastCommittedStateId()!.Value);
 
-        // With CompactSize 2 and no offset, only even finalized blocks are persisted.
-        Assert.That(ctx.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(4, roots[4])));
-        Assert.That(ctx.Repository.Count, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            // With CompactSize 2 and no offset, only even finalized blocks are persisted.
+            Assert.That(ctx.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(4, roots[4])));
+            Assert.That(ctx.Repository.Count, Is.EqualTo(1));
 
-        // The open scope continues reading through its leased layers.
-        Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)500));
+            // The open scope continues reading through its leased layers.
+            Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)500));
+        }
     }
 
     /// <summary>
@@ -662,8 +695,11 @@ public class PbtDbManagerTests
             second = childHeaders.Add(first, TestItem.KeccakB);
             using (IWorldStateScopeProvider.IScope scope = ctx.BeginScope(genesis))
             {
-                Assert.That(scope.CommitBlock(1, Address, 100, Slot), Is.EqualTo(TestItem.KeccakA), "the block reports the root its header claims");
-                Assert.That(scope.CommitBlock(2, Address, 200, Slot), Is.EqualTo(TestItem.KeccakB), "and the next block in the branch resolves its own header");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(scope.CommitBlock(1, Address, 100, Slot), Is.EqualTo(TestItem.KeccakA), "the block reports the root its header claims");
+                    Assert.That(scope.CommitBlock(2, Address, 200, Slot), Is.EqualTo(TestItem.KeccakB), "and the next block in the branch resolves its own header");
+                }
             }
 
             using (Assert.EnterMultipleScope())
@@ -686,14 +722,20 @@ public class PbtDbManagerTests
         {
             using (Persistence.IPbtPersistence.IReader reader = reopened.Persistence.CreateReader())
             {
-                Assert.That(reader.CurrentState, Is.EqualTo(new StateId(second)));
-                Assert.That(reader.CurrentRoot, Is.EqualTo(treeRoot));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.CurrentState, Is.EqualTo(new StateId(second)));
+                    Assert.That(reader.CurrentRoot, Is.EqualTo(treeRoot));
+                }
             }
 
             BlockHeader third = childHeaders.Add(second, TestItem.KeccakC);
             using IWorldStateScopeProvider.IScope scope = reopened.BeginScope(second);
-            Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)200), "the persisted state is found by its header");
-            Assert.That(scope.CommitBlock(3, Address, 300, Slot), Is.EqualTo(third.StateRoot), "and the branch carries on from it");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)200), "the persisted state is found by its header");
+                Assert.That(scope.CommitBlock(3, Address, 300, Slot), Is.EqualTo(third.StateRoot), "and the branch carries on from it");
+            }
         }
     }
 
@@ -894,8 +936,11 @@ public class PbtDbManagerTests
         persistenceManager.ResetPersistedStateId();
         release.Set();
 
-        Assert.That(await racing, Is.EqualTo(PersistenceState(2)));
-        Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await racing, Is.EqualTo(PersistenceState(2)));
+            Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
+        }
     }
 
     private static StateId PersistenceState(int number) => new((ulong)number, TestItem.KeccakA.ValueHash256);
@@ -1009,8 +1054,12 @@ public class PbtDbManagerTests
             snapshot.Content.Codes[TestItem.KeccakC.ValueHash256] = new CodeInfo(new byte[100]);
             harness.Repository.TryAdd(snapshot);
         }
-        Assert.That(harness.Repository.InMemorySnapshotBytes, Is.GreaterThan(1));
-        Assert.That(PersistedTo(harness, PersistenceState(head)) is not null, Is.EqualTo(persists));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Repository.InMemorySnapshotBytes, Is.GreaterThan(1));
+            Assert.That(PersistedTo(harness, PersistenceState(head)) is not null, Is.EqualTo(persists));
+        }
     }
 
     [Test]
@@ -1071,8 +1120,11 @@ public class PbtDbManagerTests
         IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
         PbtPersistenceManager persistenceManager = reopened.Resolve<PbtPersistenceManager>();
         using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(state)!;
-        Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
-        Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
+            Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.Null);
+        }
         manager.FlushCache(CancellationToken.None);
         using IPbtPersistence.IReader reader = reopened.Resolve<IPbtPersistence>().CreateReader();
         using (Assert.EnterMultipleScope())
@@ -1152,8 +1204,11 @@ public class PbtDbManagerTests
         }
         await persistenceManager.CheckPersistenceAsync(PersistenceState(6));
         await persistenceManager.CheckPersistenceAsync(PersistenceState(6));
-        Assert.That(harness.Repository.Count, Is.Zero);
-        Assert.That(compactor.Enqueued, Has.Count.EqualTo(6));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Repository.Count, Is.Zero);
+            Assert.That(compactor.Enqueued, Has.Count.EqualTo(6));
+        }
         harness.Repository.Dispose();
     }
 
@@ -1310,10 +1365,13 @@ public class PbtDbManagerTests
         harness.Repository.TryAdd(new(PersistenceState(0), reset, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 5, harness.Pool));
-        Assert.That(harness.PersistenceManager.DropStateNotReachableFrom(reset), Is.True);
-        Assert.That(harness.Repository.HasState(PersistenceState(1)), Is.False);
-        Assert.That(harness.Repository.HasState(PersistenceState(5)), Is.False);
-        Assert.That(PersistedTo(harness, PersistenceState(5)), Is.EqualTo(reset));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.PersistenceManager.DropStateNotReachableFrom(reset), Is.True);
+            Assert.That(harness.Repository.HasState(PersistenceState(1)), Is.False);
+            Assert.That(harness.Repository.HasState(PersistenceState(5)), Is.False);
+            Assert.That(PersistedTo(harness, PersistenceState(5)), Is.EqualTo(reset));
+        }
     }
 
     [Test]
@@ -1338,14 +1396,20 @@ public class PbtDbManagerTests
         });
         try
         {
-            Assert.That(resetStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(reset.IsCompleted, Is.False);
-            Assert.That(harness.Repository.HasState(PersistenceState(1)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resetStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(reset.IsCompleted, Is.False);
+                Assert.That(harness.Repository.HasState(PersistenceState(1)), Is.True);
+            }
         }
         finally { resume.Set(); }
         await persist.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.That(await reset.WaitAsync(TimeSpan.FromSeconds(10)), Is.False, "the new irreversible base rejects the old reset target");
-        Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await reset.WaitAsync(TimeSpan.FromSeconds(10)), Is.False, "the new irreversible base rejects the old reset target");
+            Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(1)));
+        }
     }
 
     [Test]
@@ -1376,8 +1440,11 @@ public class PbtDbManagerTests
         });
         try
         {
-            Assert.That(resetStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            Assert.That(reset.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resetStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(reset.IsCompleted, Is.False);
+            }
         }
         finally { resume.Set(); }
         await persistence.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1422,8 +1489,11 @@ public class PbtDbManagerTests
         }
         await using IContainer final = PersistedContainer(tempPath.Path, catalog);
         IPbtDbManager finalManager = final.Resolve<IPbtDbManager>();
-        Assert.That(finalManager.HasStateForBlock(reset), Is.True);
-        Assert.That(finalManager.HasStateForBlock(abandoned), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalManager.HasStateForBlock(reset), Is.True);
+            Assert.That(finalManager.HasStateForBlock(abandoned), Is.False);
+        }
     }
 
     private sealed class SchedulerLoader(Func<PbtSnapshot, bool> convert) : IPbtPersistedSnapshotLoader
@@ -1602,8 +1672,11 @@ public class PbtDbManagerTests
         AddDifferentialEdge(reset, new(11, TestItem.KeccakD.ValueHash256), false);
         Assert.That(pbtPersistenceManager.FlushToPersistenceState(CancellationToken.None), Is.EqualTo(flatPersistenceManager.FlushToPersistence(CancellationToken.None)));
         using IPbtPersistence.IReader persistedPbt = pbtPersistence.CreateReader();
-        Assert.That(persistedPbt.GetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes))!.Value.ToAccount().Nonce, Is.EqualTo((ulong)11));
-        Assert.That(persistedPbt.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256), "PBT root is independent of shared header StateId");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedPbt.GetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes))!.Value.ToAccount().Nonce, Is.EqualTo((ulong)11));
+            Assert.That(persistedPbt.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256), "PBT root is independent of shared header StateId");
+        }
 
         void AddDifferentialEdge(StateId from, StateId to, bool compacted)
         {

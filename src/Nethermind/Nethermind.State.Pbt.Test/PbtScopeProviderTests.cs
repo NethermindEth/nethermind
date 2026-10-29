@@ -92,16 +92,19 @@ public class PbtScopeProviderTests
 
         BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(roots[0]).TestObject;
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).WithStateRoot(roots[1]).TestObject;
-        Assert.That(ctx.StateReader.TryGetAccount(header1, TestItem.AddressA, out AccountStruct accountAt1), Is.True);
-        Assert.That(accountAt1.Balance, Is.EqualTo((UInt256)100));
-        Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressA, out AccountStruct accountAt2), Is.True);
-        Assert.That(accountAt2.Balance, Is.EqualTo((UInt256)105));
-        Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressB, out AccountStruct accountBAt2), Is.True);
-        Assert.That(accountBAt2.Balance, Is.EqualTo((UInt256)52));
-        Assert.That(accountBAt2.CodeHash, Is.EqualTo(ValueKeccak.Compute(code)));
-        Assert.That(ctx.StateReader.GetStorage(header1, TestItem.AddressB, 5), Is.EqualTo((UInt256)0xAB));
-        Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 5).IsZero);
-        Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 1000), Is.EqualTo((UInt256)0x1234));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.StateReader.TryGetAccount(header1, TestItem.AddressA, out AccountStruct accountAt1), Is.True);
+            Assert.That(accountAt1.Balance, Is.EqualTo((UInt256)100));
+            Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressA, out AccountStruct accountAt2), Is.True);
+            Assert.That(accountAt2.Balance, Is.EqualTo((UInt256)105));
+            Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressB, out AccountStruct accountBAt2), Is.True);
+            Assert.That(accountBAt2.Balance, Is.EqualTo((UInt256)52));
+            Assert.That(accountBAt2.CodeHash, Is.EqualTo(ValueKeccak.Compute(code)));
+            Assert.That(ctx.StateReader.GetStorage(header1, TestItem.AddressB, 5), Is.EqualTo((UInt256)0xAB));
+            Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 5).IsZero);
+            Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 1000), Is.EqualTo((UInt256)0x1234));
+        }
     }
 
     [Test]

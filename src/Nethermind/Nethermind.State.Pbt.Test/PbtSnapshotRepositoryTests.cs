@@ -9,7 +9,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Collections;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -187,8 +187,11 @@ public class PbtSnapshotRepositoryTests
             else Add(State(9), State(10), tier == SnapshotTier.InMemoryCompacted);
         }
         using PbtAssembledSnapshotResult assembled = _repository.TryLeaseReadChain(State(10), State(9));
-        Assert.That(assembled.SnapshotCount, Is.EqualTo(1));
-        Assert.That(assembled.Persisted.Count > 0 ? assembled.Persisted[0].Tier : MemoryTier(assembled.InMemory[0]), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(assembled.SnapshotCount, Is.EqualTo(1));
+            Assert.That(assembled.Persisted.Count > 0 ? assembled.Persisted[0].Tier : MemoryTier(assembled.InMemory[0]), Is.EqualTo(expected));
+        }
         _repository.Dispose();
     }
 
@@ -230,8 +233,11 @@ public class PbtSnapshotRepositoryTests
         (PbtPersistedSnapshot? persistedCandidate, PbtSnapshot? candidate) = _repository.FindCandidateToPersist(State(2), State(0), 1, state => state == State(1));
         using (candidate)
         {
-            Assert.That(persistedCandidate, Is.Null);
-            Assert.That(candidate!.To, Is.EqualTo(State(1)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedCandidate, Is.Null);
+                Assert.That(candidate!.To, Is.EqualTo(State(1)));
+            }
         }
         Assert.That(_repository.FindCandidateToPersist(State(2), State(0), 32, static _ => false), Is.EqualTo(((PbtPersistedSnapshot?)null, (PbtSnapshot?)null)));
         _repository.Dispose();
@@ -307,8 +313,11 @@ public class PbtSnapshotRepositoryTests
         Assert.That(repository.HasState(State(1)), Is.True);
         catalog.Fail = false;
         repository.RemovePersistedStatesBefore(2);
-        Assert.That(repository.HasState(State(1)), Is.False);
-        Assert.That(held.Persisted[0].TryLease(), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.HasState(State(1)), Is.False);
+            Assert.That(held.Persisted[0].TryLease(), Is.True);
+        }
         held.Persisted[0].Dispose();
     }
 
@@ -385,8 +394,12 @@ public class PbtSnapshotRepositoryTests
             Add(State(0), abandoned, compacted: true);
         }
         PbtAssembledSnapshotResult held = _repository.TryLeaseReadChain(abandoned, State(0));
-        Assert.That(held.SnapshotCount, Is.Positive);
-        Assert.That(_repository.TryRemoveUnreachableFrom(State(1), State(0), out int removed), Is.True);
+        int removed;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held.SnapshotCount, Is.Positive);
+            Assert.That(_repository.TryRemoveUnreachableFrom(State(1), State(0), out removed), Is.True);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(removed, Is.EqualTo(2));
@@ -476,11 +489,17 @@ public class PbtSnapshotRepositoryTests
         repository.TryAdd(Snapshot(State(1), State(3)));
         using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase, new())) repository.TryAddPersisted(orphan);
         Assert.Throws<IOException>(() => repository.TryRemoveUnreachableFrom(State(1), State(0), out _));
-        Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(State(3)));
-        Assert.That(repository.HasState(State(2)), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(State(3)));
+            Assert.That(repository.HasState(State(2)), Is.True);
+        }
         catalog.Fail = false;
-        Assert.That(repository.TryRemoveUnreachableFrom(State(1), State(0), out _), Is.True);
-        Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(State(1)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.TryRemoveUnreachableFrom(State(1), State(0), out _), Is.True);
+            Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(State(1)));
+        }
     }
 
     [Test]
@@ -511,15 +530,22 @@ public class PbtSnapshotRepositoryTests
                 {
                     Assert.That(snapshot!.BloomRef, Is.SameAs(shared));
                     byte[] hash = new byte[32]; hash[^1] = (byte)block;
-                    Assert.That(shared.Filter.MightContain(PbtPersistedKey.BloomHash(PbtPersistedKey.CodeEntity(new ValueHash256(hash)))), Is.True);
-                    Assert.That(snapshot.TryGetCode(new ValueHash256(hash), out _), Is.True);
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(shared.Filter.MightContain(PbtPersistedKey.BloomHash(PbtPersistedKey.CodeEntity(new ValueHash256(hash)))), Is.True);
+                        Assert.That(snapshot.TryGetCode(new ValueHash256(hash), out _), Is.True);
+                    }
                 }
             }
-            Assert.That(repository.ContainsPersistedSource(fork), Is.True);
-            Assert.That(repository.ContainsPersistedSource(crossing), Is.True);
-            Assert.That(repository.ContainsPersistedSource(wrongParent), Is.True);
-            Assert.That(repository.ContainsPersistedSource(first), Is.False);
-            Assert.That(repository.ContainsPersistedStorageSource(first), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(repository.ContainsPersistedSource(fork), Is.True);
+                Assert.That(repository.ContainsPersistedSource(crossing), Is.True);
+                Assert.That(repository.ContainsPersistedSource(wrongParent), Is.True);
+                Assert.That(repository.ContainsPersistedSource(first), Is.False);
+                Assert.That(repository.ContainsPersistedStorageSource(first), Is.True);
+            }
             repository.RemovePersistedStatesBefore(2);
             Assert.That(repository.ContainsPersistedStorageSource(first), Is.False);
             using PbtPersistedSnapshot reconverted = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase, CodeContent(1));

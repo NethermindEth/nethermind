@@ -162,17 +162,23 @@ public class PbtStateReaderTests
 
         // persisted floor read
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).WithStateRoot(roots[2]).TestObject;
-        Assert.That(ctx.StateReader.HasStateForBlock(header2), Is.True);
-        Assert.That(ctx.StateReader.TryGetAccount(header2, address, out AccountStruct accountAt2), Is.True);
-        Assert.That(accountAt2.Balance, Is.EqualTo((UInt256)200));
-        Assert.That(ctx.StateReader.GetStorage(header2, address, 1), Is.EqualTo((UInt256)2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.StateReader.HasStateForBlock(header2), Is.True);
+            Assert.That(ctx.StateReader.TryGetAccount(header2, address, out AccountStruct accountAt2), Is.True);
+            Assert.That(accountAt2.Balance, Is.EqualTo((UInt256)200));
+            Assert.That(ctx.StateReader.GetStorage(header2, address, 1), Is.EqualTo((UInt256)2));
+        }
 
         // in-memory layered read above the floor
         BlockHeader header3 = Build.A.BlockHeader.WithNumber(3).WithStateRoot(roots[3]).TestObject;
         BlockHeader header4 = Build.A.BlockHeader.WithNumber(4).WithStateRoot(roots[4]).TestObject;
-        Assert.That(ctx.StateReader.TryGetAccount(header3, address, out AccountStruct accountAt3), Is.True);
-        Assert.That(accountAt3.Balance, Is.EqualTo((UInt256)300));
-        Assert.That(ctx.StateReader.GetStorage(header4, address, 1), Is.EqualTo((UInt256)4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.StateReader.TryGetAccount(header3, address, out AccountStruct accountAt3), Is.True);
+            Assert.That(accountAt3.Balance, Is.EqualTo((UInt256)300));
+            Assert.That(ctx.StateReader.GetStorage(header4, address, 1), Is.EqualTo((UInt256)4));
+        }
 
         BlockHeader unknown = Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
         Assert.That(ctx.StateReader.HasStateForBlock(unknown), Is.False);
@@ -181,7 +187,10 @@ public class PbtStateReaderTests
 
         // code reads come from the code db, with the empty-code shortcut
         ctx.CodeDb[TestItem.KeccakB.Bytes] = Bytes.FromHexString("0x6001");
-        Assert.That(ctx.StateReader.GetCode(TestItem.KeccakB), Is.EqualTo(Bytes.FromHexString("0x6001")));
-        Assert.That(ctx.StateReader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.StateReader.GetCode(TestItem.KeccakB), Is.EqualTo(Bytes.FromHexString("0x6001")));
+            Assert.That(ctx.StateReader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
+        }
     }
 }

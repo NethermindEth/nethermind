@@ -39,11 +39,11 @@ public class PbtCarryForwardCachingPersistenceTests
         scenario(cache, inner);
         Read(cache);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(inner.AccountReads, Is.EqualTo(expectedAccountReads));
             Assert.That(inner.RunReads, Is.EqualTo(expectedRunReads));
-        });
+        }
     }
 
     [Test]
@@ -55,8 +55,11 @@ public class PbtCarryForwardCachingPersistenceTests
         PackedSlotRun first = reader.GetSlotRun(Run1);
         PackedSlotRun second = reader.GetSlotRun(Run1);
 
-        Assert.That(second, Is.Not.SameAs(first));
-        Assert.That(Enumerable.Range(0, SlotRun.Width).Select(second.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(first.Get)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(Enumerable.Range(0, SlotRun.Width).Select(second.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(first.Get)));
+        }
     }
 
     [Test]

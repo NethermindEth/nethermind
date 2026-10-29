@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Core.Collections;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -145,13 +146,19 @@ public sealed class PersistedSnapshotStack(
 
     public bool TryLoadStateRlp(in TreePath path, out byte[]? rlp)
     {
+        rlp = null;
+        return TryLoadStateRlp(path, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+    }
+
+    internal bool TryLoadStateRlp<TArg>(in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         ulong statePathBloomKey = PersistedSnapshotBloomBuilder.StatePathKey(in path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             PersistedSnapshot snap = _snapshots[i];
             if (!snap.Bloom.MightContain(statePathBloomKey)) continue;
-            if (snap.TryLoadStateNodeRlp(in path, out rlp))
+            if (snap.TryLoadStateNodeRlp(in path, action, arg))
             {
                 if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
                 return true;
@@ -159,11 +166,16 @@ public sealed class PersistedSnapshotStack(
         }
         if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStateRlpLabel);
 
-        rlp = null;
         return false;
     }
 
     public bool TryLoadStorageRlp(Hash256 address, in TreePath path, out byte[]? rlp)
+    {
+        rlp = null;
+        return TryLoadStorageRlp(address, path, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+    }
+
+    internal bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         // Caller already provides the address-hash; convert to the struct ValueHash256
@@ -174,7 +186,7 @@ public sealed class PersistedSnapshotStack(
         {
             PersistedSnapshot snap = _snapshots[i];
             if (!snap.Bloom.MightContain(storageBloomKey)) continue;
-            if (snap.TryLoadStorageNodeRlp(in addressHash, in path, out rlp))
+            if (snap.TryLoadStorageNodeRlp(in addressHash, in path, action, arg))
             {
                 if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
                 return true;
@@ -182,7 +194,6 @@ public sealed class PersistedSnapshotStack(
         }
         if (_recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleSkipTime.Observe(Stopwatch.GetTimestamp() - sw, _skipStorageRlpLabel);
 
-        rlp = null;
         return false;
     }
 

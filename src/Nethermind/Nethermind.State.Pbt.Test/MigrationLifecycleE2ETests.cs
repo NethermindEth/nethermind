@@ -56,8 +56,11 @@ public class MigrationLifecycleE2ETests
         processing.BranchProcessor.BlocksProcessing += (_, args) => branchSizes.Add(args.Blocks.Count);
         ProcessingOptions options = ProcessingOptions.MarkAsProcessed | ProcessingOptions.DoNotUpdateHead | ProcessingOptions.StoreReceipts;
         ReplayIntoPbt("a3");
-        Assert.That(processing.BlockchainProcessor.Process(blocks["a5"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["a5"].Hash));
-        Assert.That(branchSizes, Is.EqualTo(new[] { 5 }), "one processing request must span activation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processing.BlockchainProcessor.Process(blocks["a5"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["a5"].Hash));
+            Assert.That(branchSizes, Is.EqualTo(new[] { 5 }), "one processing request must span activation");
+        }
         foreach (string name in new[] { "a1", "a2", "a3", "a4", "a5" }) AssertRoot(name);
         await using (ScopedBlockProducerEnv producer = container.Resolve<IBlockProducerEnvFactory>().CreateTransient())
         {
@@ -81,8 +84,11 @@ public class MigrationLifecycleE2ETests
         AssertTransition("a3", "a4", "a5");
         Select("a1", Hash256.Zero);
         ReplayIntoPbt("b3");
-        Assert.That(processing.BlockchainProcessor.Process(blocks["b6"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["b6"].Hash));
-        Assert.That(branchSizes, Is.EqualTo(new[] { 5, 5 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processing.BlockchainProcessor.Process(blocks["b6"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["b6"].Hash));
+            Assert.That(branchSizes, Is.EqualTo(new[] { 5, 5 }));
+        }
         foreach (string name in new[] { "b2", "b3", "b4", "b5", "b6" }) AssertRoot(name);
         Select("b6", blocks["a1"].Hash!);
         Assert.That(telemetry.GetProgress().Phase, Is.EqualTo("running"));
@@ -188,8 +194,11 @@ public class MigrationLifecycleE2ETests
         if (!afterActivation) commitments.Add(harness.Container.Resolve<FlatStateReader>());
         foreach (IStateReader commitment in commitments)
         {
-            Assert.That(commitment.HasStateForBlock(produced.Header), Is.True, commitment.GetType().Name);
-            Assert.That(commitment.TryGetAccount(produced.Header, destroyed, out _), Is.False, $"{commitment.GetType().Name}: destroyed creation must not survive block commit");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(commitment.HasStateForBlock(produced.Header), Is.True, commitment.GetType().Name);
+                Assert.That(commitment.TryGetAccount(produced.Header, destroyed, out _), Is.False, $"{commitment.GetType().Name}: destroyed creation must not survive block commit");
+            }
         }
 
         void Prepare(Block block)

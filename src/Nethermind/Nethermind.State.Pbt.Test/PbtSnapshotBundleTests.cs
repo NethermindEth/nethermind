@@ -235,8 +235,11 @@ public class PbtSnapshotBundleTests
         PbtSnapshotStore store = new(bundle, (bundle.TreeRoot, bundle.RootGroupPointer));
         store.Publish();
         using PbtSnapshot unchanged = bundle.Collect(new StateId(parent), new StateId(2, rootHash), bundle.TreeRoot);
-        Assert.That(buffer.TryLocate(unchanged.RootGroupPointer, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
-        Assert.That(PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(default, action, groups)), Is.EqualTo(root.Payload.ToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.TryLocate(unchanged.RootGroupPointer, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
+            Assert.That(PbtSnapshotTestExtensions.LoadPayload((action, groups) => bundle.TryLoadNodeGroup(default, action, groups)), Is.EqualTo(root.Payload.ToArray()));
+        }
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         CountingStore counted = new(store);
@@ -620,8 +623,11 @@ public class PbtSnapshotBundleTests
         ValueHash256 root = bundle.Fold(default);
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, nonce, nonce, bytes);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-        Assert.That(bundle.Fold(root), Is.EqualTo(root));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(bundle.Fold(root), Is.EqualTo(root));
+        }
         using PbtSnapshot snapshot = bundle.Collect(StateId.PreGenesis, new StateId(1, default), root);
         using (Assert.EnterMultipleScope())
         {
@@ -795,8 +801,11 @@ public class PbtSnapshotBundleTests
         Set(TestItem.AddressA, Delegation);
         Set(TestItem.AddressA, null);
         Set(TestItem.AddressB, null);
-        Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
-        Assert.That(bundle.Fold(root), Is.EqualTo(default(ValueHash256)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
+            Assert.That(bundle.Fold(root), Is.EqualTo(default(ValueHash256)));
+        }
 
         void Set(Address address, byte[]? bytes)
         {
@@ -928,8 +937,11 @@ public class PbtSnapshotBundleTests
         Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, (root, bundle.RootGroupPointer), bundle.PrepareLeafChanges(), new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null, null));
         if (failedZone == 0xFF)
         {
-            Assert.That(store.ApplyCount, Is.GreaterThan(0));
-            Assert.That(buffer.WriteFrontier(), Is.GreaterThan(initialFrontier), "the failure followed private buffer writes");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.ApplyCount, Is.GreaterThan(0));
+                Assert.That(buffer.WriteFrontier(), Is.GreaterThan(initialFrontier), "the failure followed private buffer writes");
+            }
         }
         using (Assert.EnterMultipleScope())
         {

@@ -27,11 +27,17 @@ public class MigrationTelemetryTests
         MerkleShadowStub merkle = new();
         await using PbtMigrationImport import = new(_ => Task.CompletedTask, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         MigrationTelemetry telemetry = new(harness.BlockTree, harness.Manager, import, harness.Follower, merkle, harness.SpecProvider);
-        Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("running", null, null)));
-        Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.Null, "no state before the anchor import");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("running", null, null)));
+            Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.Null, "no state before the anchor import");
+        }
         await harness.Publish();
-        Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.EqualTo(harness.PbtRoot("anchor")));
-        Assert.That(await harness.Follower.Follow(harness.Blocks["a2"].Header, default), Is.True, harness.Follower.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.EqualTo(harness.PbtRoot("anchor")));
+            Assert.That(await harness.Follower.Follow(harness.Blocks["a2"].Header, default), Is.True, harness.Follower.Error);
+        }
 
         MigrationProgressForRpc following = telemetry.GetProgress();
         using (Assert.EnterMultipleScope())

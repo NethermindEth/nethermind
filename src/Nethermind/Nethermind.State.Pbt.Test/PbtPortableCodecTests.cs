@@ -101,8 +101,11 @@ public class PbtPortableCodecTests
         using MemoryStream stream = new();
         PbtSnapshotCodec.Write(stream, leaves, PbtTestLeaves.Claiming(Keccak.Zero.ValueHash256), CancellationToken.None);
         stream.Position = 0;
-        Assert.That(PbtSnapshotCodec.ReadRoot(stream), Is.EqualTo(Keccak.Zero.ValueHash256));
-        Assert.That(PbtSnapshotCodec.ReadLeaves(stream, CancellationToken.None).ToList(), Is.EqualTo(leaves));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PbtSnapshotCodec.ReadRoot(stream), Is.EqualTo(Keccak.Zero.ValueHash256));
+            Assert.That(PbtSnapshotCodec.ReadLeaves(stream, CancellationToken.None).ToList(), Is.EqualTo(leaves));
+        }
     }
 
     [Test]

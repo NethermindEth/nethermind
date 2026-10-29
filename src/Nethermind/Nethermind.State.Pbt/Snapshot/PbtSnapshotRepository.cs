@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Api.Monitoring;
 using Nethermind.Db;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;

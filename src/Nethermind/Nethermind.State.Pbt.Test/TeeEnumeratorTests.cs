@@ -36,15 +36,21 @@ public class TeeEnumeratorTests
         IEnumerator<int> follower = leader.Tee();
 
         Task<bool> waitingFollower = Task.Run(follower.MoveNext);
-        Assert.That(waitingFollower.Wait(TimeSpan.FromMilliseconds(100)), Is.False, "the leader has yielded nothing yet");
-        Assert.That(leader.MoveNext() && leader.MoveNext(), Is.True);
-        Assert.That(waitingFollower.Wait(TimeSpan.FromSeconds(10)) && waitingFollower.Result && follower.Current == 0, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitingFollower.Wait(TimeSpan.FromMilliseconds(100)), Is.False, "the leader has yielded nothing yet");
+            Assert.That(leader.MoveNext() && leader.MoveNext(), Is.True);
+            Assert.That(waitingFollower.Wait(TimeSpan.FromSeconds(10)) && waitingFollower.Result && follower.Current == 0, Is.True);
 
-        Assert.That(leader.MoveNext(), Is.True);
+            Assert.That(leader.MoveNext(), Is.True);
+        }
         Task<bool> waitingLeader = Task.Run(leader.MoveNext);
-        Assert.That(waitingLeader.Wait(TimeSpan.FromMilliseconds(100)), Is.False, "two items ahead of the follower");
-        Assert.That(follower.MoveNext() && follower.Current == 1, Is.True);
-        Assert.That(waitingLeader.Wait(TimeSpan.FromSeconds(10)) && waitingLeader.Result && leader.Current == 3, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitingLeader.Wait(TimeSpan.FromMilliseconds(100)), Is.False, "two items ahead of the follower");
+            Assert.That(follower.MoveNext() && follower.Current == 1, Is.True);
+            Assert.That(waitingLeader.Wait(TimeSpan.FromSeconds(10)) && waitingLeader.Result && leader.Current == 3, Is.True);
+        }
 
         follower.Dispose();
         Assert.That(Drain(leader), Is.EqualTo(Enumerable.Range(4, 6)), "a disposed follower no longer holds the leader back");

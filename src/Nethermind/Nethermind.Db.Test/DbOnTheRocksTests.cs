@@ -174,16 +174,25 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority)!;
-            Assert.That(options.GetLowPriority(), Is.True);
-            Assert.That(options.GetDisableWal(), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.GetLowPriority(), Is.True);
+                Assert.That(options.GetDisableWal(), Is.False);
+            }
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL)!;
-            Assert.That(options.GetLowPriority(), Is.True);
-            Assert.That(options.GetDisableWal(), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.GetLowPriority(), Is.True);
+                Assert.That(options.GetDisableWal(), Is.True);
+            }
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
-            Assert.That(options.GetLowPriority(), Is.False);
-            Assert.That(options.GetDisableWal(), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.GetLowPriority(), Is.False);
+                Assert.That(options.GetDisableWal(), Is.True);
+            }
         }
 
         [TestCase(null, "async_wal_precreate=true", TestName = "AsyncWalPrecreate_DefaultsToTrue")]
@@ -215,10 +224,13 @@ namespace Nethermind.Db.Test
                 db.Set(walKey, walValue);
                 db.SyncWal();
 
-                Assert.That(SstBytes(DbPath), Is.EqualTo(sstBytesAfterFlush),
-                    "syncing the WAL must not flush the newer record to SST");
-                Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
-                    "the newer record must remain WAL-backed before shutdown");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(SstBytes(DbPath), Is.EqualTo(sstBytesAfterFlush),
+                        "syncing the WAL must not flush the newer record to SST");
+                    Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
+                        "the newer record must remain WAL-backed before shutdown");
+                }
 
                 string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
                 string decoyOption = expectedAsyncWalOption == "async_wal_precreate=true"
@@ -230,10 +242,13 @@ namespace Nethermind.Db.Test
             }
 
             long sstBytesBeforeReopen = SstBytes(DbPath);
-            Assert.That(sstBytesBeforeReopen, Is.EqualTo(sstBytesAfterFlush),
-                "WalOnly shutdown must not flush the newer record to SST");
-            Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
-                "WalOnly shutdown must leave the newer record WAL-backed");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sstBytesBeforeReopen, Is.EqualTo(sstBytesAfterFlush),
+                    "WalOnly shutdown must not flush the newer record to SST");
+                Assert.That(SstFileCount(DbPath), Is.EqualTo(sstFileCountAfterFlush),
+                    "WalOnly shutdown must leave the newer record WAL-backed");
+            }
 
             using IContainer reopenedContainer = CreateRocksDbContainer(config);
             using IDb reopened = reopenedContainer.Resolve<IDbFactory>().CreateDb(GetRocksDbSettings(DbPath, "Blocks"));
@@ -332,9 +347,12 @@ namespace Nethermind.Db.Test
             await Task.Delay(100);
 
             cancelSource.Cancel();
-            Assert.That(writeCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(writeCompleted, Is.False);
 
-            Assert.That(task.IsFaulted, Is.True);
+                Assert.That(task.IsFaulted, Is.True);
+            }
             task.Dispose();
         }
 
@@ -525,7 +543,9 @@ namespace Nethermind.Db.Test
             int end = start;
             while (end < properties.Length && char.IsAsciiDigit(properties[end])) end++;
 
+#pragma warning disable NUnit2045 // The range must be nonempty before its span is parsed.
             Assert.That(end, Is.GreaterThan(start), properties);
+#pragma warning restore NUnit2045
             Assert.That(long.TryParse(properties.AsSpan(start, end - start), out long value), Is.True, properties);
             return value;
         }
@@ -625,8 +645,11 @@ namespace Nethermind.Db.Test
             long metricCacheUsage = db.GatherMetric().CacheSize;
             long directCacheUsage = cache.GetUsage();
 
-            Assert.That(metricCacheUsage, Is.GreaterThan(0));
-            Assert.That(directCacheUsage, Is.GreaterThan(0));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metricCacheUsage, Is.GreaterThan(0));
+                Assert.That(directCacheUsage, Is.GreaterThan(0));
+            }
             Assert.That(metricCacheUsage, Is.EqualTo(directCacheUsage).Within(4.KiB));
         }
 
@@ -691,8 +714,11 @@ namespace Nethermind.Db.Test
                 _rocksdbConfigFactory, LimboLogs.Instance, () => didShutDown = true);
 
             Assert.That(() => ReadBy(corruptedDb, path, key, value.Length), Throws.InstanceOf<RocksDbException>());
-            Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
-            Assert.That(didShutDown, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.GetFiles(DbPath, "corrupt.marker", SearchOption.AllDirectories), Has.Length.EqualTo(1));
+                Assert.That(didShutDown, Is.True);
+            }
         }
 
         // Background readers can outlive the block that queued them; a read after dispose begins must not reach the closed native DB.
@@ -964,8 +990,11 @@ namespace Nethermind.Db.Test
         [Test]
         public void TestNormalizeRocksDbOptions_HandlesEmptyString()
         {
-            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(""), Is.EqualTo(""));
-            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(null!), Is.EqualTo(""));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(""), Is.EqualTo(""));
+                Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(null!), Is.EqualTo(""));
+            }
         }
 
         [Test]
@@ -1704,9 +1733,12 @@ namespace Nethermind.Db.Test
             byte[] key = [1, 2, 3];
             _db.Set(key, []);
 
-            Assert.That(_db.KeyExists(key), Is.True);
-            Assert.That(_db.Get(key), Is.Empty);
-            Assert.That(_db.Get(key, []), Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_db.KeyExists(key), Is.True);
+                Assert.That(_db.Get(key), Is.Empty);
+                Assert.That(_db.Get(key, []), Is.Zero);
+            }
 
             Span<byte> span = _db.GetSpan(key);
             Assert.That(span.IsEmpty, Is.True);
@@ -1767,8 +1799,11 @@ namespace Nethermind.Db.Test
             _db.PutSpan(key, [7, 8, 9]);
             snapshot.Dispose();
 
-            Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(snapshotValue));
-            Assert.That(AllocatedSpan, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(snapshotValue));
+                Assert.That(AllocatedSpan, Is.EqualTo(1));
+            }
 
             ((IDisposable)owned).Dispose();
             Assert.That(AllocatedSpan, Is.Zero);
@@ -1865,9 +1900,12 @@ namespace Nethermind.Db.Test
 
             IMemoryOwner<byte> manager = new DbSpanMemoryManager(_db, readSpan);
             Memory<byte> theMemory = manager.Memory;
-            Assert.That(theMemory, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(theMemory, Is.SequenceEqualTo(new byte[] { 4, 5, 6 }));
 
-            Assert.That(AllocatedSpan, Is.EqualTo(1));
+                Assert.That(AllocatedSpan, Is.EqualTo(1));
+            }
             manager.Dispose();
             Assert.That(AllocatedSpan, Is.EqualTo(0));
         }
@@ -1885,8 +1923,11 @@ namespace Nethermind.Db.Test
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
 
             KeyValuePair<byte[], byte[]>[] allValues = _db.GetAll().ToArray()!;
-            Assert.That(allValues[0].Key, Is.EqualTo(new byte[] { 1, 2, 3 }));
-            Assert.That(allValues[0].Value, Is.EqualTo(new byte[] { 4, 5, 6 }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(allValues[0].Key, Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(allValues[0].Value, Is.EqualTo(new byte[] { 4, 5, 6 }));
+            }
         }
 
         [Test]
@@ -1979,7 +2020,9 @@ namespace Nethermind.Db.Test
             _db.Remove(boundaryKey);
             try
             {
+#pragma warning disable NUnit2045 // The enumerator must advance before Current is accessed.
                 Assert.That(enumerator.MoveNext(), Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(enumerator.Current, Is.EqualTo(expectedNext));
             }
             finally
@@ -2005,8 +2048,11 @@ namespace Nethermind.Db.Test
 
             void CheckView(ISortedKeyValueStore sortedKeyValueStore)
             {
-                Assert.That(sortedKeyValue.FirstKey, Is.EqualTo(new byte[] { 0, 0, 0 }));
-                Assert.That(sortedKeyValue.LastKey, Is.EqualTo(new byte[] { (byte)(entryCount - 1), (byte)(entryCount - 1), (byte)(entryCount - 1) }));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(sortedKeyValue.FirstKey, Is.EqualTo(new byte[] { 0, 0, 0 }));
+                    Assert.That(sortedKeyValue.LastKey, Is.EqualTo(new byte[] { (byte)(entryCount - 1), (byte)(entryCount - 1), (byte)(entryCount - 1) }));
+                }
                 using ISortedView view = sortedKeyValueStore.GetViewBetween([0], [9]);
 
                 i = 0;
@@ -2041,7 +2087,9 @@ namespace Nethermind.Db.Test
 
             using ISeekableSortedView view = (ISeekableSortedView)((ISortedKeyValueStore)_db).GetViewBetween([1], [7]);
 
+#pragma warning disable NUnit2045 // Positioning and seeking must succeed before CurrentKey is accessed.
             Assert.That(view.MoveNext(), Is.True, "precondition: the view starts on its first key");
+#pragma warning restore NUnit2045
             Assert.That(view.SeekTo([4]), Is.True, "a key at or after 4 remains below the upper bound");
             Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }), "4 is absent, so the seek lands on the next key");
             Assert.That(view.MoveNext(), Is.False, "7 is the exclusive upper bound, so 5 is the last key of the view");
@@ -2062,14 +2110,18 @@ namespace Nethermind.Db.Test
             using (ISortedView ordinary = store.GetViewBetween([0, 0], [9, 9], flags))
             {
                 Assert.That(ordinary, Is.Not.InstanceOf<IRebindableSortedView>(), "ordinary reads do not retain bound-reset state");
+#pragma warning disable NUnit2045 // The enumerator must advance before CurrentKey is accessed.
                 Assert.That(ordinary.MoveNext(), Is.True, "the ordinary view reads the same range");
+#pragma warning restore NUnit2045
                 Assert.That(ordinary.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }));
             }
             using IRebindableSortedView view = (IRebindableSortedView)store.GetViewBetween([0, 0], [9, 9], flags | ReadFlags.HintRepeatedReads);
             Assert.That(view.MoveNext(), Is.True);
             _db[[6]] = [6];
 
+#pragma warning disable NUnit2045 // Bounds and positioning must succeed before CurrentKey is accessed.
             Assert.That(view.TryResetBounds([3], [5]), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(view.MoveNext(), Is.True);
             Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 3 }));
             Assert.That(view.MoveNext(), Is.True);
@@ -2093,8 +2145,11 @@ namespace Nethermind.Db.Test
 
         private void AssertCanGetViaAllMethod(IReadOnlyKeyValueStore kv, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
-            Assert.That(kv[key], Is.EqualTo(value.ToArray()));
-            Assert.That(kv.KeyExists(key), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(kv[key], Is.EqualTo(value.ToArray()));
+                Assert.That(kv.KeyExists(key), Is.True);
+            }
 
             ReadFlags[] flags = [ReadFlags.None, ReadFlags.HintReadAhead, ReadFlags.HintCacheMiss];
             Span<byte> outBuffer = stackalloc byte[value.Length];

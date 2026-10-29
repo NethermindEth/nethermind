@@ -52,8 +52,11 @@ public class Blake3ManagedTests
         byte[] actualB = new byte[32];
         Blake3Managed.HashTwo(inputA, actualA, inputB, actualB);
 
-        Assert.That(actualA.ToHexString(), Is.EqualTo(expectedA.ToHexString()));
-        Assert.That(actualB.ToHexString(), Is.EqualTo(expectedB.ToHexString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualA.ToHexString(), Is.EqualTo(expectedA.ToHexString()));
+            Assert.That(actualB.ToHexString(), Is.EqualTo(expectedB.ToHexString()));
+        }
     }
 
     /// <summary>Counts cover every lane width with and without a remainder; sizes cover one, two and sixteen blocks and the multi-chunk fallback.</summary>

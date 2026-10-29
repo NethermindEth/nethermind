@@ -18,7 +18,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.NodeBuffer;
@@ -277,14 +277,20 @@ public class PbtSnapshotCompactorTests
                 Assert.That(frontier, Is.GreaterThan(0));
                 merged = MergePersisted(store, sources, out _);
                 DisposeSources(sources);
-                Assert.That(Nethermind.State.Flat.Metrics.BlobAllocatedBytes - initialAllocated, Is.EqualTo(frontier), "the merged snapshot still owns the blob");
-                Assert.That(merged.TryLease(), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Nethermind.State.Flat.Metrics.BlobAllocatedBytes - initialAllocated, Is.EqualTo(frontier), "the merged snapshot still owns the blob");
+                    Assert.That(merged.TryLease(), Is.True);
+                }
                 reader = merged;
                 merged.Dispose();
                 merged = null;
-                Assert.That(Nethermind.State.Flat.Metrics.BlobAllocatedBytes - initialAllocated, Is.EqualTo(frontier), "a held reader prevents reclaim");
-                Assert.That(reader.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
-                Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(expected));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Nethermind.State.Flat.Metrics.BlobAllocatedBytes - initialAllocated, Is.EqualTo(frontier), "a held reader prevents reclaim");
+                    Assert.That(reader.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
+                    Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(expected));
+                }
                 reader.Dispose();
                 reader = null;
                 using (Assert.EnterMultipleScope())
@@ -481,8 +487,11 @@ public class PbtSnapshotCompactorTests
         {
             Assert.Throws<OperationCanceledException>(() => PbtPersistedSnapshotMerger.Merge(
                 [source], new(source.From, source.To, source.TreeRoot), ref writer, bloom, cancellation.Token));
-            Assert.That(source.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
-            Assert.That(code!.CodeSpan.Length, Is.EqualTo(65537));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
+                Assert.That(code!.CodeSpan.Length, Is.EqualTo(65537));
+            }
         }
         finally { source.Dispose(); }
         store.Blobs.SweepUnreferenced();
@@ -549,8 +558,11 @@ public class PbtSnapshotCompactorTests
             byte[] lastHash = new byte[32];
             lastHash[^2] = 11;
             lastHash[^1] = 7;
-            Assert.That(merged.TryGetCode(new ValueHash256(lastHash), out CodeInfo? code), Is.True);
-            Assert.That(code!.CodeSpan.Length, Is.EqualTo(65537));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(merged.TryGetCode(new ValueHash256(lastHash), out CodeInfo? code), Is.True);
+                Assert.That(code!.CodeSpan.Length, Is.EqualTo(65537));
+            }
         }
         finally { DisposeSources(sources); }
     }
@@ -677,8 +689,11 @@ public class PbtSnapshotCompactorTests
             Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
         }
         (SnapshotTier Tier, long[] Widths)[] publications = context.Loader.Publications.ToArray();
-        Assert.That(publications.Where(p => p.Tier == SnapshotTier.PersistedCompactSized).Any(p => p.Widths.Contains(2)), Is.True);
-        Assert.That(publications.Single(p => p.Tier == SnapshotTier.PersistedLargeCompacted).Widths, Does.Contain(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(publications.Where(p => p.Tier == SnapshotTier.PersistedCompactSized).Any(p => p.Widths.Contains(2)), Is.True);
+            Assert.That(publications.Single(p => p.Tier == SnapshotTier.PersistedLargeCompacted).Widths, Does.Contain(4));
+        }
         using ArrayPoolList<StateId> rejected = new(1);
         Assert.That(async () => await context.Compactor.EnqueueAsync(rejected, 0, new CancellationToken(true)), Throws.InstanceOf<ObjectDisposedException>());
     }
@@ -700,8 +715,11 @@ public class PbtSnapshotCompactorTests
         batch.AddRange(CompactionState(2), CompactionState(4), CompactionState(8), CompactionState(16));
         await context.Compactor.EnqueueAsync(batch, 0, CancellationToken.None);
         await context.Compactor.DisposeAsync();
-        Assert.That(context.Repository.HasPersisted(CompactionState(16), 16L, SnapshotTier.PersistedLargeCompacted), Is.True);
-        Assert.That(failures, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Repository.HasPersisted(CompactionState(16), 16L, SnapshotTier.PersistedLargeCompacted), Is.True);
+            Assert.That(failures, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -772,8 +790,11 @@ public class PbtSnapshotCompactorTests
         }
         finally { release.Set(); }
         await context.Compactor.DisposeAsync();
-        Assert.That(context.Repository.HasPersisted(CompactionState(8), 4L, SnapshotTier.PersistedCompactSized), Is.True);
-        Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Repository.HasPersisted(CompactionState(8), 4L, SnapshotTier.PersistedCompactSized), Is.True);
+            Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
+        }
     }
 
     [Test]
@@ -858,13 +879,19 @@ public class PbtSnapshotCompactorTests
             if (output.Tier != SnapshotTier.PersistedLargeCompacted) return;
             using RefCountedBloomFilter shared = new(new BloomFilter(32, 14));
             context.Repository.ShareBloomAcrossRange(output.From, output.To, shared);
-            Assert.That(sources.Any(source => !context.Repository.ContainsPersistedSource(source)), Is.True);
-            Assert.That(sources.All(context.Repository.ContainsPersistedStorageSource), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sources.Any(source => !context.Repository.ContainsPersistedSource(source)), Is.True);
+                Assert.That(sources.All(context.Repository.ContainsPersistedStorageSource), Is.True);
+            }
             rebound = true;
         };
         await context.CompactAsync(0, 8);
-        Assert.That(rebound, Is.True);
-        Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rebound, Is.True);
+            Assert.That(context.Repository.HasPersisted(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
+        }
     }
 
     [Test]
@@ -1016,8 +1043,12 @@ public class PbtSnapshotCompactorTests
         using PbtSnapshotRepository repository = new(new Nethermind.Api.Monitoring.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         for (int i = 0; i < layersOldestFirst.Length; i++)
             repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], pool, PbtResourcePool.Usage.MainBlockProcessing));
-        Assert.That(new PbtSnapshotCompactor(pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);
-        Assert.That(repository.TryLeaseMemoryState(head, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted), Is.True);
+        PbtSnapshot? compacted;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new PbtSnapshotCompactor(pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);
+            Assert.That(repository.TryLeaseMemoryState(head, SnapshotTier.InMemoryCompacted, out compacted), Is.True);
+        }
         return compacted!;
     }
 }

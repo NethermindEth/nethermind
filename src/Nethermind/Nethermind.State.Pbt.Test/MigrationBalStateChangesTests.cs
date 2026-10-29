@@ -168,10 +168,13 @@ public class MigrationBalStateChangesTests
         foreach ((Address address, GethGenesisAllocJson account) in allocations)
         {
             byte[] code = account.Code ?? [];
-            Assert.That(worldState.GetBalance(address), Is.EqualTo(account.Balance ?? 0), address.ToString());
-            Assert.That(worldState.GetNonce(address), Is.EqualTo(account.Nonce ?? 0), address.ToString());
-            Assert.That(worldState.GetCodeHash(address), Is.EqualTo(ValueKeccak.Compute(code)), address.ToString());
-            Assert.That(worldState.GetCode(address).ToArray(), Is.EqualTo(code), address.ToString());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worldState.GetBalance(address), Is.EqualTo(account.Balance ?? 0), address.ToString());
+                Assert.That(worldState.GetNonce(address), Is.EqualTo(account.Nonce ?? 0), address.ToString());
+                Assert.That(worldState.GetCodeHash(address), Is.EqualTo(ValueKeccak.Compute(code)), address.ToString());
+                Assert.That(worldState.GetCode(address).ToArray(), Is.EqualTo(code), address.ToString());
+            }
         }
     }
 }

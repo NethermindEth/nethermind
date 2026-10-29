@@ -54,8 +54,11 @@ public class MigrationBalFollowerTests
         for (int number = 1; number <= count; number++)
         {
             string name = number == 1 ? "a1" : branch + number;
-            Assert.That(await harness.Follower.Follow(harness.Blocks[name].Header, default), Is.True, harness.Follower.Error);
-            Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks[name].Hash));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await harness.Follower.Follow(harness.Blocks[name].Header, default), Is.True, harness.Follower.Error);
+                Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks[name].Hash));
+            }
             AssertState(harness, name);
             harness.Reopen();
             AssertState(harness, name);
@@ -109,8 +112,11 @@ public class MigrationBalFollowerTests
         harness.RestoreBal("a2");
         Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, default), Is.True, harness.Follower.Error);
         AssertState(harness, "a3");
-        Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks["a3"].Hash));
-        Assert.That(harness.Follower.Error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Follower.Cursor!.Hash, Is.EqualTo(harness.Blocks["a3"].Hash));
+            Assert.That(harness.Follower.Error, Is.Null);
+        }
     }
 
     [Test]

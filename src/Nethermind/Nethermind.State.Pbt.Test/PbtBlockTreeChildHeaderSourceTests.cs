@@ -29,9 +29,12 @@ public class PbtBlockTreeChildHeaderSourceTests
 
         PbtBlockTreeChildHeaderSource source = new(blockTree, builder.ChainLevelInfoRepository);
 
-        Assert.That(source.TryFindChild(branchA.Header)?.Hash, Is.EqualTo(onA.Hash));
-        Assert.That(source.TryFindChild(branchB.Header)?.Hash, Is.EqualTo(onB.Hash), "the sibling at the same height is not mistaken for it");
-        Assert.That(source.TryFindChild(onA.Header), Is.Null, "and a block nothing was suggested onto resolves to nothing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.TryFindChild(branchA.Header)?.Hash, Is.EqualTo(onA.Hash));
+            Assert.That(source.TryFindChild(branchB.Header)?.Hash, Is.EqualTo(onB.Hash), "the sibling at the same height is not mistaken for it");
+            Assert.That(source.TryFindChild(onA.Header), Is.Null, "and a block nothing was suggested onto resolves to nothing");
+        }
     }
 
     /// <remarks>Distinct difficulties ensure the fork siblings have distinct hashes.</remarks>

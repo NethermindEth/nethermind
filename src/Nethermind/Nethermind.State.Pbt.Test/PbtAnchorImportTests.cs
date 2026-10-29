@@ -283,8 +283,11 @@ public class PbtAnchorImportTests
             using FileStream expected = OpenArtifact("a5", "snapshot.pbt");
             using MemoryStream expectedBytes = new();
             expected.CopyTo(expectedBytes);
-            Assert.That(File.ReadAllBytes(Path.Combine(output, "snapshot.pbt")), Is.EqualTo(expectedBytes.ToArray()));
-            Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(includePreimages ? 2 : 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(File.ReadAllBytes(Path.Combine(output, "snapshot.pbt")), Is.EqualTo(expectedBytes.ToArray()));
+                Assert.That(Directory.GetFiles(output), Has.Length.EqualTo(includePreimages ? 2 : 1));
+            }
         }
         Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Has.Length.EqualTo(1));
         AssertNoNativeState(harness);

@@ -30,21 +30,27 @@ public class KeyDerivationTests
         // EIP-8297 example: the second chunk starts with two PUSHDATA bytes.
         byte[] code = [.. new byte[28], 0x63, 99, 98, 97, 96, 0x60, 128, 0x52];
         byte[] chunks = PbtTreeHarness.ChunkifyCode(code);
-        Assert.That(chunks, Has.Length.EqualTo(2 * PbtKeyDerivation.CodeChunkSize));
-        Assert.That(Chunk(chunks, 0)[0], Is.EqualTo(0));
-        Assert.That(Chunk(chunks, 0)[1..].SequenceEqual(code.AsSpan(0, 31)));
-        Assert.That(Chunk(chunks, 1)[0], Is.EqualTo(2));
-        Assert.That(Chunk(chunks, 1).Slice(1, 5).SequenceEqual((byte[])[97, 96, 0x60, 128, 0x52]));
-        Assert.That(Chunk(chunks, 1)[6..].IsZero(), "padding must be zero");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chunks, Has.Length.EqualTo(2 * PbtKeyDerivation.CodeChunkSize));
+            Assert.That(Chunk(chunks, 0)[0], Is.EqualTo(0));
+            Assert.That(Chunk(chunks, 0)[1..].SequenceEqual(code.AsSpan(0, 31)));
+            Assert.That(Chunk(chunks, 1)[0], Is.EqualTo(2));
+            Assert.That(Chunk(chunks, 1).Slice(1, 5).SequenceEqual((byte[])[97, 96, 0x60, 128, 0x52]));
+            Assert.That(Chunk(chunks, 1)[6..].IsZero(), "padding must be zero");
+        }
 
         // PUSH32 data is capped at 31 bytes per chunk; the tail belongs to the next chunk.
         byte[] pushData = new byte[32];
         Array.Fill(pushData, (byte)0xAA);
         byte[] push32Code = [.. new byte[30], 0x7F, .. pushData];
         chunks = PbtTreeHarness.ChunkifyCode(push32Code);
-        Assert.That(chunks, Has.Length.EqualTo(3 * PbtKeyDerivation.CodeChunkSize));
-        Assert.That(Chunk(chunks, 1)[0], Is.EqualTo(31), "a fully-PUSHDATA chunk is capped at 31");
-        Assert.That(Chunk(chunks, 2)[0], Is.EqualTo(1), "one PUSHDATA byte remains in the last chunk");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chunks, Has.Length.EqualTo(3 * PbtKeyDerivation.CodeChunkSize));
+            Assert.That(Chunk(chunks, 1)[0], Is.EqualTo(31), "a fully-PUSHDATA chunk is capped at 31");
+            Assert.That(Chunk(chunks, 2)[0], Is.EqualTo(1), "one PUSHDATA byte remains in the last chunk");
+        }
     }
 
     [TestCase(31, 1)]

@@ -9,7 +9,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.Common;

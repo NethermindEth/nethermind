@@ -176,8 +176,11 @@ public class PbtWorldStateScopeTests
         scope.UpdateRootHash();
         scope.Commit(1);
 
-        Assert.That(scope.Get(TestItem.AddressA)?.Balance, Is.EqualTo(UInt256.One), "the scope reads back what it committed");
-        Assert.That(ctx.Repository.Count, Is.Zero, "and the layer never reaches the repository");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(TestItem.AddressA)?.Balance, Is.EqualTo(UInt256.One), "the scope reads back what it committed");
+            Assert.That(ctx.Repository.Count, Is.Zero, "and the layer never reaches the repository");
+        }
     }
 
     [TestCase(7u, TestName = "header slot, on the account's own stem")]
@@ -201,8 +204,11 @@ public class PbtWorldStateScopeTests
         }
         scope.Commit(1);
 
-        Assert.That(scope.Get(TestItem.AddressA), Is.Null);
-        Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(TestItem.AddressA), Is.Null);
+            Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]

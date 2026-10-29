@@ -560,8 +560,12 @@ public class ParallelUpdateRootTests
         second.Fold(secondEntries, SplitFanOut(true));
         firstExpected.ApplyBatch(firstEntries);
         secondExpected.ApplyBatch(secondEntries);
-        Assert.That(buffer.TryLocate(first.RootPointer, out PbtGroupRecord firstParent), Is.True);
-        Assert.That(buffer.TryLocate(second.RootPointer, out PbtGroupRecord secondParent), Is.True);
+        PbtGroupRecord firstParent, secondParent;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.TryLocate(first.RootPointer, out firstParent), Is.True);
+            Assert.That(buffer.TryLocate(second.RootPointer, out secondParent), Is.True);
+        }
         ulong firstChild = firstParent.GetLink(0);
         ulong secondChild = secondParent.GetLink(0);
         Assert.That(firstChild != 0 && secondChild != 0, Is.True);

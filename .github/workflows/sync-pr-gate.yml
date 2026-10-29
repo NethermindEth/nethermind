@@ -168,7 +168,7 @@ jobs:
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-        run: dotnet run --file scripts/WaitForSync.cs
+        run: dotnet run --file scripts/wait-for-sync.cs
 
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()

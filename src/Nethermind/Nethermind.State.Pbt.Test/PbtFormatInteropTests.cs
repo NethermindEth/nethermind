@@ -60,8 +60,11 @@ public class PbtFormatInteropTests
         tree.ApplyBatch(changes);
         EipReferenceTree singletonOracle = new();
         singletonOracle.Insert(keys[^1], value);
-        Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(singletonOracle.Merkelize()));
-        Assert.That(tree.Nodes, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(singletonOracle.Merkelize()));
+            Assert.That(tree.Nodes, Has.Count.EqualTo(1));
+        }
         Assert.That(tree.Nodes[0].Path.BitDepth, Is.Zero);
         string singletonRoot = tree.RootHash.ToString();
         string singletonPayload = PhysicalDigest(tree);
@@ -95,11 +98,14 @@ public class PbtFormatInteropTests
         PbtSnapshot source = PersistedSource(content);
         using PbtPersistedSnapshot persisted = store.Build(source);
         source.Dispose();
-        Assert.That(persisted.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
-        Assert.That(code!.Code.ToArray(), Is.EqualTo(bytes));
-        Assert.That(persisted.TryGetCode(TestItem.KeccakB.ValueHash256, out _), Is.False);
-        Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakC.ValueHash256));
-        Assert.That(persisted.To.StateRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persisted.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
+            Assert.That(code!.Code.ToArray(), Is.EqualTo(bytes));
+            Assert.That(persisted.TryGetCode(TestItem.KeccakB.ValueHash256, out _), Is.False);
+            Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakC.ValueHash256));
+            Assert.That(persisted.To.StateRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+        }
     }
 
     [Test]
@@ -136,9 +142,13 @@ public class PbtFormatInteropTests
             Assert.That(persisted.TryGetAccount(TestItem.KeccakC.ValueHash256, out _), Is.False);
             Assert.That(persisted.TryGetStorageClear(address), Is.True);
         }
-        Assert.That(persisted.TryGetSlotRun(headerKey, out PackedSlotRun? empty), Is.True);
-        Assert.That(empty, Is.SameAs(SlotRun.Empty));
-        Assert.That(persisted.TryGetSlotRun(storageKey, out PackedSlotRun? full), Is.True);
+        PackedSlotRun? full;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persisted.TryGetSlotRun(headerKey, out PackedSlotRun? empty), Is.True);
+            Assert.That(empty, Is.SameAs(SlotRun.Empty));
+            Assert.That(persisted.TryGetSlotRun(storageKey, out full), Is.True);
+        }
         try
         {
             Assert.That(full!.Count, Is.EqualTo(16));
@@ -190,8 +200,11 @@ public class PbtFormatInteropTests
         using PbtSnapshot source = new(from, new(0, TestItem.KeccakB.ValueHash256), TestItem.KeccakC.ValueHash256,
             new(), new PbtResourcePool(new PbtConfig()), PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot persisted = store.Build(source);
-        Assert.That(persisted.From, Is.EqualTo(from));
-        Assert.That(persisted.TreeRoot, Is.Not.EqualTo(persisted.To.StateRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persisted.From, Is.EqualTo(from));
+            Assert.That(persisted.TreeRoot, Is.Not.EqualTo(persisted.To.StateRoot));
+        }
     }
 
     [Test]
@@ -211,8 +224,11 @@ public class PbtFormatInteropTests
         {
             byte[] hash = new byte[32];
             BinaryPrimitives.WriteInt32BigEndian(hash.AsSpan(28), i);
-            Assert.That(persisted.TryGetCode(new(hash), out CodeInfo? code), Is.True);
-            Assert.That(code!.Code.Length, Is.EqualTo(254));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persisted.TryGetCode(new(hash), out CodeInfo? code), Is.True);
+                Assert.That(code!.Code.Length, Is.EqualTo(254));
+            }
         }
     }
 
@@ -228,8 +244,11 @@ public class PbtFormatInteropTests
         persisted.Dispose();
         using (persisted)
         {
-            Assert.That(persisted.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
-            Assert.That(code!.Code.Length, Is.EqualTo(65537));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persisted.TryGetCode(TestItem.KeccakA.ValueHash256, out CodeInfo? code), Is.True);
+                Assert.That(code!.Code.Length, Is.EqualTo(65537));
+            }
         }
         Assert.That(persisted.TryLease(), Is.False);
         Assert.Throws<ObjectDisposedException>(() => persisted.TryGetCode(TestItem.KeccakA.ValueHash256, out _));

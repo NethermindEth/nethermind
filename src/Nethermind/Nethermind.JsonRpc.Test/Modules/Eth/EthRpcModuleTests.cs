@@ -16,6 +16,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -103,6 +104,16 @@ public partial class EthRpcModuleTests
 
     private static FilterLog CreateTestFilterLog() =>
         new(1, 1, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, [1, 2, 3], [TestItem.KeccakC, TestItem.KeccakD]);
+
+    /// <summary>Creates a bridge with log filter 1 installed over the latest block that returns <paramref name="logs"/> for any resolved range.</summary>
+    private static IBlockchainBridge CreateLogsBridge(IEnumerable<FilterLog> logs)
+    {
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetLogFilter(1).Returns(new LogFilter(1, BlockParameter.Latest, BlockParameter.Latest, AddressFilter.AnyAddress, SequenceTopicsFilter.AnyTopic));
+        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns(logs);
+        return bridge;
+    }
 
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
@@ -291,6 +302,22 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [TestCase(0ul, (ulong)int.MaxValue + 1, "activationTime")]
+    [TestCase((ulong)int.MaxValue + 1, null, "activationBlock")]
+    public async Task Eth_config_reports_activation_beyond_int_range(ulong blockNumber, ulong? timestamp, string property)
+    {
+        TestSpecProvider specProvider = new(Cancun.Instance) { TransitionActivations = [(ForkActivation)0, new ForkActivation(blockNumber, timestamp)] };
+        using Context ctx = await Context.Create(specProvider);
+
+        JToken? activation = JToken.Parse(await ctx.Test.TestEthRpc("eth_config")).SelectToken($"result.next.{property}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(activation?.Type, Is.EqualTo(JTokenType.Integer));
+            Assert.That(activation?.ToString(), Is.EqualTo((timestamp ?? blockNumber).ToString()));
+        }
+    }
+
     [Test]
     public async Task Eth_get_transaction_by_block_number_and_index()
     {
@@ -432,6 +459,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_uninstall_filter_returns_false_for_unknown_id([Values] bool uninstalledBefore)
+    {
+        using Context ctx = await Context.Create();
+        if (uninstalledBefore)
+        {
+            _ = await ctx.Test.TestEthRpc("eth_newBlockFilter");
+            _ = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        }
+
+        string serialized = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_uninstall_filter_overflow_int()
     {
         using Context ctx = await Context.Create();
@@ -562,8 +603,11 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestAccountAddress, "[]", "latest");
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,\"message\":\"MPT proofs are not available for the PBT state backend\"},\"id\":67}"));
-        Assert.That(bridge.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "RunTreeVisitor"), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,\"message\":\"MPT proofs are not available for the PBT state backend\"},\"id\":67}"));
+            Assert.That(bridge.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "RunTreeVisitor"), Is.EqualTo(0));
+        }
     }
 
     // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
@@ -826,7 +870,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.KeccakA.Bytes.ToHexString(true), "0x1");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 0\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"invalid argument 0: hex string has length 64, want 40 for common.Address\"},\"id\":67}"));
     }
 
     [Test]
@@ -938,13 +982,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_filter_logs([Values] bool enableLogsStreamMode)
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-            .Returns(static x =>
-            {
-                x[1] = new[] { CreateTestFilterLog() };
-                return true;
-            });
+        IBlockchainBridge bridge = CreateLogsBridge([CreateTestFilterLog()]);
 
         ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
@@ -964,13 +1002,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_filter_logs_respects_max_logs_per_response(int logCount, int maxLogsPerResponse, bool authenticated)
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-            .Returns(x =>
-            {
-                x[1] = Enumerable.Range(0, logCount).Select(static _ => CreateTestFilterLog()).ToArray();
-                return true;
-            });
+        IBlockchainBridge bridge = CreateLogsBridge(Enumerable.Range(0, logCount).Select(static _ => CreateTestFilterLog()).ToArray());
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge)
@@ -995,13 +1027,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_filter_logs_stream_mode_stops_before_reading_past_max_logs()
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-            .Returns(static x =>
-            {
-                x[1] = GetLogs();
-                return true;
-            });
+        IBlockchainBridge bridge = CreateLogsBridge(GetLogs());
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge)
@@ -1257,20 +1283,31 @@ public partial class EthRpcModuleTests
             $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
     }
 
+    [TestCase("""{"fromBlock":"0x1","toBlock":"0x64"}""", ErrorCodes.InvalidParams)]
+    [TestCase("""{"fromBlock":"0x64"}""", ErrorCodes.InvalidParams)]
+    [TestCase("""{"fromBlock":"0x2","toBlock":"0x1"}""", ErrorCodes.InvalidParams)]
+    [TestCase("""{"fromBlock":"safe"}""", ErrorCodes.ResourceNotFound)]
+    public async Task Eth_getFilterLogs_reports_unresolvable_range_like_eth_getLogs(string filter, int expectedErrorCode)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: false).Build();
+
+        string getLogs = await CallLogsMethod(ctx, "eth_getLogs", filter);
+        string getFilterLogs = await CallLogsMethod(ctx, "eth_getFilterLogs", filter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(getLogs, Does.Contain($"\"code\":{expectedErrorCode},"));
+            Assert.That(getFilterLogs, Is.EqualTo(getLogs));
+        }
+    }
+
     [TestCase("eth_getLogs", "{}")]
     [TestCase("eth_getFilterLogs", "0x1")]
     public async Task Eth_logs_ignore_max_logs_response_body_size_when_stream_mode_disabled(string method, string parameter)
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.GetLogs(Arg.Any<LogFilter>(), Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
-            .Returns([CreateTestFilterLog()]);
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-            .Returns(static x =>
-            {
-                x[1] = new[] { CreateTestFilterLog() };
-                return true;
-            });
+        IBlockchainBridge bridge = CreateLogsBridge([CreateTestFilterLog()]);
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge)
@@ -1529,13 +1566,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_filter_logs_with_resourceNotFound()
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-            .Returns(static x =>
-            {
-                x[1] = ThrowsOnIteration();
-                return true;
-            });
+        IBlockchainBridge bridge = CreateLogsBridge(ThrowsOnIteration());
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x1");
@@ -1688,10 +1719,13 @@ public partial class EthRpcModuleTests
         JObject result = (JObject)JToken.Parse(serialized)["result"]!;
 
         // Body-level fields must NOT appear in header response (Geth's RPCMarshalHeader excludes them).
-        Assert.That(result.ContainsKey("size"), Is.False);
-        Assert.That(result.ContainsKey("transactions"), Is.False);
-        Assert.That(result.ContainsKey("uncles"), Is.False);
-        Assert.That(result.ContainsKey("totalDifficulty"), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ContainsKey("size"), Is.False);
+            Assert.That(result.ContainsKey("transactions"), Is.False);
+            Assert.That(result.ContainsKey("uncles"), Is.False);
+            Assert.That(result.ContainsKey("totalDifficulty"), Is.False);
+        }
 
         // Core header fields must be present.
         foreach (string field in new[] { "number", "hash", "parentHash", "nonce", "stateRoot", "transactionsRoot", "receiptsRoot", "logsBloom" })
@@ -1732,11 +1766,14 @@ public partial class EthRpcModuleTests
         JObject result = (JObject)JToken.Parse(serialized)["result"]!;
 
         // AuRa-specific fields must be present (proves the AuRa branch fired).
-        Assert.That(result.ContainsKey("signature"), Is.True);
-        Assert.That(result.ContainsKey("step"), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ContainsKey("signature"), Is.True);
+            Assert.That(result.ContainsKey("step"), Is.True);
 
-        // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
-        Assert.That(result["nonce"]!.Type, Is.EqualTo(JTokenType.Null));
+            // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
+            Assert.That(result["nonce"]!.Type, Is.EqualTo(JTokenType.Null));
+        }
 
         // PoW mixHash uses default null-omit semantics — absent or null, not a non-null value.
         JToken? mixHashToken = result["mixHash"];
@@ -1863,14 +1900,14 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getProof", "0x000000000000000000000000000000000000dead", "[]", "0x2");
 
         JObject result = (JObject)JToken.Parse(serialized)["result"]!;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That((string?)result["address"], Is.EqualTo("0x000000000000000000000000000000000000dead"));
             Assert.That((string?)result["balance"], Is.EqualTo("0x0"));
             Assert.That((string?)result["nonce"], Is.EqualTo("0x0"));
             Assert.That((string?)result["codeHash"], Is.EqualTo(Hash256.Zero.ToString()));
             Assert.That((string?)result["storageHash"], Is.EqualTo(Hash256.Zero.ToString()));
-        });
+        }
     }
 
     [Test]
@@ -2250,8 +2287,11 @@ public partial class EthRpcModuleTests
         using JsonRpcResponse secondResponse = ctx.Test.EthRpcModule.eth_chainId().WithResponseContext("client-id", null);
         string secondSerialized = RpcTest.SerializeResponse(secondResponse);
 
-        Assert.That(firstSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":67}}"));
-        Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":67}}"));
+            Assert.That(secondSerialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x{TestBlockchainIds.ChainId:X}\",\"id\":\"client-id\"}}"));
+        }
         bridge.Received(1).GetChainId();
     }
 
@@ -2556,6 +2596,44 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
     }
 
+    // A frame transaction sent priced per gas buys max_gas at those prices, which includes intrinsic gas.
+    [Test]
+    public async Task Send_frame_transaction_priced_per_gas_buys_its_max_gas()
+    {
+        using Context ctx = await Context.Create();
+        ITxSender txSender = Substitute.For<ITxSender>();
+        Transaction? sent = null;
+        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+            .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithTxSender(txSender).Build(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = new()
+        {
+            From = TestItem.AddressC,
+            Gas = 100_000,
+            Nonce = 0,
+            MaxFeePerGas = 3,
+            MaxPriorityFeePerGas = 1,
+            Frames =
+            [
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000, StateGas = 0 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000, StateGas = 0 },
+            ],
+            Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+        };
+
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", request);
+
+#pragma warning disable NUnit2045 // The sent transaction must exist before calculating its gas budget.
+        Assert.That(sent, Is.Not.Null, serialized);
+#pragma warning restore NUnit2045
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(sent!, Eip8141Prototype.Instance, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(maxGas, Is.GreaterThan(sent!.GasLimit), "the frame gas sum leaves out intrinsic gas");
+            Assert.That(sent.MaxFee, Is.EqualTo((UInt256)maxGas * 3));
+        }
+    }
+
     [Test]
     public async Task Send_transaction_should_return_ErrorCode_if_tx_not_added()
     {
@@ -2749,9 +2827,12 @@ public partial class EthRpcModuleTests
             """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
             stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"], Is.Null);
-        Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
-        Assert.That(gasUsed, Is.EqualTo(21_000));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null);
+            Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
+            Assert.That(gasUsed, Is.EqualTo(21_000));
+        }
     }
 
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
@@ -2791,9 +2872,12 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
 
-        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("out of gas"));
-        Assert.That(gasUsed, Is.EqualTo(0x6A50));
-        Assert.That(result["accessList"]!.ToArray(), Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]!.Value<string>(), Is.EqualTo("out of gas"));
+            Assert.That(gasUsed, Is.EqualTo(0x6A50));
+            Assert.That(result["accessList"]!.ToArray(), Is.Not.Empty);
+        }
     }
 
     [Test]
@@ -2808,9 +2892,143 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"], Is.Null);
-        Assert.That(gasUsed, Is.EqualTo(21_000));
-        Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null);
+            Assert.That(gasUsed, Is.EqualTo(21_000));
+            Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+        }
+    }
+
+    private const string AccessListContract = "0xc200000000000000000000000000000000000000";
+    private const string DelegatedAccount = "0xd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1";
+
+    // CALL with zero value and empty buffers to the PUSH20 address, then STOP.
+    private static string CallCode(string address) => $"0x6000600060006000600073{address[2..]}5af100";
+
+    // Like Geth, the optimized list holds only addresses an opcode named, never those the EVM warmed on its own.
+    [TestCase("0x600060006000f000", new string[0], TestName = "Access list leaves out a contract the call created")]
+    [TestCase("0x600060006000600060007300000000000000000000000000000000000000015af100", new string[0],
+        TestName = "Access list leaves out a precompile a call names")]
+    [TestCase("0x6000600060006000600073aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5af100", new[] { "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        TestName = "Access list keeps an address a call names")]
+    [TestCase("0x6000600060006000600073d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d15af100", new[] { DelegatedAccount },
+        TestName = "Access list leaves out the delegation target of a called account")]
+    public async Task Eth_createAccessList_lists_only_addresses_an_opcode_names(string code, string[] expected)
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, _) = await CallCreateAccessList(ctx, AccessListContractCall, AccessListStateOverride(code), optimize: true);
+
+        Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(expected), result.ToString());
+    }
+
+    // The list names the delegated account but not its target, so the reported gas must pay cold access for the target,
+    // as a transaction carrying that list does, even though tracing the access warms every account the run touches.
+    [Test]
+    public async Task Eth_createAccessList_gas_pays_cold_access_for_a_delegation_target_it_leaves_out()
+    {
+        // 21,000 intrinsic and 2,400 for the listed account, then five PUSH1, PUSH20 and GAS (20), and a CALL paying
+        // warm access for the listed account (100) and cold access for its delegation target (2,600, EIP-7702).
+        const long expectedGas = 21_000 + 2_400 + 20 + 100 + 2_600;
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, AccessListContractCall, AccessListStateOverride(CallCode(DelegatedAccount)), optimize: true);
+
+        Assert.That(gasUsed, Is.EqualTo(expectedGas), result.ToString());
+    }
+
+    // The contract measures the gas a CALL to the delegated account costs and runs the branch only when that call pays
+    // cold access for the delegation target, as a transaction carrying the list does. The list must hold what the branch
+    // touches even though tracing the access would have charged the target as warm and skipped the branch.
+    [TestCase("73bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb315000", "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", new string[0],
+        TestName = "Access list holds an address a branch taken at real gas costs names")]
+    [TestCase("6001545000", AccessListContract, new[] { "0x0000000000000000000000000000000000000000000000000000000000000001" },
+        TestName = "Access list holds a slot a branch taken at real gas costs loads")]
+    public async Task Eth_createAccessList_holds_what_a_branch_taken_at_real_gas_costs_touches(string branch, string touched, string[] storageKeys)
+    {
+        // GAS, CALL the delegated account, GAS, SUB, then JUMPI to the branch at 0x2e if the call cost over 1,000 gas.
+        string code = $"0x5a6000600060006000600073{DelegatedAccount[2..]}5af1505a90036103e810602e57005b{branch}";
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, _) = await CallCreateAccessList(ctx, AccessListContractCall, AccessListStateOverride(code), optimize: true);
+
+        JToken[] accessList = result["accessList"]!.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Select(static e => e["address"]!.Value<string>()), Is.EquivalentTo(new[] { DelegatedAccount, touched }), result.ToString());
+            Assert.That(accessList.Single(e => e["address"]!.Value<string>() == touched)["storageKeys"]!.Select(static k => k.Value<string>()),
+                Is.EqualTo(storageKeys), result.ToString());
+        }
+    }
+
+    private static string AccessListContractCall => $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}"}""";
+
+    // The contract under test runs code; the delegated account delegates to a contract that only stops.
+    private static string AccessListStateOverride(string code) => $$$"""
+        {"{{{AccessListContract}}}":{"code":"{{{code}}}"},
+         "{{{DelegatedAccount}}}":{"code":"0xef0100c300000000000000000000000000000000000000"},
+         "0xc300000000000000000000000000000000000000":{"code":"0x00"}}
+        """;
+
+    public enum AuthorizationSkip { None, HighS, OtherChainId, MaxNonce }
+
+    // A skipped authorization still recovers its authority, but the transaction never warms that authority, so like Geth
+    // the list keeps it when the call names it. Only the authority of an authorization that is not skipped is left out.
+    [Test]
+    public async Task Eth_createAccessList_lists_a_named_authority_only_when_its_tuple_is_skipped([Values] AuthorizationSkip skip)
+    {
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+        ulong chainId = ctx.Test.SpecProvider.ChainId;
+        Address codeAddress = new("0xc300000000000000000000000000000000000000");
+        EthereumEcdsa ecdsa = new(chainId);
+        AuthorizationTuple authorization = skip switch
+        {
+            AuthorizationSkip.OtherChainId => ecdsa.Sign(TestItem.PrivateKeyB, chainId + 1, codeAddress, 0),
+            AuthorizationSkip.MaxNonce => ecdsa.Sign(TestItem.PrivateKeyB, chainId, codeAddress, ulong.MaxValue),
+            _ => ecdsa.Sign(TestItem.PrivateKeyB, chainId, codeAddress, 0)
+        };
+        if (skip == AuthorizationSkip.HighS)
+        {
+            Signature signature = authorization.AuthoritySignature;
+            authorization = new AuthorizationTuple(chainId, authorization.CodeAddress, authorization.Nonce, (byte)(1 - signature.RecoveryId),
+                new UInt256(signature.RAsSpan, isBigEndian: true), SecP256k1Curve.N - new UInt256(signature.SAsSpan, isBigEndian: true));
+        }
+
+        SetCodeTransactionForRpc transaction = new()
+        {
+            From = new Address(CreateAccessListSender),
+            To = new Address(AccessListContract),
+            AuthorizationList = AuthorizationListForRpc.FromAuthorizationList([authorization]),
+        };
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{AccessListContract}}}":{"code":"{{{CallCode(TestItem.AddressB.ToString())}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", stateOverride, true);
+
+        Assert.That(JToken.Parse(serialized).SelectToken("result.accessList")!.Select(static e => e["address"]!.Value<string>()),
+            Is.EqualTo(skip == AuthorizationSkip.None ? [] : new[] { TestItem.AddressB.ToString() }), serialized);
+    }
+
+    // The caller's list names only the recipient, which the optimized list leaves out, so the first run must already carry
+    // the normalised list. Otherwise that run alone converges, and its gas pays the recipient's entry and a cold call.
+    [Test]
+    public async Task Eth_createAccessList_normalises_the_callers_list_before_the_first_run()
+    {
+        // 21,000 intrinsic and 2,400 for the listed callee, then five PUSH1, PUSH20 and GAS (20), and a CALL paying warm
+        // access for the listed callee (100).
+        const long expectedGas = 21_000 + 2_400 + 20 + 100;
+        const string callee = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        string call = $$"""{"from":"{{CreateAccessListSender}}","to":"{{AccessListContract}}","accessList":[{"address":"{{AccessListContract}}","storageKeys":[]}]}""";
+        using Context ctx = await Context.CreateWithOsakaEnabled();
+
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx, call, AccessListStateOverride(CallCode(callee)), optimize: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["accessList"]!.Select(static e => e["address"]!.Value<string>()), Is.EqualTo(new[] { callee }), result.ToString());
+            Assert.That(gasUsed, Is.EqualTo(expectedGas), result.ToString());
+        }
     }
 
     [Test]
@@ -2838,17 +3056,23 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverrideJson: null, optimize: true);
 
-        Assert.That(result["error"]!.Value<string>(), Is.EqualTo("execution reverted"));
-        Assert.That(gasUsed, Is.EqualTo(77496));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"]!.Value<string>(), Is.EqualTo("execution reverted"));
+            Assert.That(gasUsed, Is.EqualTo(77496));
+        }
         // AL must contain the newly created contract address with storage key 0x81.
         // Contract address is deterministic: keccak256(rlp([sender, nonce=0]))[12:]
         Address expectedContract = ContractAddress.From(new Address(CreateAccessListSender), UInt256.Zero);
         JToken[] accessList = result["accessList"]!.ToArray();
         Assert.That(accessList, Has.Length.EqualTo(1));
-        Assert.That(accessList[0]["address"]!.Value<string>(), Is.EqualTo(expectedContract.ToString().ToLowerInvariant()));
-        Assert.That(
-            accessList[0]["storageKeys"]!.ToArray().Count(static k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081"),
-            Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList[0]["address"]!.Value<string>(), Is.EqualTo(expectedContract.ToString().ToLowerInvariant()));
+            Assert.That(
+                accessList[0]["storageKeys"]!.ToArray().Count(static k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000081"),
+                Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -2861,16 +3085,22 @@ public partial class EthRpcModuleTests
 
         (JToken result, long gasUsed) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
 
-        Assert.That(result["error"], Is.Null);
-        Assert.That(gasUsed, Is.EqualTo(27_805));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null);
+            Assert.That(gasUsed, Is.EqualTo(27_805));
+        }
         JToken[] accessList = result["accessList"]!.ToArray();
-        Assert.That(accessList.Any(e => e["address"]!.Value<string>() == CreateAccessListSender), Is.True);
-        // Contract with slot 1 must also appear.
-        Assert.That(accessList.Any(e =>
-            e["address"]!.Value<string>() == contractAddr &&
-            e["storageKeys"]!.ToArray().Any(
-                k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000001")),
-            Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.Any(e => e["address"]!.Value<string>() == CreateAccessListSender), Is.True);
+            // Contract with slot 1 must also appear.
+            Assert.That(accessList.Any(e =>
+                e["address"]!.Value<string>() == contractAddr &&
+                e["storageKeys"]!.ToArray().Any(
+                    k => k.Value<string>() == "0x0000000000000000000000000000000000000000000000000000000000000001")),
+                Is.True);
+        }
     }
 
     [Test]
@@ -3136,9 +3366,12 @@ public partial class EthRpcModuleTests
 
         AuthorizationListForRpc.RpcAuthTuple result = actual.AuthorizationList!.First();
 
-        Assert.That(result.YParity, Is.EqualTo(BadYparity), "Y parity should match the one in the transaction");
-        Assert.That((int)result.R, Is.EqualTo(BadR), "R should match the one in the transaction");
-        Assert.That((int)result.S, Is.EqualTo(BadS), "S should match the one in the transaction");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.YParity, Is.EqualTo(BadYparity), "Y parity should match the one in the transaction");
+            Assert.That((int)result.R, Is.EqualTo(BadR), "R should match the one in the transaction");
+            Assert.That((int)result.S, Is.EqualTo(BadS), "S should match the one in the transaction");
+        }
     }
 
 

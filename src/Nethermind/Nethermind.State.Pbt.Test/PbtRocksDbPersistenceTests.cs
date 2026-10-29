@@ -308,8 +308,11 @@ public class PbtRocksDbPersistenceTests
                     last = next;
                 }
                 persistenceManager.FlushToPersistenceState(CancellationToken.None);
-                Assert.That(repository.Count, Is.Zero);
-                Assert.That(persistenceManager.CheckPersistenceAsync(new StateId(2, TestItem.KeccakA.ValueHash256)).GetAwaiter().GetResult(), Is.False, "queued IDs behind persistence are harmless");
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(repository.Count, Is.Zero);
+                    Assert.That(persistenceManager.CheckPersistenceAsync(new StateId(2, TestItem.KeccakA.ValueHash256)).GetAwaiter().GetResult(), Is.False, "queued IDs behind persistence are harmless");
+                }
             }
 
             using ColumnsDb<PbtColumns> reopenedDb = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, config);
@@ -334,8 +337,11 @@ public class PbtRocksDbPersistenceTests
             oracle.Delete(deletedKey);
             oracle.Insert(replacedKey, Value(99));
             ValueHash256 updatedRoot = reopened.Fold(reader.CurrentRoot, [(deletedKey, null), (replacedKey, Value(99))]);
-            Assert.That(updatedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(reopened.EnumerateRecords(), Has.Count.EqualTo(30).And.All.Matches<PbtNodeRecord>(record => record?.Encoding.Span[0] == 1), "the promoted leaf leaves 30 branches, all with inline leaves");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(updatedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+                Assert.That(reopened.EnumerateRecords(), Has.Count.EqualTo(30).And.All.Matches<PbtNodeRecord>(record => record?.Encoding.Span[0] == 1), "the promoted leaf leaves 30 branches, all with inline leaves");
+            }
         }
         finally
         {
@@ -456,8 +462,11 @@ public class PbtRocksDbPersistenceTests
             batch.Commit();
         }
 
-        Assert.That(persistence.IsValid, Is.True);
-        Assert.That(new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance).IsValid, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistence.IsValid, Is.True);
+            Assert.That(new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance).IsValid, Is.True);
+        }
     }
 
     [Test]

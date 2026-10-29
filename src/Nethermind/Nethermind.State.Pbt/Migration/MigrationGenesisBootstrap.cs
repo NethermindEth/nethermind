@@ -14,10 +14,12 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.State.Pbt.Migration;
@@ -59,7 +61,8 @@ public sealed class MigrationGenesisBootstrap(
         Hash256 expectedHash = genesis.Hash!;
         chainSpec.Allocations = _allocations ?? chainSpec.Allocations
             ?? throw new InvalidDataException("Genesis bootstrap requires the genesis allocation; the genesis was built without this bootstrap.");
-        GenesisScopeProvider provider = new(this);
+        using NodeRecordBuffer nodeRecordBuffer = new(0, NodeRecordBuffer.DefaultGenerationBytes);
+        GenesisScopeProvider provider = new(this, nodeRecordBuffer);
         using ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder =>
             builder.RegisterInstance(provider).As<IWorldStateScopeProvider>().ExternallyOwned());
         IWorldState state = scope.Resolve<IWorldState>();
@@ -74,15 +77,15 @@ public sealed class MigrationGenesisBootstrap(
         if (Volatile.Read(ref _committed) == 0) throw new InvalidDataException("Genesis bootstrap committed no state.");
     }
 
-    private FlatWorldStateScope Open()
+    private FlatWorldStateScope Open(INodeRecordBuffer nodeRecordBuffer)
     {
         IPersistence.IPersistenceReader reader = source.Persistence.CreateReader();
-        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty(), isHistorical: false);
+        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty(), bufferPin: null);
         SnapshotPooledList snapshots = new(0);
         SnapshotBundle bundle;
         try
         {
-            bundle = new SnapshotBundle(readOnly, new EmptyTrieNodeCache(), resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, snapshots);
+            bundle = new SnapshotBundle(readOnly, nodeRecordBuffer, resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, snapshots);
         }
         catch
         {
@@ -129,15 +132,13 @@ public sealed class MigrationGenesisBootstrap(
             batch.SetAccount(address.Key, account);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> entry in snapshot.Storages)
             batch.SetStorage(entry.Key.Key.Item1, entry.Key.Key.Item2, entry.Value);
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in snapshot.StateNodes)
-            if (!entry.Value.IsHashOnlyPlaceholder())
-                batch.SetStateTrieNode(entry.Key.Key, entry.Value.FullRlp.AsSpan());
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> entry in snapshot.StorageNodes)
-            if (!entry.Value.IsHashOnlyPlaceholder())
-                batch.SetStorageTrieNode(entry.Key.Key.Item1, entry.Key.Key.Item2, entry.Value.FullRlp.AsSpan());
+        foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
+            batch.SetStateTrieNode(path, record.Rlp);
+        foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
+            batch.SetStorageTrieNode(address, path, record.Rlp);
     }
 
-    private sealed class GenesisScopeProvider(MigrationGenesisBootstrap owner) : IWorldStateScopeProvider
+    private sealed class GenesisScopeProvider(MigrationGenesisBootstrap owner, INodeRecordBuffer nodeRecordBuffer) : IWorldStateScopeProvider
     {
         private int _opened;
 
@@ -152,19 +153,8 @@ public sealed class MigrationGenesisBootstrap(
         {
             if (baseBlock is not null || Interlocked.CompareExchange(ref _opened, 1, 0) != 0)
                 throw new InvalidOperationException("The genesis source scope opens once, at the pre-genesis state.");
-            scope = owner.Open();
+            scope = owner.Open(nodeRecordBuffer);
             return true;
         }
-    }
-
-    private sealed class EmptyTrieNodeCache : ITrieNodeCache
-    {
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-        {
-            node = null;
-            return false;
-        }
-        public void Add(TransientResource transientResource) { }
-        public void Clear() { }
     }
 }

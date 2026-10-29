@@ -270,16 +270,22 @@ public class ImportPbtFromPreimageFlatTests
         await CreateStep(flatSource, codeDb, pbtDb, pbtTarget, config).Execute(CancellationToken.None);
 
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
-        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
+            Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
+        }
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
-        Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
-        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
-        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
-        Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
-        Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
-        Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000), Is.EqualTo((UInt256)0x1234));
-        Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000), Is.EqualTo((UInt256)0x55));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
+            Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
+            Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
+            Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
+            Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
+            Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000), Is.EqualTo((UInt256)0x1234));
+            Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000), Is.EqualTo((UInt256)0x55));
+        }
 
         PbtRocksDbPersistence reopened = new(pbtDb, config, NullTrieNodeLog.Instance);
         PbtResourcePool pool = new(config);
@@ -550,13 +556,19 @@ public class ImportPbtFromPreimageFlatTests
         if (outcome == "complete")
         {
             PbtScanReport report = await scan.WaitAsync(TimeSpan.FromSeconds(60));
-            Assert.That(report.Accounts.RecordCount, Is.EqualTo(2));
-            Assert.That(report.Storages.RecordCount, Is.Zero);
-            Assert.That(report.Storages.AverageRecordBytes, Is.Zero);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(report.Accounts.RecordCount, Is.EqualTo(2));
+                Assert.That(report.Storages.RecordCount, Is.Zero);
+                Assert.That(report.Storages.AverageRecordBytes, Is.Zero);
+            }
         }
         else Assert.That(async () => await scan.WaitAsync(TimeSpan.FromSeconds(60)), outcome == "cancel" ? Throws.InstanceOf<OperationCanceledException>() : Throws.InstanceOf<IOException>());
-        Assert.That(arrivals, Is.GreaterThanOrEqualTo(2));
-        Assert.That(db.ActiveViews, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arrivals, Is.GreaterThanOrEqualTo(2));
+            Assert.That(db.ActiveViews, Is.Zero);
+        }
     }
 
     [Test]

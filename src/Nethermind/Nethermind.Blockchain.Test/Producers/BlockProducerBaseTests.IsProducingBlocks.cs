@@ -195,9 +195,12 @@ public partial class BlockProducerBaseTests
         Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
         // Only has to outlast the one-second interval asked below; a longer sleep pushes a CPU-starved run past MaxTime.
         Thread.Sleep(1500);
-        Assert.That(blockProducer.IsProducingBlocks(1), Is.EqualTo(false));
-        Assert.That(blockProducer.IsProducingBlocks(1000), Is.EqualTo(true));
-        Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockProducer.IsProducingBlocks(1), Is.EqualTo(false));
+            Assert.That(blockProducer.IsProducingBlocks(1000), Is.EqualTo(true));
+            Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
+        }
         await blockProducer.StopAsync();
         Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(false));
     }

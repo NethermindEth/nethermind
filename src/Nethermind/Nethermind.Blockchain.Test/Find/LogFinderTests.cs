@@ -333,6 +333,25 @@ public class LogFinderTests
         Assert.That(() => _logFinder.FindLogs(logFilter), Throws.Nothing);
     }
 
+    private static (Block Block, Transaction Transaction, TxReceipt Receipt) BuildNonCanonicalTestBlock(Block parent, bool withReceiptsRoot = false)
+    {
+        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        BlockBuilder blockBuilder = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(transaction)
+            .WithBloom(new Bloom([log]))
+            .WithExtraData([1]);
+        Block block = (withReceiptsRoot ? blockBuilder.WithReceiptsRoot(TestItem.KeccakA) : blockBuilder).TestObject;
+        TxReceipt receipt = Build.A.Receipt
+            .WithLogs(log)
+            .WithTransactionHash(transaction.Hash)
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .TestObject;
+        return (block, transaction, receipt);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void filter_by_block_hash_finds_logs_of_a_stored_block_that_is_not_canonical([Values] bool siblingOfCanonical, [Values] bool persistentReceipts)
     {
@@ -351,31 +370,74 @@ public class LogFinderTests
         }
 
         Block parent = siblingOfCanonical ? _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)! : _headTestBlock;
-        LogEntry log = Build.A.LogEntry.WithAddress(TestItem.AddressE).WithTopics(TestItem.KeccakF).TestObject;
-        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        Block block = Build.A.Block
-            .WithParent(parent)
-            .WithTransactions(transaction)
-            .WithBloom(new Bloom([log]))
-            .WithExtraData([1])
-            .TestObject;
+        (Block block, Transaction transaction, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent);
         Assert.That(_rawBlockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
-        _receiptStorage.Insert(block, Build.A.Receipt
-            .WithLogs(log)
-            .WithTransactionHash(transaction.Hash)
-            .WithBlockHash(block.Hash)
-            .WithBlockNumber(block.Number)
-            .TestObject);
+        _receiptStorage.Insert(block, receipt);
         persistentStorage?.ClearCache();
         BlockParameter blockHash = new(block.Hash!);
         LogFilter logFilter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
 
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        Assert.That(_rawBlockTree.IsMainChain(block.Header), Is.False);
-        Assert.That(logs.Select(static l => (l.BlockHash, l.Address, l.TransactionHash, l.TransactionIndex, l.LogIndex)),
-            Is.EqualTo(new[] { (block.Hash, TestItem.AddressE, transaction.Hash, 0L, 0L) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_rawBlockTree.IsMainChain(block.Header), Is.False);
+            Assert.That(logs.Select(static l => (l.BlockHash, l.Address, l.TransactionHash, l.TransactionIndex, l.LogIndex)),
+                Is.EqualTo(new[] { (block.Hash, TestItem.AddressE, transaction.Hash, 0L, 0L) }));
+        }
         AssertSerializedAsFilterLogs(_logFinder.FindLogs(logFilter));
+    }
+
+    [Test]
+    public void noncanonical_block_with_missing_receipts_reports_processing_state([Values] bool aheadOfHead, [Values] bool wasProcessed)
+    {
+        Block parent = aheadOfHead ? _headTestBlock : _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        (Block orphan, Transaction _, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent, withReceiptsRoot: true);
+
+        Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
+        if (wasProcessed) _rawBlockTree.MarkChainAsProcessed([orphan]);
+
+        // Match the history pruner's order: reclaim the receipts, then the block body.
+        // Header and chain-level metadata remain available for hash-pinned RPC lookups.
+        _receiptStorage.Insert(orphan, [receipt], ensureCanonical: false);
+        _receiptStorage.RemoveReceipts(orphan);
+        _rawBlockTree.DeleteOldBlock(orphan.Number, orphan.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_rawBlockTree.WasProcessed(orphan.Number, orphan.Hash!), Is.EqualTo(wasProcessed));
+            Assert.That(_rawBlockTree.IsMainChain(orphan.Header), Is.False);
+            Assert.That(_rawBlockTree.FindHeader(orphan.Hash, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(_receiptStorage.HasBlock(orphan.Number, orphan.Hash!), Is.False);
+        }
+
+        BlockParameter blockHash = new(orphan.Hash!);
+        LogFilter filter = new(0, blockHash, blockHash, AddressFilter.AnyAddress, new SequenceTopicsFilter());
+
+        Type expectedException = wasProcessed ? typeof(ResourceNotFoundException) : typeof(BlockNotProcessedException);
+        Assert.That(() => _logFinder.FindLogs(filter).ToArray(), Throws.TypeOf(expectedException));
+    }
+
+    [Test]
+    public void indexed_block_hash_filter_reads_the_requested_orphan_instead_of_the_canonical_height()
+    {
+        Block parent = _rawBlockTree.FindBlock(_headTestBlock.Number - 1, BlockTreeLookupOptions.None)!;
+        (Block orphan, Transaction transaction, TxReceipt receipt) = BuildNonCanonicalTestBlock(parent);
+        Assert.That(_rawBlockTree.SuggestBlock(orphan), Is.EqualTo(AddBlockResult.Added));
+        _receiptStorage.Insert(orphan, receipt);
+
+        ILogIndexStorage index = CreateLogIndexStorage(0, (int)orphan.Number);
+        // The index can only name canonical heights; even a hit here must not redirect the hash query.
+        index.GetEnumerator(TestItem.AddressE, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => new[] { (int)orphan.Number }.AsEnumerable().GetEnumerator());
+
+        BlockParameter hash = new(orphan.Hash!);
+        LogFilter filter = new(0, hash, hash, new AddressFilter(TestItem.AddressE), new SequenceTopicsFilter());
+        FilterLog[] logs = CreateIndexedLogFinder(index).FindLogs(filter).ToArray();
+
+        Assert.That(logs.Select(static log => (log.BlockHash, log.TransactionHash)),
+            Is.EqualTo(new[] { (orphan.Hash, transaction.Hash) }));
+        index.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -385,8 +447,11 @@ public class LogFinderTests
         LogFinder logFinder = new(_blockTree, counting, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
         IEnumerable<FilterLog> logs = logFinder.FindLogs(FilterBuilder.New().FromBlock(4).ToBlock(4).Build());
 
-        Assert.That(counting.Calls, Is.Zero);
-        Assert.That(logs.Count(), Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counting.Calls, Is.Zero);
+            Assert.That(logs.Count(), Is.EqualTo(3));
+        }
         Assert.That(counting.Calls, Is.EqualTo(1));
     }
 
@@ -699,6 +764,10 @@ public class LogFinderTests
     private static LogFilter BoundaryFilter(ulong from = BoundaryFrom) =>
         FilterBuilder.New().FromBlock(from).ToBlock(BoundaryTo).WithAddress(TestItem.AddressA).Build();
 
+    private static LogFilter BoundaryFilter(BlockHeader from, BlockHeader to, bool hashFrom, bool hashTo) =>
+        new(0, hashFrom ? new(from.Hash!) : new(from.Number), hashTo ? new(to.Hash!) : new(to.Number),
+            new AddressFilter(TestItem.AddressA), new SequenceTopicsFilter());
+
     private static BlockHeader BoundaryHeader(ulong number) => Build.A.BlockHeader.WithNumber(number).TestObject;
 
     [Test]
@@ -726,14 +795,34 @@ public class LogFinderTests
     }
 
     [Test]
-    public void Should_FailClosed_BelowTheReclaimCursor()
+    public void Should_FailClosed_BelowTheReclaimCursor([Values] bool hashFrom, [Values] bool hashTo)
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
         pruner.OldestUnreclaimedBlockNumber.Returns(BoundaryOldestStored);
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out _, historyPruner: pruner);
+        BlockHeader from = BoundaryHeader(BoundaryFrom);
+        BlockHeader to = BoundaryHeader(BoundaryTo);
 
         Assert.Throws<ResourceNotFoundException>(() =>
-            finder.FindLogs(BoundaryFilter(), BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray());
+            finder.FindLogs(BoundaryFilter(from, to, hashFrom, hashTo), from, to).ToArray());
+    }
+
+    [Test]
+    public void Should_UseTheIndex_ForRangesExceedingMaxBlockDepth([Values] bool hashFrom, [Values] bool hashTo)
+    {
+        IndexedLogFinder indexedFinder = CreateBoundaryFinder(out IBlockFinder blockFinder, out ILogIndexStorage index, lowestStored: 1UL);
+        RangeLimitedLogFinder finder = new(indexedFinder, blockFinder, new ReceiptConfig { MaxBlockDepth = 2 }, index);
+        BlockHeader from = BoundaryHeader(BoundaryFrom);
+        BlockHeader to = BoundaryHeader(BoundaryTo);
+
+        FilterLog[] logs = finder.FindLogs(BoundaryFilter(from, to, hashFrom, hashTo), from, to).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Is.Empty);
+            index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeaderIfBloomMatches(default, default!, out _);
+        }
     }
 
     [Test]
