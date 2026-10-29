@@ -27,6 +27,7 @@ public sealed class BlockAccessListLog : IResettable
 {
     private readonly List<Entry> _entries = [];
     private readonly List<CodeWrite> _codeWrites = [];
+    private readonly List<UInt256> _preTxValues = [];
     private readonly List<int> _sortedEntries = [];
     private readonly List<Item> _items = [];
     private readonly Comparison<int> _compareEntries;
@@ -54,6 +55,14 @@ public sealed class BlockAccessListLog : IResettable
     }
 
     internal ref readonly CodeWrite GetCodeWrite(int position) => ref CollectionsMarshal.AsSpan(_codeWrites)[position];
+
+    internal int AddPreTxValue(in UInt256 value)
+    {
+        _preTxValues.Add(value);
+        return _preTxValues.Count - 1;
+    }
+
+    internal ref readonly UInt256 GetPreTxValue(int position) => ref CollectionsMarshal.AsSpan(_preTxValues)[position];
 
     /// <summary>Drops the entries from <paramref name="count"/> on, such as those of a transaction left out of a block.</summary>
     public void Truncate(int count) => CollectionsMarshal.SetCount(_entries, count);
@@ -129,10 +138,10 @@ public sealed class BlockAccessListLog : IResettable
                 ref readonly Entry write = ref entries[latest];
                 bool isChange = section switch
                 {
-                    Section.Balance => write.Value != write.PreTxValue,
+                    Section.Balance => write.Value != GetPreTxValue(write.PreTxValuePosition),
                     Section.Code => write.HasValue && IsCodeChanged(in GetCodeWrite((int)write.Value.u0)),
                     Section.Nonce => write.HasValue,
-                    _ => write.HasValue && write.Value != write.PreTxValue,
+                    _ => write.HasValue && write.Value != GetPreTxValue(write.PreTxValuePosition),
                 };
 
                 if (!isChange) continue;
@@ -285,6 +294,7 @@ public sealed class BlockAccessListLog : IResettable
     {
         _entries.ClearAndTrim();
         _codeWrites.ClearAndTrim();
+        _preTxValues.ClearAndTrim();
         _sortedEntries.ClearAndTrim();
         _items.ClearAndTrim();
     }
@@ -380,7 +390,8 @@ public sealed class BlockAccessListLog : IResettable
     internal struct Entry
     {
         public EntryKey Key;
-        public UInt256 PreTxValue;
+        /// <summary>The position of the key's value from before the index, for <see cref="GetPreTxValue"/>.</summary>
+        public int PreTxValuePosition;
         /// <summary>The written value; for code, the position of its <see cref="CodeWrite"/>.</summary>
         public UInt256 Value;
         public ulong Epoch;
