@@ -92,11 +92,15 @@ try
     if (isolation == "direct" && File.Exists(anchor)) Console.WriteLine("::warning::direct mode does not refresh the fingerprint anchor; any existing anchor is diagnostic only.");
     if (File.Exists(anchor) && File.ReadLines(anchor).FirstOrDefault() == File.ReadLines(baseline).FirstOrDefault() && !File.ReadLines(anchor).SequenceEqual(File.ReadLines(baseline)))
         BenchmarkProcess.Log($"::warning::Snapshot fingerprint differs from the last verified run's anchor ({anchor}) — an interrupted run may have modified it.");
-    if (instance == "primary") await BenchmarkPaths.ReapAsync(["rpcbench-", "nethermind-rpcbench", "ethcallchaos-bench", "jsonbench-"], cancellation.Token);
+    if (Get("PREPARED_SNAPSHOT_ROOT").Length == 0 && instance == "primary") await BenchmarkPaths.ReapAsync(["rpcbench-", "nethermind-rpcbench", "ethcallchaos-bench", "jsonbench-"], cancellation.Token);
     var run = Path.Combine(scratch, "run" + suffix);
     foreach (var mount in new[] { Path.Combine(run, "merged"), Path.Combine(run, "ro") })
         if ((await BenchmarkProcess.RunAsync("mountpoint", ["-q", mount], cancellation.Token)).Code == 0)
-            if ((await BenchmarkProcess.RootAsync("umount", [mount], cancellation.Token)).Code != 0) await BenchmarkProcess.RootAsync("umount", ["-l", mount], cancellation.Token);
+            if ((await BenchmarkProcess.RootAsync("umount", [mount], cancellation.Token)).Code != 0)
+            {
+                if (Get("PREPARED_SNAPSHOT_ROOT").Length > 0) throw new IOException("prepared child remains mounted; refusing lazy unmount or deletion");
+                await BenchmarkProcess.RootAsync("umount", ["-l", mount], cancellation.Token);
+            }
     await Reset(run); Directory.CreateDirectory(diag);
     var source = database; var mountOption = "rw";
     switch (isolation)
@@ -105,7 +109,9 @@ try
             foreach (var name in new[] { "upper", "work", "merged" }) Directory.CreateDirectory(Path.Combine(run, name));
             source = Path.Combine(run, "merged");
             var options = $"lowerdir={database},upperdir={run}/upper,workdir={run}/work";
-            if ((await BenchmarkProcess.RootAsync("mount", ["-t", "overlay", "overlay", "-o", options + ",redirect_dir=on,metacopy=on,volatile", source], cancellation.Token)).Code != 0)
+            if (Get("PREPARED_SNAPSHOT_ROOT").Length > 0)
+                await Required("mount", ["-t", "overlay", "overlay", "-o", options + ",redirect_dir=off,metacopy=off,index=off", source], true);
+            else if ((await BenchmarkProcess.RootAsync("mount", ["-t", "overlay", "overlay", "-o", options + ",redirect_dir=on,metacopy=on,volatile", source], cancellation.Token)).Code != 0)
                 await Required("mount", ["-t", "overlay", "overlay", "-o", options, source], true);
             break;
         case "copy":
@@ -124,7 +130,7 @@ try
     Get("DOTNET_DUMP_HOST_PATH", "/opt/dotnet-dump");
     var statePath = Path.Combine(Get("STATE_DIR"), $"node{suffix}.env");
     File.WriteAllText(statePath, "");
-    foreach (var key in new[] { "CLIENT", "INSTANCE", "INSTANCE_SUFFIX", "CONTAINER_NAME", "DB_ISOLATION", "RUN_SCRATCH", "SCRATCH_ROOT", "ARM_SCRATCH_DIR", "DB_SOURCE", "DIAG_DIR", "DOTTRACE", "DOTTRACE_DEFERRED", "PERF", "PERF_FREQUENCY", "DOTNET_TRACE", "DOTNET_DUMP", "DOTNET_DUMP_HOST_PATH", "NODE_IMAGE", "PROFILE_AFTER_WARMUP", "RPC_PORT" }) BenchmarkState.Append(statePath, key, Get(key));
+    foreach (var key in new[] { "CLIENT", "INSTANCE", "INSTANCE_SUFFIX", "CONTAINER_NAME", "DB_ISOLATION", "RUN_SCRATCH", "SCRATCH_ROOT", "ARM_SCRATCH_DIR", "DB_SOURCE", "DIAG_DIR", "DOTTRACE", "DOTTRACE_DEFERRED", "PERF", "PERF_FREQUENCY", "DOTNET_TRACE", "DOTNET_DUMP", "DOTNET_DUMP_HOST_PATH", "NODE_IMAGE", "PROFILE_AFTER_WARMUP", "RPC_PORT", "PREPARED_SNAPSHOT_ROOT", "PREPARED_SNAPSHOT_SHA256" }) BenchmarkState.Append(statePath, key, Get(key));
     var docker = new List<string> { "run", "-d", "--name", container, "--restart", "no", "--stop-signal", "SIGINT", "-p", $"127.0.0.1:{rpcPort}:8545", "-v", $"{source}:{target}:{mountOption}" };
     if (armScratch.Length > 0) docker.AddRange(["--mount", $"type=bind,source={armScratch},target={armScratch}"]);
     foreach (var value in NodeConfiguration.SplitFlags(Get("NODE_ENV_VARS"))) docker.AddRange(["-e", value]);

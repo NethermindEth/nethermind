@@ -703,7 +703,7 @@ jobs:
           # and so is `rounds`, which repeats the cell rather than reshaping it.
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
                       "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","max_response_bytes",
-                      "node_env_vars","node_io_diagnostics","receipt_hashes_migration_timeout","migration_latest_start_utc","migration_finish_by_utc","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
+                      "node_env_vars","node_io_diagnostics","prepared_snapshot_root","prepared_snapshot_sha256","receipt_hashes_migration_timeout","migration_latest_start_utc","migration_finish_by_utc","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
                       "timings_rps","vus","generic_first_use","generic_warmup_duration","generic_warmup_rps","generic_resource_sampling"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
             --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
@@ -1421,6 +1421,7 @@ jobs:
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
                       max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS \
                       receipt_hashes_migration_timeout:RECEIPT_HASHES_MIGRATION_TIMEOUT \
+                      prepared_snapshot_root:PREPARED_SNAPSHOT_ROOT prepared_snapshot_sha256:PREPARED_SNAPSHOT_SHA256 \
                       generic_warmup_duration:GENERIC_WARMUP_DURATION generic_warmup_rps:GENERIC_WARMUP_RPS \
                       migration_latest_start_utc:MIGRATION_LATEST_START_UTC migration_finish_by_utc:MIGRATION_FINISH_BY_UTC \
                       max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
@@ -1441,7 +1442,7 @@ jobs:
           export SNAPSHOT_BLOCK="${SNAPSHOT_BLOCK:-25490000}"
           export JB_BENCHMARK_CONFIG="${JB_BENCHMARK_CONFIG:-config/benchmark/ethcallchaos-percategory-validated.yaml}"
           export STATE_ROOT="${STATE_DIR}/sweep"
-          if [[ "${RECEIPT_HASHES_MIGRATION_TIMEOUT:-0}" != "0" && -n "${MIGRATION_FINISH_BY_UTC:-}" ]]; then
+          if [[ "${RECEIPT_HASHES_MIGRATION_TIMEOUT:-0}" != "0" && -n "${MIGRATION_FINISH_BY_UTC:-}" ]] || [[ -n "${PREPARED_SNAPSHOT_ROOT:-}" && -n "${MIGRATION_FINISH_BY_UTC:-}" ]]; then
             # Leave 30 minutes for graceful termination, verification, and artifact upload.
             remaining=$(( $(date -u -d "${MIGRATION_FINISH_BY_UTC}" +%s) - $(date -u +%s) - 1800 ))
             (( remaining > 0 )) || { echo '::error::migration qualification finish budget expired'; exit 1; }

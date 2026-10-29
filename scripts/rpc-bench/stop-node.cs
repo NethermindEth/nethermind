@@ -106,6 +106,18 @@ try
     await BenchmarkProcess.RunAsync("docker", ["stop", "-t", Get("STOP_GRACE", "180"), container], cancellation.Token);
     var log = Get("LOG_OUT", Path.Combine(directory, $"node{suffix}.log"));
     await BenchmarkFiles.RunCombinedToFileAsync("docker", ["logs", container], log, cancellation.Token);
+    if (Get("PREPARED_SNAPSHOT_ROOT").Length > 0) await Attempt("prepared fixture shutdown and integrity", async () =>
+    {
+        var script = Path.Combine(BenchmarkProcess.EnvironmentValue("RPC_BENCH_SCRIPT_ROOT", Path.Combine(Environment.CurrentDirectory, "scripts", "rpc-bench")), "prepared-snapshot.py");
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bounded.CancelAfter(TimeSpan.FromMinutes(5));
+        try
+        {
+            var checkedFixture = await BenchmarkProcess.RunAsync("python3", [script, "stopped", "--root", Get("PREPARED_SNAPSHOT_ROOT"), "--manifest-sha256", Get("PREPARED_SNAPSHOT_SHA256"), "--image", Get("NODE_IMAGE"), "--container", container, "--output", directory], bounded.Token);
+            if (checkedFixture.Code != 0) throw new IOException(checkedFixture.Error);
+        }
+        catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { throw new IOException("prepared fixture shutdown check timed out"); }
+    });
     if (Get("DOTNET_DUMP", "false") == "true" && !failures.Contains("dotnet-dump collect"))
     {
         foreach (var (name, command) in new[] { ("gcheapstat", "gcheapstat"), ("eeheap-gc", "eeheap -gc"), ("dumpheap-stat", "dumpheap -stat"), ("dumpheap-stat-live", "dumpheap -stat -live"), ("dumpheap-stat-dead", "dumpheap -stat -dead"), ("dumpheap-stat-loh", "dumpheap -stat -min 85000"), ("sizestats", "sizestats") })
@@ -148,7 +160,11 @@ try
     var run = Get("RUN_SCRATCH");
     BenchmarkPaths.AssertSane(run, "RUN_SCRATCH");
     var mountPath = Get("DB_ISOLATION") switch { "overlay" => Path.Combine(run, "merged"), "readonly-bind" => Path.Combine(run, "ro"), _ => "" };
-    if (mountPath.Length > 0 && (await BenchmarkProcess.RootAsync("umount", [mountPath], cancellation.Token)).Code != 0) await BenchmarkProcess.RootAsync("umount", ["-l", mountPath], cancellation.Token);
+    if (mountPath.Length > 0 && (await BenchmarkProcess.RootAsync("umount", [mountPath], cancellation.Token)).Code != 0)
+    {
+        if (Get("PREPARED_SNAPSHOT_ROOT").Length > 0) throw new IOException("prepared child remains mounted; refusing lazy unmount or deletion");
+        await BenchmarkProcess.RootAsync("umount", ["-l", mountPath], cancellation.Token);
+    }
     if (BenchmarkPaths.MountsUnder(await BenchmarkPaths.CanonicalAsync(run, false, cancellation.Token)).Length > 0) throw new IOException($"refusing to delete '{run}' — still mounted");
     await BenchmarkProcess.RootAsync("rm", ["-rf", "--", run], cancellation.Token);
     BenchmarkProcess.Log("  scratch removed.");

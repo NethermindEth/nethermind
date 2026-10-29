@@ -22,6 +22,7 @@ CANDIDATE = 'nethermindeth/nethermind@sha256:457ea6fd38f380c59d171a240ee6ea94890
 SOURCE = Path('/mnt/sda/nethermind-flat-25490000')
 PARENT = Path('/mnt/sda/expb-data/rpc-prepared')
 OPTIONS = 'redirect_dir=off,metacopy=off,index=off'
+RPC_PORT = 18545
 START = re.compile(r'Adding transaction hashes to stored receipts, blocks [0-9]+ to [0-9]+\.')
 DONE = re.compile(r'Transaction hashes added to stored receipts of [0-9]+ blocks, [0-9]+ bytes added\.')
 ANSI = re.compile(r'\x1b\[[0-9;]*m')
@@ -174,12 +175,12 @@ def completion(text):
 def check_logs(text, reused=False):
     if re.search(r'Exception|Invalid Block|InvalidBlock|Rejected invalid|Unhandled|Fatal', text, re.I):
         raise RuntimeError('node log has a disqualifying error')
-    if reused and (START.search(text) or 'Adding transaction hashes to stored receipts failed' in text):
+    if reused and (START.search(text) or DONE.search(text) or 'Adding transaction hashes to stored receipts failed' in text):
         raise RuntimeError('prepared child attempted a new receipt migration')
 
 
 def rpc(method, params=None):
-    request = urllib.request.Request('http://127.0.0.1:18545', data=encoded({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or []}), headers={'Content-Type': 'application/json'})
+    request = urllib.request.Request(f'http://127.0.0.1:{RPC_PORT}', data=encoded({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or []}), headers={'Content-Type': 'application/json'})
     with urllib.request.urlopen(request, timeout=60) as response:
         value = json.load(response)
     if 'error' in value or 'result' not in value:
@@ -430,21 +431,66 @@ def qualify(args):
         run('rm', '-rf', '--', child, root=True)
 
 
+def gate(args):
+    manifest = verify(args.root, args.manifest_sha256)
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
+    observed = inspect(args.container)
+    if observed['Config']['Image'] not in manifest['allowed_images'] or observed['Config']['Image'] != args.image or observed['Config']['Cmd'] != FLAGS:
+        raise RuntimeError('prepared arm image/effective command mismatch')
+    text = logs(args.container)
+    check_logs(text, reused=True)
+    if args.action == 'stopped':
+        state = observed['State']
+        if state['Running'] or state['OOMKilled'] or state['ExitCode'] != 0 or 'All DBs closed' not in text:
+            raise RuntimeError('prepared arm did not shut down normally')
+        atomic(output / 'prepared-stopped.json', {'manifest_sha256': args.manifest_sha256, 'image': args.image, 'state': state})
+        return
+    if not observed['State']['Running']:
+        raise RuntimeError('prepared arm is not running')
+    child = Path(args.child_source).resolve()
+    if child == args.root / 'merged':
+        raise RuntimeError('arm must use a fresh writable child, never the sealed mount directly')
+    mount = mounted(child, False)
+    if f'lowerdir={args.root}/merged' not in mount['options'].split(','):
+        raise RuntimeError('arm child does not use the verified sealed lower')
+    binds = [item for item in observed['Mounts'] if item['Destination'] == '/execution-data']
+    if len(binds) != 1 or binds[0]['Source'] != str(child) or not binds[0]['RW']:
+        raise RuntimeError('arm data bind is not the expected writable child')
+    if any(item.get('RW') and (item['Source'] == str(SOURCE) or item['Source'].startswith(str(args.root) + '/')) for item in observed['Mounts']):
+        raise RuntimeError('raw source/prepared generation was bound writable')
+    current = identity()
+    if args.action == 'gate':
+        if digest(Path(args.oracle).read_bytes()) != manifest['oracle_sha256']:
+            raise RuntimeError('oracle pin mismatch')
+        validate_responses(json.loads(Path(args.oracle).read_text()), output / 'responses.json')
+        check_logs(logs(args.container), reused=True)
+    atomic(output / 'prepared-running.json', {'manifest_sha256': args.manifest_sha256, 'image': args.image, 'identity': current,
+                                             'qualified_cases': 100 if args.action == 'gate' else None, 'phase': args.action})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'verify', 'qualify'])
+    parser.add_argument('action', choices=['prepare', 'verify', 'qualify', 'gate', 'running', 'stopped'])
     parser.add_argument('--root', type=Path)
     parser.add_argument('--manifest-sha256')
     parser.add_argument('--image', default=BASELINE)
+    parser.add_argument('--container')
+    parser.add_argument('--child-source')
+    parser.add_argument('--rpc-port', type=int, default=18545)
     parser.add_argument('--finish', default='2026-10-29T05:47:34Z')
     parser.add_argument('--output', default='prepared-results')
     parser.add_argument('--oracle', default=str(Path(__file__).with_name('prepared-snapshot-oracle.json')))
     args = parser.parse_args()
+    global RPC_PORT
+    RPC_PORT = args.rpc_port
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(RuntimeError('termination requested')))
     if args.action == 'prepare':
         prepare(args)
     elif args.action == 'qualify':
         qualify(args)
+    elif args.action in ('gate', 'running', 'stopped'):
+        gate(args)
     else:
         print(json.dumps(verify(args.root, args.manifest_sha256), indent=2))
 

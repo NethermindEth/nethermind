@@ -37,7 +37,36 @@ python3 scripts/rpc-bench/prepared-snapshot.py qualify \
   --output /absolute/owned/compatibility-results
 ```
 
-Only the two existing immutable image digests are accepted. Each result binds image+fixture-manifest hash+runtime identity+100case parity; no new migration is accepted. An absent migration log alone never qualifies: the independent sealed provenance and verified lower fixture are mandatory. Primary benchmark dispatch/integration and effective native I/O parity remain separate parent-owned gates; neither a sealed fixture nor this CLI automatically authorizes timing. Fresh processes/children do not imply cold OS caches.
+Only the two existing immutable image digests are accepted. Each result binds image+fixture-manifest hash+runtime identity+100case parity; no new migration is accepted. An absent migration log alone never qualifies: the independent sealed provenance and verified lower fixture are mandatory. Primary benchmark dispatch and effective native I/O parity remain separate parent-owned gates; neither a sealed fixture nor this CLI automatically authorizes timing. Fresh processes/children do not imply cold OS caches.
+
+## Optional timed-sweep integration (no primary dispatch implied)
+
+The existing `jsonbench-sweep` accepts `tool_config.prepared_snapshot_root` and `prepared_snapshot_sha256` together. Defaults are empty and preserve all old behavior. Prepared mode is restricted to both original immutable Nethermind images, flat layout, overlay isolation, public/non-corpus config, original five additional flags (same order as preparation), no environment overrides, and fresh migration timeout0. This is a distinct verified-manifest gate, not silent migration-gate disabling.
+
+Before any measured cell, the sweep starts **two separate untimed qualification processes/children**, one per pinned image: exact runtime identity and all100ordered response hashes/counts against the frozen oracle, absence of renewed migration, genuine normal shutdown/noOOM/noKILL, and original/prepared tripwires. Failure on either aborts the sweep before timing without deleting the sealed fixture.
+
+Each later measured arm gets a fresh writable child with the same explicit durable overlay options. Pre-arm manifest/host/source/read-only tripwires and runtime identity/no-remigration are checked. The measured process is **not** warmed with the100case oracle before its first-use phase; qualification used separate processes. After measurement, all100cases are checked again before clean shutdown. Stop-node records exit/OOM/DB-close checks while the container still exists and verifies the lower fixture; source/prepared tripwires are rechecked after teardown. Checks write under each arm state (`prepared-gate`, `prepared-running`, `prepared-stopped.json`). First-use remains fresh-process first-use, never cold OS cache; earlier qualification naturally warms shared host caches.
+
+A10second sweep watchdog checks disk/inode reserves, deadline budget, active container liveness and any renewed receipt migration. Fixture/gate operations are bounded to5minutes each. Failure/cancellation still runs owned stop/verification; prepared mode never uses lazy unmounts or broad prefix reaping. These harness processes and probes add matched overhead, disclosed rather than treated as free.
+
+Required workflow knobs, in addition to the ordinary immutable public anchor config/tool/image pins:
+
+```json
+{
+  "prepared_snapshot_root": "/mnt/sda/expb-data/rpc-prepared/getlogs-PREP_RUNID",
+  "prepared_snapshot_sha256": "EXTERNALLY_FROZEN_READY_JSON_SHA256",
+  "eth_call_corpus": false,
+  "state_layout": "flat",
+  "db_isolation_all": "overlay",
+  "receipt_hashes_migration_timeout": 0,
+  "migration_latest_start_utc": "2026-10-29T03:30:00Z",
+  "migration_finish_by_utc": "2026-10-29T05:47:34Z"
+}
+```
+
+`node_config.scratch_root` must be a **new uniquely owned** `/mnt/sda/expb-data/rpc-prepared-benchmark-EXPERIMENTID`, outside the persistent generation and original. Use both exact pinned image entries in `clients`, each suffixed with `+--LogIndex.Enabled=false;--Receipt.StoreReceipts=true;--Receipt.CompactReceiptStore=true;--Receipt.StoreTxHashes=true;--Receipt.DeriveFromState=false`. Preserve corpus ref/config/seed/CPU/memory/resources; explicitly budget both extra qualification startups before the planned complete primary batch. UTC cutoffs above illustrate this authorization only, not proof any batch fits. No measured arm may start without at least the existing1hour teardown reserve plus its health budget; the workflow retains TERM/KILL/artifact grace. Parent must reject a batch that cannot fit in full, rather than treat partial cycles as the planned experiment.
+
+This integration does not solve native backend observability or authorize an IO-equality claim. The parent must separately resolve/approve that outstanding experimental limitation before any primary dispatch. Both-image compatibility artifacts are bound to the same externally pinned fixture; no valid ready fixture is destroyed if an image fails.
 
 ## Retention, reboot and deletion
 

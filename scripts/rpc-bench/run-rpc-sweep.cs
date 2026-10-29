@@ -90,8 +90,11 @@ internal sealed partial class SweepConfiguration
     internal SweepArm[] Arms { get; }
     internal long[] Rates { get; }
     internal bool Corpus => this["JB_ETH_CALL_CORPUS"] == "true";
+    internal bool Prepared => this["PREPARED_SNAPSHOT_ROOT"].Length > 0;
+    internal const string PreparedFlags = "--LogIndex.Enabled=false --Receipt.StoreReceipts=true --Receipt.CompactReceiptStore=true --Receipt.StoreTxHashes=true --Receipt.DeriveFromState=false";
+    internal static readonly string[] PreparedImages = ["nethermindeth/nethermind@sha256:a0bc08c6b62afdaf7c8494f8f8578f3cbfd30bed6c1c2834ea651539f79b8fc2", "nethermindeth/nethermind@sha256:457ea6fd38f380c59d171a240ee6ea948903dd4a34c5a699dac53ffd66d87166"];
     internal long Number(string key) => long.Parse(this[key], CultureInfo.InvariantCulture);
-    internal string Snapshot(string client) => Path.Combine(this["SNAPSHOT_ROOT"], client == "nethermind" && this["STATE_LAYOUT"] == "flat" ? $"nethermind-flat-{this["SNAPSHOT_BLOCK"]}" : $"{client}-{this["SNAPSHOT_BLOCK"]}");
+    internal string Snapshot(string client) => Prepared ? Path.Combine(this["PREPARED_SNAPSHOT_ROOT"], "merged") : Path.Combine(this["SNAPSHOT_ROOT"], client == "nethermind" && this["STATE_LAYOUT"] == "flat" ? $"nethermind-flat-{this["SNAPSHOT_BLOCK"]}" : $"{client}-{this["SNAPSHOT_BLOCK"]}");
     internal string Isolation(string client) => this["DB_ISOLATION_ALL"].Length > 0 ? this["DB_ISOLATION_ALL"] : client == "reth" ? "direct" : "overlay";
 
     internal SweepConfiguration(Func<string, string?> environment)
@@ -118,6 +121,7 @@ internal sealed partial class SweepConfiguration
         if (Corpus && (this["GENERIC_FIRST_USE"] == "true" || Number("GENERIC_WARMUP_SECONDS") > 0 || this["GENERIC_RESOURCE_SAMPLING"] == "true"))
             throw new ArgumentException("generic phases and sampling require a public non-corpus sweep");
         Set("MIGRATION_LATEST_START_UTC"); Set("MIGRATION_FINISH_BY_UTC");
+        Set("PREPARED_SNAPSHOT_ROOT"); Set("PREPARED_SNAPSHOT_SHA256");
         if (Integer("RECEIPT_HASHES_MIGRATION_TIMEOUT", this["RECEIPT_HASHES_MIGRATION_TIMEOUT"], false) > 14400)
             throw new ArgumentException("RECEIPT_HASHES_MIGRATION_TIMEOUT must not exceed 14400 seconds");
         if (this["NODE_IO_DIAGNOSTICS"] is not ("true" or "false")) throw new ArgumentException("NODE_IO_DIAGNOSTICS must be true or false");
@@ -145,6 +149,21 @@ internal sealed partial class SweepConfiguration
         if (Arms.Length == 0) throw new ArgumentException("clients must contain at least one entry");
         if (Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0 && Arms.Any(arm => arm.Client != "nethermind" || Isolation(arm.Client) is not ("overlay" or "copy")))
             throw new ArgumentException("receipt tx-hash migration gating requires Nethermind with overlay or copy isolation");
+        if (Prepared || this["PREPARED_SNAPSHOT_SHA256"].Length > 0)
+        {
+            if (!Prepared || !Path.IsPathFullyQualified(this["PREPARED_SNAPSHOT_ROOT"]) || !Regex.IsMatch(this["PREPARED_SNAPSHOT_SHA256"], "^[a-f0-9]{64}$"))
+                throw new ArgumentException("prepared snapshot root and externally pinned SHA256 must both be supplied");
+            if (Corpus || this["STATE_LAYOUT"] != "flat" || this["DB_ISOLATION_ALL"] != "overlay" || Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") != 0)
+                throw new ArgumentException("prepared snapshots require public flat overlay mode, independent of the fresh migration gate");
+            if (Arms.Any(arm => arm.Client != "nethermind" || !PreparedImages.Contains(arm.Image) || arm.Flags != PreparedFlags || arm.Environment.Length > 0) || BenchmarkProcess.EnvironmentValue("NODE_ENV_VARS").Length > 0)
+                throw new ArgumentException("prepared snapshots require the exact pinned images and unchanged receipt/config flags without environment overrides");
+            if (PreparedImages.Any(image => !Arms.Any(arm => arm.Image == image)))
+                throw new ArgumentException("both immutable images must qualify before timing");
+            if (this["MIGRATION_LATEST_START_UTC"].Length == 0 || this["MIGRATION_FINISH_BY_UTC"].Length == 0 || string.CompareOrdinal(this["MIGRATION_FINISH_BY_UTC"], "2026-10-29T05:47:34Z") > 0)
+                throw new ArgumentException("prepared sweep requires explicit cutoffs within the original authorization");
+            if (Path.GetDirectoryName(this["SCRATCH_ROOT"]) != "/mnt/sda/expb-data" || !Regex.IsMatch(Path.GetFileName(this["SCRATCH_ROOT"]), "^rpc-prepared-benchmark-[a-zA-Z0-9._-]+$"))
+                throw new ArgumentException("prepared sweeps require a separate uniquely owned /mnt/sda/expb-data/rpc-prepared-benchmark-* scratch root");
+        }
         Rates = Words(this["RPS_LIST"]).Select(rate => Integer("rps_list entry", rate, true)).ToArray();
     }
 
@@ -178,6 +197,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
     private readonly Dictionary<string, int> _failures = new(StringComparer.Ordinal);
     private string _baselineLabel = "";
     private bool _usingSaved;
+    private volatile string _preparedContainer = "";
     private string[] _corpora = [];
     private string Get(string name) => configuration[name];
     private string ParityState => Path.Combine(Get("SCRATCH_ROOT"), "parity");
@@ -185,15 +205,61 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
 
     private void CheckMigrationBudget(bool starting, bool includeGate)
     {
-        if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") == 0) return;
+        if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") == 0 && !configuration.Prepared) return;
         var seconds = 3600 + (includeGate ? configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") : 0) + (starting ? configuration.Number("HEALTH_TIMEOUT") : 0);
         ReceiptMigrationGate.CheckBudget(Get("MIGRATION_LATEST_START_UTC"), Get("MIGRATION_FINISH_BY_UTC"), TimeSpan.FromSeconds(seconds), starting);
     }
 
     internal async Task<int> RunAsync(CancellationToken cancellationToken)
     {
+        if (!configuration.Prepared) return await RunCoreAsync(cancellationToken);
+        using var monitored = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var watch = WatchPreparedAsync(monitored);
+        try { return await RunCoreAsync(monitored.Token); }
+        finally
+        {
+            monitored.Cancel();
+            try { await watch; }
+            catch (OperationCanceledException) when (monitored.IsCancellationRequested) { }
+        }
+    }
+
+    private async Task WatchPreparedAsync(CancellationTokenSource monitored)
+    {
+        try
+        {
+            while (true)
+            {
+                await ReceiptMigrationGate.CheckSpaceAsync(Get("PREPARED_SNAPSHOT_ROOT"), monitored.Token);
+                foreach (var path in new[] { Get("PREPARED_SNAPSHOT_ROOT"), "/" })
+                {
+                    var inode = await BenchmarkProcess.RunAsync("df", ["-i", "--output=iavail", path], monitored.Token);
+                    if (inode.Code != 0 || !long.TryParse(inode.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim(), out var available) || available < 100000)
+                        throw new IOException("unsafe or unavailable prepared sweep inode reserve");
+                }
+                CheckMigrationBudget(false, false);
+                var container = _preparedContainer;
+                if (container.Length > 0)
+                {
+                    try
+                    {
+                        var snapshot = await ReceiptMigrationGate.SnapshotAsync(container, Get("PREPARED_SNAPSHOT_ROOT"), monitored.Token);
+                        if (container == _preparedContainer && (!snapshot.Running || snapshot.Logs.Contains("Adding transaction hashes to stored receipts", StringComparison.Ordinal) || snapshot.Logs.Contains("Transaction hashes added to stored receipts", StringComparison.Ordinal)))
+                            throw new IOException("prepared arm exited or began a new migration");
+                    }
+                    catch (IOException) when (container != _preparedContainer) { }
+                }
+                await Task.Delay(TimeSpan.FromSeconds(10), monitored.Token);
+            }
+        }
+        catch { monitored.Cancel(); throw; }
+    }
+
+    private async Task<int> RunCoreAsync(CancellationToken cancellationToken)
+    {
         CheckMigrationBudget(true, true);
         var scratch = await BenchmarkPaths.CanonicalAsync(Get("SCRATCH_ROOT"), false, cancellationToken);
+        if (configuration.Prepared && scratch != Path.GetFullPath(Get("SCRATCH_ROOT"))) throw new IOException("prepared scratch must not contain symlinks");
         BenchmarkPaths.AssertSane(scratch, "SCRATCH_ROOT");
         foreach (var client in configuration.Arms.Select(arm => arm.Client).Distinct())
             await BenchmarkPaths.GuardAsync(configuration.Snapshot(client), scratch, cancellationToken);
@@ -221,6 +287,12 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         }
         Console.WriteLine($"Sweep: head {Get("SNAPSHOT_BLOCK")}, layout {Get("STATE_LAYOUT")}, seed {Get("JB_SEED")}, rounds {Get("ROUNDS")}");
         LogProvenance();
+        if (configuration.Prepared)
+        {
+            foreach (var arm in configuration.Arms.DistinctBy(arm => arm.Image))
+                await RunArm(arm, arm.Label + "_prepared_qualification", cancellationToken, qualifyOnly: true);
+            if (_failures.Count > 0) throw new IOException("both-image prepared qualification failed; no timing authorized");
+        }
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var round = 0L; round < configuration.Number("ROUNDS"); round++)
         {
@@ -236,7 +308,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         return _failures.Count == 0 ? 0 : 1;
     }
 
-    private async Task RunArm(SweepArm arm, string label, CancellationToken cancellationToken)
+    private async Task RunArm(SweepArm arm, string label, CancellationToken cancellationToken, bool qualifyOnly = false)
     {
         CheckMigrationBudget(true, true);
         var flags = arm.Flags;
@@ -259,6 +331,7 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         }
         var state = Path.Combine(Get("STATE_ROOT"), label);
         Directory.CreateDirectory(state);
+        if (configuration.Prepared) await PreparedCheck("verify", arm, state, "", cancellationToken);
         if (configuration.Number("RECEIPT_HASHES_MIGRATION_TIMEOUT") > 0)
         {
             using var preflight = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -278,18 +351,39 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             ["NETWORK"] = Get("NETWORK"), ["JSONRPC_MODULES"] = Get("JSONRPC_MODULES"), ["LAYOUT_FLAGS"] = Get("STATE_LAYOUT") == "flat" ? "--FlatDb.Enabled=true" : "",
             ["ADDITIONAL_FLAGS"] = flags, ["ARM_SCRATCH_DIR"] = armScratch, ["HEALTH_TIMEOUT"] = Get("HEALTH_TIMEOUT"), ["DOTTRACE"] = "false",
             ["RPC_GAS_CAP"] = configuration.Corpus ? "1000000000000" : "", ["NODE_ENV_VARS"] = BenchmarkProcess.EnvironmentValue("NODE_ENV_VARS") + (arm.Environment.Length > 0 ? " " + arm.Environment : ""),
-            ["DIAG_DIR"] = Get("DIAG_DIR"), ["CONTAINER_NAME"] = container, ["RPC_PORT"] = "8545"
+            ["DIAG_DIR"] = Get("DIAG_DIR"), ["CONTAINER_NAME"] = container, ["RPC_PORT"] = "8545",
+            ["PREPARED_SNAPSHOT_ROOT"] = Get("PREPARED_SNAPSHOT_ROOT"), ["PREPARED_SNAPSHOT_SHA256"] = Get("PREPARED_SNAPSHOT_SHA256")
         };
         var started = await Script("start-node.cs", [], environment, cancellationToken);
         if (started.Code != 0)
         {
             Fail(configuration.Corpus && !_usingSaved && _baselineLabel.Length == 0 ? "configured parity baseline startup failures" : "sweep arms never started");
+            if (configuration.Prepared)
+            {
+                if (File.Exists(Path.Combine(state, "node.env")))
+                    await Script("stop-node.cs", [], new() { ["STATE_DIR"] = state, ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
+                else
+                {
+                    var run = Path.Combine(Get("SCRATCH_ROOT"), "run");
+                    if ((await BenchmarkProcess.RunAsync("mountpoint", ["-q", Path.Combine(run, "merged")], CancellationToken.None)).Code == 0)
+                        await Root("umount", [Path.Combine(run, "merged")], CancellationToken.None);
+                    if (BenchmarkPaths.MountsUnder(run).Length > 0) throw new IOException("prepared startup cleanup remains mounted");
+                    await Root("rm", ["-rf", "--", run], CancellationToken.None);
+                }
+                throw new IOException("prepared startup failed; timing aborted");
+            }
             Console.WriteLine("::endgroup::");
             return;
         }
-        _labels.Add(label);
+        if (!qualifyOnly) _labels.Add(label);
         try
         {
+            if (configuration.Prepared)
+            {
+                _preparedContainer = container;
+                await PreparedCheck(qualifyOnly ? "gate" : "running", arm, state, container, cancellationToken);
+                if (qualifyOnly) return;
+            }
             CheckMigrationBudget(false, true);
             if (Get("NODE_IO_DIAGNOSTICS") == "true")
                 await NodeIoDiagnostics.CaptureAsync(container, Path.Combine(state, "io-security.txt"), cancellationToken);
@@ -336,11 +430,29 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
         finally
         {
             // Teardown must finish even when the workflow cancels a cell.
-            var stopped = await Script("stop-node.cs", [], new() { ["STATE_DIR"] = state, ["CONTAINER_NAME"] = container, ["OUT_DIR"] = Get("OUT_DIR"), ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
-            if (stopped.Code != 0) Fail("stop-node DB-integrity/teardown failures");
-            if (ScanNodeLog(Path.Combine(state, "node.log"), arm.Client, label, configuration.Corpus)) Fail("node health issues");
-            Console.WriteLine("::endgroup::");
+            _preparedContainer = "";
+            try
+            {
+                if (configuration.Prepared && !qualifyOnly) await PreparedCheck("gate", arm, state, container, CancellationToken.None);
+            }
+            finally
+            {
+                var stopped = await Script("stop-node.cs", [], new() { ["STATE_DIR"] = state, ["CONTAINER_NAME"] = container, ["OUT_DIR"] = Get("OUT_DIR"), ["LOG_OUT"] = Path.Combine(state, "node.log") }, CancellationToken.None);
+                if (stopped.Code != 0) Fail("stop-node DB-integrity/teardown failures");
+                if (configuration.Prepared) await PreparedCheck("verify", arm, state, "", CancellationToken.None);
+                if (ScanNodeLog(Path.Combine(state, "node.log"), arm.Client, label, configuration.Corpus)) Fail("node health issues");
+                Console.WriteLine("::endgroup::");
+            }
         }
+    }
+
+    private async Task PreparedCheck(string action, SweepArm arm, string state, string container, CancellationToken cancellationToken)
+    {
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bounded.CancelAfter(TimeSpan.FromMinutes(5));
+        var result = await Script("prepared-snapshot.py", [action, "--root", Get("PREPARED_SNAPSHOT_ROOT"), "--manifest-sha256", Get("PREPARED_SNAPSHOT_SHA256"),
+            "--image", arm.Image, "--container", container, "--child-source", Path.Combine(Get("SCRATCH_ROOT"), "run", "merged"), "--rpc-port", "8545", "--output", Path.Combine(state, "prepared-" + action)], null, bounded.Token);
+        if (result.Code != 0) throw new IOException("prepared fixture " + action + " failed: " + result.Error);
     }
 
     private async Task MeasuredCell(string config, long rate, string duration, string cell, string client, string label, string corpus, string container, string manifest, CancellationToken cancellationToken)
@@ -598,8 +710,9 @@ internal sealed partial class SweepRunner(SweepConfiguration configuration)
             while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "scripts", "rpc-bench"))) root = root.Parent;
             directory = root is null ? throw new IOException("could not locate scripts/rpc-bench") : Path.Combine(root.FullName, "scripts", "rpc-bench");
         }
-        var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in new[] { "run", "--file", Path.Combine(directory, name), "--" }.Concat(arguments)) start.ArgumentList.Add(argument);
+        var python = name.EndsWith(".py", StringComparison.Ordinal);
+        var start = new ProcessStartInfo(python ? "python3" : "dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in (python ? new[] { Path.Combine(directory, name) } : new[] { "run", "--file", Path.Combine(directory, name), "--" }).Concat(arguments)) start.ArgumentList.Add(argument);
         if (environment is not null) foreach (var (key, value) in environment) start.Environment[key] = value;
         using var process = Process.Start(start) ?? throw new IOException("could not start " + name);
         async Task<string> Drain(StreamReader reader, TextWriter writer)

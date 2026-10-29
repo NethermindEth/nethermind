@@ -106,8 +106,18 @@ File.WriteAllText(Path.Combine(scriptRoot, "stop-node.cs"), """
 File.WriteAllText(Environment.GetEnvironmentVariable("LOG_OUT")!, "Nethermind is shut down\n");
 return Environment.GetEnvironmentVariable("FAIL_STOP") == "true" ? 1 : 0;
 """);
+File.WriteAllText(Path.Combine(scriptRoot, "prepared-snapshot.py"), """
+import json, os, pathlib, sys
+path = pathlib.Path(os.environ['PREPARED_CAPTURE'])
+action = sys.argv[1]
+rows = path.read_text().splitlines() if path.exists() else []
+with path.open('a') as stream: stream.write(json.dumps({'action': action}) + '\n')
+fail = os.environ.get('FAIL_PREPARED_ACTION', '')
+if fail == action or (fail == 'gate2' and action == 'gate' and sum(json.loads(row)['action'] == 'gate' for row in rows) == 1): sys.exit(1)
+""");
 File.WriteAllText(Path.Combine(scriptRoot, "run-json-bench.cs"), """
 using System.Text.Json.Nodes;
+if (Environment.GetEnvironmentVariable("PREPARED_CAPTURE") is { } trace) File.AppendAllText(trace, "{\"action\":\"cell\"}\n");
 var names = new[] { "OUT_DIR", "JB_BENCHMARK_CONFIG", "JB_CAPTURE_ONLY", "JB_STRICT_WARMUP", "JB_MAX_FAIL_RATE_PCT", "JB_SEED", "JB_RPS", "JB_DURATION", "JB_DEEP_CHECK", "RESOURCE_SAMPLER_CONTAINER", "RESOURCE_SAMPLER_OUT" };
 var row = new JsonObject();
 foreach (var name in names) row[name] = Environment.GetEnvironmentVariable(name) ?? "";
@@ -135,7 +145,7 @@ var bin = Path.Combine(tests.DirectoryPath, "bin"); Directory.CreateDirectory(bi
 var docker = Path.Combine(bin, "docker"); File.WriteAllText(docker, "#!/bin/sh\nif [ \"$1\" = inspect ]; then echo true; fi\nexit 0\n"); File.SetUnixFileMode(docker, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var identity = Path.Combine(bin, "id"); File.WriteAllText(identity, "#!/bin/sh\necho 0\n"); File.SetUnixFileMode(identity, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 var disk = Path.Combine(bin, "df"); File.WriteAllText(disk, "#!/bin/sh\nprintf 'Avail\\n999999999999999\\n'\n"); File.SetUnixFileMode(disk, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "FAIL_PHASE", "CELL_CAPTURE", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES" };
+var changedNames = new[] { "RPC_BENCH_SCRIPT_ROOT", "PATH", "SWEEP_CAPTURE", "GITHUB_STEP_SUMMARY", "FAIL_START_CLIENT", "FAIL_STOP", "FAIL_CELL", "FAIL_PHASE", "CELL_CAPTURE", "COMPARE_CODE", "RPC_BENCH_CORPUS_METHOD", "RPC_BENCH_CORPUS_TRACER", "RPC_BENCH_CORPUS_TRACE_TYPES", "PREPARED_CAPTURE", "FAIL_PREPARED_ACTION" };
 var original = changedNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 try
 {
@@ -143,6 +153,62 @@ try
     Environment.SetEnvironmentVariable("SWEEP_CAPTURE", Path.Combine(tests.DirectoryPath, "capture")); Environment.SetEnvironmentVariable("GITHUB_STEP_SUMMARY", Path.Combine(tests.DirectoryPath, "summary"));
     foreach (var client in new[] { "nethermind-flat", "reth", "geth" }) Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "snapshots", client + "-1"));
     int Run(Dictionary<string, string> values) => new SweepRunner(new SweepConfiguration(name => values.GetValueOrDefault(name))).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+    SweepConfiguration PreparedConfiguration()
+    {
+        var values = EnvironmentValues();
+        values["PREPARED_SNAPSHOT_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-fixture");
+        Directory.CreateDirectory(Path.Combine(values["PREPARED_SNAPSHOT_ROOT"], "merged"));
+        values["PREPARED_SNAPSHOT_SHA256"] = new string('a', 64);
+        values["CLIENTS"] = string.Join(' ', SweepConfiguration.PreparedImages.Select(image => "nethermind@" + image + "+" + SweepConfiguration.PreparedFlags.Replace(' ', ';')));
+        values["DB_ISOLATION_ALL"] = "overlay";
+        values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T05:00:00Z";
+        values["MIGRATION_FINISH_BY_UTC"] = "2026-10-29T05:47:34Z";
+        values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
+        values["RPS_LIST"] = "1";
+        var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));
+        // Substitute owned tiny paths after testing the production namespace constraint.
+        configuration.Values["SCRATCH_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-scratch");
+        configuration.Values["OUT_DIR"] = Path.Combine(tests.DirectoryPath, "prepared-out");
+        configuration.Values["STATE_ROOT"] = Path.Combine(tests.DirectoryPath, "prepared-state");
+        return configuration;
+    }
+    foreach (var failure in new[] { "", "gate2", "running", "verify" })
+        tests.Case("prepared qualification precedes every timed arm " + failure, () =>
+        {
+            var configuration = PreparedConfiguration();
+            var trace = Path.Combine(tests.DirectoryPath, "prepared-trace-" + failure);
+            var previousCapture = Environment.GetEnvironmentVariable("SWEEP_CAPTURE");
+            Environment.SetEnvironmentVariable("SWEEP_CAPTURE", trace + "-starts");
+            Environment.SetEnvironmentVariable("PREPARED_CAPTURE", trace);
+            Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", failure);
+            try
+            {
+                var result = new SweepRunner(configuration).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+                RpcScriptTests.Assert(failure.Length == 0 && result == 0, "unqualified prepared sweep succeeded");
+            }
+            catch (IOException) when (failure.Length > 0) { }
+            var rows = File.ReadAllLines(trace).Select(line => JsonNode.Parse(line)!["action"]!.ToString()).ToArray();
+            if (failure.Length == 0)
+            {
+                var firstCell = Array.IndexOf(rows, "cell");
+                RpcScriptTests.Assert(firstCell >= 0 && rows.Take(firstCell).Count(action => action == "gate") == 2, "timing preceded both-image qualification");
+                RpcScriptTests.Assert(rows.Count(action => action == "running") == 2 && rows[^1] == "verify", "per-arm gates missing");
+            }
+            else RpcScriptTests.Assert(!rows.Contains("cell"), "failed prepared gate reached timing");
+            Environment.SetEnvironmentVariable("PREPARED_CAPTURE", null);
+            Environment.SetEnvironmentVariable("FAIL_PREPARED_ACTION", null);
+            Environment.SetEnvironmentVariable("SWEEP_CAPTURE", previousCapture);
+        });
+    foreach (var (name, value) in new[] { ("PREPARED_SNAPSHOT_SHA256", ""), ("PREPARED_SNAPSHOT_SHA256", "bad"), ("RECEIPT_HASHES_MIGRATION_TIMEOUT", "1"), ("DB_ISOLATION_ALL", "copy"), ("JB_ETH_CALL_CORPUS", "true"), ("CLIENTS", "nethermind"), ("SCRATCH_ROOT", "/mnt/sda/expb-data/rpc-prepared"), ("MIGRATION_FINISH_BY_UTC", "2026-10-30T05:47:34Z") })
+        tests.Case("prepared mode rejects incompatible " + name + value, () =>
+        {
+            var values = PreparedConfiguration().Values;
+            values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
+            values[name] = value;
+            try { _ = new SweepConfiguration(key => values.GetValueOrDefault(key)); }
+            catch (ArgumentException) { return; }
+            throw new InvalidOperationException("unsafe prepared configuration accepted");
+        });
     tests.Case("latest-start cutoff rejects queued run before scratch or node work", () =>
     {
         var values = EnvironmentValues();
