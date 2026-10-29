@@ -53,7 +53,7 @@ public abstract class UInt256RlpConverter : IRlpLengthConverter<UInt256>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteFixed(ref RlpWriter writer, UInt256 value)
     {
-        // A fixed-size stack buffer lets the JIT inline the whole write, which measured faster than writing in place.
+        // Writing through a stack buffer measured faster than writing the value in place.
         Span<byte> bytes = stackalloc byte[FixedLength];
         value.ToBigEndian(bytes);
         writer.Write(bytes);
