@@ -33,6 +33,8 @@ public record GethTraceOptions
 
     internal TimeProvider? DeadlineClock { get; init; }
 
+    internal GethTraceDeadlineScope? DeadlineScope { get; init; }
+
     internal CancellationToken ExecutionCancellationToken { get; init; }
 
     public bool DisableStack { get; init; }

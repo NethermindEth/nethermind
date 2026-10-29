@@ -1219,6 +1219,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
         internal JsonRpcErrorResponse MapException(Exception exception)
         {
+            if (exception is GethTraceDeadlineException
+                && methodName is nameof(Modules.DebugModule.IDebugRpcModule.debug_traceBlockByNumber)
+                    or nameof(Modules.DebugModule.IDebugRpcModule.debug_traceBlockByHash))
+                return service.GetErrorResponse(methodName, ErrorCodes.InvalidInput, exception.Message, null, in request.IdRef, null);
+
             if (methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceTransaction)
                 && exception is Modules.DebugModule.DebugRpcModule.TransactionTraceNotFoundException)
                 return service.GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, exception.Message, null, in request.IdRef, null);

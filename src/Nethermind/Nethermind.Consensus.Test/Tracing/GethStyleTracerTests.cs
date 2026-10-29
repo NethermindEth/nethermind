@@ -37,7 +37,7 @@ public class GethStyleTracerTests
         using GethLikeTxTrace trace = new(resource);
         inner.BuildResult().Returns(new[] { trace });
         GethTraceOptions options = new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock };
-        using (GethLikeBlockDeadlineTracer tracer = new(inner, options, CancellationToken.None))
+        using (GethLikeBlockDeadlineTracer tracer = new(inner, options, CancellationToken.None, new()))
         {
             for (int i = 0; i < 2; i++)
             {
@@ -62,6 +62,55 @@ public class GethStyleTracerTests
     }
 
     [Test]
+    public void Buffered_deadline_replacement_releases_abandoned_deadline(
+        [Values] bool expireFirst, [Values] bool cancelExternal)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        DisposalCountingTracer firstInner = new();
+        DisposalCountingTracer secondInner = new();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(firstInner, secondInner);
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        using (GethLikeBlockDeadlineTracer tracer = new(inner,
+            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, external.Token, new()))
+        {
+            ITxTracer first = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            using (first)
+            {
+                clock.Advance(expireFirst ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(600));
+            }
+            using ITxTracer second = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+            Assert.That(clock.Timers, Has.Count.EqualTo(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+                Assert.That(clock.Timers[1].DisposeCount, Is.Zero);
+            }
+            Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
+            clock.Advance(TimeSpan.FromMilliseconds(400));
+            Assert.That(second.IsCancelled, Is.False);
+            if (cancelExternal) external.Cancel();
+            clock.Advance(TimeSpan.FromMilliseconds(600));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.IsCancelled, Is.EqualTo(expireFirst));
+                Assert.That(second.IsCancelled, Is.True);
+                Assert.That(tracer.Expired, Is.EqualTo(!cancelExternal));
+            }
+            if (cancelExternal) Assert.Throws<OperationCanceledException>(tracer.EndTxTrace);
+            else Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Timers.TrueForAll(timer => timer.DisposeCount == 1), Is.True);
+            Assert.That(firstInner.DisposeCount, Is.EqualTo(1));
+            Assert.That(secondInner.DisposeCount, Is.EqualTo(1));
+            inner.DidNotReceive().EndTxTrace();
+        }
+    }
+
+    [Test]
     public void Buffered_deadline_excludes_prefix_and_distinguishes_external_cancellation([Values] bool externalCancellation)
     {
         DeadlineClock clock = new();
@@ -70,7 +119,7 @@ public class GethStyleTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ => Substitute.For<ITxTracer>());
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
         GethTraceOptions options = new() { TxHash = TestItem.KeccakB, Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock };
-        using GethLikeBlockDeadlineTracer tracer = new(inner, options, external.Token);
+        using GethLikeBlockDeadlineTracer tracer = new(inner, options, external.Token, new());
         using (ITxTracer prefix = tracer.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject))
         {
             clock.Advance(TimeSpan.FromSeconds(10));
@@ -101,7 +150,7 @@ public class GethStyleTracerTests
         inner.BuildResult().Returns(new[] { new GethLikeTxTrace(resource) });
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ => failConstruction ? throw new InvalidOperationException("config") : transactionTracer);
         inner.When(tracer => tracer.EndTxTrace()).Do(_ => throw new InvalidOperationException("result"));
-        using (GethLikeBlockDeadlineTracer tracer = new(inner, new() { DeadlineClock = clock }, CancellationToken.None))
+        using (GethLikeBlockDeadlineTracer tracer = new(inner, new() { DeadlineClock = clock }, CancellationToken.None, new()))
         {
             if (failConstruction) Assert.Throws<InvalidOperationException>(() => tracer.StartNewTxTrace(Build.A.Transaction.TestObject));
             else
@@ -124,8 +173,8 @@ public class GethStyleTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ => Substitute.For<ITxTracer>());
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
         GethTraceOptions options = new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock };
-        using GethLikeBlockDeadlineTracer first = new(inner, options, CancellationToken.None);
-        using GethLikeBlockDeadlineTracer second = new(inner, options, CancellationToken.None);
+        using GethLikeBlockDeadlineTracer first = new(inner, options, CancellationToken.None, new());
+        using GethLikeBlockDeadlineTracer second = new(inner, options, CancellationToken.None, new());
         IBlockTracer firstWorker = GethLikeBlockDeadlineTracer.WithCancellation(first, worker.Token);
         using ITxTracer firstTx = firstWorker.StartNewTxTrace(Build.A.Transaction.TestObject);
         clock.Advance(TimeSpan.FromMilliseconds(500));
@@ -154,7 +203,7 @@ public class GethStyleTracerTests
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
         if (failure == "result") inner.When(tracer => tracer.EndTxTrace()).Do(_ => throw new InvalidOperationException("result"));
         GethTraceOptions options = new() { Timeout = failure == "start" ? TimeSpan.Zero : TimeSpan.FromSeconds(1), DeadlineClock = clock };
-        using (GethLikeBlockDeadlineTracer tracer = new(inner, options, CancellationToken.None))
+        using (GethLikeBlockDeadlineTracer tracer = new(inner, options, CancellationToken.None, new()))
         {
             void ProcessTransaction()
             {
@@ -187,7 +236,7 @@ public class GethStyleTracerTests
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
         inner.When(tracer => tracer.EndTxTrace()).Do(_ => clock.Advance(TimeSpan.FromSeconds(1)));
         using GethLikeBlockDeadlineTracer tracer = new(inner,
-            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, CancellationToken.None);
+            new() { Timeout = TimeSpan.FromSeconds(1), DeadlineClock = clock }, CancellationToken.None, new());
         using ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
         Assert.Throws<GethTraceDeadlineException>(tracer.EndTxTrace);
         Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
@@ -200,7 +249,7 @@ public class GethStyleTracerTests
         InvalidOperationException cleanup = new("cleanup");
         inner.BuildResult().Returns(_ => throw cleanup);
         InvalidOperationException primary = new("execution");
-        using GethLikeBlockDeadlineTracer tracer = new(inner, new(), CancellationToken.None);
+        using GethLikeBlockDeadlineTracer tracer = new(inner, new(), CancellationToken.None, new());
         Assert.That(() => tracer.HandleFailure(primary), Throws.Nothing);
         Assert.That(primary.Data[nameof(GethLikeBlockDeadlineTracer)], Is.SameAs(cleanup));
     }
@@ -215,7 +264,7 @@ public class GethStyleTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(new DisposalCountingTracer());
         InvalidOperationException cleanup = new("cleanup");
         inner.BuildResult().Returns(_ => throw cleanup);
-        using GethLikeBlockDeadlineTracer tracer = new(inner, new() { DeadlineClock = clock }, external.Token);
+        using GethLikeBlockDeadlineTracer tracer = new(inner, new() { DeadlineClock = clock }, external.Token, new());
         using ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
         Assert.That(clock.Timers[0].Due, Is.EqualTo(GethTraceDeadline.DefaultTimeout));
         if (expire) clock.Advance(GethTraceDeadline.DefaultTimeout);
@@ -268,7 +317,7 @@ public class GethStyleTracerTests
         inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(transactionTracer);
         inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
         using GethLikeBlockDeadlineTracer tracer = new(inner,
-            new() { Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock }, CancellationToken.None);
+            new() { Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock }, CancellationToken.None, new());
         using (ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject))
         {
             using (Assert.EnterMultipleScope())
@@ -294,14 +343,63 @@ public class GethStyleTracerTests
     }
 
     [Test]
-    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal([Values(0, -1, 1)] int seconds)
+    public void Execution_deadline_excludes_paused_time_without_resetting_remaining_budget([Values(1, 2)] int pauses)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        for (int i = 0; i < pauses; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(200));
+            Assert.That(deadline.Expired, Is.False);
+            deadline.Pause();
+            clock.Advance(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deadline.Expired, Is.False);
+                Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+            }
+            deadline.Resume();
+        }
+        clock.Advance(TimeSpan.FromMilliseconds(1_000 - 200 * pauses - 1));
+        Assert.That(deadline.Expired, Is.False);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.That(deadline.Expired, Is.True);
+        deadline.Dispose();
+        Assert.That(clock.Timers[0].DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Paused_deadline_keeps_external_cancellation_provenance()
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        using GethTraceDeadline deadline = new(external.Token, clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        deadline.Pause();
+        external.Cancel();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+            Assert.That(deadline.Expired, Is.False);
+            Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+        }
+        deadline.Resume();
+        Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+    }
+
+    [Test]
+    public void Buffered_deadline_queued_watcher_cannot_cancel_after_disposal(
+        [Values(0, -1, 1)] int seconds, [Values] bool paused)
     {
         DeadlineClock clock = new();
         GethTraceDeadline deadline = new(clock: clock);
         deadline.Start(TimeSpan.FromSeconds(seconds));
         CancellationToken token = deadline.Token;
+        if (paused) deadline.Pause();
         deadline.Dispose();
         deadline.Dispose();
+        Assert.That(deadline.Resume, Throws.Nothing);
         Assert.That(clock.Timers[0].FireQueued, Throws.Nothing);
         using (Assert.EnterMultipleScope())
         {
