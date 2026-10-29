@@ -29,6 +29,15 @@ public class MessageSerializationServiceTests
         Assert.That(serialize, Throws.InvalidOperationException);
     }
 
+    [Test]
+    public void Reports_a_missing_serializer_of_either_kind([Values] bool serialize)
+    {
+        MessageSerializationService service = new();
+
+        Action use = serialize ? () => service.ZeroSerialize(new SpanMessage()) : () => service.Deserialize<SpanMessage>(Array.Empty<byte>());
+        Assert.That(use, Throws.InvalidOperationException.With.Message.EqualTo($"No serializer registered for {nameof(SpanMessage)}."));
+    }
+
     [TestCaseSource(nameof(P2PMessages))]
     public void ZeroSerialize_writes_the_packet_type_then_the_message(Func<IMessageSerializationService, IByteBuffer> zeroSerialize, string expected)
     {

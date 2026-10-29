@@ -59,7 +59,7 @@ public class MessageSerializationService : IMessageSerializationService
     public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
     {
         if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
-            ThrowNoSerializerRegistered<T>();
+            ThrowNoSerializerRegistered<T>("serializer");
 
         if (serializerObject is IMessageSerializer<T> serializer)
             return serializer.Deserialize(bytes);
@@ -94,7 +94,7 @@ public class MessageSerializationService : IMessageSerializationService
     public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
     {
         if (!_zeroSerializers.TryGetValue(typeof(T).TypeHandle, out object serializerObject))
-            ThrowNoSerializerRegistered<T>();
+            ThrowNoSerializerRegistered<T>("serializer");
 
         if (serializerObject is IMessageSerializer<T> serializer)
             return ZeroSerialize(serializer, message, allocator ?? NethermindBuffers.Default);
