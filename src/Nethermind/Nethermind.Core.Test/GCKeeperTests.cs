@@ -315,7 +315,7 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Decommit_recommits_the_region_budget_off_the_payload_path([Values] bool decommit)
+    public async Task Collections_recommit_the_region_budget_off_the_payload_path([Values] bool decommit)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
@@ -329,20 +329,40 @@ public class GCKeeperTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtime.Collections, Is.EqualTo(decommit ? new[] { Ordinary, Decommit } : new[] { Ordinary }));
-            Assert.That(runtime.Operations, Is.EqualTo(decommit ? new[] { "collect", "collect", "start", "end" } : new[] { "collect" }));
+            Assert.That(runtime.Operations, Is.EqualTo(decommit
+                ? new[] { "collect", "start", "end", "collect", "start", "end" }
+                : new[] { "collect", "start", "end" }));
             Assert.That(runtime.IsActive, Is.False);
         }
     }
 
-    public enum RecommitSkip { Cancelled, Shutdown, RegionHeld, Disallowed }
+    // A collection the runtime takes to gen2 can go on in the background, and a region entry waits for it to end.
+    [Test]
+    public async Task Collection_taken_to_gen2_is_not_followed_by_a_recommit([Values] bool takenToGen2)
+    {
+        IGCStrategy strategy = CreateCadenceStrategy(0, adaptive: false);
+        RegionRuntime runtime = new() { TakesToGen2 = takenToGen2 };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
+        KeeperCounters before = KeeperCounters.Read();
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Operations, Is.EqualTo(takenToGen2 ? new[] { "collect" } : new[] { "collect", "start", "end" }));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Recommits: takenToGen2 ? 0 : 1)));
+        }
+    }
+
+    public enum RecommitSkip { Cancelled, Shutdown, RegionHeld, PayloadWithoutRegion, Disallowed }
 
     [Test]
-    public async Task Recommit_is_skipped_when_called_off_or_not_needed([Values] RecommitSkip reason)
+    public async Task Recommit_is_skipped_when_called_off_or_not_needed([Values] RecommitSkip reason, [Values] bool decommit)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
-        strategy.CollectionsPerDecommit.Returns(0);
+        strategy.CollectionsPerDecommit.Returns(decommit ? 0 : -1);
         GCKeeper? keeper = null;
         IDisposable? held = null;
         int collections = 0;
@@ -350,13 +370,22 @@ public class GCKeeperTests
         {
             BeforeCollect = () =>
             {
-                // The decommit's collection, after the ordinary one.
-                if (++collections != 2) return;
+                // The decommit's collection after the ordinary one, or the ordinary one alone.
+                if (++collections != (decommit ? 2 : 1)) return;
                 switch (reason)
                 {
                     case RecommitSkip.Cancelled: keeper!.CancelPendingGC(); break;
                     case RecommitSkip.Shutdown: keeper!.Dispose(); break;
                     case RecommitSkip.RegionHeld: held = keeper!.TryStartNoGCRegion(); break;
+                    case RecommitSkip.PayloadWithoutRegion:
+                        // A third overlapping payload gets no region of its own, and the two the region covered leave.
+                        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+                        IDisposable owner = keeper!.TryStartNoGCRegion();
+                        IDisposable sharer = keeper.TryStartNoGCRegion();
+                        held = keeper.TryStartNoGCRegion();
+                        sharer.Dispose();
+                        owner.Dispose();
+                        break;
                     case RecommitSkip.Disallowed: strategy.CanStartNoGCRegion().Returns(false); break;
                 }
             }
@@ -368,8 +397,8 @@ public class GCKeeperTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }), "the decommit itself is claimed before the payload arrives");
-                Assert.That(runtime.Starts, Is.Zero);
+                Assert.That(runtime.Collections, Is.EqualTo(decommit ? new[] { Ordinary, Decommit } : new[] { Ordinary }), "the collection itself is claimed before the payload arrives");
+                Assert.That(runtime.Starts, Is.EqualTo(decommit ? 1 : 0), "only the re-commit after the ordinary collection before the decommit");
             }
 
             strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
@@ -378,16 +407,18 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Payload_entry_waits_for_a_running_recommit()
+    public async Task Payload_entry_waits_for_a_running_recommit([Values] bool decommit)
     {
         using ManualResetEventSlim recommitting = new(false);
         using ManualResetEventSlim proceed = new(false);
+        // The re-commit after the decommit follows the one after the ordinary collection.
+        int recommits = decommit ? 2 : 1;
         int starts = 0;
         RegionRuntime runtime = new()
         {
             BeforeStart = () =>
             {
-                if (Interlocked.Increment(ref starts) != 1) return;
+                if (Interlocked.Increment(ref starts) != recommits) return;
                 recommitting.Set();
                 proceed.Wait();
             }
@@ -395,7 +426,7 @@ public class GCKeeperTests
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
-        strategy.CollectionsPerDecommit.Returns(0);
+        strategy.CollectionsPerDecommit.Returns(decommit ? 0 : -1);
         List<IThreadPoolWorkItem> queued = [];
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
 
@@ -418,7 +449,7 @@ public class GCKeeperTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(entry.IsAlive, Is.True, "the entry waits for the throwaway region to end");
-                    Assert.That(Volatile.Read(ref starts), Is.EqualTo(1), "the entry has not reached the runtime yet");
+                    Assert.That(Volatile.Read(ref starts), Is.EqualTo(recommits), "the entry has not reached the runtime yet");
                 }
             }
             finally
@@ -430,7 +461,9 @@ public class GCKeeperTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(runtime.Operations, Is.EqualTo(new[] { "collect", "collect", "start", "end", "start" }));
+                Assert.That(runtime.Operations, Is.EqualTo(decommit
+                    ? new[] { "collect", "start", "end", "collect", "start", "end", "start" }
+                    : new[] { "collect", "start", "end", "start" }));
                 Assert.That(runtime.IsActive, Is.True, "the payload's region is not ended by the re-commit");
             }
         }
@@ -553,7 +586,7 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Recommit_follows_only_a_decommit_that_runs([Values] bool pressure)
+    public async Task Recommit_follows_each_collection_that_runs([Values] bool pressure)
     {
         IGCStrategy strategy = CreatePressureStrategy(interval: 0, loadPercent: 70, unconditional: -1);
         RegionRuntime runtime = new() { MemoryLoadBytes = pressure ? 90 : 10, TotalMemoryBytes = 100 };
@@ -564,7 +597,9 @@ public class GCKeeperTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtime.Collections, Is.EqualTo(pressure ? new[] { Ordinary, Decommit } : new[] { Ordinary }));
-            Assert.That(runtime.Operations, Is.EqualTo(pressure ? new[] { "collect", "collect", "start", "end" } : new[] { "collect" }));
+            Assert.That(runtime.Operations, Is.EqualTo(pressure
+                ? new[] { "collect", "start", "end", "collect", "start", "end" }
+                : new[] { "collect", "start", "end" }));
             Assert.That(runtime.IsActive, Is.False);
         }
     }
@@ -621,7 +656,7 @@ public class GCKeeperTests
         {
             Assert.That(runtime.Collections, Is.EqualTo(Enumerable.Repeat(Ordinary, 400)));
             Assert.That(idleWaits, Is.EqualTo(Enumerable.Repeat(2750, 101)), "the decommit stays due from payload 300 on");
-            Assert.That(counted, Is.EqualTo(new KeeperCounters(Collections: 400, IdleWaitsCancelled: 101)));
+            Assert.That(counted, Is.EqualTo(new KeeperCounters(Collections: 400, IdleWaitsCancelled: 101, Recommits: 400)));
         }
     }
 
@@ -641,7 +676,7 @@ public class GCKeeperTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }));
-            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Throttled: ordinaryThrottled ? 1 : 0, Decommits: 1, Recommits: 1)));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Throttled: ordinaryThrottled ? 1 : 0, Decommits: 1, Recommits: 2)));
         }
     }
 
@@ -956,12 +991,16 @@ public class GCKeeperTests
         public List<(GcLevel, GCCollectionMode, GcCompaction)> Collections { get; } = [];
         public List<string> Operations { get; } = [];
         public bool CollectionSucceeds { get; set; } = true;
+        /// <summary>Takes every requested collection to gen2, as the runtime does once gen2's budget is used up.</summary>
+        public bool TakesToGen2 { get; init; }
+        public int Gen2CollectionCount { get; private set; }
         public Action? BeforeCollect { get; init; }
         public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting)
         {
             BeforeCollect?.Invoke();
             Collections.Add((generation, mode, compacting));
             Operations.Add("collect");
+            if (generation == GcLevel.Gen2 || TakesToGen2) Gen2CollectionCount++;
             return CollectionSucceeds;
         }
         public Exception? EndFailure { get; init; }
@@ -1084,7 +1123,8 @@ public class GCKeeperTests
             Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(
                 Collections: collected.Count,
                 Cancelled: cadence == Cadence.Ms200 ? PayloadCadence.Samples : 0,
-                Throttled: cadence == Cadence.Seconds2 ? PayloadCadence.Samples / 2 : 0)));
+                Throttled: cadence == Cadence.Seconds2 ? PayloadCadence.Samples / 2 : 0,
+                Recommits: collected.Count)));
             Assert.That(KeeperMetrics.GcKeeperPostBlockDelayMs, Is.EqualTo(adaptedDelayMs));
             Assert.That(KeeperMetrics.GcKeeperMinMsBetweenCollections, Is.EqualTo(Math.Min(3_000, intervalMs / 2)));
             Assert.That(KeeperMetrics.GcKeeperMedianIdleGapMs, Is.EqualTo(intervalMs - processingMs));
@@ -1197,11 +1237,11 @@ public class GCKeeperTests
         {
             Assert.That(queued, Has.Count.EqualTo(always ? 1 : 0));
             Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary, Decommit }));
-            // The payload's region, then the re-commit after the decommit.
+            // The payload's region, then a re-commit after each collection.
             Assert.That(runtime.Operations, Is.EqualTo(always
-                ? new[] { "start", "end", "collect", "collect", "start", "end" }
+                ? new[] { "start", "end", "collect", "start", "end", "collect", "start", "end" }
                 : new[] { "collect", "collect" }));
-            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Decommits: 1, Recommits: always ? 1 : 0)));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Decommits: 1, Recommits: always ? 2 : 0)));
         }
     }
 
@@ -1232,7 +1272,7 @@ public class GCKeeperTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtime.Collections, Is.EqualTo(new[] { Ordinary }));
-            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Skipped: 1)));
+            Assert.That(KeeperCounters.Read().Since(before), Is.EqualTo(new KeeperCounters(Collections: 1, Skipped: 1, Recommits: mode == NoGcRegionMode.Always ? 1 : 0)));
         }
     }
 
