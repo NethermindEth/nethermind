@@ -198,8 +198,11 @@ public class BoundedModulePoolTests
         _modulePool.ReturnModule(await first);
 
         Task<IEthRpcModule> second = _modulePool.GetModule(canBeShared);
-        Assert.That(second.IsCompletedSuccessfully, Is.True);
-        Assert.That(second, Is.SameAs(first));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.IsCompletedSuccessfully, Is.True);
+            Assert.That(second, Is.SameAs(first));
+        }
     }
 
     [Test]

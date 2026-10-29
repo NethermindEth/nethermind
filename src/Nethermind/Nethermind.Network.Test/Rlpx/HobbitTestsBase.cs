@@ -75,15 +75,21 @@ public abstract class HobbitTestsBase
             if (inbound == StackType.Zero)
             {
                 ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
-                Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
-                Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
+                    Assert.That(decodedPacket.Content.ReadAllHex(), Is.EqualTo(packet.Data.ToHexString()));
+                }
                 decodedPacket.Release();
             }
             else // allocating
             {
                 Packet decodedPacket = embeddedChannel.ReadInbound<Packet>();
-                Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
-                Assert.That(decodedPacket.Data.ToHexString(), Is.EqualTo(packet.Data.ToHexString()));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(decodedPacket.PacketType, Is.EqualTo(packet.PacketType));
+                    Assert.That(decodedPacket.Data.ToHexString(), Is.EqualTo(packet.Data.ToHexString()));
+                }
             }
         }
         finally

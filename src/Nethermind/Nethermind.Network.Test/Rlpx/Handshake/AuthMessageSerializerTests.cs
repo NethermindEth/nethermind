@@ -35,11 +35,14 @@ public class AuthMessageSerializerTests
         byte[] bytes = _serializer.Serialize(authMessage);
         AuthMessage after = _serializer.Deserialize(bytes);
 
-        Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
-        Assert.That(after.EphemeralPublicHash, Is.EqualTo(authMessage.EphemeralPublicHash));
-        Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
-        Assert.That(Bytes.AreEqual(authMessage.Nonce, after.Nonce), Is.True);
-        Assert.That(after.IsTokenUsed, Is.EqualTo(authMessage.IsTokenUsed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(after.Signature, Is.EqualTo(authMessage.Signature));
+            Assert.That(after.EphemeralPublicHash, Is.EqualTo(authMessage.EphemeralPublicHash));
+            Assert.That(after.PublicKey, Is.EqualTo(authMessage.PublicKey));
+            Assert.That(Bytes.AreEqual(authMessage.Nonce, after.Nonce), Is.True);
+            Assert.That(after.IsTokenUsed, Is.EqualTo(authMessage.IsTokenUsed));
+        }
     }
 
     [TestCase(BlockchainIds.Mainnet)]

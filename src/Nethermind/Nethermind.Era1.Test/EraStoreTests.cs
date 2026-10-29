@@ -17,7 +17,10 @@ public class EraStoreTests
 
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
 
-        Assert.That(eraStore.FirstBlock, Is.EqualTo(start));
-        Assert.That(eraStore.LastBlock, Is.EqualTo(end));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(eraStore.FirstBlock, Is.EqualTo(start));
+            Assert.That(eraStore.LastBlock, Is.EqualTo(end));
+        }
     }
 }

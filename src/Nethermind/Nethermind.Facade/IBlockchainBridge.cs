@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -58,6 +59,9 @@ namespace Nethermind.Facade
         /// the most the filled transaction's total gas budget may be.</param>
         /// <param name="errorMargin">In basis points: each limit's search stops once its bounds are within this fraction of
         /// the upper bound, which it returns. 0 searches exactly; it must be below 10000.</param>
+        /// <param name="maxFeeAt">For a call priced per gas, the <c>max_fee</c> its prices buy over a given <c>max_gas</c>,
+        /// which each run is priced at over its own <c>max_gas</c>, raised in search runs to fund the search tip;
+        /// <see langword="null"/> keeps <paramref name="tx"/>'s <c>max_fee</c>.</param>
         /// <param name="stateOverride">Account overrides applied before the estimate.</param>
         /// <param name="blockOverride">Block overrides applied to <paramref name="header"/>'s copy.</param>
         /// <param name="cancellationToken">Cancels the estimate between and within runs.</param>
@@ -65,7 +69,7 @@ namespace Nethermind.Facade
         /// otherwise valid transaction reverted, rather than ran out of gas or the transaction was invalid.</param>
         /// <returns>The frames with every requested limit filled, or the failure.</returns>
         Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         ulong GetChainId();
@@ -73,7 +77,8 @@ namespace Nethermind.Facade
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? address = null, IEnumerable<Hash256[]?>? topics = null);
-        void UninstallFilter(int filterId);
+        /// <returns><c>true</c> if the filter existed and was removed; otherwise, <c>false</c>.</returns>
+        bool UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         /// <returns>A pooled list that the caller disposes.</returns>
         ArrayPoolList<Hash256> GetBlockFilterChanges(int filterId);
@@ -88,7 +93,8 @@ namespace Nethermind.Facade
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, HashSet<AddressAsKey>? addresses = null, IEnumerable<Hash256[]?>? topics = null, CancellationToken cancellationToken = default);
 
-        bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
+        /// <returns>The installed log filter, or <c>null</c> if <paramref name="filterId"/> does not identify one.</returns>
+        LogFilter? GetLogFilter(int filterId);
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 

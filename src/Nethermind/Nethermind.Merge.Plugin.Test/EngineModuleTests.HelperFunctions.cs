@@ -52,22 +52,26 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
-            Hash256 safeBlockHash) =>
-            Assert.Multiple(() =>
+            Hash256 safeBlockHash)
+        {
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
                 Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
                 Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
-            });
+            }
+        }
 
         private void AssertExecutionStatusNotChanged(IBlockFinder blockFinder, Hash256 headBlockHash,
-            Hash256 finalizedBlockHash, Hash256 safeBlockHash) =>
-            Assert.Multiple(() =>
+            Hash256 finalizedBlockHash, Hash256 safeBlockHash)
+        {
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
                 Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
                 Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
-            });
+            }
+        }
 
         private async Task GetPayload_should_fail_on_unknown_payload(int version)
         {

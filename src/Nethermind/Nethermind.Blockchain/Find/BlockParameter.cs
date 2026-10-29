@@ -276,8 +276,10 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static BlockParameter ReadStringComplex(ref Utf8JsonReader reader, JsonSerializerOptions options)
-            => TypeInfoJsonSerializer.Deserialize<BlockParameter>(reader.GetString()!, options)!;
+        private BlockParameter ReadStringComplex(ref Utf8JsonReader reader, JsonSerializerOptions options) =>
+            !reader.HasValueSequence && !reader.ValueIsEscaped && reader.ValueSpan.StartsWith("0x"u8)
+                ? ReadStringFormatOther(reader.ValueSpan)
+                : TypeInfoJsonSerializer.Deserialize<BlockParameter>(reader.GetString()!, options)!;
 
         private BlockParameter ReadStringFormatOther(ReadOnlySpan<byte> span)
         {
@@ -305,6 +307,11 @@ namespace Nethermind.JsonRpc.Data
                     {
                         throw new BlockParameterParseException("hex number with leading zero digits");
                     }
+                }
+
+                if (span.Length > sizeof(ulong) * 2)
+                {
+                    throw new BlockParameterParseException("hex number > 64 bits");
                 }
 
                 // Parse as block number

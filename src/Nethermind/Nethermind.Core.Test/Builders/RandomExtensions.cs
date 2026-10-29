@@ -21,4 +21,15 @@ public static class RandomExtensions
 
     /// <summary>Returns a random <see cref="ulong"/> in <c>[minValue, maxValue)</c>, mirroring <see cref="Random.NextInt64(long, long)"/>.</summary>
     public static ulong NextUInt64(this Random random, ulong minValue, ulong maxValue) => (ulong)random.NextInt64((long)minValue, (long)maxValue);
+
+    /// <summary>Returns a new array of <paramref name="count"/> random bytes.</summary>
+    public static byte[] NextBytes(this Random random, int count)
+    {
+        byte[] buffer = new byte[count];
+        random.NextBytes(buffer);
+        return buffer;
+    }
+
+    /// <summary>Returns a random <see cref="bool"/>.</summary>
+    public static bool NextBoolean(this Random random) => random.Next(2) == 1;
 }

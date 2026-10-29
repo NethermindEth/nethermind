@@ -72,7 +72,9 @@ public class SnapSyncRunnerTests
 
         await runner.Run(default);
 
+#pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
         Assert.That(tracker.IsFinished(out SnapSyncBatch? batch), Is.False);
+#pragma warning restore NUnit2045
         Assert.That(batch!.AccountRangeRequest, Is.Not.Null);
         batch.Dispose();
     }
