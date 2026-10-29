@@ -5,7 +5,9 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.TxPool.Filters;
 
 namespace Nethermind.TxPool;
 
@@ -37,13 +39,21 @@ internal sealed class PendingCodeDependencyCache
         lock (_lock) return _pendingByAccount.TryGetValue(account, out int count) ? count : 0;
     }
 
+    /// <summary>The paymaster whose shared slots the pay-frame dependencies of <paramref name="tx"/> take, or
+    /// <see langword="null"/> when they take per-transaction slots.</summary>
+    /// <remarks>Only a paymaster under the pending limit (<see cref="FrameTxPaymasterFilter.IsNonCanonicalPaymaster"/>),
+    /// as that limit is all that bounds the transactions sharing one of its slots.</remarks>
+    public static Address? SlotPaymaster(Transaction tx, IReadOnlyStateProvider state) =>
+        PendingPaymasterCache.KeyFor(tx) is Address paymaster && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(paymaster, state) ? paymaster : null;
+
     /// <summary>Records <paramref name="dependencies"/> for <paramref name="txHash"/> unless that would put any account over <paramref name="cap"/>.</summary>
-    /// <param name="paymaster">The paymaster the transaction pays through (<see cref="PendingPaymasterCache.KeyFor"/>);
-    /// without one, a pay-frame dependency takes a per-transaction slot.</param>
+    /// <param name="paymaster">The paymaster from <see cref="SlotPaymaster"/>; without one, a pay-frame dependency takes a per-transaction slot.</param>
+    /// <param name="replaced">The pending transaction <paramref name="txHash"/> replaces, whose slots count as free: it leaves the pool
+    /// once the replacement is pooled.</param>
     /// <param name="recorded">Whether this call recorded the entry, and so owes its release if the transaction is not pooled.</param>
     /// <returns><see langword="false"/>, recording nothing, when an account is already at the cap.</returns>
     /// <remarks>A hash already recorded keeps its entry: a concurrent duplicate admission must not count twice.</remarks>
-    public bool TryReserve(in ValueHash256 txHash, IReadOnlyList<FrameTxCodeDependency> dependencies, Address? paymaster, int cap, out bool recorded)
+    public bool TryReserve(in ValueHash256 txHash, IReadOnlyList<FrameTxCodeDependency> dependencies, Address? paymaster, ValueHash256? replaced, int cap, out bool recorded)
     {
         recorded = false;
         if (dependencies.Count == 0) return true;
@@ -52,11 +62,11 @@ internal sealed class PendingCodeDependencyCache
         {
             if (_byTx.ContainsKey(txHash)) return true;
 
+            // Looked up under the lock, so a replaced transaction a racing removal already released frees nothing twice.
+            Entry released = replaced is { } replacedHash ? _byTx.GetValueOrDefault(replacedHash) : default;
             foreach (FrameTxCodeDependency dependency in dependencies)
             {
-                if (UsesPaymasterSlot(dependency, paymaster)
-                    ? !HasPaymasterSlot(dependency.Account, paymaster!, cap)
-                    : _pendingByAccount.GetValueOrDefault(dependency.Account) >= cap) return false;
+                if (!CanTakeSlot(dependency, paymaster, released, cap)) return false;
             }
 
             AddLocked(txHash, dependencies, paymaster);
@@ -75,25 +85,17 @@ internal sealed class PendingCodeDependencyCache
         added = false;
         lock (_lock)
         {
-            FrameTxCodeDependency[] previous = _byTx.GetValueOrDefault(txHash).Dependencies ?? [];
-            if (previous.Length == 0 && dependencies.Count == 0) return true;
+            Entry previous = _byTx.GetValueOrDefault(txHash);
+            if (previous.Dependencies is null && dependencies.Count == 0) return true;
 
             foreach (FrameTxCodeDependency dependency in dependencies)
             {
-                // A paymaster slot this transaction holds already exists, so it passes as one shared with others.
-                if (UsesPaymasterSlot(dependency, paymaster))
-                {
-                    if (!HasPaymasterSlot(dependency.Account, paymaster!, cap)) return false;
-                    continue;
-                }
-
-                int held = ContainsSlot(previous, previous.Length, dependency.Account, inPaymasterFrame: false) ? 1 : 0;
-                if (_pendingByAccount.GetValueOrDefault(dependency.Account) - held >= cap) return false;
+                if (!CanTakeSlot(dependency, paymaster, previous, cap)) return false;
             }
 
             RemoveLocked(txHash);
             if (dependencies.Count > 0) AddLocked(txHash, dependencies, paymaster);
-            added = previous.Length == 0;
+            added = previous.Dependencies is null;
             return true;
         }
     }
@@ -113,8 +115,25 @@ internal sealed class PendingCodeDependencyCache
     private static bool UsesPaymasterSlot(in FrameTxCodeDependency dependency, Address? paymaster) =>
         dependency.InPaymasterFrame && paymaster is not null;
 
-    private bool HasPaymasterSlot(Address account, Address paymaster, int cap) =>
-        _pendingByPaymasterSlot.ContainsKey((account, paymaster)) || _paymasterSlotsByAccount.GetValueOrDefault(account) < cap;
+    /// <summary>Whether <paramref name="dependency"/> can take its slot, counting as free the one <paramref name="released"/> holds for it.</summary>
+    /// <remarks>A paymaster slot that already exists is shared, so it always passes; one <paramref name="released"/> holds
+    /// frees a place in the paymaster set only when that entry is its last sharer.</remarks>
+    private bool CanTakeSlot(in FrameTxCodeDependency dependency, Address? paymaster, in Entry released, int cap)
+    {
+        Address account = dependency.Account;
+        if (!UsesPaymasterSlot(dependency, paymaster))
+        {
+            int freed = Holds(released, account, inPaymasterFrame: false) ? 1 : 0;
+            return _pendingByAccount.GetValueOrDefault(account) - freed < cap;
+        }
+
+        if (_pendingByPaymasterSlot.ContainsKey((account, paymaster!))) return true;
+        int freedSlots = Holds(released, account, inPaymasterFrame: true) && _pendingByPaymasterSlot[(account, released.Paymaster!)] == 1 ? 1 : 0;
+        return _paymasterSlotsByAccount.GetValueOrDefault(account) - freedSlots < cap;
+    }
+
+    private static bool Holds(in Entry entry, Address account, bool inPaymasterFrame) =>
+        entry.Dependencies is { } dependencies && ContainsSlot(dependencies, dependencies.Length, account, inPaymasterFrame);
 
     private void AddLocked(in ValueHash256 txHash, IReadOnlyList<FrameTxCodeDependency> dependencies, Address? paymaster)
     {
@@ -123,7 +142,7 @@ internal sealed class PendingCodeDependencyCache
         {
             FrameTxCodeDependency dependency = dependencies[i];
             // Stored by the slot it takes, so the release and a later TryUpdate see the slot actually held.
-            if (dependency.InPaymasterFrame && paymaster is null) dependency = dependency with { InPaymasterFrame = false };
+            dependency = dependency with { InPaymasterFrame = UsesPaymasterSlot(dependency, paymaster) };
             recorded[i] = dependency;
             // Counted once per transaction, should an account be listed twice.
             if (ContainsSlot(recorded, i, dependency.Account, dependency.InPaymasterFrame)) continue;

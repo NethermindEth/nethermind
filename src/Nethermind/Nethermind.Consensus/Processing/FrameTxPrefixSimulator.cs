@@ -143,7 +143,8 @@ public sealed class FrameTxPrefixSimulator(
             processor.SetBlockExecutionContext(AtCurrentSlot(head));
 
             IReleaseSpec spec = specProvider.GetSpec(head);
-            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt, _maxVerifyGas, _maxCodeDependencies);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt,
+                maxVerifyGas: _maxVerifyGas, maxCodeDependencies: _maxCodeDependencies);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);
