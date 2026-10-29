@@ -231,7 +231,7 @@ jobs:
         env:
           PREPARED_OUTPUT: ${{ runner.temp }}/prepared-results-${{ github.run_id }}
         run: |
-          python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py prepare --output "$PREPARED_OUTPUT" --finish 2026-10-29T05:47:34Z
+          python3 prepared-snapshot-${{ github.run_id }}/scripts/rpc-bench/prepared-snapshot.py prepare --output "$PREPARED_OUTPUT" --finish 2026-10-29T11:00:00Z
       - name: Preserve preparation evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4

@@ -31,6 +31,17 @@ class PreparedTests(unittest.TestCase):
             with self.subTest(remaining=remaining), self.assertRaises(RuntimeError):
                 p.budget(0, remaining)
 
+    def test_extended_finish_derives_latest_start_without_old_wall_clock_cutoff(self):
+        finish = p.dt.datetime(2026, 10, 29, 11, tzinfo=p.dt.timezone.utc).timestamp()
+        latest = p.dt.datetime(2026, 10, 29, 6, 50, tzinfo=p.dt.timezone.utc).timestamp()
+        p.budget(latest, finish)
+        with self.assertRaises(RuntimeError):
+            p.budget(latest + 0.001, finish)
+        args = SimpleNamespace(finish='2026-10-29T11:00:00Z')
+        with patch.object(p.time, 'time', return_value=latest), patch.object(Path, 'mkdir', side_effect=RuntimeError('allocation reached')):
+            with self.assertRaisesRegex(RuntimeError, '^allocation reached$'):
+                p.prepare(args)
+
     def test_new_migration_and_errors_rejected_on_reuse(self):
         for text in ('Adding transaction hashes to stored receipts, blocks 1 to 20.', 'Unhandled', 'Invalid Block', 'Exception'):
             with self.subTest(text=text), self.assertRaises(RuntimeError):

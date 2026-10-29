@@ -67,7 +67,7 @@ tests.Case("prepared snapshots are opt-in and preparation cannot run ordinary be
 {
     Contains(WorkflowTest.Text(workflow.Job("resolve"), "if"), "!inputs.prepare_snapshot");
     Contains(WorkflowTest.Text(workflow.Job("prepare-snapshot"), "if"), "inputs.prepare_snapshot", "workflow_dispatch");
-    Contains(WorkflowTest.Text(workflow.Step("prepare-snapshot", "Guarded baseline preparation only"), "run"), "prepared-snapshot.py prepare", "--finish 2026-10-29T05:47:34Z");
+    Contains(WorkflowTest.Text(workflow.Step("prepare-snapshot", "Guarded baseline preparation only"), "run"), "prepared-snapshot.py prepare", "--finish 2026-10-29T11:00:00Z");
     Contains(StepText("Run RPC sweep"), "prepared_snapshot_root:PREPARED_SNAPSHOT_ROOT", "prepared_snapshot_sha256:PREPARED_SNAPSHOT_SHA256");
 });
 tests.Case("prepared defensive cleanup is ownership scoped and refuses lazy deletion", () =>

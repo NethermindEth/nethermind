@@ -1,6 +1,6 @@
 # Opt-in prepared receipt-migration fixture
 
-This diagnostic harness does not modify either immutable image, receipt flags, security policy, or the protected snapshot. Default RPC workflows are unchanged. `prepare_snapshot=true` on `run-rpc-benchmarks.yml` selects **only** the new baseline preparation job; resolve/benchmark/private corpus jobs are skipped. This preparation is separately authorized for 2026-10-29, latest start01:30UTC, finish-by05:47:34UTC. It is not a primary benchmark.
+This diagnostic harness does not modify either immutable image, receipt flags, security policy, or the protected snapshot. Default RPC workflows are unchanged. `prepare_snapshot=true` on `run-rpc-benchmarks.yml` selects **only** the new baseline preparation job; resolve/benchmark/private corpus jobs are skipped. User extended this work through 2026-10-29T12:00:00Z; the final hour beginning11:00UTC is cleanup/report only. Preparation uses the existing `--finish` bound, now11:00UTC. Latest start is derived as finish minus10800s migration,600s health and3600s reserve:06:50UTC for this authorization. The former6b1bc849e preparation run40797353683 was canceled while queued/unassigned; no prepared dataset was created. Its source/request/history remain immutable. This mode is not a primary benchmark.
 
 ## Storage and safety contract
 
@@ -59,8 +59,8 @@ Required workflow knobs, in addition to the ordinary immutable public anchor con
   "state_layout": "flat",
   "db_isolation_all": "overlay",
   "receipt_hashes_migration_timeout": 0,
-  "migration_latest_start_utc": "2026-10-29T03:30:00Z",
-  "migration_finish_by_utc": "2026-10-29T05:47:34Z"
+  "migration_latest_start_utc": "2026-10-29T08:00:00Z",
+  "migration_finish_by_utc": "2026-10-29T11:00:00Z"
 }
 ```
 

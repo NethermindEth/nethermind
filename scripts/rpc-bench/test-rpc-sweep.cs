@@ -163,8 +163,8 @@ try
         values["SNAPSHOT_BLOCK"] = "25490000";
         values["CLIENTS"] = string.Join(' ', SweepConfiguration.PreparedImages.Select(image => "nethermind@" + image + "+" + SweepConfiguration.PreparedFlags.Replace(' ', ';')));
         values["DB_ISOLATION_ALL"] = "overlay";
-        values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T05:00:00Z";
-        values["MIGRATION_FINISH_BY_UTC"] = "2026-10-29T05:47:34Z";
+        values["MIGRATION_LATEST_START_UTC"] = "2026-10-29T10:00:00Z";
+        values["MIGRATION_FINISH_BY_UTC"] = "2026-10-29T11:00:00Z";
         values["SCRATCH_ROOT"] = "/mnt/sda/expb-data/rpc-prepared-benchmark-test";
         values["RPS_LIST"] = "1";
         var configuration = new SweepConfiguration(key => values.GetValueOrDefault(key));

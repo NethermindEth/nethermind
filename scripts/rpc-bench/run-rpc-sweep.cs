@@ -159,7 +159,7 @@ internal sealed partial class SweepConfiguration
                 throw new ArgumentException("prepared snapshots require the exact pinned images and unchanged receipt/config flags without environment overrides");
             if (PreparedImages.Any(image => !Arms.Any(arm => arm.Image == image)))
                 throw new ArgumentException("both immutable images must qualify before timing");
-            if (this["MIGRATION_LATEST_START_UTC"].Length == 0 || this["MIGRATION_FINISH_BY_UTC"].Length == 0 || string.CompareOrdinal(this["MIGRATION_FINISH_BY_UTC"], "2026-10-29T05:47:34Z") > 0)
+            if (this["MIGRATION_LATEST_START_UTC"].Length == 0 || this["MIGRATION_FINISH_BY_UTC"].Length == 0 || string.CompareOrdinal(this["MIGRATION_FINISH_BY_UTC"], "2026-10-29T11:00:00Z") > 0)
                 throw new ArgumentException("prepared sweep requires explicit cutoffs within the original authorization");
             if (Path.GetDirectoryName(this["SCRATCH_ROOT"]) != "/mnt/sda/expb-data" || !Regex.IsMatch(Path.GetFileName(this["SCRATCH_ROOT"]), "^rpc-prepared-benchmark-[a-zA-Z0-9._-]+$"))
                 throw new ArgumentException("prepared sweeps require a separate uniquely owned /mnt/sda/expb-data/rpc-prepared-benchmark-* scratch root");

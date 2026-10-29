@@ -259,8 +259,6 @@ def start_watchdog(check, output):
 def prepare(args):
     finish = dt.datetime.fromisoformat(args.finish.replace('Z', '+00:00')).timestamp()
     budget(time.time(), finish)
-    if time.time() > dt.datetime(2026, 10, 29, 1, 30, tzinfo=dt.timezone.utc).timestamp():
-        raise RuntimeError('preparation latest-start 01:30UTC passed')
     PARENT.mkdir(exist_ok=True)
     root = PARENT / ('getlogs-' + os.environ['GITHUB_RUN_ID'])
     guard(root)
@@ -498,7 +496,7 @@ def main():
     parser.add_argument('--container')
     parser.add_argument('--child-source')
     parser.add_argument('--rpc-port', type=int, default=18545)
-    parser.add_argument('--finish', default='2026-10-29T05:47:34Z')
+    parser.add_argument('--finish', default='2026-10-29T11:00:00Z')
     parser.add_argument('--output', default='prepared-results')
     parser.add_argument('--oracle', default=str(Path(__file__).with_name('prepared-snapshot-oracle.json')))
     args = parser.parse_args()
