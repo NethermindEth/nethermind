@@ -145,6 +145,26 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         EncodeIndexed<TWriter, CodeChange>(ref writer, CollectionsMarshal.AsSpan(item.CodeChanges), lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
+    internal void EncodePrepared<TWriter>(
+        ref TWriter writer,
+        scoped MergedBlockAccessList.AccountChanges item,
+        in EncodingLengths lengths,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.StartSequence(lengths.ContentLength);
+        writer.Encode(item.Address);
+        writer.StartSequence(lengths.StorageChangesContentLength);
+        for (int slot = 0; slot < item.SlotCount; slot++)
+        {
+            SlotChangesDecoder.Encode(ref writer, item.GetSlotKey(slot), item.GetSlotChanges(slot), rlpBehaviors);
+        }
+        EncodeStorageReads(ref writer, item.StorageReads, lengths.StorageReadsContentLength, rlpBehaviors);
+        EncodeIndexed<TWriter, BalanceChange>(ref writer, item.BalanceChanges, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, NonceChange>(ref writer, item.NonceChanges, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexed<TWriter, CodeChange>(ref writer, item.CodeChanges, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+    }
+
     public static int GetContentLength(ReadOnlyAccountChanges item, RlpBehaviors rlpBehaviors)
         => PrepareEncodingLengths(item, rlpBehaviors).ContentLength;
 
@@ -168,6 +188,20 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         int balance = IndexedContentLength<BalanceChange>(CollectionsMarshal.AsSpan(item.BalanceChanges), BalanceChangeDecoder.Instance, rlpBehaviors);
         int nonce = IndexedContentLength<NonceChange>(CollectionsMarshal.AsSpan(item.NonceChanges), NonceChangeDecoder.Instance, rlpBehaviors);
         int code = IndexedContentLength<CodeChange>(CollectionsMarshal.AsSpan(item.CodeChanges), CodeChangeDecoder.Instance, rlpBehaviors);
+        return BuildLengths(storageChanges, storageReads, balance, nonce, code);
+    }
+
+    internal static EncodingLengths PrepareEncodingLengths(scoped MergedBlockAccessList.AccountChanges item, RlpBehaviors rlpBehaviors)
+    {
+        int storageChanges = 0;
+        for (int slot = 0; slot < item.SlotCount; slot++)
+        {
+            storageChanges += SlotChangesDecoder.GetLength(item.GetSlotKey(slot), item.GetSlotChanges(slot), rlpBehaviors);
+        }
+        int storageReads = UInt256ContentLength(item.StorageReads, rlpBehaviors);
+        int balance = IndexedContentLength<BalanceChange>(item.BalanceChanges, BalanceChangeDecoder.Instance, rlpBehaviors);
+        int nonce = IndexedContentLength<NonceChange>(item.NonceChanges, NonceChangeDecoder.Instance, rlpBehaviors);
+        int code = IndexedContentLength<CodeChange>(item.CodeChanges, CodeChangeDecoder.Instance, rlpBehaviors);
         return BuildLengths(storageChanges, storageReads, balance, nonce, code);
     }
 

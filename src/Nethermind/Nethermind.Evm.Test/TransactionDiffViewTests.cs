@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>EIP-7906 diff classification, driven from a BAL slice because the delegation-designator
+/// <summary>EIP-7906 diff classification, driven from a BAL recorder because the delegation-designator
 /// case below is not reachable through a frame transaction.</summary>
 [TestFixture]
 public class TransactionDiffViewTests
@@ -32,7 +32,7 @@ public class TransactionDiffViewTests
             new(Mid, [], [signature, topic, signature, topic]),
             new(High, [], [signature, topic]),
         ];
-        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
+        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessIndexRecorder(), logs);
         ValueHash256 topicValue = topic.ValueHash256;
         ValueHash256 signatureValue = signature.ValueHash256;
         UInt256 first = 0, second = 1, pastEnd = 2, huge = UInt256.MaxValue;
@@ -56,7 +56,7 @@ public class TransactionDiffViewTests
     [TestCase(true, 0, TestName = "Code replacing existing code is not a deployment")]
     public void Build_EnumeratesDeploymentsByPreTxCode(bool hadCode, int expected)
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder slice = new();
         slice.AddCodeChange(Low, hadCode ? new byte[] { 0x00 } : Array.Empty<byte>(), Code);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
@@ -68,7 +68,7 @@ public class TransactionDiffViewTests
     [Test]
     public void Build_DelegationDesignatorOnFreshEoa_IsNotADeployment()
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder slice = new();
         slice.AddCodeChange(Low, Array.Empty<byte>(), Designator);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
@@ -79,7 +79,7 @@ public class TransactionDiffViewTests
     [Test]
     public void Build_ReadOnlyAccounts_AreExcludedFromTheDiff()
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder slice = new();
         slice.AddAccountRead(Low);
         slice.AddBalanceChange(High, UInt256.Zero, UInt256.One);
 
@@ -92,11 +92,11 @@ public class TransactionDiffViewTests
     [Test]
     public void Build_SortsSlotsByAddressThenKey()
     {
-        BlockAccessListAtIndex slice = new();
-        slice.AddStorageChange(High, 2, UInt256.Zero, UInt256.One);
-        slice.AddStorageChange(Mid, 4, UInt256.Zero, UInt256.One);
-        slice.AddStorageChange(Low, 7, UInt256.Zero, UInt256.One);
-        slice.AddStorageChange(Low, 3, UInt256.Zero, UInt256.One);
+        BlockAccessIndexRecorder slice = new();
+        slice.AddStorageChange(new StorageCell(High, 2), UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(new StorageCell(Mid, 4), UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(new StorageCell(Low, 7), UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(new StorageCell(Low, 3), UInt256.Zero, UInt256.One);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
@@ -127,26 +127,25 @@ public class TransactionDiffViewTests
     [TestCase(true, TestName = "Build_PreTxCodeHash_ExistingCode_IsItsKeccak")]
     public void GetPreTxCodeHash_HashesThePreTxCode(bool hadCode)
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder slice = new();
         byte[] preTxCode = hadCode ? [0x00] : [];
         slice.AddCodeChange(Low, preTxCode, Code);
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
-        AccountChangesAtIndex account = slice.GetAccountChanges(Low)!;
+        Assert.That(slice.TryGetPreTxCode(Low, out ReadOnlyMemory<byte> recordedPreTxCode), Is.True);
 
-        ValueHash256 hash = view.GetPreTxCodeHash(Low, account);
+        ValueHash256 hash = view.GetPreTxCodeHash(Low, recordedPreTxCode);
 
         Assert.That(hash, Is.EqualTo(hadCode ? ValueKeccak.Compute(preTxCode) : ValueKeccak.OfAnEmptyString));
 
-        // With the source cleared, only a memoized second call still returns the hash.
-        account.Reset(Low);
-        Assert.That(view.GetPreTxCodeHash(Low, account), Is.EqualTo(hash));
+        // With a different source, only a memoized second call still returns the hash.
+        Assert.That(view.GetPreTxCodeHash(Low, Code), Is.EqualTo(hash));
     }
 
     // Spec enumeration order for balance_changes is ascending by address, whatever order the slice recorded.
     [Test]
     public void Build_SortsBalanceAddressesAscending()
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder slice = new();
         slice.AddBalanceChange(High, UInt256.Zero, UInt256.One);
         slice.AddBalanceChange(Low, UInt256.Zero, UInt256.One);
         slice.AddBalanceChange(Mid, UInt256.Zero, UInt256.One);
@@ -160,7 +159,7 @@ public class TransactionDiffViewTests
     [Test]
     public void Build_SortsDeployedAddressesAscending()
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder slice = new();
         slice.AddCodeChange(High, Array.Empty<byte>(), Code);
         slice.AddCodeChange(Low, Array.Empty<byte>(), Code);
         slice.AddCodeChange(Mid, Array.Empty<byte>(), Code);
@@ -176,7 +175,7 @@ public class TransactionDiffViewTests
     {
         LogEntry[] logs = [Log(High), Log(Low), Log(High), Log(Mid), Log(High)];
 
-        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
+        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessIndexRecorder(), logs);
 
         Assert.Multiple(() =>
         {
@@ -192,7 +191,7 @@ public class TransactionDiffViewTests
     [Test]
     public void TryGetAddressEventGlobalIndex_OutOfRangeOrUnknownAddress_IsRejected()
     {
-        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), [Log(Low)]);
+        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessIndexRecorder(), [Log(Low)]);
 
         Assert.Multiple(() =>
         {

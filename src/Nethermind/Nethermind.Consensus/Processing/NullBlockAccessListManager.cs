@@ -19,6 +19,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     private NullBlockAccessListManager() { }
 
     public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public BlockAccessListItemSet BlockAccessListItems { get; } = new();
     public bool Enabled => false;
     public bool ParallelExecutionEnabled => false;
     public bool BatchReadEnabled => false;
@@ -35,7 +36,6 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void ReturnTxProcessor(uint balIndex) { }
     public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token) { }
     public void SetBlockAccessList(Block block) { }
-    public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true) { }
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
     public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec) { }

@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -1921,7 +1922,7 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bal.GetAccountChanges(Sender), Is.Not.Null, "the sender is accessed and recorded in the BAL");
@@ -1951,7 +1952,7 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AccountChangesAtIndex? beneficiaryChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(beneficiary);
+        RecordedAccountChanges? beneficiaryChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(beneficiary);
         Assert.That(beneficiaryChanges, Is.Not.Null, "beneficiary accessed and recorded in the BAL");
         using (Assert.EnterMultipleScope())
         {
@@ -2842,7 +2843,7 @@ public partial class FrameTxProcessorTests
 
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance).TransactionExecuted, Is.True);
 
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         Assert.That(bal.GetAccountChanges(Recipient), Is.Null,
             "a frame that cannot pay its target's access must not read the target");
     }
@@ -3044,7 +3045,7 @@ public partial class FrameTxProcessorTests
 
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance).TransactionExecuted, Is.True);
 
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bal.GetAccountChanges(Observer), Is.Not.Null, "the target is read to find the designation");
@@ -3066,7 +3067,7 @@ public partial class FrameTxProcessorTests
 
         Assert.That(Process(tracedProcessor, tx).TransactionExecuted, Is.True);
 
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         Assert.That(bal.GetAccountChanges(IdentityPrecompile.Address), Is.Not.Null,
             "resolving a designation accesses the designated precompile");
     }
@@ -3160,7 +3161,7 @@ public partial class FrameTxProcessorTests
     private (EthereumTransactionProcessor Processor, TracedAccessWorldState State) TracedProcessor(bool parallel = false)
     {
         TracedAccessWorldState tracedState = new(_stateProvider, parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         return (BuildProcessor(tracedState, new EthereumCodeInfoRepository(tracedState)), tracedState);
     }
 
@@ -3345,7 +3346,7 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AccountChangesAtIndex? managerChanges = tracedState.GetGeneratingBlockAccessList()!
+        RecordedAccountChanges? managerChanges = tracedState.GetGeneratingBlockAccessList()!
             .GetAccountChanges(Eip8250Constants.NonceManagerAddress);
         Assert.That(managerChanges, Is.Not.Null, "the nonce manager is accessed and recorded in the BAL");
         using (Assert.EnterMultipleScope())
@@ -4034,7 +4035,7 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AccountChangesAtIndex? recentRoot = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
+        RecordedAccountChanges? recentRoot = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
         Assert.That(recentRoot, Is.Not.Null, "the recent root contract is accessed and recorded in the BAL");
         UInt256 slotKey = RecentRootStore.StorageKey(sourceId, committedSlot % Eip8272Constants.RecentRootLength).ToUInt256();
         Assert.That(recentRoot.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
@@ -4466,7 +4467,7 @@ public partial class FrameTxProcessorTests
             : Prepare.EvmCode.Op(Instruction.STOP).Done);
 
         (_, CallOutputTracer tracer) = ProcessTraced(
-            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), out BlockAccessListAtIndex slice, parallel);
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), out BlockAccessIndexRecorder slice, parallel);
 
         using (Assert.EnterMultipleScope())
         {
@@ -4658,7 +4659,7 @@ public partial class FrameTxProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => readOnly.SetGeneratingBlockAccessList(new BlockAccessListAtIndex()),
+            Assert.That(() => readOnly.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder()),
                 Throws.TypeOf<NotSupportedException>());
             Assert.That(readOnly.GeneratedBlockAccessList, Is.Null);
         }
@@ -4666,7 +4667,7 @@ public partial class FrameTxProcessorTests
 
     private sealed class SinglePropertyBlockAccessListSource : IBlockAccessListSource
     {
-        public BlockAccessListAtIndex? GeneratedBlockAccessList => null;
+        public BlockAccessIndexRecorder? GeneratedBlockAccessList => null;
     }
 
     private static byte[] Txparam(byte param)
@@ -4719,7 +4720,7 @@ public partial class FrameTxProcessorTests
     private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, bool parallel = false)
         => ProcessTraced(tx, out _, parallel);
 
-    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessListAtIndex slice, bool parallel = false)
+    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessIndexRecorder slice, bool parallel = false)
     {
         CallOutputTracer tracer = new();
         return (ProcessTraced(tx, tracer, out slice, parallel), tracer);
@@ -4728,7 +4729,7 @@ public partial class FrameTxProcessorTests
     private TransactionResult ProcessTraced(Transaction tx, ITxTracer tracer, bool parallel = false)
         => ProcessTraced(tx, tracer, out _, parallel);
 
-    private TransactionResult ProcessTraced(Transaction tx, ITxTracer tracer, out BlockAccessListAtIndex slice, bool parallel)
+    private TransactionResult ProcessTraced(Transaction tx, ITxTracer tracer, out BlockAccessIndexRecorder slice, bool parallel)
     {
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor(parallel);
         slice = tracedState.GetGeneratingBlockAccessList()!;
@@ -4827,7 +4828,7 @@ public partial class FrameTxProcessorTests
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)),
-            out BlockAccessListAtIndex slice);
+            out BlockAccessIndexRecorder slice);
 
         using (Assert.EnterMultipleScope())
         {

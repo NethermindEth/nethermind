@@ -21,6 +21,7 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -520,7 +521,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         });
 
         _tracedState = (TracedAccessWorldState)_processingScope.Resolve<IWorldState>();
-        _tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        _tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         if (movedPrecompile is var (from, to))
         {
             ((OverridableCodeInfoRepository)_processingScope.Resolve<ICodeInfoRepository>()).MovePrecompile(_spec, from, to);

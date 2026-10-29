@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -95,7 +96,7 @@ public class Eip7709Tests : VirtualMachineTestsBase
         SetHistoryHash(requestedBlock.u0, TestItem.KeccakA);
 
         CallOutputTracer tracer = ExecuteBlockhashAndReturn(requestedBlock);
-        (_, BlockAccessListAtIndex bal) = ExecuteWithBlockAccessList(BlockhashCode(requestedBlock), Spec7709);
+        (_, BlockAccessIndexRecorder bal) = ExecuteWithBlockAccessList(BlockhashCode(requestedBlock), Spec7709);
 
         using (Assert.EnterMultipleScope())
         {
@@ -203,9 +204,9 @@ public class Eip7709Tests : VirtualMachineTestsBase
     [Test]
     public void Blockhash_records_history_storage_read_in_block_access_list()
     {
-        (_, BlockAccessListAtIndex bal) = ExecuteWithBlockAccessList(BlockhashCode(BlockNumber - 1), Spec7709);
+        (_, BlockAccessIndexRecorder bal) = ExecuteWithBlockAccessList(BlockhashCode(BlockNumber - 1), Spec7709);
 
-        AccountChangesAtIndex? history = bal.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
+        RecordedAccountChanges? history = bal.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
         Assert.That(history?.StorageReads, Does.Contain(HistoryCell(BlockNumber - 1).Index));
     }
 
@@ -309,16 +310,16 @@ public class Eip7709Tests : VirtualMachineTestsBase
         return tracer;
     }
 
-    private (ulong GasSpent, BlockAccessListAtIndex Bal) ExecuteWithBlockAccessList(byte[] code, IReleaseSpec spec)
+    private (ulong GasSpent, BlockAccessIndexRecorder Bal) ExecuteWithBlockAccessList(byte[] code, IReleaseSpec spec)
     {
         (Block block, Transaction tx) = PrepareTx(Activation, 100_000, code);
         return ExecuteWithBlockAccessList(block, tx, spec);
     }
 
-    private (ulong GasSpent, BlockAccessListAtIndex Bal) ExecuteWithBlockAccessList(Block block, Transaction tx, IReleaseSpec spec)
+    private (ulong GasSpent, BlockAccessIndexRecorder Bal) ExecuteWithBlockAccessList(Block block, Transaction tx, IReleaseSpec spec)
     {
         TracedAccessWorldState tracedState = new(TestState, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         TestSpecProvider specProvider = new(spec);
         EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         TransactionProcessor<EthereumGasPolicy> processor = new(

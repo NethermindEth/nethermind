@@ -92,6 +92,15 @@ namespace Nethermind.Core.Collections
             }
         }
 
+        public static void ClearAndTrim<T>(this List<T> list, int trimAboveCapacity = DefaultTrimAboveCapacity, int trimToCapacity = DefaultTrimToCapacity)
+        {
+            list.Clear();
+            if (list.Capacity > trimAboveCapacity)
+            {
+                list.Capacity = trimToCapacity;
+            }
+        }
+
         public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue>? dictionary)
                 where TKey : notnull
         {

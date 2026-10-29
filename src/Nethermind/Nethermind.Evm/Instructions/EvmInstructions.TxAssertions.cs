@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -63,10 +64,10 @@ public static partial class EvmInstructions
         Address address = view.BalanceAddresses[(int)index.u0];
         if (param == 0x03) return stack.PushAddress<TTracingInst>(address);
 
-        AccountChangesAtIndex account = view.Slice.GetAccountChanges(address)!;
+        BlockAccessIndexRecorder recorder = view.Recorder;
         UInt256 value = param == 0x04
-            ? account.PreTxBalance ?? default
-            : account.BalanceChange?.Value ?? account.PreTxBalance ?? default;
+            ? recorder.TryGetPreTxBalance(address, out UInt256 before) ? before : default
+            : recorder.TryGetBalance(address, out UInt256 after) ? after : default;
         return stack.PushUInt256<TTracingInst>(value);
     }
 
@@ -79,11 +80,11 @@ public static partial class EvmInstructions
         if (param == 0x06) return stack.PushAddress<TTracingInst>(slot.Address);
         if (param == 0x07) return stack.PushUInt256<TTracingInst>(slot.Key);
 
-        AccountChangesAtIndex account = view.Slice.GetAccountChanges(slot.Address)!;
+        StorageCell cell = new(slot.Address, slot.Key);
         if (param == 0x08)
-            return stack.PushUInt256<TTracingInst>(account.TryGetPreTxStorage(slot.Key, out UInt256 before) ? before : default);
-        if (!account.StorageChanges.TryGetValue(slot.Key, out StorageChange change)) return EvmExceptionType.BadInstruction;
-        return stack.PushUInt256<TTracingInst>(change.Value);
+            return stack.PushUInt256<TTracingInst>(view.Recorder.TryGetPreTxStorage(in cell, out UInt256 before) ? before : default);
+        if (!view.Recorder.TryGetStorage(in cell, out UInt256 after)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>(after);
     }
 
     // 0x0A deployed address / 0x0B deployed code hash, indexed by deployment position.
@@ -94,7 +95,8 @@ public static partial class EvmInstructions
         Address address = view.DeployedAddresses[(int)index.u0];
         if (param == 0x0A) return stack.PushAddress<TTracingInst>(address);
 
-        ValueHash256 codeHash = view.Slice.GetAccountChanges(address)!.CodeChange!.Value.CodeHash;
+        view.Recorder.TryGetCodeChange(address, out CodeChange codeChange);
+        ValueHash256 codeHash = codeChange.CodeHash;
         return stack.Push32Bytes<TTracingInst, OnFlag>(in codeHash);
     }
 
@@ -138,15 +140,14 @@ public static partial class EvmInstructions
         if (address is null) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 in3)) return EvmExceptionType.StackUnderflow;
 
-        AccountChangesAtIndex? account = view.Slice.GetAccountChanges(address);
         byte p = (byte)param.u0;
         return p switch
         {
-            0x00 or 0x01 => TxDiffStorage<TGasPolicy, TTracingInst>(vm, ref gas, p, address, in in3, account, ref stack),
+            0x00 or 0x01 => TxDiffStorage<TGasPolicy, TTracingInst>(vm, ref gas, p, view, address, in in3, ref stack),
             >= 0x02 and <= 0x05 => in3.IsZero
-                ? TxDiffAccount<TGasPolicy, TTracingInst>(vm, ref gas, p, view, address, account, ref stack)
+                ? TxDiffAccount<TGasPolicy, TTracingInst>(vm, ref gas, p, view, address, ref stack)
                 : EvmExceptionType.BadInstruction,
-            _ => TxDiffAddressView<TGasPolicy, TTracingInst>(ref gas, p, view, address, in in3, account, ref stack),
+            _ => TxDiffAddressView<TGasPolicy, TTracingInst>(ref gas, p, view, address, in in3, ref stack),
         };
     }
 
@@ -168,14 +169,14 @@ public static partial class EvmInstructions
     }
 
     // 0x00 before / 0x01 after. The live read enters the EIP-7928 list like any other state read.
-    private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
+    private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, in UInt256 key, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         StorageCell cell = new(address, in key);
         if (!TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, vm.Spec))
             return EvmExceptionType.OutOfGas;
-        if (param == 0x00 && account is not null && account.TryGetPreTxStorage(key, out UInt256 before))
+        if (param == 0x00 && view.Recorder.TryGetPreTxStorage(in cell, out UInt256 before))
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
         vm.WorldState.Get(in cell, out UInt256 value);
@@ -192,7 +193,7 @@ public static partial class EvmInstructions
     }
 
     // 0x02/0x03 balance, 0x04/0x05 code hash; live reads are EIP-7928 recorded as above.
-    private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
+    private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -202,12 +203,12 @@ public static partial class EvmInstructions
         switch (param)
         {
             case 0x02:
-                return stack.PushUInt256<TTracingInst>(account?.BalanceChange is not null ? account.PreTxBalance ?? default : state.GetBalance(address));
+                return stack.PushUInt256<TTracingInst>(view.Recorder.TryGetPreTxBalance(address, out UInt256 before) ? before : state.GetBalance(address));
             case 0x03:
                 return stack.PushUInt256<TTracingInst>(state.GetBalance(address));
             case 0x04:
                 {
-                    ValueHash256 hash = account?.CodeChange is not null ? view.GetPreTxCodeHash(address, account) : state.GetCodeHash(address);
+                    ValueHash256 hash = view.Recorder.TryGetPreTxCode(address, out ReadOnlyMemory<byte> preTxCode) ? view.GetPreTxCodeHash(address, preTxCode) : state.GetCodeHash(address);
                     return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
                 }
             default:
@@ -219,7 +220,7 @@ public static partial class EvmInstructions
     }
 
     // 0x06..0x0A: per-address views and change flags, flat priced, no access-list interaction.
-    private static EvmExceptionType TxDiffAddressView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, in UInt256 in3, AccountChangesAtIndex? account, ref EvmStack stack)
+    private static EvmExceptionType TxDiffAddressView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, in UInt256 in3, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -234,7 +235,7 @@ public static partial class EvmInstructions
             0x09 => view.TryGetAddressEventGlobalIndex(address, in in3, out int global)
                 ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)global)
                 : EvmExceptionType.BadInstruction,
-            _ => in3.IsZero ? stack.PushUInt32<TTracingInst, OnFlag>(ChangeFlags(account)) : EvmExceptionType.BadInstruction, // 0x0A
+            _ => in3.IsZero ? stack.PushUInt32<TTracingInst, OnFlag>(ChangeFlags(view, address)) : EvmExceptionType.BadInstruction, // 0x0A
         };
     }
 
@@ -257,7 +258,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>Diff view for the current frame tx, built once and shared. False outside an ASSERT
-    /// frame, or when no EIP-7928 slice is recording to source it from.</summary>
+    /// frame, or when no EIP-7928 recorder is recording to source it from.</summary>
     private static bool TryGetAssertFrameView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -273,23 +274,23 @@ public static partial class EvmInstructions
             return true;
         }
 
-        if (vm.WorldState is not IBlockAccessListSource source || source.GeneratedBlockAccessList is not { } slice)
+        if (vm.WorldState is not IBlockAccessListSource source || source.GeneratedBlockAccessList is not { } recorder)
             return false;
 
-        view = TransactionDiffView.Build(slice, vm.VmState.AccessTracker.Logs.ToArray());
+        view = TransactionDiffView.Build(recorder, vm.VmState.AccessTracker.Logs.ToArray());
         frameContext.AssertFrameDiffView = view;
         return true;
     }
 
     // The nonce bit is "written", not net: nonces only increase and a revert restores the prior value.
-    private static uint ChangeFlags(AccountChangesAtIndex? account)
+    private static uint ChangeFlags(TransactionDiffView view, Address address)
     {
-        if (account is null) return 0;
+        BlockAccessIndexRecorder recorder = view.Recorder;
         uint flags = 0;
-        if (account.NonceChange is not null) flags |= 0b0001;
-        if (account.BalanceChange is not null) flags |= 0b0010;
-        if (account.StorageChangeCount > 0) flags |= 0b0100;
-        if (account.CodeChange is not null) flags |= 0b1000;
+        if (recorder.TryGetNonce(address, out _)) flags |= 0b0001;
+        if (recorder.TryGetBalance(address, out _)) flags |= 0b0010;
+        if (view.TryGetSlotRun(address, out _, out _)) flags |= 0b0100;
+        if (recorder.TryGetCodeChange(address, out _)) flags |= 0b1000;
         return flags;
     }
 }

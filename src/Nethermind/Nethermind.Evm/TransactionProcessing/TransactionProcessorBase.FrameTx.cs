@@ -44,7 +44,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             if (frame.Mode == FrameMode.Assert)
             {
-                recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                recorder.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
                 return recorder;
             }
         }

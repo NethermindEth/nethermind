@@ -14,6 +14,10 @@ namespace Nethermind.Consensus.Processing;
 public interface IBlockAccessListManager
 {
     GeneratedBlockAccessList GeneratedBlockAccessList { get; set; }
+
+    /// <summary>The items of the indexes a block being built has kept so far.</summary>
+    BlockAccessListItemSet BlockAccessListItems { get; }
+
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
     bool BatchReadEnabled { get; }
@@ -42,10 +46,10 @@ public interface IBlockAccessListManager
     void NextTransaction();
 
     /// <summary>
-    /// Number of items the current transaction's slice would add to <see cref="GeneratedBlockAccessList"/> once
-    /// <see cref="NextTransaction"/> merges it.
+    /// Number of items the current transaction would add to <see cref="BlockAccessListItems"/> once
+    /// <see cref="NextTransaction"/> keeps it.
     /// </summary>
-    /// <remarks>Zero when no list is being built. The cost is proportional to the slice, not to the block.</remarks>
+    /// <remarks>Zero when no block is being built. The cost is proportional to the transaction, not to the block.</remarks>
     int CountPendingTransactionItems() => 0;
 
     void Rollback();
@@ -54,15 +58,13 @@ public interface IBlockAccessListManager
     /// <summary>
     /// Acquires a tx processor for <paramref name="balIndex"/> and returns a stack-only lease
     /// whose <c>Dispose</c> calls <see cref="ReturnTxProcessor"/>. Use with a <c>using</c>
-    /// block so the pool slot is recycled (and the worker's BAL captured into <c>_perTxBal</c>)
-    /// even on exception, without an explicit try/finally.
+    /// block so the pool slot is recycled even on exception, without an explicit try/finally.
     /// </summary>
     TxProcessorLease RentTxProcessor(uint balIndex)
         => new(GetTxProcessor(balIndex), this, balIndex);
 
     void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
     void SetBlockAccessList(Block block);
-    void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec);

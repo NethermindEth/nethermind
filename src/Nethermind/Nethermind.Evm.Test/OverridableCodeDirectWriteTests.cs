@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -85,7 +86,7 @@ public class OverridableCodeDirectWriteTests : VirtualMachineTestsBase
     [Test]
     public void DirectWrite_RevertedBySnapshot_RestoresTheOverride([Values] Writer writer, [Values] bool traceAccess)
     {
-        BlockAccessListAtIndex accesses = new();
+        BlockAccessIndexRecorder accesses = new();
         if (traceAccess)
         {
             TracedAccessWorldState tracedState = new(TestState, false);

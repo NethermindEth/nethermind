@@ -15,6 +15,7 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -34,7 +35,7 @@ namespace Nethermind.Evm.Test;
 /// <summary>
 /// Tests for EIP-7928 Block Access Lists.
 /// Verifies that executing EVM code correctly records state accesses into a
-/// <see cref="BlockAccessListAtIndex"/> via <see cref="TracedAccessWorldState"/>.
+/// <see cref="BlockAccessIndexRecorder"/> via <see cref="TracedAccessWorldState"/>.
 /// </summary>
 [TestFixture(false)]
 [TestFixture(true)]
@@ -75,7 +76,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         bool useParallel = parallelOverride ?? parallel;
         TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository baseRepo = new(tracedState);
@@ -125,7 +126,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return (tracedState, processor, block);
     }
 
-    private static void AssertPureAccountRead(AccountChangesAtIndex? accountChanges)
+    private static void AssertPureAccountRead(RecordedAccountChanges? accountChanges)
     {
         Assert.That(accountChanges, Is.Not.Null);
         Assert.That(accountChanges!.BalanceChange, Is.Null);
@@ -133,7 +134,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         Assert.That(accountChanges.CodeChange, Is.Null);
     }
 
-    private static void AssertEqual(ReadOnlyAccountChanges expected, AccountChangesAtIndex? actual)
+    private static void AssertEqual(ReadOnlyAccountChanges expected, RecordedAccountChanges? actual)
     {
         Assert.That(actual, Is.Not.Null);
         Assert.That(actual!.Address, Is.EqualTo(expected.Address));
@@ -197,33 +198,33 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.RecalculateStateRoot();
     }
 
-    private static void AssertStorageChange(BlockAccessListAtIndex bal, Address address, UInt256 key, UInt256 value)
+    private static void AssertStorageChange(BlockAccessIndexRecorder bal, Address address, UInt256 key, UInt256 value)
     {
-        AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
+        RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
         Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
         Assert.That(slotChange.Value, Is.EqualTo(value));
     }
 
-    private static void AssertNonceChange(BlockAccessListAtIndex bal, Address address, ulong value)
+    private static void AssertNonceChange(BlockAccessIndexRecorder bal, Address address, ulong value)
     {
-        AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
+        RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
         Assert.That(accountChanges!.NonceChange, Is.EqualTo((NonceChange?)new NonceChange(0, value)));
     }
 
-    private static void AssertCodeChange(BlockAccessListAtIndex bal, Address address, byte[] code)
+    private static void AssertCodeChange(BlockAccessIndexRecorder bal, Address address, byte[] code)
     {
-        AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
+        RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
         Assert.That(accountChanges!.CodeChange, Is.Not.Null);
         Assert.That(accountChanges.CodeChange!.Value.Index, Is.EqualTo(0u));
         Assert.That(accountChanges.CodeChange.Value.Code, Is.EqualTo(code));
     }
 
-    private static void AssertStorageRead(BlockAccessListAtIndex bal, Address address, UInt256 key)
+    private static void AssertStorageRead(BlockAccessIndexRecorder bal, Address address, UInt256 key)
     {
-        AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
+        RecordedAccountChanges? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
         Assert.That(accountChanges!.StorageChangeCount, Is.EqualTo(0));
         Assert.That(accountChanges.StorageReads, Does.Contain(key));
@@ -379,10 +380,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
-    private BlockAccessListAtIndex ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList) =>
+    private BlockAccessIndexRecorder ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList) =>
         ExecuteSetCodeCall(wrapPrecompileCache: false, authorizationList);
 
-    private BlockAccessListAtIndex ExecuteSetCodeCall(bool wrapPrecompileCache, params AuthorizationTuple[] authorizationList)
+    private BlockAccessIndexRecorder ExecuteSetCodeCall(bool wrapPrecompileCache, params AuthorizationTuple[] authorizationList)
     {
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
             CreateTracedProcessor(wrapPrecompileCache: wrapPrecompileCache);
@@ -399,10 +400,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return tracedState.GetGeneratingBlockAccessList()!;
     }
 
-    private BlockAccessListAtIndex ExecuteCallTx(Address to) =>
+    private BlockAccessIndexRecorder ExecuteCallTx(Address to) =>
         ExecuteCallTxs(BuildCallTx(to));
 
-    private BlockAccessListAtIndex ExecuteCallTxs(params Transaction[] transactions)
+    private BlockAccessIndexRecorder ExecuteCallTxs(params Transaction[] transactions)
     {
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
         BlockHeader header = Build.A.BlockHeader
@@ -455,7 +456,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         UInt256 gasUsed = new(callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
@@ -485,7 +486,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         foreach (ReadOnlyAccountChanges expectedAccountChanges in expected)
         {
-            AccountChangesAtIndex? actual = bal.GetAccountChanges(expectedAccountChanges.Address);
+            RecordedAccountChanges? actual = bal.GetAccountChanges(expectedAccountChanges.Address);
             AssertEqual(expectedAccountChanges, actual);
         }
     }
@@ -519,7 +520,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = processor.Execute(createTx, callOutputTracer);
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         UInt256 gasUsed = new(callOutputTracer.GasSpent);
 
         ReadOnlyAccountChanges accountChangesA = Build.An.AccountChanges
@@ -538,7 +539,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         foreach (ReadOnlyAccountChanges expectedAccountChanges in expected)
         {
-            AccountChangesAtIndex? actual = bal.GetAccountChanges(expectedAccountChanges.Address);
+            RecordedAccountChanges? actual = bal.GetAccountChanges(expectedAccountChanges.Address);
             AssertEqual(expectedAccountChanges, actual);
         }
     }
@@ -551,7 +552,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.Commit(SpecProvider.GenesisSpec);
 
         TracedAccessWorldState tracedState = new(TestState, parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         tracedState.SubtractFromBalance(address, UInt256.One, Byzantium.Instance, out _);
         // Retain the balance overlay while clearing setup touches, so only the restored EIP-161 touch can delete the account.
         TestState.Commit(SpecProvider.GenesisSpec);
@@ -592,7 +593,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        AccountChangesAtIndex? precompileChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(precompileAddress);
+        RecordedAccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(precompileAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -624,7 +625,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        AccountChangesAtIndex? testAddressChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(_testAddress);
+        RecordedAccountChanges? testAddressChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(_testAddress);
         StorageChange? change = null;
         if (testAddressChanges is not null && testAddressChanges.StorageChanges.TryGetValue(UInt256.Zero, out StorageChange storageChange))
         {
@@ -660,7 +661,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        AccountChangesAtIndex? precompileChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(precompileAddress);
+        RecordedAccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(precompileAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -693,7 +694,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        AccountChangesAtIndex? precompileChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(precompileAddress);
+        RecordedAccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(precompileAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -733,7 +734,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, entryCode);
         AddAccountToState(authority, authorityNonce);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(buildAuthorization(SpecProvider.ChainId, authority));
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(buildAuthorization(SpecProvider.ChainId, authority));
 
         using (Assert.EnterMultipleScope())
         {
@@ -758,7 +759,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, _delegationTargetAddress);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorization);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(authorization);
 
         using (Assert.EnterMultipleScope())
         {
@@ -793,7 +794,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
 
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -825,7 +826,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             _delegationTargetAddress,
             validAuthorizationNonce ? 0ul : 1ul);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorization);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(authorization);
 
         using (Assert.EnterMultipleScope())
         {
@@ -852,8 +853,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyA, Address.Zero, nonce: 1);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorization);
-        AccountChangesAtIndex? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(authorization);
+        RecordedAccountChanges? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
 
         using (Assert.EnterMultipleScope())
         {
@@ -878,7 +879,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, intermediate);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorization);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(authorization);
 
         using (Assert.EnterMultipleScope())
         {
@@ -901,7 +902,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, authority);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorization);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(authorization);
 
         using (Assert.EnterMultipleScope())
         {
@@ -927,7 +928,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         AuthorizationTuple authorityAuthorization = SignAuthorization(TestItem.PrivateKeyB, intermediate);
         AuthorizationTuple intermediateAuthorization = SignAuthorization(TestItem.PrivateKeyE, finalTarget);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(authorityAuthorization, intermediateAuthorization);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(authorityAuthorization, intermediateAuthorization);
 
         using (Assert.EnterMultipleScope())
         {
@@ -955,7 +956,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, precompile);
 
-        BlockAccessListAtIndex bal = ExecuteSetCodeCall(wrapPrecompileCache: true, authorization);
+        BlockAccessIndexRecorder bal = ExecuteSetCodeCall(wrapPrecompileCache: true, authorization);
 
         using (Assert.EnterMultipleScope())
         {
@@ -998,9 +999,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         InitWorldState(TestState, factoryCode, callTargetBalance: createdBalance);
 
-        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
-        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
-        AccountChangesAtIndex? beneficiaryChanges = bal.GetAccountChanges(beneficiary);
+        BlockAccessIndexRecorder bal = ExecuteCallTx(_callTargetAddress);
+        RecordedAccountChanges? createdChanges = bal.GetAccountChanges(createdAddress);
+        RecordedAccountChanges? beneficiaryChanges = bal.GetAccountChanges(beneficiary);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1038,8 +1039,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
         TestState.RecalculateStateRoot();
 
-        BlockAccessListAtIndex bal = ExecuteCallTxs(BuildCallTx(_callTargetAddress, gasLimit: 33_000));
-        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
+        BlockAccessIndexRecorder bal = ExecuteCallTxs(BuildCallTx(_callTargetAddress, gasLimit: 33_000));
+        RecordedAccountChanges? createdChanges = bal.GetAccountChanges(createdAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1066,11 +1067,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         Transaction firstTx = BuildCallTx(_callTargetAddress, value: (UInt256)firstCreateBalance);
         Transaction secondTx = BuildCallTx(_callTargetAddress, nonce: 1);
 
-        // Two tx slices need to merge into a single BlockAccessListAtIndex view for the
+        // Two tx slices need to merge into a single BlockAccessIndexRecorder view for the
         // per-tx assertion shape; ExecuteCallTxs materialises that combined slice.
-        BlockAccessListAtIndex bal = ExecuteCallTxs(firstTx, secondTx);
-        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
-        AccountChangesAtIndex? beneficiaryChanges = bal.GetAccountChanges(beneficiary);
+        BlockAccessIndexRecorder bal = ExecuteCallTxs(firstTx, secondTx);
+        RecordedAccountChanges? createdChanges = bal.GetAccountChanges(createdAddress);
+        RecordedAccountChanges? beneficiaryChanges = bal.GetAccountChanges(beneficiary);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1126,7 +1127,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         tracedState.Clear();
         tracedState.IncrementIndex();
         TransactionResult storeResult = buildUp ? processor.BuildUp(store, NullTxTracer.Instance) : processor.Execute(store, NullTxTracer.Instance);
-        AccountChangesAtIndex? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
+        RecordedAccountChanges? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
 
         Assert.That(createdChanges, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -1153,8 +1154,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
         TestState.RecalculateStateRoot();
 
-        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
-        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
+        BlockAccessIndexRecorder bal = ExecuteCallTx(_callTargetAddress);
+        RecordedAccountChanges? createdChanges = bal.GetAccountChanges(createdAddress);
         TestState.Get(new StorageCell(createdAddress, slot), out UInt256 stored);
 
         Assert.That(createdChanges, Is.Not.Null);
@@ -1186,10 +1187,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         CallOutputTracer tracer = new();
         TransactionResult res = processor.Execute(tx, tracer);
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         ulong gasUsed = tracer.GasSpent;
-        AccountChangesAtIndex? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
-        AccountChangesAtIndex? victimChanges = bal.GetAccountChanges(_callTargetAddress);
+        RecordedAccountChanges? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
+        RecordedAccountChanges? victimChanges = bal.GetAccountChanges(_callTargetAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1252,10 +1253,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, factoryCode);
         AddAccountToState(emptyAccount, balance: UInt256.One);
 
-        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
-        AccountChangesAtIndex? emptyChanges = bal.GetAccountChanges(emptyAccount);
-        AccountChangesAtIndex? createdEmptyChanges = bal.GetAccountChanges(createdEmptyAddress);
-        AccountChangesAtIndex? destroyedChanges = bal.GetAccountChanges(destroyedAddress);
+        BlockAccessIndexRecorder bal = ExecuteCallTx(_callTargetAddress);
+        RecordedAccountChanges? emptyChanges = bal.GetAccountChanges(emptyAccount);
+        RecordedAccountChanges? createdEmptyChanges = bal.GetAccountChanges(createdEmptyAddress);
+        RecordedAccountChanges? destroyedChanges = bal.GetAccountChanges(destroyedAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1302,9 +1303,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(createTx, tracer);
 
-        AccountChangesAtIndex? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
+        RecordedAccountChanges? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
         Assert.That(createdChanges, Is.Not.Null);
-        AccountChangesAtIndex actualCreatedChanges = createdChanges!;
+        RecordedAccountChanges actualCreatedChanges = createdChanges!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1402,7 +1403,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer tracer = new();
         TransactionResult res = processor.Execute(tx, tracer);
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1435,7 +1436,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         processor.Execute(BuildSystemCall(Eip2935Constants.BlockHashHistoryAddress, parentHash.BytesToArray(), systemCallGasLimit, header), NullTxTracer.Instance);
 
-        AccountChangesAtIndex? accountChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
+        RecordedAccountChanges? accountChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
         Assert.That(accountChanges, Is.Not.Null);
         if (shouldStoreParentHash)
         {
@@ -1492,7 +1493,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         processor.Execute(BuildSystemCall(predeploy, [], 30_000_000ul, header), NullTxTracer.Instance);
 
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bal.GetAccountChanges(predeploy), Is.Not.Null);
@@ -2278,7 +2279,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
 
@@ -2337,7 +2338,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
@@ -2427,7 +2428,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
 
         CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider(), StaticCodeCache.Instance);
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);

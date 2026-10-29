@@ -5,6 +5,7 @@ using System.IO;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -20,12 +21,10 @@ public class RecordedBalStoreTests
 
     private static GeneratedBlockAccessList MakeBal(params Address[] addresses)
     {
-        BlockAccessListAtIndex slice = new();
+        BlockAccessIndexRecorder recorder = new();
         foreach (Address address in addresses)
-            slice.AddAccountRead(address);
-        GeneratedBlockAccessList bal = new();
-        bal.Merge(slice);
-        return bal;
+            recorder.AddAccountRead(address);
+        return recorder.ToGeneratedBlockAccessList();
     }
 
     [Test]

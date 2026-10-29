@@ -12,6 +12,7 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -156,7 +157,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
             .TestObject, Spec8279).FloorGas;
         ulong gasLimit = staticFloor + Eip8279Constants.AddressBytes * Eip8131Constants.FloorGasPerByte - (affordable ? 0UL : 1UL);
 
-        (ulong gasSpent, _, CallOutputTracer tracer, BlockAccessListAtIndex bal) = Run(code, gasLimit);
+        (ulong gasSpent, _, CallOutputTracer tracer, BlockAccessIndexRecorder bal) = Run(code, gasLimit);
 
         using (Assert.EnterMultipleScope())
         {
@@ -175,7 +176,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         // The precompile's and the recovered account's address bytes, short by one gas when unaffordable.
         tx.GasLimit = IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas + 2 * Eip8279Constants.AddressBytes * Eip8131Constants.FloorGasPerByte - (affordable ? 0UL : 1UL);
 
-        (_, CallOutputTracer tracer, BlockAccessListAtIndex bal, _) = Execute(block, tx);
+        (_, CallOutputTracer tracer, BlockAccessIndexRecorder bal, _) = Execute(block, tx);
 
         using (Assert.EnterMultipleScope())
         {
@@ -194,7 +195,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
         tx.GasLimit = IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas + affordableBytes * Eip8131Constants.FloorGasPerByte;
 
-        (ulong gasSpent, CallOutputTracer tracer, BlockAccessListAtIndex bal, _) = Execute(block, tx);
+        (ulong gasSpent, CallOutputTracer tracer, BlockAccessIndexRecorder bal, _) = Execute(block, tx);
 
         using (Assert.EnterMultipleScope())
         {
@@ -334,9 +335,9 @@ public class Eip8279Tests : VirtualMachineTestsBase
         byte[] code = Prepare.EvmCode.TCreate(initCode, salt, (UInt256)endowment).STOP().Done;
         (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
 
-        (ulong gasSpent, _, BlockAccessListAtIndex bal, _) = Execute(block, tx, spec);
+        (ulong gasSpent, _, BlockAccessIndexRecorder bal, _) = Execute(block, tx, spec);
 
-        AccountChangesAtIndex? created = bal.GetAccountChanges(ContractAddress.FromTransientCreate(Executing, salt, initCode));
+        RecordedAccountChanges? created = bal.GetAccountChanges(ContractAddress.FromTransientCreate(Executing, salt, initCode));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(gasSpent, Is.EqualTo(IntrinsicGasCalculator.Calculate(tx, spec).FloorGas + (ulong)expectedBytes * Eip8131Constants.FloorGasPerByte));
@@ -347,10 +348,10 @@ public class Eip8279Tests : VirtualMachineTestsBase
         }
     }
 
-    private (ulong GasSpent, ulong StaticFloor, CallOutputTracer Tracer, BlockAccessListAtIndex Bal) Run(byte[] code, ulong gasLimit)
+    private (ulong GasSpent, ulong StaticFloor, CallOutputTracer Tracer, BlockAccessIndexRecorder Bal) Run(byte[] code, ulong gasLimit)
     {
         (Block block, Transaction tx) = PrepareFloorBindingTx(code, gasLimit);
-        (ulong gasSpent, CallOutputTracer tracer, BlockAccessListAtIndex bal, _) = Execute(block, tx);
+        (ulong gasSpent, CallOutputTracer tracer, BlockAccessIndexRecorder bal, _) = Execute(block, tx);
         return (gasSpent, IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas, tracer, bal);
     }
 
@@ -375,7 +376,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         return PrepareTx(Activation, gasLimit, code, new byte[FloorBindingCalldataBytes], 1);
     }
 
-    private (ulong GasSpent, CallOutputTracer Tracer, BlockAccessListAtIndex Bal, EthereumVirtualMachine Vm) Execute(Block block, Transaction tx, IReleaseSpec? spec = null)
+    private (ulong GasSpent, CallOutputTracer Tracer, BlockAccessIndexRecorder Bal, EthereumVirtualMachine Vm) Execute(Block block, Transaction tx, IReleaseSpec? spec = null)
     {
         (EthereumVirtualMachine vm, TransactionProcessor<EthereumGasPolicy> processor, TracedAccessWorldState tracedState) = CreateProcessor();
         CallOutputTracer tracer = new();
@@ -387,7 +388,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private (EthereumVirtualMachine Vm, TransactionProcessor<EthereumGasPolicy> Processor, TracedAccessWorldState TracedState) CreateProcessor()
     {
         TracedAccessWorldState tracedState = new(TestState, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         EthereumVirtualMachine vm = new(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
         TransactionProcessor<EthereumGasPolicy> processor = new(
             BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, vm, new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);

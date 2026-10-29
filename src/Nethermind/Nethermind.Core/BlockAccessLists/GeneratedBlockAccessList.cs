@@ -5,16 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core.Collections;
-using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Block-level access list assembled by merging <see cref="BlockAccessListAtIndex"/> contributions
-/// (one per transaction). Ready for RLP encoding.
+/// Block-level access list built from a <see cref="MergedBlockAccessList"/> for consumers that keep it after the block.
+/// Ready for RLP encoding.
 /// </summary>
 /// <remarks>
-/// Address ordering is deferred to the encoder boundary, not paid on every per-tx merge.
+/// Address ordering is deferred to the encoder boundary.
 /// </remarks>
 public class GeneratedBlockAccessList
 {
@@ -55,54 +54,7 @@ public class GeneratedBlockAccessList
         }
     }
 
-    /// <summary>
-    /// Number of items <see cref="Merge"/> would add to <see cref="ItemCount"/> for <paramref name="other"/>,
-    /// without merging it.
-    /// </summary>
-    /// <remarks>Walks only <paramref name="other"/>, so the cost is independent of the size of this list.</remarks>
-    public int CountNewItems(BlockAccessListAtIndex other)
-    {
-        int count = 0;
-        foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
-        {
-            _accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target);
-            if (target is null) count++;
-
-            foreach (UInt256 key in sourceAccount.StorageChanges.Keys)
-            {
-                if (target is null || !target.HasStorageKey(key)) count++;
-            }
-
-            foreach (UInt256 key in sourceAccount.StorageReads)
-            {
-                if (!sourceAccount.HasStorageChange(key) && (target is null || !target.HasStorageKey(key))) count++;
-            }
-        }
-        return count;
-    }
-
-    /// <summary>
-    /// Merge a per-tx contribution into this block-level accumulator.
-    /// </summary>
-    public void Merge(BlockAccessListAtIndex other)
-    {
-        foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
-        {
-            if (!_accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target))
-            {
-                target = new GeneratedAccountChanges(sourceAccount.Address);
-                _accountChanges.Add(sourceAccount.Address, target);
-            }
-            target.Merge(sourceAccount);
-        }
-    }
-
-    public void Clear() => _accountChanges.ClearAndTrim();
-    public void Reset() => Clear();
-
-    /// <summary>
-    /// For tests only — builds the accountChanges dictionary directly.
-    /// </summary>
+    /// <summary>Builds the list from complete accounts.</summary>
     internal static GeneratedBlockAccessList FromAccounts(IEnumerable<GeneratedAccountChanges> accounts)
     {
         GeneratedBlockAccessList bal = new();

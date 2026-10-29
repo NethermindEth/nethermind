@@ -16,7 +16,7 @@ using Nethermind.State;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>SLOADs through the EIP-7928 recording decorator within one transaction.</summary>
-/// <remarks>Each invocation starts a fresh slice and reads every slot twice, so half the reads record a
+/// <remarks>Each invocation starts a fresh index and reads every slot twice, so half the reads record a
 /// new slot and half repeat one. <see cref="AccountHasWrite"/> puts a change on the account first.</remarks>
 [MemoryDiagnoser]
 public class TracedStorageReadBenchmark
@@ -54,7 +54,7 @@ public class TracedStorageReadBenchmark
         }
 
         _state = new TracedAccessWorldState(inner, Parallel);
-        _state.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        _state.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         _scope = _state.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject);
     }
 
@@ -79,6 +79,6 @@ public class TracedStorageReadBenchmark
             }
         }
 
-        return n + (ulong)state.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!.StorageReads.Count;
+        return n + (ulong)state.GetGeneratingBlockAccessList()!.Log.Count;
     }
 }

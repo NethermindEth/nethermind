@@ -4,10 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
-namespace Nethermind.Core.BlockAccessLists;
+namespace Nethermind.Core.Test.BlockAccessLists;
 
 /// <summary>
 /// Per-account changes recorded at a single BAL index (i.e. one transaction). Each scalar field

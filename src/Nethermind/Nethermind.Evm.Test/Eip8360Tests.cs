@@ -19,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -249,16 +250,16 @@ public class Eip8360Tests : VirtualMachineTestsBase
             .Done, 10);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState,
             new EthereumVirtualMachine(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance),
             new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
 
         Assert.That(Run(processor: processor).StatusCode, Is.EqualTo(StatusCode.Success));
 
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
-        AccountChangesAtIndex? tcreatedChanges = bal.GetAccountChanges(tcreated);
-        AccountChangesAtIndex? factoryChanges = bal.GetAccountChanges(Factory);
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
+        RecordedAccountChanges? tcreatedChanges = bal.GetAccountChanges(tcreated);
+        RecordedAccountChanges? factoryChanges = bal.GetAccountChanges(Factory);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tcreatedChanges, Is.Not.Null, "the address is still accessed");
@@ -860,7 +861,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
             .Done, 10);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState,
             new EthereumVirtualMachine(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance),
             new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);

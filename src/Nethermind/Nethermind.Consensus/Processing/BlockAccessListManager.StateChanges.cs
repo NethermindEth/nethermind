@@ -8,8 +8,8 @@ using Nethermind.Serialization.Rlp.Eip7928;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Finalises the block by stamping the generated BAL + its encoded RLP + its hash onto the
-/// produced block.
+/// Finalises the block by merging the logs of its indexes and stamping the generated BAL + its
+/// encoded RLP + its hash onto the produced block.
 /// </summary>
 public partial class BlockAccessListManager
 {
@@ -27,34 +27,29 @@ public partial class BlockAccessListManager
         }
 
         CheckInitialized();
-        MergeAndReturnBal(uint.MaxValue);
+        _mergedBlockAccessList.Merge(_txProcessorWithWorldStateManager.SealLogs());
+        if (_validateBlockAccessList) ValidateMergedBlockAccessList(block);
 
-        uint postExecutionIndex = (uint)(block.Transactions.Length + 1);
-        if (VerifyOnly)
+        if (!VerifyOnly)
         {
-            // IncrementalValidation only covered indices 0..txCount; the post-execution row
-            // (txCount + 1) was just merged but not yet compared.
-            ValidateBlockAccessList(block, postExecutionIndex);
-            ValidateStructuralEquivalence(block);
-            return;
+            GeneratedBlockAccessList = _mergedBlockAccessList.ToGeneratedBlockAccessList();
+            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
         }
 
-        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-
-        if (_validatedRowCount == postExecutionIndex
-            && _generatedValidationIndex is not null
-            && block.BlockAccessList?.WireHash is { } wireHash)
+        if (_validateBlockAccessList)
         {
-            // Rows 0..txCount already matched the suggested BAL. Once the post-execution row and the structure match
-            // too, the generated BAL encodes to the suggested canonical wire bytes, so their hash stands in for the re-encode.
-            // This holds only because the decoder accepts nothing but the canonical encoding.
-            ValidateBlockAccessList(block, postExecutionIndex);
-            ValidateGeneratedStructuralEquivalence(block);
-            block.Header.BlockAccessListHash = wireHash;
-            return;
+            if (VerifyOnly) return;
+
+            // A match encodes to the suggested canonical wire bytes, as the decoder accepts nothing else, so their hash
+            // stands in for the re-encode.
+            if (block.BlockAccessList!.WireHash is { } wireHash)
+            {
+                block.Header.BlockAccessListHash = wireHash;
+                return;
+            }
         }
 
-        block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
+        block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(_mergedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 }

@@ -21,11 +21,11 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>
 /// Coordinates all BAL-aware processing for a block: spinning up the right tx-processor pool
-/// (parallel vs sequential), publishing the cumulative <see cref="GeneratedBlockAccessList"/>,
-/// and orchestrating tx execution → incremental validation → state apply.
+/// (parallel vs sequential), merging the logs the processors recorded into the block's list,
+/// and orchestrating tx execution → incremental gas validation → end-of-block list validation.
 /// Implementation is split across partial files by concern:
 ///   * BlockAccessListManager.cs                       — lifecycle, per-tx hot path, fields
-///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
+///   * BlockAccessListManager.Validation.cs            — incremental gas, per-tx 2D inclusion check, list validation
 ///   * BlockAccessListManager.StateChanges.cs          — SetBlockAccessList
 ///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
@@ -52,7 +52,6 @@ public partial class BlockAccessListManager(
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private Task? _balWarmupTask;
-    private BalReadStoragePlan? _readPlan;
     // Null in a build that folds parallel execution out, so nothing behind the pool is compiled.
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = !ZkEvmFlag.IsActive
         ? new Lazy<ParallelTxProcessorWithWorldStateManager>(() => new(stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, txProcessorFactory))
@@ -69,31 +68,12 @@ public partial class BlockAccessListManager(
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
 
-    // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
-    // suggested index is built once at PrepareForProcessing; the generated index mirrors its
-    // layout and is appended-to per-tx from MergeAndReturnBal. Equality at a given tx index
-    // collapses to row-aligned span compares — no per-account dictionary lookups, no per-tx
-    // walks over the whole BAL. Null when BlockAccessList is unset (e.g. pre-Amsterdam).
-    private BlockAccessListValidationIndex? _suggestedValidationIndex;
-    private BlockAccessListValidationIndex? _generatedValidationIndex;
-    // Total chargeable storage reads on each side. Suggested is computed once at Build time;
-    // generated is incremented as each per-tx slice merges in. ValidateBlockAccessList's
-    // fast path checks (suggestedReads - generatedReads) * Eip7928Constants.ItemCost against
-    // _gasRemaining instead of re-walking the whole BAL.
-    private ulong _suggestedChargeableStorageReads;
-    private ulong _generatedChargeableStorageReads;
+    private readonly MergedBlockAccessList _mergedBlockAccessList = new();
+    // Whether the merged list is checked against the suggested one rather than only encoded.
+    private bool _validateBlockAccessList;
     // EIP-7928: post-execution system calls read storage without spending block gas, so the
     // surplus-reads budget must leave room for what their own execution grant can read.
     private ulong _postExecutionReadAllowance;
-    private bool _hasGeneratedValidationIndexUpdates;
-    // Number of leading rows (0, 1, ...) that ValidateBlockAccessList has compared against the suggested BAL.
-    private uint _validatedRowCount;
-    // for tests
-    internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
-    // Latched when a per-tx slice surfaces a generated-only account that the column index
-    // can't see (no lane data on either side). Forces the validator's fallback walk so the
-    // same "missing account changes" error fires as on the sequential path.
-    private bool _hasGeneratedRequiredReadAccountMismatch;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -104,28 +84,24 @@ public partial class BlockAccessListManager(
             innerException);
 
     public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public BlockAccessListItemSet BlockAccessListItems { get; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
     public bool BatchReadEnabled { get; private set; }
 
     /// <summary>
     /// When set, the manager always builds the constructed GeneratedBlockAccessList even on
-    /// the parallel-validation path where the column-index validator suffices on its own.
+    /// the parallel-validation path where the merged list suffices on its own.
     /// Wrappers that read the constructed BAL after processing (BAL recorder, RPC diagnostics)
     /// must set this before PrepareForProcessing runs.
     /// </summary>
     public bool ForceConstructGeneratedBlockAccessList { get; set; }
 
-    // Non-null when the manager is constructing the per-block aggregate (always points at
-    // GeneratedBlockAccessList itself in that case); null on the verify-only path where the
-    // column-index validator stands in for the constructed list. Drives both the per-tx
-    // Merge target and the end-of-block encode + Keccak step.
-    private GeneratedBlockAccessList? _currentGeneratedBlockAccessList;
-    private bool VerifyOnly => _currentGeneratedBlockAccessList is null;
+    // Set on the parallel-validation path, where the merged list is only compared with the suggested one.
+    private bool VerifyOnly { get; set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
-        DisposableExtensions.DisposeAndNull(ref _readPlan);
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -146,21 +122,13 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
-            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
-            if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
-                _readPlan = new BalReadStoragePlan(bal);
-            // Build the column-oriented validation index once per block; per-tx ChangesEqual
-            // then collapses to row-aligned span compares. Tally suggested chargeable storage
-            // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
-            // Skipped when building a block or in RLP fixtures (no suggested)
-            if (!_isBuilding && suggestedBlock.BlockAccessList is not null)
-            {
-                BlockAccessListValidationIndex.AddressIndex addressIndex = new();
-                ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
-                _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
-            }
+            VerifyOnly = ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList;
+            // The parallel path executes on the suggested list, so it always checks it.
+            _validateBlockAccessList = suggestedBlock.BlockAccessList is not null
+                && (ParallelExecutionEnabled
+                    || (!options.ContainsFlag(ProcessingOptions.NoValidation)
+                        && !_isBuilding
+                        && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)));
             _gasRemaining = suggestedBlock.GasUsed;
         }
 
@@ -223,8 +191,9 @@ public partial class BlockAccessListManager(
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
-            _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+            // Read from the state before the block, which the post-execution calls' code can differ from only when the block deploys it.
+            _postExecutionReadAllowance = _validateBlockAccessList && ChargeableStorageReads(block.BlockAccessList!) > 0ul
                 ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
                 : 0ul;
         }
@@ -250,20 +219,27 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             CheckInitialized();
-            MergeAndReturnBal();
+            if (_isBuilding)
+            {
+                BlockAccessIndexRecorder recorder = GetBuildingRecorder();
+                BlockAccessListItems.Add(recorder.Log, recorder.Start);
+            }
             _txProcessorWithWorldStateManager.NextTransaction();
         }
     }
 
     public int CountPendingTransactionItems()
     {
-        // Block building runs sequentially, so the current slice is the single processor's.
-        if (!Enabled || ParallelExecutionEnabled || _currentGeneratedBlockAccessList is null) return 0;
+        if (!Enabled || !_isBuilding) return 0;
 
         CheckInitialized();
-        BlockAccessListAtIndex? slice = _txProcessorWithWorldStateManager.Get(null).WorldState.GetGeneratingBlockAccessList();
-        return slice is null ? 0 : _currentGeneratedBlockAccessList.CountNewItems(slice);
+        BlockAccessIndexRecorder recorder = GetBuildingRecorder();
+        return BlockAccessListItems.CountNewItems(recorder.Log, recorder.Start);
     }
+
+    // Block building runs sequentially, so the current index is the single processor's.
+    private BlockAccessIndexRecorder GetBuildingRecorder()
+        => _txProcessorWithWorldStateManager!.Get(null).WorldState.GetGeneratingBlockAccessList()!;
 
     public void Rollback()
     {
@@ -278,17 +254,13 @@ public partial class BlockAccessListManager(
     {
         if (!ZkEvmFlag.IsActive && Enabled && ParallelExecutionEnabled)
         {
-            // Eagerly detach the worker's generated BAL into a per-tx slot and recycle the
-            // pool slot. Workers therefore never block on the validator — but the validator
-            // still merges per-tx slots into the target in order, preserving incremental
-            // validation semantics.
+            // Recycle the pool slot; the worker's log keeps what it recorded until the block's list is merged.
             _parallelTxProcessorWithWorldStateManager!.Value.Return(balIndex);
         }
     }
 
     public void Dispose()
     {
-        DisposableExtensions.DisposeAndNull(ref _readPlan);
         if (!ZkEvmFlag.IsActive && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
@@ -297,26 +269,7 @@ public partial class BlockAccessListManager(
         {
             _sequentialTxProcessorWithWorldStateManager.Value.Dispose();
         }
-        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
-        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }
-
-    /// <summary>
-    /// Detach the slice for <paramref name="balIndex"/>, fold it into
-    /// <see cref="GeneratedBlockAccessList"/> (or skip the fold in verify-only mode), and feed
-    /// it to <see cref="RegisterGeneratedSlice"/> so the column-index fast path stays in sync.
-    /// </summary>
-    /// <remarks>
-    /// The <paramref name="balIndex"/> default exists for the sequential per-tx hook
-    /// (<see cref="NextTransaction"/>), where the underlying pool ignores the index. Parallel
-    /// callers (<c>IncrementalValidation</c>, <c>SetBlockAccessList</c>) always pass an explicit
-    /// value to identify the per-tx slot to detach.
-    /// </remarks>
-    private void MergeAndReturnBal(uint balIndex = 0)
-        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(
-            balIndex,
-            _currentGeneratedBlockAccessList,
-            RegisterGeneratedSlice);
 
     private void CheckInitialized()
     {
@@ -330,16 +283,8 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
-        GeneratedBlockAccessList.Reset();
-        DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
-        DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
-        _suggestedChargeableStorageReads = 0ul;
-        _generatedChargeableStorageReads = 0ul;
-        _postExecutionReadAllowance = 0ul;
-        _hasGeneratedValidationIndexUpdates = false;
-        _validatedRowCount = 0;
-        _hasGeneratedRequiredReadAccountMismatch = false;
-        _currentGeneratedBlockAccessList = null;
+        BlockAccessListItems.Clear();
+        _mergedBlockAccessList.Clear();
     }
 
     [DoesNotReturn]

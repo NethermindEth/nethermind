@@ -1586,7 +1586,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Read_coverage_validates_system_slices_and_preserves_read_budget(
+    public void Parallel_workers_reuse_their_logs_across_blocks_and_reject_an_omitted_read(
         [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
     {
         List<TracedAccessWorldState> workers = [];
@@ -1617,22 +1617,14 @@ public partial class BlockProcessorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads((UInt256)1, (UInt256)2)
                 .WithStorageChanges(3, new StorageChange(1, 7u)).TestObject).TestObject;
-        BalReadCoverage? previousCoverage = null;
-        Dictionary<TracedAccessWorldState, (BalReadCoverage Coverage, int Block)> previousWorkers = [];
-        bool reusedWorkerInBlock = false;
         for (int blockNumber = 1; blockNumber <= blockCount; blockNumber++)
         {
-            reusedWorkerInBlock = false;
             Block block = Build.A.Block.WithParent(parent).WithNumber(blockNumber).WithGasUsed(0).WithBlockAccessList(bal).TestObject;
             PrepareSetup(manager, block, Amsterdam.Instance);
-            if (previousCoverage is not null) Assert.That(previousCoverage.Plan, Is.Null);
             Assert.That(manager.ParallelExecutionEnabled, Is.True);
             manager.NextTransaction();
-            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0, validateStorageReads: false));
             manager.GetTxProcessor(0);
             TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
-            CheckWorkerCoverage(pre, blockNumber);
-            previousCoverage = pre.ReadCoverage;
             pre.Get(new StorageCell(TestItem.AddressA, 1), out _);
             pre.Get(new StorageCell(TestItem.AddressA, 3), out _);
             if (revertWrite)
@@ -1642,11 +1634,9 @@ public partial class BlockProcessorTests
                 pre.Restore(snapshot);
             }
             manager.NextTransaction();
-            // A read of a slot written later still pays for a surplus declared read at this index.
-            Assert.DoesNotThrow(() => manager.ValidateBlockAccessList(block, 0));
+            manager.ReturnTxProcessor(0);
             manager.GetTxProcessor(uint.MaxValue);
             TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
-            CheckWorkerCoverage(post, blockNumber);
             post.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)7);
             bool skipRead = omitRead && blockNumber == blockCount;
             if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2), out _);
@@ -1662,32 +1652,6 @@ public partial class BlockProcessorTests
             }
         }
 
-        if (blockCount > RuntimeInformation.ProcessorCount)
-            Assert.That(reusedWorkerInBlock, Is.True, "The final block must reuse a worker from an earlier block.");
-
-        Block disabledBlock = Build.A.Block.WithNumber(blockCount + 1).TestObject;
-        manager.PrepareForProcessing(disabledBlock, Prague.Instance, ProcessingOptions.None);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(manager.Enabled, Is.False);
-            Assert.That(previousCoverage!.Plan, Is.Null);
-        }
-
-        void CheckWorkerCoverage(TracedAccessWorldState worker, int blockNumber)
-        {
-            Assert.That(worker.ReadCoverage, Is.Not.Null);
-            if (previousWorkers.TryGetValue(worker, out (BalReadCoverage Coverage, int Block) previous)
-                && previous.Block < blockNumber)
-            {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(worker.ReadCoverage, Is.Not.SameAs(previous.Coverage));
-                    Assert.That(previous.Coverage.Plan, Is.Null);
-                }
-                reusedWorkerInBlock = true;
-            }
-            previousWorkers[worker] = (worker.ReadCoverage!, blockNumber);
-        }
     }
 
     private static IEnumerable<int> ReadCoverageBlockCounts()
@@ -2946,18 +2910,13 @@ public partial class BlockProcessorTests
     [TestCase(0ul, 0ul, false, 1, false, TestName = "BAL_read_budget_allows_reads_by_noncanonical_request_contract")]
     [TestCase(Eip7928Constants.ItemCost - 1, 0ul, false, NoncanonicalRequestReadAllowance + 1, true, TestName = "BAL_read_budget_charges_reads_beyond_noncanonical_allowance")]
     [TestCase(Eip7928Constants.ItemCost, 0ul, false, NoncanonicalRequestReadAllowance + 1, false, TestName = "BAL_read_budget_covers_reads_beyond_noncanonical_allowance")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool canonicalRequestContracts, int surplusReads, bool shouldThrow)
+    public void SetBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool canonicalRequestContracts, int surplusReads, bool overBudget)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         DeployRequestPredeploys(stateProvider, Amsterdam.Instance, canonicalRequestContracts);
-        BlockAccessListManager balManager = new(
-            stateProvider,
-            LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
-            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
+        (BlockAccessListManager balManager, Func<BlockAccessIndexRecorder> recorder) = CreateSequentialBalManager(stateProvider);
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -2976,31 +2935,20 @@ public partial class BlockProcessorTests
         PrepareSetup(balManager, block, Amsterdam.Instance);
         balManager.SpendGas(gasSpent);
         // Generated BAL has the account but no storage reads
-        BlockAccessListAtIndex generatedAtIndex = new();
-        generatedAtIndex.AddAccountRead(TestItem.AddressA);
-        balManager.GeneratedBlockAccessList.Merge(generatedAtIndex);
+        recorder().AddAccountRead(TestItem.AddressA);
 
-        if (shouldThrow)
-        {
-            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
-                () => balManager.ValidateBlockAccessList(block, 0));
-        }
-        else
-        {
-            Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
-        }
+        // Within budget, the surplus reads still differ from the suggested ones.
+        const string invalidStorageReads = "Suggested block-level access list contained invalid storage reads.";
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException exception =
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => balManager.SetBlockAccessList(block))!;
+        Assert.That(exception.Message, overBudget ? Does.Contain(invalidStorageReads) : Does.Not.Contain(invalidStorageReads));
     }
 
     [Test]
-    public void ValidateBlockAccessList_matches_accounts_by_address_when_insertion_order_differs()
+    public void SetBlockAccessList_matches_accounts_by_address_when_insertion_order_differs()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        BlockAccessListManager balManager = new(
-            stateProvider,
-            LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = false },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
-            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
+        (BlockAccessListManager balManager, Func<BlockAccessIndexRecorder> recorder) = CreateSequentialBalManager(stateProvider);
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -3030,27 +2978,24 @@ public partial class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        // Generated BAL in low→high (canonical) order — index lookup must reconcile despite
+        // Generated BAL in low→high (canonical) order — the comparison must reconcile despite
         // the suggested side using the opposite insertion order.
-        BlockAccessListAtIndex slice = new();
-        slice.AddBalanceChange(lowAddress, before: 0, after: 1);
-        slice.AddBalanceChange(highAddress, before: 0, after: 2);
-        balManager.GeneratedBlockAccessList.Merge(slice);
+        recorder().AddBalanceChange(lowAddress, before: 0, after: 1);
+        recorder().AddBalanceChange(highAddress, before: 0, after: 2);
 
-        Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+        Assert.DoesNotThrow(() => balManager.SetBlockAccessList(block));
     }
 
-    // Verify-only structural-equivalence check: covers the mismatch classes the column-index
-    // and gas-budget checks don't catch (their inputs slip through to the structural walk in
-    // SetBlockAccessList).
+    // Structural check: covers the mismatch classes the change and gas-budget checks don't catch.
     [TestCaseSource(nameof(VerifyOnlyStructuralMismatchCases))]
-    public void SetBlockAccessList_verify_only_rejects_structural_mismatch(
+    public void SetBlockAccessList_rejects_structural_mismatch(
         ReadOnlyBlockAccessList suggested,
-        Action<BlockAccessListAtIndex> populateGenerated)
+        Action<BlockAccessIndexRecorder> populateGenerated)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+        (BlockAccessListManager balManager, Func<BlockAccessIndexRecorder> recorder) = CreateSequentialBalManager(stateProvider);
+        using BlockAccessListManager disposeManager = balManager;
 
         Block block = Build.A.Block
             .WithNumber(1)
@@ -3060,9 +3005,7 @@ public partial class BlockProcessorTests
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        BlockAccessListAtIndex slice = new();
-        populateGenerated(slice);
-        balManager.GeneratedBlockAccessList.Merge(slice);
+        populateGenerated(recorder());
 
         Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
             () => balManager.SetBlockAccessList(block));
@@ -3070,8 +3013,7 @@ public partial class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> VerifyOnlyStructuralMismatchCases()
     {
-        // storage_reads content mismatch (count matches, values differ): the one mismatch class
-        // nothing else catches — column-index only tracks read counts via the gas-budget check.
+        // storage_reads content mismatch (count matches, values differ): the gas-budget check only counts reads.
         yield return new TestCaseData(
             Build.A.BlockAccessList
                 .WithAccountChanges(Build.An.AccountChanges
@@ -3079,7 +3021,7 @@ public partial class BlockProcessorTests
                     .WithStorageReads((UInt256)5)
                     .TestObject)
                 .TestObject,
-            (Action<BlockAccessListAtIndex>)(s => s.AddStorageRead(TestItem.AddressA, (UInt256)7)))
+            (Action<BlockAccessIndexRecorder>)(s => s.AddStorageRead(new StorageCell(TestItem.AddressA, 7))))
             .SetName("storage_reads content mismatch (same count, different value)");
 
         // Per-account presence mismatch with matching count: suggested has AddressA, generated
@@ -3091,7 +3033,7 @@ public partial class BlockProcessorTests
                     .WithBalanceChanges(new BalanceChange(0, 1))
                     .TestObject)
                 .TestObject,
-            (Action<BlockAccessListAtIndex>)(s => s.AddBalanceChange(TestItem.AddressB, before: 0, after: 1)))
+            (Action<BlockAccessIndexRecorder>)(s => s.AddBalanceChange(TestItem.AddressB, before: 0, after: 1)))
             .SetName("account presence mismatch (same count, different address)");
     }
 
@@ -4091,6 +4033,24 @@ public partial class BlockProcessorTests
         }
     }
 
+    /// <summary>A sequential manager and the recorder of its one processor, for tests that record accesses directly.</summary>
+    private static (BlockAccessListManager Manager, Func<BlockAccessIndexRecorder> Recorder) CreateSequentialBalManager(IWorldState stateProvider)
+    {
+        TracedAccessWorldState? worker = null;
+        BlockAccessListManager manager = new(
+            stateProvider,
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance,
+                codeInfoRepositoryFactory: worldState =>
+                {
+                    worker = (TracedAccessWorldState)worldState;
+                    return new EthereumCodeInfoRepository(worldState);
+                }));
+        return (manager, () => worker!.GetGeneratingBlockAccessList()!);
+    }
+
     private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
     {
         balManager.PrepareForProcessing(block, spec, options);
@@ -4476,6 +4436,7 @@ public partial class BlockProcessorTests
         public int ProcessingAttempts { get; private set; }
 
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
+        public BlockAccessListItemSet BlockAccessListItems { get; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled { get; private set; } = true;
         public bool BatchReadEnabled => false;
@@ -4532,10 +4493,6 @@ public partial class BlockProcessorTests
             {
                 throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL after transaction validation");
             }
-        }
-
-        public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
-        {
         }
 
         public void StoreBeaconRoot(Block block, IReleaseSpec spec)

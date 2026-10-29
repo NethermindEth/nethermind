@@ -28,9 +28,8 @@ using System.Threading;
 namespace Nethermind.Blockchain.Test;
 
 /// <summary>
-/// Covers BAL generation and the column-index fast path on the sequential execution path,
-/// reachable only because <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated
-/// validation index.
+/// Covers BAL generation and validation on the sequential execution path, where one log records
+/// every index of the block.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class BlockAccessListSequentialValidationTests
@@ -38,17 +37,11 @@ public class BlockAccessListSequentialValidationTests
     private const ulong ReadSlot = 1;
 
     [Test]
-    public void Sequential_validation_accepts_matching_bal_and_populates_generated_index()
+    public void Sequential_validation_accepts_matching_bal()
     {
         ReadOnlyBlockAccessList generated = GenerateBlockAccessList();
 
-        BlockAccessListManager balManager = null!;
-        Assert.DoesNotThrow(() => (balManager, _) = RunSequentialValidation(generated));
-
-        // The generated validation index is what gates TryFastPath, so confirm the sequential path
-        // actually populated it. Without this wiring the fast path is unreachable and validation
-        // silently falls back to the slow path, masking a regression that this assertion catches.
-        Assert.That(balManager.HasGeneratedValidationIndexUpdates, Is.True);
+        Assert.DoesNotThrow(() => RunSequentialValidation(generated));
     }
 
     [Test]
@@ -56,8 +49,7 @@ public class BlockAccessListSequentialValidationTests
     {
         ReadOnlyBlockAccessList generated = GenerateBlockAccessList();
 
-        // Tamper: an extra storage read on the sender no longer matches what re-execution
-        // produces, so the fast-path row compare diverges and the fallback walk must reject.
+        // Tamper: an extra storage read on the sender no longer matches what re-execution produces.
         ReadOnlyBlockAccessList tampered = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)

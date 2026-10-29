@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -12,13 +13,13 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 /// <summary>EIP-7906: ordered view of a transaction's state diff and logs, shared by its ASSERT frames.</summary>
-/// <remarks>The BAL slice already net-collapses writes and holds the prestate; this adds only the spec's
+/// <remarks>The BAL recorder already net-collapses writes and holds the prestate; this adds only the spec's
 /// enumeration order and the per-address indexes that make keyed TXDIFF lookups O(1).</remarks>
 internal sealed class TransactionDiffView
 {
     public readonly record struct SlotRef(Address Address, UInt256 Key);
 
-    public BlockAccessListAtIndex Slice { get; }
+    public BlockAccessIndexRecorder Recorder { get; }
 
     /// <summary>Addresses with a net balance change, ascending.</summary>
     public Address[] BalanceAddresses { get; }
@@ -43,7 +44,7 @@ internal sealed class TransactionDiffView
     private Dictionary<ValueHash256, List<int>>? _topicEvents;
 
     private TransactionDiffView(
-        BlockAccessListAtIndex slice,
+        BlockAccessIndexRecorder recorder,
         Address[] balanceAddresses,
         SlotRef[] slots,
         Address[] deployedAddresses,
@@ -52,7 +53,7 @@ internal sealed class TransactionDiffView
         Dictionary<AddressAsKey, EventRun> eventRuns,
         int[] eventIndices)
     {
-        Slice = slice;
+        Recorder = recorder;
         BalanceAddresses = balanceAddresses;
         Slots = slots;
         DeployedAddresses = deployedAddresses;
@@ -62,49 +63,32 @@ internal sealed class TransactionDiffView
         _eventIndices = eventIndices;
     }
 
-    public static TransactionDiffView Build(BlockAccessListAtIndex slice, LogEntry[] logs)
+    public static TransactionDiffView Build(BlockAccessIndexRecorder recorder, LogEntry[] logs)
     {
-        // AccountChanges also holds read-only accesses; filtering first keeps the sort down to the diff.
-        List<AccountChangesAtIndex> accounts = new(slice.AccountCount);
-        int balanceCount = 0, deployedCount = 0, slotCount = 0;
-        foreach (AccountChangesAtIndex account in slice.AccountChanges)
-        {
-            bool hasBalance = account.BalanceChange is not null;
-            bool isDeployment = IsDeployment(account);
-            int accountSlots = account.StorageChangeCount;
-            if (!hasBalance && accountSlots == 0 && !isDeployment) continue;
+        List<Address> balanceChanges = [];
+        List<StorageCell> slotChanges = [];
+        List<Address> codeChanges = [];
+        recorder.GetChanges(balanceChanges, slotChanges, codeChanges);
 
-            accounts.Add(account);
-            if (hasBalance) balanceCount++;
-            if (isDeployment) deployedCount++;
-            // Exact sizing holds because StorageChangeCount counts the same dictionary the fill pass enumerates.
-            slotCount += accountSlots;
-        }
-        CollectionsMarshal.AsSpan(accounts).Sort(default(AddressOrder));
+        Address[] balances = [.. balanceChanges];
+        balances.AsSpan().Sort(default(AddressOrder));
+        Address[] deployed = [.. codeChanges.Where(address => IsDeployment(recorder, address))];
+        deployed.AsSpan().Sort(default(AddressOrder));
+        StorageCell[] cells = [.. slotChanges];
+        cells.AsSpan().Sort(default(StorageCellComparer));
 
-        Address[] balances = balanceCount == 0 ? [] : new Address[balanceCount];
-        Address[] deployed = deployedCount == 0 ? [] : new Address[deployedCount];
-        SlotRef[] slots = slotCount == 0 ? [] : new SlotRef[slotCount];
+        SlotRef[] slots = new SlotRef[cells.Length];
         Dictionary<AddressAsKey, (int, int)> slotRuns = [];
-        int balanceAt = 0, deployedAt = 0, slotAt = 0;
-        foreach (AccountChangesAtIndex account in accounts)
+        for (int i = 0; i < cells.Length; i++)
         {
-            if (account.BalanceChange is not null) balances[balanceAt++] = account.Address;
-            if (IsDeployment(account)) deployed[deployedAt++] = account.Address;
-
-            int accountSlots = account.StorageChangeCount;
-            if (accountSlots > 0)
-            {
-                int start = slotAt;
-                foreach (UInt256 key in account.StorageChanges.Keys) slots[slotAt++] = new SlotRef(account.Address, key);
-                // One address per run, so ordering the run by key alone yields the spec's (address, key) order.
-                slots.AsSpan(start, accountSlots).Sort(default(SlotKeyOrder));
-                slotRuns[account.Address] = (start, accountSlots);
-            }
+            slots[i] = new SlotRef(cells[i].Address, cells[i].Index);
+            ref (int Start, int Count) run = ref CollectionsMarshal.GetValueRefOrAddDefault(slotRuns, cells[i].Address, out bool exists);
+            if (!exists) run.Start = i;
+            run.Count++;
         }
 
         int[] eventIndices = GroupEventIndicesByAddress(logs, out Dictionary<AddressAsKey, EventRun> eventRuns);
-        return new TransactionDiffView(slice, balances, slots, deployed, logs, slotRuns, eventRuns, eventIndices);
+        return new TransactionDiffView(recorder, balances, slots, deployed, logs, slotRuns, eventRuns, eventIndices);
     }
 
     public bool TryGetSlotRun(Address address, out int start, out int count)
@@ -168,11 +152,11 @@ internal sealed class TransactionDiffView
     }
 
     /// <summary>Pre-tx code hash for an address whose code changed, memoized for the life of this view.</summary>
-    public ValueHash256 GetPreTxCodeHash(Address address, AccountChangesAtIndex account)
+    public ValueHash256 GetPreTxCodeHash(Address address, ReadOnlyMemory<byte> preTxCode)
     {
         _preTxCodeHashes ??= [];
         ref ValueHash256 hash = ref CollectionsMarshal.GetValueRefOrAddDefault(_preTxCodeHashes, address, out bool exists);
-        if (!exists) hash = ValueKeccak.Compute(account.PreTxCode.Span);
+        if (!exists) hash = ValueKeccak.Compute(preTxCode.Span);
         return hash;
     }
 
@@ -219,19 +203,16 @@ internal sealed class TransactionDiffView
     }
 
     // Spec contracts_deployed: empty code to non-empty, excluding EIP-7702 delegation designators.
-    private static bool IsDeployment(AccountChangesAtIndex account)
-        => account.CodeChange is { Code: { Length: > 0 } code }
-           && account.PreTxCode.IsEmpty
+    private static bool IsDeployment(BlockAccessIndexRecorder recorder, Address address)
+        => recorder.TryGetCodeChange(address, out CodeChange change)
+           && change.Code is { Length: > 0 } code
+           && recorder.TryGetPreTxCode(address, out ReadOnlyMemory<byte> preTxCode)
+           && preTxCode.IsEmpty
            && !Eip7702Constants.IsDelegatedCode(code);
 
     // Ascending uint160: big-endian byte comparison of the 20-byte address matches numeric order.
-    private readonly struct AddressOrder : IComparer<AccountChangesAtIndex>
+    private readonly struct AddressOrder : IComparer<Address>
     {
-        public int Compare(AccountChangesAtIndex? x, AccountChangesAtIndex? y) => x!.Address.Bytes.SequenceCompareTo(y!.Address.Bytes);
-    }
-
-    private readonly struct SlotKeyOrder : IComparer<SlotRef>
-    {
-        public int Compare(SlotRef x, SlotRef y) => x.Key.CompareTo(y.Key);
+        public int Compare(Address? x, Address? y) => x!.Bytes.SequenceCompareTo(y!.Bytes);
     }
 }

@@ -37,8 +37,6 @@ public class BalParentReadBenchmarks
     private IContainer _container = null!;
     private IWorldState _parent = null!;
     private BlockAccessListBasedWorldState _state = null!;
-    private BalReadStoragePlan _plan = null!;
-    private BalReadCoverage _coverage = null!;
     private Block _block = null!;
     private StorageCell[] _cells = null!;
 
@@ -85,8 +83,6 @@ public class BalParentReadBenchmarks
             _block = Build.A.Block.WithHeader(header)
                 .WithBlockAccessList(new ReadOnlyBlockAccessList(accounts, accounts.Length + _cells.Length)).TestObject;
         }
-        _plan = new(_block.BlockAccessList!);
-        _coverage = _plan.CreateCoverage();
         ulong expected = Pattern switch
         {
             ReadPattern.First => 384 * 42UL,
@@ -100,15 +96,13 @@ public class BalParentReadBenchmarks
     public ulong ReadBlock()
     {
         using IDisposable scope = _parent.BeginScope(_block.Header);
-        _state.Setup(_block, _coverage);
+        _state.Setup(_block);
         _state.SetParentReader(_parent);
-        _coverage.StartSlice();
         ulong sum = 0;
         int passes = Pattern is ReadPattern.Alternating or ReadPattern.Accounts ? 4 : 1;
         for (int pass = 0; pass < passes; pass++)
         {
             _state.SetBlockAccessIndex((uint)(pass + 1));
-            _coverage.StartSlice();
             foreach (ref readonly StorageCell cell in _cells.AsSpan())
             {
                 if (Pattern == ReadPattern.Accounts)
@@ -134,9 +128,5 @@ public class BalParentReadBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup()
-    {
-        _plan?.Dispose();
-        _container?.Dispose();
-    }
+    public void Cleanup() => _container?.Dispose();
 }

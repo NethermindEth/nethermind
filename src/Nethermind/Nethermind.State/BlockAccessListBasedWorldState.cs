@@ -39,7 +39,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private bool _hasPureRead;
     private Address? _lastPureAccountAddress;
     private Account? _lastPureAccount;
-    private BalReadCoverage? _readCoverage;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
@@ -49,14 +48,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public void SetBlockAccessIndex(uint index) => _blockAccessIndex = index;
 
     public void Setup(Block suggestedBlock)
-        => Setup(suggestedBlock, null);
-
-    /// <summary>Sets up a BAL-backed execution slice with optional worker-owned storage-read coverage.</summary>
-    public void Setup(Block suggestedBlock, BalReadCoverage? readCoverage)
     {
         _contextAccount = null;
         _contextChanges = null;
-        _readCoverage = readCoverage;
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
         _pureReadValues.ClearAndTrim();
@@ -80,7 +74,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public void ClearParentReader()
     {
-        _readCoverage = null;
         _parentReader = null;
         _suggestedBlockAccessList = null;
         _suggestedBlockHeader = null;
@@ -132,11 +125,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
-        if (TryGetCachedDeclaredRead(in storageCell, out value))
-        {
-            _readCoverage?.TryMark(in storageCell);
-            return;
-        }
+        if (TryGetCachedDeclaredRead(in storageCell, out value)) return;
         GetStorageSlow(in storageCell, out value);
     }
 
@@ -147,7 +136,6 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
         if (accountChanges.TryGetDeclaredSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
-            if (slotChanges is null) _readCoverage?.TryMark(storageCell);
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
                 value = storageChange.Value;

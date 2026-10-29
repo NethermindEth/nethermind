@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -451,7 +452,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
         DeploySource();
         (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done);
 
-        BlockAccessListAtIndex accessList = ExecuteRecordingBlockAccessList(block, tx, parallel);
+        BlockAccessIndexRecorder accessList = ExecuteRecordingBlockAccessList(block, tx, parallel);
 
         using (Assert.EnterMultipleScope())
         {
@@ -468,13 +469,13 @@ public class Eip8298Tests : VirtualMachineTestsBase
         DeploySource();
         (Block block, Transaction tx, Address created) = PrepareCreation(kind, AdoptingInitCode(0xef, 32), 0);
 
-        BlockAccessListAtIndex accessList = ExecuteRecordingBlockAccessList(block, tx, parallel: false);
+        BlockAccessIndexRecorder accessList = ExecuteRecordingBlockAccessList(block, tx, parallel: false);
 
         Assert.That(accessList.GetAccountChanges(created)?.CodeChange, Is.EqualTo(CodeChange.Adopted(accessList.Index, SourceCodeHash.ValueHash256)));
     }
 
     /// <summary>Executes <paramref name="tx"/> with the production transaction processor, recording a block access list over <see cref="VirtualMachineTestsBase.TestState"/>.</summary>
-    private BlockAccessListAtIndex ExecuteRecordingBlockAccessList(Block block, Transaction tx, bool parallel)
+    private BlockAccessIndexRecorder ExecuteRecordingBlockAccessList(Block block, Transaction tx, bool parallel)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -484,7 +485,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
             .AddSingleton<IWorldState>(TestState)
             .AddDecorator<IWorldState>((_, inner) => new TracedAccessWorldState(inner, parallel)));
         TracedAccessWorldState tracedState = (TracedAccessWorldState)scope.Resolve<IWorldState>();
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
 
         scope.Resolve<ITransactionProcessor>().Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 

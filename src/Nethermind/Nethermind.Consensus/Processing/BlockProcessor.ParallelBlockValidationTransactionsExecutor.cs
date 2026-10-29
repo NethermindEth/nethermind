@@ -73,15 +73,11 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-            bool shouldValidateBal = shouldValidate
-                && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock)
-                && !processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             ulong totalExecutionGas = 0;
             ulong totalStateGas = 0;
 
             balManager.NextTransaction();
-            if (shouldValidateBal) balManager.ValidateBlockAccessList(block, 0);
 
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
@@ -113,7 +109,6 @@ public partial class BlockProcessor
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
-                if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
 
                 if (_pendingTransactionProcessedEvents is not null && transactionProcessedEventHandler!.HasSubscribers)
                 {

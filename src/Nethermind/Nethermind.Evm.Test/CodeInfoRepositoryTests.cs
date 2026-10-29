@@ -19,6 +19,7 @@ using Nethermind.Core.Test;
 using System;
 using Nethermind.State;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using System.Runtime.CompilerServices;
@@ -415,8 +416,9 @@ public class CodeInfoRepositoryTests
         using IDisposable scope = parent.BeginScope(baseBlock);
         blockState.SetParentReader(parent);
         TracedAccessWorldState traced = new(blockState, parallel: true);
-        BlockAccessListAtIndex generated = new() { Index = 1 };
+        BlockAccessIndexRecorder generated = new();
         traced.SetGeneratingBlockAccessList(generated);
+        traced.SetIndex(1);
 
         CodeInfo codeInfo = new CodeInfoRepository(traced, NoPrecompiles())
             .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Amsterdam.Instance, out _);

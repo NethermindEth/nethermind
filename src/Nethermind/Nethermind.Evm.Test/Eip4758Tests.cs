@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -526,14 +527,14 @@ public class Eip4758Tests : VirtualMachineTestsBase
         TracedAccessWorldState tracedState = new(TestState, parallel: false);
         using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
             .AddSingleton<IWorldState>(tracedState));
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessIndexRecorder());
         ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
         TestAllTracerWithOutput tracer = CreateTracer();
         Execute(BuildTx(Factory), spec, tracer, processor);
 
-        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
-        AccountChangesAtIndex? victimChanges = bal.GetAccountChanges(victim);
-        AccountChangesAtIndex? beneficiaryChanges = bal.GetAccountChanges(Existing);
+        BlockAccessIndexRecorder bal = tracedState.GetGeneratingBlockAccessList()!;
+        RecordedAccountChanges? victimChanges = bal.GetAccountChanges(victim);
+        RecordedAccountChanges? beneficiaryChanges = bal.GetAccountChanges(Existing);
         Assert.That(victimChanges, Is.Not.Null);
         Assert.That(beneficiaryChanges, Is.Not.Null);
         using (Assert.EnterMultipleScope())

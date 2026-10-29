@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -492,20 +493,18 @@ public class BlockValidatorTests
             .TestObject;
         // Build a GeneratedBlockAccessList with the same shape as the suggested BAL so the
         // ItemCount-based gas-limit boundary check exercises the generated path identically.
-        GeneratedBlockAccessList generated = new();
-        BlockAccessListAtIndex contribution = new();
-        contribution.AddStorageChange(Eip2935Constants.BlockHashHistoryAddress, 0, 0, new UInt256(parent.Hash!.BytesToArray(), isBigEndian: true));
+        BlockAccessIndexRecorder contribution = new();
+        contribution.AddStorageChange(new StorageCell(Eip2935Constants.BlockHashHistoryAddress, 0), 0, new UInt256(parent.Hash!.BytesToArray(), isBigEndian: true));
         UInt256 eip4788Slot1 = 12u % Eip4788Constants.RingBufferSize;
         UInt256 eip4788Slot2 = (12u % Eip4788Constants.RingBufferSize) + Eip4788Constants.RingBufferSize;
-        contribution.AddStorageChange(Eip4788Constants.BeaconRootsAddress, eip4788Slot1, 0, 12);
-        contribution.AddStorageRead(Eip4788Constants.BeaconRootsAddress, eip4788Slot2);
+        contribution.AddStorageChange(new StorageCell(Eip4788Constants.BeaconRootsAddress, eip4788Slot1), 0, 12);
+        contribution.AddStorageRead(new StorageCell(Eip4788Constants.BeaconRootsAddress, eip4788Slot2));
         for (UInt256 i = 0; i < 4; i++)
         {
-            contribution.AddStorageRead(Eip7002Constants.WithdrawalRequestPredeployAddress, i);
-            contribution.AddStorageRead(Eip7251Constants.ConsolidationRequestPredeployAddress, i);
+            contribution.AddStorageRead(new StorageCell(Eip7002Constants.WithdrawalRequestPredeployAddress, i));
+            contribution.AddStorageRead(new StorageCell(Eip7251Constants.ConsolidationRequestPredeployAddress, i));
         }
-        generated.Merge(contribution);
-        processedBlock.GeneratedBlockAccessList = generated;
+        processedBlock.GeneratedBlockAccessList = contribution.ToGeneratedBlockAccessList();
 
         BlockValidator sut = AmsterdamSut();
 

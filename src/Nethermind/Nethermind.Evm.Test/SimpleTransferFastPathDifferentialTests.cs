@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.BlockAccessLists;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
@@ -321,8 +322,9 @@ public class SimpleTransferFastPathDifferentialTests
             ITxTracer tracer = recordingTracer is not null ? recordingTracer : NullTxTracer.Instance;
             BlockExecutionContext ctx = new(block.Header, specProvider.GetSpec(block.Header));
 
-            BlockAccessListAtIndex? bal = tracedState is null ? null : new() { Index = 1 };
+            BlockAccessIndexRecorder? bal = tracedState is null ? null : new();
             tracedState?.SetGeneratingBlockAccessList(bal);
+            tracedState?.SetIndex(1);
             long emptyCallsBefore = Metrics.EmptyCalls;
             TransactionResult result = mode switch
             {
@@ -364,10 +366,10 @@ public class SimpleTransferFastPathDifferentialTests
         }
     }
 
-    private static BalEntry? DescribeEntry(BlockAccessListAtIndex? bal, Address address) =>
+    private static BalEntry? DescribeEntry(BlockAccessIndexRecorder? bal, Address address) =>
         bal?.GetAccountChanges(address) is { } changes ? new BalEntry(changes.BalanceChange?.Value) : null;
 
-    private static string DescribeBal(BlockAccessListAtIndex bal) =>
+    private static string DescribeBal(BlockAccessIndexRecorder bal) =>
         string.Join(';', bal.AccountChanges
             .Select(static a => $"{a.Address}:{a.BalanceChange}:{a.NonceChange}:{a.CodeChange}:{a.StorageChangeCount}:{a.StorageReads.Count}")
             .OrderBy(static a => a, StringComparer.Ordinal));

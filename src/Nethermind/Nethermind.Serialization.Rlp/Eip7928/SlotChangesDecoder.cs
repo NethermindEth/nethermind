@@ -71,6 +71,9 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     public static int GetContentLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
         => GetContentLength(item.Key, StorageChangesContentLength(CollectionsMarshal.AsSpan(item.Changes), rlpBehaviors));
 
+    internal static int GetLength(in UInt256 key, ReadOnlySpan<StorageChange> changes, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(key, StorageChangesContentLength(changes, rlpBehaviors)));
+
     private static int GetContentLength(in UInt256 key, int storageChangesContentLength)
         => Rlp.LengthOf(key) + Rlp.LengthOfSequence(storageChangesContentLength);
 
@@ -84,7 +87,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return len;
     }
 
-    private static void Encode<TWriter>(ref TWriter writer, in UInt256 key, ReadOnlySpan<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    internal static void Encode<TWriter>(ref TWriter writer, in UInt256 key, scoped ReadOnlySpan<StorageChange> changes, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int storageChangesContentLength = StorageChangesContentLength(changes, rlpBehaviors);

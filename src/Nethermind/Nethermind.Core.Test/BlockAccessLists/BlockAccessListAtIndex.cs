@@ -6,20 +6,19 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 
-namespace Nethermind.Core.BlockAccessLists;
+namespace Nethermind.Core.Test.BlockAccessLists;
 
 /// <summary>
-/// BAL changes accumulated for a single index (one transaction). Used during execution to
-/// record every state mutation a tx performs. Many of these are produced as the block runs;
-/// they are then merged into a <see cref="GeneratedBlockAccessList"/>.
-/// Supports <see cref="IJournal{TSnapshot}"/> for tx-level revert and <see cref="IResettable"/>
-/// for pooling via <see cref="Caching.StaticPool{T}"/>.
+/// BAL changes accumulated for a single index (one transaction), as execution recorded them before
+/// <see cref="BlockAccessIndexRecorder"/>. Kept as the reference model the recorder's log is checked against.
+/// Supports <see cref="IJournal{TSnapshot}"/> for tx-level revert.
 /// </summary>
 public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
@@ -29,9 +28,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     private const int MaxPooledAccountChanges = 4096;
 
     public uint Index { get; set; }
-
-    /// <summary>Distinct chargeable declared reads recorded by worker coverage for this slice.</summary>
-    public ulong CoveredStorageReads { get; set; }
 
     private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
     private readonly List<Change> _changes = new(InitialChangeCapacity);
@@ -65,7 +61,6 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void Clear()
     {
-        CoveredStorageReads = 0;
         int spareCount = _accountChangesPool.Count;
         foreach (AccountChangesAtIndex value in _accountChanges.Values)
         {
